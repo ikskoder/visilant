@@ -1,0 +1,222 @@
+{
+  "extensionDescription": {
+    "message": "Відстежуйте та контролюйте ваші відвідування веб-сайтів із попередженнями безпеки",
+    "description": "Description of the extension"
+  },
+  "securityWarning": {
+    "message": "Попередження безпеки",
+    "description": "Title of the security warning popup"
+  },
+  "warningMessage": {
+    "message": "Ви збираєтесь ввести контент на сайті з дуже малою кількістю відвідувань. Це може бути ризиковано, якщо ви ділитесь конфіденційною інформацією",
+    "description": "Main warning message about site safety"
+  },
+  "inputWarningMessage": {
+    "message": "Ви збираєтесь ввести контент на сайті з дуже малою кількістю відвідувань. Це може бути ризиковано, якщо ви ділитесь конфіденційною інформацією",
+    "description": "Warning message for input/paste actions"
+  },
+  "copyWarningMessage": {
+    "message": "Ви копіюєте вміст із сайту з дуже малою кількістю відвідувань. Будьте обережні з тим, як ви використовуєте цю інформацію",
+    "description": "Warning message for copy/cut actions"
+  },
+  "checkUrl": {
+    "message": "Перевірте URL-адресу сайту",
+    "description": "Security tip to check URL"
+  },
+  "avoidPasswords": {
+    "message": "Уникайте введення паролів або особистих даних",
+    "description": "Security tip about passwords"
+  },
+  "beCareful": {
+    "message": "Будьте обережні при завантаженні файлів",
+    "description": "Security tip about downloads"
+  },
+  "avoidShell": {
+    "message": "Не вставляйте цей вміст у термінал або командний рядок",
+    "description": "Security tip about not pasting into shell"
+  },
+  "verifyContent": {
+    "message": "Якщо ж ви абсолютно впевнені, що це необхідно, то перед цим хоча б переконайтеся, що в буфері обміну знаходиться саме те, що ви думаєте",
+    "description": "Security tip about verifying copied content"
+  },
+  "dontShowAgain": {
+    "message": "Більше не показувати для цього сайту",
+    "description": "Text for the button to disable notifications for a site"
+  },
+  "dismiss": {
+    "message": "Закрити",
+    "description": "Text for the dismiss button"
+  },
+  "settings": {
+    "message": "Налаштування",
+    "description": "Title for the settings page"
+  },
+  "generalSettings": {
+    "message": "Загальні налаштування",
+    "description": "Title for general settings section"
+  },
+  "safetyLevels": {
+    "message": "Порогові значення",
+    "description": "Title for safety levels section"
+  },
+  "visitsThreshold": {
+    "message": "Поріг кількості відвідувань",
+    "description": "Label for visits threshold input"
+  },
+  "visitsThresholdDesc": {
+    "message": "Сайти з меншою кількістю відвідувань, ніж це значення, будуть позначені як небезпечні",
+    "description": "Description for visits threshold"
+  },
+  "displaySettings": {
+    "message": "Налаштування відображення іконки",
+    "description": "Title for display settings section"
+  },
+  "dynamicIcon": {
+    "message": "Динамічна іконка",
+    "description": "Label for dynamic icon toggle"
+  },
+  "dynamicIconDesc": {
+    "message": "Іконка стане червоною для сайтів із меншою кількістю відвідувань, ніж порогове значення",
+    "description": "Description for dynamic icon setting"
+  },
+  "showBadge": {
+    "message": "Лічильник",
+    "description": "Label for badge toggle"
+  },
+  "showBadgeDesc": {
+    "message": "Показувати лічильник відвідувань на значку іконки",
+    "description": "Description for badge setting"
+  },
+  "notificationSettings": {
+    "message": "Налаштування сповіщень",
+    "description": "Title for notification settings section"
+  },
+  "showWarningNotification": {
+    "message": "Показувати сповіщення",
+    "description": "Label for notifications toggle"
+  },
+  "showWarningNotificationDesc": {
+    "message": "Лише коли ініційовано подією та лише для сайтів із меншою кількістю відвідувань, ніж порогове значення",
+    "description": "Description for notifications setting"
+  },
+  "notificationStyle": {
+    "message": "Стиль сповіщень:",
+    "description": "Label for notification style selection"
+  },
+  "browserNotifications": {
+    "message": "Сповіщення браузера",
+    "description": "Option for browser notifications"
+  },
+  "inPageNotifications": {
+    "message": "Сповіщення на сторінці",
+    "description": "Option for in-page notifications"
+  },
+  "bothNotifications": {
+    "message": "Обидва",
+    "description": "Option for both types of notifications"
+  },
+  "databaseManagement": {
+    "message": "Управління базою даних",
+    "description": "Title for database management section"
+  },
+  "importHistory": {
+    "message": "Імпортувати історію",
+    "description": "Label for import history button"
+  },
+  "importing": {
+    "message": "Імпортування...",
+    "description": "Text shown while importing"
+  },
+  "importHistoryDesc": {
+    "message": "Імпортувати історію браузера для ініціалізації лічильників відвідувань",
+    "description": "Description for import history feature"
+  },
+  "resetData": {
+    "message": "Скинути дані",
+    "description": "Title for reset data section"
+  },
+  "visitsInfo": {
+    "message": "Вся інформація щодо відвідувань сайтів",
+    "description": "Label for visit information reset option"
+  },
+  "allSettings": {
+    "message": "Всі налаштування",
+    "description": "Label for all settings reset option"
+  },
+  "ignoredSitesList": {
+    "message": "Список ігнорованих сайтів",
+    "description": "Label for ignored sites reset option"
+  },
+  "resetSelectedData": {
+    "message": "Скинути вибрані дані",
+    "description": "Label for reset button"
+  },
+  "selectDataToReset": {
+    "message": "Виберіть дані для скидання та натисніть кнопку вище",
+    "description": "Help text for reset data selection"
+  },
+  "confirmReset": {
+    "message": "Підтвердити скидання",
+    "description": "Title for reset confirmation dialog"
+  },
+  "confirmResetMessage": {
+    "message": "Ви впевнені, що хочете скинути наступні дані?",
+    "description": "Message in reset confirmation dialog"
+  },
+  "cannotBeUndone": {
+    "message": "Цю дію не можна скасувати",
+    "description": "Warning about irreversible action"
+  },
+  "historyPermissionRequired": {
+    "message": "Для імпорту історії браузера потрібен дозвіл на доступ до історії. Будь ласка, надайте дозвіл для продовження",
+    "description": "Message shown when history permission is denied"
+  },
+  "notificationPermissionRequired": {
+    "message": "Для сповіщень браузера потрібен дозвіл на надсилання сповіщень. Стиль сповіщень було змінено на сповіщення на сторінці",
+    "description": "Message shown when notification permission is denied"
+  },
+  "cancel": {
+    "message": "Скасувати",
+    "description": "Label for cancel button"
+  },
+  "reset": {
+    "message": "Скинути",
+    "description": "Label for reset button"
+  },
+  "languageSettings": {
+    "message": "Мова",
+    "description": "Title for language settings section"
+  },
+  "selectLanguage": {
+    "message": "Оберіть мову",
+    "description": "Label for language selection dropdown"
+  },
+  "languageEnglish": {
+    "message": "Англійська",
+    "description": "Name of English language"
+  },
+  "languageRussian": {
+    "message": "Російська",
+    "description": "Name of Russian language"
+  },
+  "languageUkrainian": {
+    "message": "Українська",
+    "description": "Name of Ukrainian language"
+  },
+  "showInputWarning": {
+    "message": "При введенні тексту або вставці вмісту",
+    "description": "Label for input warning toggle"
+  },
+  "showCopyWarning": {
+    "message": "При вирізанні / копіюванні вмісту",
+    "description": "Label for copy warning toggle"
+  },
+  "bothWarningTriggers": {
+    "message": "В обох випадках",
+    "description": "Label for both warning trigger events option"
+  },
+  "warningTriggerEventsTitle": {
+    "message": "Тригери сповіщень",
+    "description": "Title for warning trigger events section"
+  }
+}

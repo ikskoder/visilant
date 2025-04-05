@@ -1,0 +1,222 @@
+{
+  "extensionDescription": {
+    "message": "Защита от сайтов подделок на основе личной статистики посещения сайтов",
+    "description": "Description of the extension"
+  },
+  "securityWarning": {
+    "message": "Предупреждение безопасности",
+    "description": "Title of the security warning popup"
+  },
+  "warningMessage": {
+    "message": "Вы собираетесь ввести данные на сайте с очень малым количеством посещений. Это может быть рискованно, если вы делитесь конфиденциальной информацией",
+    "description": "Main warning message about site safety"
+  },
+  "inputWarningMessage": {
+    "message": "Вы собираетесь ввести данные на сайте с очень малым количеством посещений. Это может быть рискованно, если вы делитесь конфиденциальной информацией",
+    "description": "Warning message for input/paste actions"
+  },
+  "copyWarningMessage": {
+    "message": "Вы копируете содержимое с сайта с очень малым количеством посещений. Будьте предельно осторожны с тем, как вы используете эту информацию",
+    "description": "Warning message for copy/cut actions"
+  },
+  "checkUrl": {
+    "message": "Проверьте URL сайта",
+    "description": "Security tip to check URL"
+  },
+  "avoidPasswords": {
+    "message": "Избегайте ввода паролей и личных данных",
+    "description": "Security tip about passwords"
+  },
+  "beCareful": {
+    "message": "Будьте осторожны при скачивании файлов",
+    "description": "Security tip about downloads"
+  },
+  "avoidShell": {
+    "message": "Не вставляйте это содержимое в терминал или командную строку",
+    "description": "Security tip about not pasting into shell"
+  },
+  "verifyContent": {
+    "message": "Если же вы абсолютно уверенны что это необходимо, то перед этим хотя бы убедитесь, что в буфере обмена именно то, что вы думаете",
+    "description": "Security tip about verifying copied content"
+  },
+  "dontShowAgain": {
+    "message": "Больше не показывать для этого сайта",
+    "description": "Text for the button to disable notifications for a site"
+  },
+  "dismiss": {
+    "message": "Закрыть",
+    "description": "Text for the dismiss button"
+  },
+  "settings": {
+    "message": "Настройки",
+    "description": "Title for the settings page"
+  },
+  "generalSettings": {
+    "message": "Общие настройки",
+    "description": "Title for general settings section"
+  },
+  "safetyLevels": {
+    "message": "Порог",
+    "description": "Title for safety levels section"
+  },
+  "visitsThreshold": {
+    "message": "Порог количества посещений",
+    "description": "Label for visits threshold input"
+  },
+  "visitsThresholdDesc": {
+    "message": "Сайты с меньшим количеством посещений будут помечены как опасные",
+    "description": "Description for visits threshold"
+  },
+  "displaySettings": {
+    "message": "Настройки отображения иконки",
+    "description": "Title for display settings section"
+  },
+  "dynamicIcon": {
+    "message": "Динамическая иконка",
+    "description": "Label for dynamic icon toggle"
+  },
+  "dynamicIconDesc": {
+    "message": "Иконка будет изменена на красную на сайтах с малым количеством посещений",
+    "description": "Description for dynamic icon setting"
+  },
+  "showBadge": {
+    "message": "Счетчик",
+    "description": "Label for badge toggle"
+  },
+  "showBadgeDesc": {
+    "message": "Показывать количество посещений на значке расширения",
+    "description": "Description for badge setting"
+  },
+  "notificationSettings": {
+    "message": "Настройки уведомлений",
+    "description": "Title for notification settings section"
+  },
+  "showWarningNotification": {
+    "message": "Показывать уведомления",
+    "description": "Label for notifications toggle"
+  },
+  "showWarningNotificationDesc": {
+    "message": "Только при возникновении события и только для сайтов с количеством посещений ниже порогового значения",
+    "description": "Description for notifications setting"
+  },
+  "notificationStyle": {
+    "message": "Стиль уведомлений:",
+    "description": "Label for notification style selection"
+  },
+  "browserNotifications": {
+    "message": "Уведомления браузера",
+    "description": "Option for browser notifications"
+  },
+  "inPageNotifications": {
+    "message": "Уведомления на странице",
+    "description": "Option for in-page notifications"
+  },
+  "bothNotifications": {
+    "message": "Оба варианта",
+    "description": "Option for both types of notifications"
+  },
+  "databaseManagement": {
+    "message": "Управление данными",
+    "description": "Title for database management section"
+  },
+  "importHistory": {
+    "message": "Импорт истории браузера",
+    "description": "Label for import history button"
+  },
+  "importing": {
+    "message": "Импорт...",
+    "description": "Text shown while importing"
+  },
+  "importHistoryDesc": {
+    "message": "Импортируйте историю браузера для инициализации счетчиков посещений",
+    "description": "Description for import history feature"
+  },
+  "resetData": {
+    "message": "Сброс данных",
+    "description": "Title for reset data section"
+  },
+  "visitsInfo": {
+    "message": "Вся информация о посещениях сайтов",
+    "description": "Label for visit information reset option"
+  },
+  "allSettings": {
+    "message": "Все настройки",
+    "description": "Label for all settings reset option"
+  },
+  "ignoredSitesList": {
+    "message": "Список игнорируемых сайтов",
+    "description": "Label for ignored sites reset option"
+  },
+  "resetSelectedData": {
+    "message": "Сбросить выбранные данные",
+    "description": "Label for reset button"
+  },
+  "selectDataToReset": {
+    "message": "Выберите данные для сброса и нажмите кнопку выше",
+    "description": "Help text for reset data selection"
+  },
+  "confirmReset": {
+    "message": "Подтверждение сброса",
+    "description": "Title for reset confirmation dialog"
+  },
+  "confirmResetMessage": {
+    "message": "Вы уверены, что хотите сбросить следующие данные?",
+    "description": "Message in reset confirmation dialog"
+  },
+  "cannotBeUndone": {
+    "message": "Это действие нельзя отменить",
+    "description": "Warning about irreversible action"
+  },
+  "historyPermissionRequired": {
+    "message": "Для импорта истории браузера требуется разрешение на доступ к истории. Пожалуйста, предоставьте разрешение для продолжения",
+    "description": "Message shown when history permission is denied"
+  },
+  "notificationPermissionRequired": {
+    "message": "Для уведомлений браузера требуется разрешение на отправку уведомлений. Стиль уведомлений был изменен на уведомления на странице",
+    "description": "Message shown when notification permission is denied"
+  },
+  "cancel": {
+    "message": "Отмена",
+    "description": "Label for cancel button"
+  },
+  "reset": {
+    "message": "Сбросить",
+    "description": "Label for reset button"
+  },
+  "languageSettings": {
+    "message": "Настройки языка",
+    "description": "Title for language settings section"
+  },
+  "selectLanguage": {
+    "message": "Выберите язык",
+    "description": "Label for language selection dropdown"
+  },
+  "languageEnglish": {
+    "message": "Английский",
+    "description": "Name of English language"
+  },
+  "languageRussian": {
+    "message": "Русский",
+    "description": "Name of Russian language"
+  },
+  "languageUkrainian": {
+    "message": "Украинский",
+    "description": "Name of Ukrainian language"
+  },
+  "showInputWarning": {
+    "message": "При вводе с клавиатуры или вставке содержимого",
+    "description": "Label for input warning toggle"
+  },
+  "showCopyWarning": {
+    "message": "При вырезании/копировании содержимого",
+    "description": "Label for copy warning toggle"
+  },
+  "bothWarningTriggers": {
+    "message": "В обоих случаях",
+    "description": "Label for both warning trigger events option"
+  },
+  "warningTriggerEventsTitle": {
+    "message": "Триггеры уведомлений",
+    "description": "Title for warning trigger events section"
+  }
+}

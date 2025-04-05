@@ -1,0 +1,222 @@
+{
+  "extensionDescription": {
+    "message": "Protection against Homograph Attack & Clone Phishing based on your site visiting statistics",
+    "description": "Description of the extension"
+  },
+  "securityWarning": {
+    "message": "Security warning",
+    "description": "Title of the security warning popup"
+  },
+  "warningMessage": {
+    "message": "You are about to enter content on a site with very few visits. This could be risky if you're sharing sensitive information",
+    "description": "Main warning message about site safety"
+  },
+  "inputWarningMessage": {
+    "message": "You are about to enter content on a site with very few visits. This could be risky if you're sharing sensitive information",
+    "description": "Warning message for input/paste actions"
+  },
+  "copyWarningMessage": {
+    "message": "You are copying content from a site with very few visits. Be careful with how you use this information",
+    "description": "Warning message for copy/cut actions"
+  },
+  "checkUrl": {
+    "message": "Double-check the website URL",
+    "description": "Security tip to check URL"
+  },
+  "avoidPasswords": {
+    "message": "Avoid entering passwords or personal data",
+    "description": "Security tip about passwords"
+  },
+  "beCareful": {
+    "message": "Be cautious with any downloads",
+    "description": "Security tip about downloads"
+  },
+  "avoidShell": {
+    "message": "Don't paste this content into a terminal or command prompt",
+    "description": "Security tip about not pasting into shell"
+  },
+  "verifyContent": {
+    "message": "If you're still going to paste it somewhere, at least make sure that what's in the clipboard is what you think it is",
+    "description": "Security tip about verifying copied content"
+  },
+  "dontShowAgain": {
+    "message": "Don't show again for this site",
+    "description": "Text for the button to disable notifications for a site"
+  },
+  "dismiss": {
+    "message": "Dismiss",
+    "description": "Text for the dismiss button"
+  },
+  "settings": {
+    "message": "Settings",
+    "description": "Title for the settings page"
+  },
+  "generalSettings": {
+    "message": "General settings",
+    "description": "Title for general settings section"
+  },
+  "safetyLevels": {
+    "message": "Safety level thresholds",
+    "description": "Title for safety levels section"
+  },
+  "visitsThreshold": {
+    "message": "Visits count threshold",
+    "description": "Label for visits threshold input"
+  },
+  "visitsThresholdDesc": {
+    "message": "Sites with fewer visits than this will be marked as dangerous",
+    "description": "Description for visits threshold"
+  },
+  "displaySettings": {
+    "message": "Icon display settings",
+    "description": "Title for display settings section"
+  },
+  "dynamicIcon": {
+    "message": "Dynamic icon",
+    "description": "Label for dynamic icon toggle"
+  },
+  "dynamicIconDesc": {
+    "message": "The icon will be changed to red for sites with less visits than the threshold",
+    "description": "Description for dynamic icon setting"
+  },
+  "showBadge": {
+    "message": "Counter",
+    "description": "Label for badge toggle"
+  },
+  "showBadgeDesc": {
+    "message": "Display visit count in the extension icon badge",
+    "description": "Description for badge setting"
+  },
+  "notificationSettings": {
+    "message": "Notification settings",
+    "description": "Title for notification settings section"
+  },
+  "showWarningNotification": {
+    "message": "Show notifications",
+    "description": "Label for notifications toggle"
+  },
+  "showWarningNotificationDesc": {
+    "message": "Only when triggered by an event and only for sites with less visits than the threshold",
+    "description": "Description for notifications setting"
+  },
+  "notificationStyle": {
+    "message": "Notification style:",
+    "description": "Label for notification style selection"
+  },
+  "browserNotifications": {
+    "message": "Browser notifications",
+    "description": "Option for browser notifications"
+  },
+  "inPageNotifications": {
+    "message": "In-page notifications",
+    "description": "Option for in-page notifications"
+  },
+  "bothNotifications": {
+    "message": "Both",
+    "description": "Option for both types of notifications"
+  },
+  "databaseManagement": {
+    "message": "Database management",
+    "description": "Title for database management section"
+  },
+  "importHistory": {
+    "message": "Import browser history",
+    "description": "Label for import history button"
+  },
+  "importing": {
+    "message": "Importing...",
+    "description": "Text shown while importing"
+  },
+  "importHistoryDesc": {
+    "message": "Import your browser history to initialize visit counts",
+    "description": "Description for import history feature"
+  },
+  "resetData": {
+    "message": "Reset data",
+    "description": "Title for reset data section"
+  },
+  "visitsInfo": {
+    "message": "All information about site visits",
+    "description": "Label for visit information reset option"
+  },
+  "allSettings": {
+    "message": "All settings",
+    "description": "Label for all settings reset option"
+  },
+  "ignoredSitesList": {
+    "message": "Ignored sites list",
+    "description": "Label for ignored sites reset option"
+  },
+  "resetSelectedData": {
+    "message": "Reset selected data",
+    "description": "Label for reset button"
+  },
+  "selectDataToReset": {
+    "message": "Select what data you want to reset and click the button above",
+    "description": "Help text for reset data selection"
+  },
+  "confirmReset": {
+    "message": "Confirm reset",
+    "description": "Title for reset confirmation dialog"
+  },
+  "confirmResetMessage": {
+    "message": "Are you sure you want to reset the following data?",
+    "description": "Message in reset confirmation dialog"
+  },
+  "cannotBeUndone": {
+    "message": "This action cannot be undone",
+    "description": "Warning about irreversible action"
+  },
+  "historyPermissionRequired": {
+    "message": "History permission is required to import browser history. Please grant the permission to continue",
+    "description": "Message shown when history permission is denied"
+  },
+  "notificationPermissionRequired": {
+    "message": "Notification permission is required for browser notifications. The notification style has been set to in-page notifications instead",
+    "description": "Message shown when notification permission is denied"
+  },
+  "cancel": {
+    "message": "Cancel",
+    "description": "Label for cancel button"
+  },
+  "reset": {
+    "message": "Reset",
+    "description": "Label for reset button"
+  },
+  "languageSettings": {
+    "message": "Language settings",
+    "description": "Title for language settings section"
+  },
+  "selectLanguage": {
+    "message": "Select language",
+    "description": "Label for language selection dropdown"
+  },
+  "languageEnglish": {
+    "message": "English",
+    "description": "Name of English language"
+  },
+  "languageRussian": {
+    "message": "Russian",
+    "description": "Name of Russian language"
+  },
+  "languageUkrainian": {
+    "message": "Ukrainian",
+    "description": "Name of Ukrainian language"
+  },
+  "showInputWarning": {
+    "message": "Keyboard input or content paste",
+    "description": "Label for input warning toggle"
+  },
+  "showCopyWarning": {
+    "message": "Content cutting or copying",
+    "description": "Label for copy warning toggle"
+  },
+  "bothWarningTriggers": {
+    "message": "In both cases",
+    "description": "Label for both warning trigger events option"
+  },
+  "warningTriggerEventsTitle": {
+    "message": "Notification triggers",
+    "description": "Title for warning trigger events section"
+  }
+}
