@@ -19,3 +19,5 @@ Build.md
 .cursor
 .vscode
 Build.md
+.envrc
+.direnv
