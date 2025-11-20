@@ -16,6 +16,13 @@ export interface Settings {
 
   // Language settings
   selectedLanguage: string
+
+  // Sorting settings
+  sortOption: 'name' | 'visits'
+  sortOrder: 'asc' | 'desc'
+
+  // Display settings
+  domainCase: 'lower' | 'upper'
 }
 
 export const defaultSettings: Settings = {
@@ -34,6 +41,13 @@ export const defaultSettings: Settings = {
 
   // Language settings
   selectedLanguage: 'en',
+
+  // Sorting settings
+  sortOption: 'visits',
+  sortOrder: 'desc',
+
+  // Display settings
+  domainCase: 'lower',
 }
 
 export const settings = useWebExtensionStorage<Settings>(

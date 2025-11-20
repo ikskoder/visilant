@@ -73,9 +73,9 @@ if (import.meta.hot) {
 }
 
 // Handle extension icon click to open options page
-browser.action.onClicked.addListener(() => {
-  browser.runtime.openOptionsPage()
-})
+// browser.action.onClicked.addListener(() => {
+//   browser.runtime.openOptionsPage()
+// })
 
 // Function to get hostname from URL
 function getHostname(url: string): string {
