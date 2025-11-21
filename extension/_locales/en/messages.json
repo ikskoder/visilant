@@ -218,5 +218,57 @@
   "warningTriggerEventsTitle": {
     "message": "Notification triggers",
     "description": "Title for warning trigger events section"
+  },
+  "currentDomain": {
+    "message": "Current domain",
+    "description": "Label for current domain section"
+  },
+  "familyVisits": {
+    "message": "Subdomain visits",
+    "description": "Label for family visits section"
+  },
+  "total": {
+    "message": "Total: ",
+    "description": "Label for total visits"
+  },
+  "sortBy": {
+    "message": "Sort by",
+    "description": "Label for sort controls"
+  },
+  "sortByName": {
+    "message": "Name",
+    "description": "Sort by name option"
+  },
+  "sortByVisits": {
+    "message": "Visits",
+    "description": "Sort by visits option"
+  },
+  "toggleSortOrder": {
+    "message": "Toggle sort order",
+    "description": "Tooltip for sort order toggle"
+  },
+  "toggleCase": {
+    "message": "Toggle case",
+    "description": "Tooltip for case toggle"
+  },
+  "current": {
+    "message": "CURRENT",
+    "description": "Label for current domain in list"
+  },
+  "noVisitData": {
+    "message": "No visit data found for this domain family.",
+    "description": "Message when no data is found"
+  },
+  "visitWebsite": {
+    "message": "Visit a website to see stats",
+    "description": "Message when no current hostname"
+  },
+  "defaultSafetyThreshold": {
+    "message": "Default: 10",
+    "description": "Placeholder for safety threshold input"
+  },
+  "logoAlt": {
+    "message": "Visilant logo",
+    "description": "Alt text for logo"
   }
 }

@@ -60,6 +60,7 @@ function updateTranslations() {
     'notificationPermissionRequired',
     'warningTriggerEventsTitle',
     'bothWarningTriggers',
+    'defaultSafetyThreshold',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -277,7 +278,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <input
                   :value="settings.safety" type="number" min="1"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                  placeholder="Default: 10" @input="updateSafetyThreshold(($event.target as HTMLInputElement).value)"
+                  :placeholder="translations.defaultSafetyThreshold" @input="updateSafetyThreshold(($event.target as HTMLInputElement).value)"
                 >
               </div>
               <p class="text-xs text-gray-500 mt-1">

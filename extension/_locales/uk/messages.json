@@ -218,5 +218,57 @@
   "warningTriggerEventsTitle": {
     "message": "Тригери сповіщень",
     "description": "Title for warning trigger events section"
+  },
+  "currentDomain": {
+    "message": "Поточний домен",
+    "description": "Label for current domain section"
+  },
+  "familyVisits": {
+    "message": "Відвідування піддоменів",
+    "description": "Label for family visits section"
+  },
+  "total": {
+    "message": "Всього: ",
+    "description": "Label for total visits"
+  },
+  "sortBy": {
+    "message": "Сортувати за",
+    "description": "Label for sort controls"
+  },
+  "sortByName": {
+    "message": "Ім'ям",
+    "description": "Sort by name option"
+  },
+  "sortByVisits": {
+    "message": "Відвідуваннями",
+    "description": "Sort by visits option"
+  },
+  "toggleSortOrder": {
+    "message": "Перемкнути порядок сортування",
+    "description": "Tooltip for sort order toggle"
+  },
+  "toggleCase": {
+    "message": "Перемкнути регістр",
+    "description": "Tooltip for case toggle"
+  },
+  "current": {
+    "message": "ПОТОЧНИЙ",
+    "description": "Label for current domain in list"
+  },
+  "noVisitData": {
+    "message": "Немає даних про відвідування для цього сімейства доменів.",
+    "description": "Message when no data is found"
+  },
+  "visitWebsite": {
+    "message": "Відвідайте веб-сайт, щоб побачити статистику",
+    "description": "Message when no current hostname"
+  },
+  "defaultSafetyThreshold": {
+    "message": "За замовчуванням: 10",
+    "description": "Placeholder for safety threshold input"
+  },
+  "logoAlt": {
+    "message": "Логотип Visilant",
+    "description": "Alt text for logo"
   }
 }

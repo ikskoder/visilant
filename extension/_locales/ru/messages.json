@@ -218,5 +218,57 @@
   "warningTriggerEventsTitle": {
     "message": "Триггеры уведомлений",
     "description": "Title for warning trigger events section"
+  },
+  "currentDomain": {
+    "message": "Текущий домен",
+    "description": "Label for current domain section"
+  },
+  "familyVisits": {
+    "message": "Посещения субдоменов",
+    "description": "Label for family visits section"
+  },
+  "total": {
+    "message": "Всего: ",
+    "description": "Label for total visits"
+  },
+  "sortBy": {
+    "message": "Сортировать по",
+    "description": "Label for sort controls"
+  },
+  "sortByName": {
+    "message": "Имени",
+    "description": "Sort by name option"
+  },
+  "sortByVisits": {
+    "message": "Посещениям",
+    "description": "Sort by visits option"
+  },
+  "toggleSortOrder": {
+    "message": "Переключить порядок сортировки",
+    "description": "Tooltip for sort order toggle"
+  },
+  "toggleCase": {
+    "message": "Переключить регистр",
+    "description": "Tooltip for case toggle"
+  },
+  "current": {
+    "message": "ТЕКУЩИЙ",
+    "description": "Label for current domain in list"
+  },
+  "noVisitData": {
+    "message": "Нет данных о посещениях для этого семейства доменов.",
+    "description": "Message when no data is found"
+  },
+  "visitWebsite": {
+    "message": "Посетите веб-сайт, чтобы увидеть статистику",
+    "description": "Message when no current hostname"
+  },
+  "defaultSafetyThreshold": {
+    "message": "По умолчанию: 10",
+    "description": "Placeholder for safety threshold input"
+  },
+  "logoAlt": {
+    "message": "Логотип Visilant",
+    "description": "Alt text for logo"
   }
 }

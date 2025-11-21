@@ -1,8 +1,46 @@
 <script setup lang="ts">
 import { getDomain } from 'tldts'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from '~/composables/useI18n'
 import { settings } from '~/logic/storage'
 import Logo from '../components/Logo.vue'
+
+const { t, currentLanguage, isLoaded } = useI18n()
+
+// Reactive translations
+const translations = ref<Record<string, string>>({})
+
+// Function to update translations
+function updateTranslations() {
+  if (!isLoaded.value)
+    return
+
+  const translationKeys = [
+    'currentDomain',
+    'familyVisits',
+    'total',
+    'sortBy',
+    'sortByName',
+    'sortByVisits',
+    'toggleSortOrder',
+    'toggleCase',
+    'current',
+    'noVisitData',
+    'visitWebsite',
+    'settings',
+  ]
+
+  const newTranslations: Record<string, string> = {}
+  for (const key of translationKeys) {
+    newTranslations[key] = t.value(key)
+  }
+  translations.value = newTranslations
+}
+
+// Update translations when language changes or when translations are loaded
+watch([currentLanguage, isLoaded], () => {
+  updateTranslations()
+}, { immediate: true })
 
 const currentHostname = ref('')
 const rootDomain = ref('')
@@ -120,7 +158,7 @@ onMounted(async () => {
   <main class="w-[600px] px-4 py-5 text-gray-700">
     <div class="flex justify-between items-center mb-4">
       <Logo class="h-8 w-auto" />
-      <button class="icon-btn text-2xl" title="Settings" @click="openOptionsPage">
+      <button class="icon-btn text-2xl" :title="translations.settings" @click="openOptionsPage">
         <div i-carbon-settings />
       </button>
     </div>
@@ -128,7 +166,7 @@ onMounted(async () => {
     <div v-if="currentHostname">
       <div class="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-100">
         <div class="text-xs uppercase tracking-wider opacity-50 mb-1">
-          Current Domain
+          {{ translations.currentDomain }}
         </div>
         <div class="flex justify-between items-end">
           <div class="font-mono font-bold break-all text-lg leading-tight mr-2">
@@ -143,8 +181,8 @@ onMounted(async () => {
       <div v-if="relatedDomains.length > 0">
         <div class="mb-2">
           <div class="flex justify-between items-center text-xs uppercase tracking-wider opacity-50 mb-1">
-            <span>Family Visits</span>
-            <span class="font-mono font-bold" :class="getCountColor(cumulativeCount)">Total: {{ cumulativeCount }}</span>
+            <span>{{ translations.familyVisits }}</span>
+            <span class="font-mono font-bold" :class="getCountColor(cumulativeCount)">{{ translations.total }}{{ cumulativeCount }}</span>
           </div>
           <div class="font-mono font-bold text-sm break-all">
             {{ formatDomain(rootDomain) }}
@@ -153,31 +191,31 @@ onMounted(async () => {
 
         <!-- Sort Controls -->
         <div class="flex gap-2 mb-2 text-[10px] items-center">
-          <span class="opacity-50">Sort by</span>
+          <span class="opacity-50">{{ translations.sortBy }}</span>
           <button
             class="px-2 py-1 rounded border transition-colors"
             :class="settings.sortOption === 'name' ? 'bg-blue-100 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'"
             @click="setSortOption('name')"
           >
-            Name
+            {{ translations.sortByName }}
           </button>
           <button
             class="px-2 py-1 rounded border transition-colors"
             :class="settings.sortOption === 'visits' ? 'bg-blue-100 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'"
             @click="setSortOption('visits')"
           >
-            Visits
+            {{ translations.sortByVisits }}
           </button>
           <button
             class="px-2 py-1 rounded border bg-gray-50 border-gray-200 ml-auto hover:bg-gray-100 transition-colors w-6 flex items-center justify-center"
-            title="Toggle Sort Order"
+            :title="translations.toggleSortOrder"
             @click="toggleSortOrder"
           >
             {{ settings.sortOrder === 'asc' ? '↑' : '↓' }}
           </button>
           <button
             class="px-2 py-1 rounded border bg-gray-50 border-gray-200 hover:bg-gray-100 transition-colors w-6 flex items-center justify-center"
-            title="Toggle Case"
+            :title="translations.toggleCase"
             @click="toggleDomainCase"
           >
             {{ settings.domainCase === 'upper' ? 'Aa' : 'AA' }}
@@ -192,7 +230,7 @@ onMounted(async () => {
           >
             <span class="truncate flex-1 mr-3" :title="domain">
               {{ formatDomain(domain) }}
-              <span v-if="domain === currentHostname" class="ml-1 text-[10px] text-blue-500 bg-blue-100 px-1 rounded">CURRENT</span>
+              <span v-if="domain === currentHostname" class="ml-1 text-[10px] text-blue-500 bg-blue-100 px-1 rounded">{{ translations.current }}</span>
             </span>
             <span class="font-mono font-bold" :class="getCountColor(visits[domain]?.count)">
               {{ visits[domain]?.count || 0 }}
@@ -201,14 +239,14 @@ onMounted(async () => {
         </div>
       </div>
       <div v-else class="mt-4 text-sm opacity-50 text-center py-4 bg-gray-50 rounded-lg">
-        No visit data found for this domain family.
+        {{ translations.noVisitData }}
       </div>
     </div>
     <div v-else class="py-8 text-center opacity-50">
       <div class="text-4xl mb-2">
         🌍
       </div>
-      <div>Visit a website to see stats</div>
+      <div>{{ translations.visitWebsite }}</div>
     </div>
   </main>
 </template>
