@@ -2,6 +2,7 @@
 import { getDomain } from 'tldts'
 import { computed, onMounted, ref } from 'vue'
 import { settings } from '~/logic/storage'
+import Logo from '../components/Logo.vue'
 
 const currentHostname = ref('')
 const rootDomain = ref('')
@@ -116,15 +117,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="w-[300px] px-4 py-5 text-gray-700">
+  <main class="w-[600px] px-4 py-5 text-gray-700">
     <div class="flex justify-between items-center mb-4">
-      <div class="flex items-center gap-2">
-        <Logo class="w-6 h-6" />
-        <h1 class="text-lg font-bold">
-          Visilant
-        </h1>
-      </div>
-      <button class="icon-btn text-lg" title="Settings" @click="openOptionsPage">
+      <Logo class="h-8 w-auto" />
+      <button class="icon-btn text-2xl" title="Settings" @click="openOptionsPage">
         <div i-carbon-settings />
       </button>
     </div>
@@ -156,7 +152,8 @@ onMounted(async () => {
         </div>
 
         <!-- Sort Controls -->
-        <div class="flex gap-2 mb-2 text-[10px]">
+        <div class="flex gap-2 mb-2 text-[10px] items-center">
+          <span class="opacity-50">Sort by</span>
           <button
             class="px-2 py-1 rounded border transition-colors"
             :class="settings.sortOption === 'name' ? 'bg-blue-100 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'"

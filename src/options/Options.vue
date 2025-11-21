@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import logo from '~/assets/icon-default.png'
+import logo from '~/assets/logo.svg'
 import { useI18n } from '~/composables/useI18n'
 import { defaultSettings, settings } from '~/logic/storage'
 
@@ -243,7 +243,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
     </div>
 
     <div v-else>
-      <img :src="logo" style="max-width: 100px;" class="icon-btn mx-2 text-2xl" :alt="translations.extensionName">
+      <img :src="logo" style="max-width: 300px;" class="mx-auto" :alt="translations.extensionName">
       <div class="text-xl font-bold mb-6">
         {{ translations.settings }}
       </div>
