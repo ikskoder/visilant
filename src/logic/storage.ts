@@ -23,6 +23,8 @@ export interface Settings {
 
   // Display settings
   domainCase: 'lower' | 'upper'
+  domainHighlighting: boolean
+  punycodeListMode: 'unicode' | 'ascii'
 }
 
 export const defaultSettings: Settings = {
@@ -48,6 +50,8 @@ export const defaultSettings: Settings = {
 
   // Display settings
   domainCase: 'lower',
+  domainHighlighting: false,
+  punycodeListMode: 'unicode',
 }
 
 export const settings = useWebExtensionStorage<Settings>(

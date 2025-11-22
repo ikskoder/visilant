@@ -251,6 +251,30 @@
     "message": "Toggle case",
     "description": "Tooltip for case toggle"
   },
+  "toggleHighlighting": {
+    "message": "Toggle highlighting\n\nGreen: Latin (a-z, A-Z)\nBlue: Numbers (0-9)\nBlack: Symbols (-_.)\nRed: Other",
+    "description": "Tooltip for highlighting toggle with legend"
+  },
+  "togglePunycodeListMode": {
+    "message": "Toggle domain display format (Unicode / Punycode)",
+    "description": "Tooltip for punycode list mode toggle"
+  },
+  "domainOriginal": {
+    "message": "Original (Unicode)",
+    "description": "Label for the unicode domain version"
+  },
+  "domainPunycode": {
+    "message": "Punycode (ASCII)",
+    "description": "Label for the punycode domain version"
+  },
+  "punycodeHelpTitle": {
+    "message": "What is this?",
+    "description": "Title for punycode help"
+  },
+  "punycodeHelpContent": {
+    "message": "Punycode is a technical format for domains with special characters. It starts with 'xn--'.\n\nPotential Risk:\nThe danger arises when a domain looks like it only contains standard English letters (ASCII), but is actually Punycode. This usually means it contains hidden 'look-alike' characters from other languages to impersonate a trusted site.\n\nIf the domain characters are in the same language as the website content, then Punycode is expected and likely safe.",
+    "description": "Explanation of punycode and homograph attacks"
+  },
   "current": {
     "message": "CURRENT",
     "description": "Label for current domain in list"

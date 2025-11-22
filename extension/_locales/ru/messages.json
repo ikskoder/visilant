@@ -251,6 +251,30 @@
     "message": "Переключить регистр",
     "description": "Tooltip for case toggle"
   },
+  "toggleHighlighting": {
+    "message": "Переключить подсветку\n\nЗеленый: Латиница (a-z, A-Z)\nСиний: Цифры (0-9)\nЧерный: Символы (-_.)\nКрасный: Другое",
+    "description": "Tooltip for highlighting toggle with legend"
+  },
+  "togglePunycodeListMode": {
+    "message": "Переключить формат отображения доменов (Unicode / Punycode)",
+    "description": "Tooltip for punycode list mode toggle"
+  },
+  "domainOriginal": {
+    "message": "Оригинал (Unicode)",
+    "description": "Label for the unicode domain version"
+  },
+  "domainPunycode": {
+    "message": "Punycode (ASCII)",
+    "description": "Label for the punycode domain version"
+  },
+  "punycodeHelpTitle": {
+    "message": "Что это такое?",
+    "description": "Title for punycode help"
+  },
+  "punycodeHelpContent": {
+    "message": "Punycode — это технический формат для доменов со спецсимволами. Начинается с 'xn--'.\n\nВозможный риск:\nОпасность возникает, когда домен выглядит так, будто состоит только из обычных английских букв, но на самом деле это Punycode. Это часто означает использование скрытых символов-двойников из других языков для подделки доверенного сайта.\n\nЕсли символы домена на том же языке, что и контент сайта, то использование Punycode ожидаемо и, скорее всего, безопасно.",
+    "description": "Explanation of punycode and homograph attacks"
+  },
   "current": {
     "message": "ТЕКУЩИЙ",
     "description": "Label for current domain in list"

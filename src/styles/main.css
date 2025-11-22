@@ -18,3 +18,18 @@ body,
     hover:opacity-100 hover:text-teal-600;
   font-size: 0.9em;
 }
+
+.secure-domain-display {
+  font-family: 'Atkinson Hyperlegible', monospace;
+  
+  /* Disable ligatures for security */
+  font-variant-ligatures: none;
+  
+  /* OpenType Features for maximum distinctiveness: */
+  /* 'zero' - slashed or dotted zero */
+  /* 'ss02' - stylistic sets (depends on font) */
+  font-feature-settings: "zero" 1, "ss02" 1; 
+  
+  /* Additional readability */
+  letter-spacing: 0.15em;
+}

@@ -251,6 +251,30 @@
     "message": "Перемкнути регістр",
     "description": "Tooltip for case toggle"
   },
+  "toggleHighlighting": {
+    "message": "Перемкнути підсвічування\n\nЗелений: Латиниця (a-z, A-Z)\nСиній: Цифри (0-9)\nЧорний: Символи (-_.)\nЧервоний: Інше",
+    "description": "Tooltip for highlighting toggle with legend"
+  },
+  "togglePunycodeListMode": {
+    "message": "Перемкнути формат відображення доменів (Unicode / Punycode)",
+    "description": "Tooltip for punycode list mode toggle"
+  },
+  "domainOriginal": {
+    "message": "Оригінал (Unicode)",
+    "description": "Label for the unicode domain version"
+  },
+  "domainPunycode": {
+    "message": "Punycode (ASCII)",
+    "description": "Label for the punycode domain version"
+  },
+  "punycodeHelpTitle": {
+    "message": "Що це таке?",
+    "description": "Title for punycode help"
+  },
+  "punycodeHelpContent": {
+    "message": "Punycode — це технічний формат для доменів зі спецсимволами. Починається з 'xn--'.\n\nМожливий ризик:\nНебезпека виникає, коли домен виглядає так, ніби складається лише зі звичайних англійських літер, але насправді це Punycode. Це часто означає використання прихованих символів-двійників з інших мов для підробки довіреного сайту.\n\nЯкщо символи домену тією ж мовою, що й контент сайту, то використання Punycode очікуване і, швидше за все, безпечне.",
+    "description": "Explanation of punycode and homograph attacks"
+  },
   "current": {
     "message": "ПОТОЧНИЙ",
     "description": "Label for current domain in list"
