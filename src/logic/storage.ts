@@ -57,6 +57,9 @@ export const defaultSettings: Settings = {
 export const settings = useWebExtensionStorage<Settings>(
   'settings',
   defaultSettings,
+  {
+    mergeDefaults: true,
+  },
 )
 
 // Define the site visit data structure
