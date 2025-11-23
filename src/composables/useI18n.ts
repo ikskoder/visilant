@@ -1,5 +1,4 @@
-import type { Settings } from '~/logic/storage'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { settings as appSettings } from '~/logic/storage'
 
 // Type for message format
@@ -64,41 +63,55 @@ export function useI18n() {
   })
 
   const setLanguage = async (lang: string) => {
-    // Don't set isLoaded to false as it causes the UI to disappear
-    // Just update the language and translations
-    currentLanguage.value = lang
-    // Preload translations for the new language
-    await loadTranslations(lang)
+    // Update the source of truth
+    if (appSettings.value)
+      appSettings.value.selectedLanguage = lang
   }
 
-  // Load saved language preference
-  async function init() {
+  // Sync with settings
+  watch(
+    () => appSettings.value?.selectedLanguage,
+    async (newLang) => {
+      if (newLang) {
+        // Load translations FIRST to avoid UI flickering with old texts
+        await loadTranslations(newLang)
+        // THEN update the current language state
+        currentLanguage.value = newLang
+        isLoaded.value = true
+      }
+    },
+    { immediate: true },
+  )
+
+  // Fallback: manually check storage to ensure we have the latest value
+  // This helps if useWebExtensionStorage is slow or fails to sync initially
+  browser.storage.sync.get('settings').then(async (data) => {
     try {
-      if (appSettings.value?.selectedLanguage) {
-        currentLanguage.value = appSettings.value.selectedLanguage
-        await loadTranslations(appSettings.value.selectedLanguage)
-      }
-      else {
-        await loadTranslations('en')
+      if (data?.settings) {
+        let parsed: any = data.settings
+        // Handle potential double-serialization or raw object
+        if (typeof parsed === 'string') {
+          try {
+            parsed = JSON.parse(parsed)
+          }
+          catch (e) {
+            console.error('Failed to parse settings:', e)
+          }
+        }
+
+        if (parsed?.selectedLanguage && parsed.selectedLanguage !== currentLanguage.value) {
+          currentLanguage.value = parsed.selectedLanguage
+          await loadTranslations(parsed.selectedLanguage)
+
+          // Also update appSettings if it's out of sync
+          if (appSettings.value && appSettings.value.selectedLanguage !== parsed.selectedLanguage) {
+            appSettings.value.selectedLanguage = parsed.selectedLanguage
+          }
+        }
       }
     }
-    catch (error) {
-      console.error('Error loading language preference:', error)
-      await loadTranslations('en')
-    }
-    isLoaded.value = true
-  }
-
-  // Load saved language preference
-  init().catch(console.error)
-
-  // Watch for changes in settings
-  browser.storage.onChanged.addListener((changes) => {
-    if (changes.settings?.newValue) {
-      const newSettings = changes.settings.newValue as Settings
-      if (newSettings.selectedLanguage && newSettings.selectedLanguage !== currentLanguage.value) {
-        setLanguage(newSettings.selectedLanguage)
-      }
+    catch (e) {
+      console.error('Error in manual storage check:', e)
     }
   })
 
@@ -107,5 +120,6 @@ export function useI18n() {
     setLanguage,
     currentLanguage,
     isLoaded,
+    loadedTranslations,
   }
 }

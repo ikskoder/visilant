@@ -7,7 +7,7 @@ import { settings } from '~/logic/storage'
 import Logo from '../components/Logo.vue'
 import SecureText from '../components/SecureText.vue'
 
-const { t, currentLanguage, isLoaded } = useI18n()
+const { t, isLoaded, loadedTranslations } = useI18n()
 
 // Reactive translations
 const translations = ref<Record<string, string>>({})
@@ -46,7 +46,7 @@ function updateTranslations() {
 }
 
 // Update translations when language changes or when translations are loaded
-watch([currentLanguage, isLoaded], () => {
+watch([loadedTranslations, isLoaded], () => {
   updateTranslations()
 }, { immediate: true })
 
