@@ -1,10 +1,15 @@
 <!-- eslint-disable no-console -->
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import { sendMessage } from 'webext-bridge/content-script'
 import { defaultSettings, settings } from '~/logic/storage'
 import InputWarning from './InputWarning.vue'
 import 'uno.css'
+
+// Helper to send message safely (fallback to runtime.sendMessage)
+async function sendMessageSafe<T = any>(id: string, data: any): Promise<T> {
+  // Always use runtime.sendMessage to avoid long-lived ports that cause bfcache issues
+  return await browser.runtime.sendMessage({ type: id, data }) as T
+}
 
 const showWarning = ref(false)
 const safetyLevel = ref<boolean | null>(null)
@@ -50,7 +55,7 @@ async function showNotifications(type: 'input' | 'copy') {
   const style = settings.value.notificationStyle || defaultSettings.notificationStyle
 
   if (style === 'browser' || style === 'both')
-    await sendMessage('show-notification', { warningType: type }) // Show browser notification with type
+    await sendMessageSafe('show-notification', { warningType: type }) // Show browser notification with type
 
   if (style === 'in-page' || style === 'both')
     showWarning.value = true
@@ -61,11 +66,11 @@ async function showNotifications(type: 'input' | 'copy') {
 
 // Check site safety and update UI
 async function checkSiteSafety() {
-  const response = await sendMessage('get-visit-count', { url: window.location.href })
+  const response = await sendMessageSafe<{ count: number, hostname: string, lastSeen: number, ignored: boolean }>('get-visit-count', { url: window.location.href })
   if (!response)
     return
 
-  const visitData = response as { count: number, hostname: string, lastSeen: number, ignored: boolean }
+  const visitData = response
   const count = visitData.count
   hostname.value = visitData.hostname
   isIgnored.value = visitData.ignored
@@ -157,7 +162,7 @@ async function ignoreSite() {
     return
 
   // Send message to background script to ignore the site
-  const response = await sendMessage('ignore-site', { hostname: hostname.value })
+  const response = await sendMessageSafe('ignore-site', { hostname: hostname.value })
 
   // If the operation was successful, update local state
   if (response === 'Site ignored successfully') {

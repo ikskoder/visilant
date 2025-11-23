@@ -210,19 +210,15 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
 })
 
 // Add message handler to get visit count
-onMessage('get-visit-count', async ({ data }) => {
-  const url = (data as { url: string }).url
+async function getVisitCountLogic(url: string) {
   const hostname = getHostname(url)
-
   const result = await browser.storage.local.get(hostname)
   return (result[hostname] as { count: number, lastSeen: number, ignored: boolean, hostname: string } | undefined)
     || { count: 0, hostname, lastSeen: 0, ignored: false }
-})
+}
 
 // Handle ignore site requests
-onMessage<{ hostname: string }, string>('ignore-site', async ({ data }) => {
-  const { hostname } = data
-
+async function handleIgnoreSite(hostname: string) {
   if (!hostname)
     return 'Error: No hostname provided'
 
@@ -239,13 +235,13 @@ onMessage<{ hostname: string }, string>('ignore-site', async ({ data }) => {
   })
 
   return 'Site ignored successfully'
-})
+}
 
 // Add message handler to get settings
-onMessage('get-settings', async () => {
+async function getSettingsLogic() {
   // Return a plain object copy of the settings to avoid Proxy cloning issues in Firefox
   return JSON.parse(JSON.stringify(appSettings.value))
-})
+}
 
 // Function to load messages for a language
 async function loadTranslation(key: string): Promise<string> {
@@ -273,12 +269,12 @@ async function loadTranslation(key: string): Promise<string> {
 }
 
 // Handle notification requests
-onMessage<{ warningType: 'input' | 'copy' }, string>('show-notification', async (req) => {
+async function handleShowNotification(warningType: 'input' | 'copy') {
   // For browser notification, we translate here
   const title = await loadTranslation('securityWarning')
 
   // Get the appropriate message based on the warning type
-  const messageKey = req.data.warningType === 'input' ? 'inputWarningMessage' : 'copyWarningMessage'
+  const messageKey = warningType === 'input' ? 'inputWarningMessage' : 'copyWarningMessage'
   const notificationMessage = await loadTranslation(messageKey)
 
   const iconPath = 'assets/site-danger-48.png'
@@ -292,6 +288,32 @@ onMessage<{ warningType: 'input' | 'copy' }, string>('show-notification', async 
   })
 
   return 'Notification sent'
+}
+
+// Centralized message handlers map
+const messageHandlers = {
+  'get-visit-count': (data: any) => getVisitCountLogic(data.url),
+  'ignore-site': (data: any) => handleIgnoreSite(data.hostname),
+  'get-settings': () => getSettingsLogic(),
+  'show-notification': (data: any) => handleShowNotification(data.warningType),
+}
+
+// Register webext-bridge handlers
+Object.entries(messageHandlers).forEach(([type, handler]) => {
+  onMessage(type, async ({ data }) => handler(data))
+})
+
+// Add native runtime.onMessage listener for fallback (bfcache support)
+browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
+  // Validate sender
+  if (sender.id !== browser.runtime.id)
+    return
+
+  const handler = messageHandlers[message.type as keyof typeof messageHandlers]
+  if (handler) {
+    handler(message.data).then(sendResponse)
+    return true
+  }
 })
 
 // Listen for changes in storage
