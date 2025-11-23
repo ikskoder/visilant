@@ -181,18 +181,18 @@ onMounted(async () => {
   await checkSiteSafety()
 
   // Add event listeners for keydown and paste
-  document.addEventListener('keydown', handleKeydown, true)
-  document.addEventListener('paste', handlePaste, true)
-  document.addEventListener('copy', handleCopyCut, true)
-  document.addEventListener('cut', handleCopyCut, true)
+  window.addEventListener('keydown', handleKeydown, true)
+  window.addEventListener('paste', handlePaste, true)
+  window.addEventListener('copy', handleCopyCut, true)
+  window.addEventListener('cut', handleCopyCut, true)
 })
 
 onUnmounted(() => {
   // Clean up event listeners
-  document.removeEventListener('keydown', handleKeydown, true)
-  document.removeEventListener('paste', handlePaste, true)
-  document.removeEventListener('copy', handleCopyCut, true)
-  document.removeEventListener('cut', handleCopyCut, true)
+  window.removeEventListener('keydown', handleKeydown, true)
+  window.removeEventListener('paste', handlePaste, true)
+  window.removeEventListener('copy', handleCopyCut, true)
+  window.removeEventListener('cut', handleCopyCut, true)
 })
 </script>
 
