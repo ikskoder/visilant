@@ -1,7 +1,7 @@
 import type { Manifest } from 'webextension-polyfill'
 import type PkgType from '../package.json'
 import fs from 'fs-extra'
-import { isDev, isFirefox, port, r } from '../scripts/utils'
+import { isDev, isFirefox, r } from '../scripts/utils'
 
 export async function getManifest() {
   const pkg = await fs.readJSON(r('package.json')) as typeof PkgType
@@ -72,7 +72,7 @@ export async function getManifest() {
     content_security_policy: {
       extension_pages: isDev
         // this is required on dev for Vite script to load
-        ? `script-src \'self\' http://localhost:${port}; object-src \'self\'`
+        ? 'script-src \'self\'; object-src \'self\''
         : 'script-src \'self\'; object-src \'self\'',
     },
   }

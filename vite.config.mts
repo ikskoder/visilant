@@ -81,13 +81,13 @@ export const sharedConfig: UserConfig = {
 
 export default defineConfig(({ command }) => ({
   ...sharedConfig,
-  base: command === 'serve' ? `http://localhost:${port}/` : '/dist/',
+  base: command === 'serve' ? `http://127.0.0.1:${port}/` : '/dist/',
   server: {
     port,
     hmr: {
-      host: 'localhost',
+      host: '127.0.0.1',
     },
-    origin: `http://localhost:${port}`,
+    origin: `http://127.0.0.1:${port}`,
   },
   build: {
     watch: isDev
