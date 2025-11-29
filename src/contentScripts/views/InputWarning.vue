@@ -19,7 +19,7 @@ const { t } = useI18n()
   <Transition name="slide-fade">
     <div
       v-if="show && safetyLevel === false"
-      class="fixed top-4 right-4 p-1 rounded-lg shadow-2xl z-[999999] bg-gradient-to-r from-red-500 to-red-600 text-white popup-container"
+      class="fixed top-4 right-4 p-1 rounded-lg shadow-2xl z-[2147483647] bg-gradient-to-r from-red-500 to-red-600 text-white popup-container pointer-events-auto"
     >
       <div class="relative">
         <!-- Animated border effect -->

@@ -228,6 +228,22 @@ async function mount() {
 
     container = document.createElement('div')
     container.id = generateSecureId()
+
+    // Add robust styles to container to ensure it's on top and visible
+    Object.assign(container.style, {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      width: '0',
+      height: '0',
+      overflow: 'visible',
+      zIndex: '2147483647', // Max z-index
+      pointerEvents: 'none', // Let clicks pass through the container itself
+      display: 'block',
+      visibility: 'visible',
+      opacity: '1',
+    })
+
     const root = document.createElement('div')
 
     const styleEl = document.createElement('style')
