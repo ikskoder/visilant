@@ -25,6 +25,7 @@
     "pack:xpi": "cross-env WEB_EXT_ARTIFACTS_DIR=./ web-ext build --source-dir ./extension --filename extension.xpi --overwrite-dest",
     "start:chromium": "web-ext run --source-dir ./extension --target=chromium",
     "start:firefox": "web-ext run --source-dir ./extension --target=firefox-desktop",
+    "start:firefox:wait": "node -e \"const fs=require('fs'); const sleep=ms=>new Promise(r=>setTimeout(r,ms)); (async()=>{while(!fs.existsSync('extension/manifest.json'))await sleep(200);})()\" && npm run start:firefox",
     "clear": "rimraf --glob extension/dist extension/manifest.json extension.*",
     "lint": "eslint --cache .",
     "test": "vitest test",

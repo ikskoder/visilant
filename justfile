@@ -4,6 +4,7 @@
 cl: clear
 dc: dev-chrome
 df: dev-firefox
+dfr: dev-firefox-run
 bc: build-chrome
 bf: build-firefox
 
@@ -20,6 +21,10 @@ dev-chrome:
 # Dev - Firefox
 dev-firefox:
   pnpm dev-firefox
+
+# Dev & Launch - Firefox
+dev-firefox-run:
+  pnpm exec run-p dev-firefox start:firefox:wait
 
 # === BUILD ===
 
