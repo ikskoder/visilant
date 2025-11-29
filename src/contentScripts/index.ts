@@ -1,7 +1,8 @@
 import type { Settings } from '~/logic/storage'
 import { createApp } from 'vue'
 import { setupApp } from '~/logic/common-setup'
-import { settings } from '~/logic/storage'
+import { defaultSettings, settings } from '~/logic/storage'
+import { hasNotifiedOnThisPage, isIgnored, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
 import App from './views/App.vue'
 
 // Helper to send message safely (fallback to runtime.sendMessage)
@@ -31,15 +32,24 @@ function generateSecureId() {
 
 // Check if site is safe based on visit count
 async function checkSiteSafety(url: string): Promise<boolean> {
-  const response = await sendMessageSafe<{ count: number }>('get-visit-count', { url })
-  if (!response)
+  const response = await sendMessageSafe<{ count: number, ignored: boolean }>('get-visit-count', { url })
+  if (!response) {
+    safetyLevel.value = true
     return true // Default to safe if no response
+  }
 
   const visitData = response
   const count = visitData.count
 
+  // Update ignored state
+  if (visitData.ignored) {
+    isIgnored.value = true
+  }
+
   // Site is considered safe if count >= safety threshold
-  return count >= settings.value.safety
+  const isSafe = count >= settings.value.safety
+  safetyLevel.value = isSafe
+  return isSafe
 }
 
 // Load settings from storage
@@ -55,8 +65,132 @@ async function loadSettings() {
   catch (error) {
     console.error('Failed to load settings:', error)
   }
+  // Ensure settings are initialized
+  if (!settings.value) {
+    settings.value = defaultSettings
+  }
   return settings.value
 }
+
+// Show notifications based on user preferences
+async function showNotifications(type: 'input' | 'copy') {
+  // Ensure settings are initialized
+  if (!settings.value) {
+    settings.value = defaultSettings
+  }
+
+  // Check if this site is ignored
+  if (isIgnored.value) {
+    return
+  }
+
+  // Check if we've already shown a notification on this page
+  if (hasNotifiedOnThisPage.value) {
+    return
+  }
+
+  // Check if the specific warning type is enabled
+  if (type === 'input' && !settings.value.showInputWarning) {
+    return
+  }
+
+  if (type === 'copy' && !settings.value.showCopyWarning) {
+    return
+  }
+
+  // Set the warning type
+  warningType.value = type
+
+  const style = settings.value.notificationStyle || defaultSettings.notificationStyle
+
+  if (style === 'browser' || style === 'both')
+    await sendMessageSafe('show-notification', { warningType: type }) // Show browser notification with type
+
+  if (style === 'in-page' || style === 'both')
+    showWarning.value = true
+
+  // Update tracking state
+  hasNotifiedOnThisPage.value = true
+}
+
+// Handle keydown event
+async function handleKeydown(event: KeyboardEvent) {
+  // Check for copy/cut key combinations (Ctrl+C or Ctrl+X)
+  if (event.ctrlKey && (event.key === 'c' || event.key === 'C' || event.key === 'x' || event.key === 'X')) {
+    // For copy/cut operations, use the copy notification type instead of input
+    if (safetyLevel.value === false && settings.value?.showWarningNotification) {
+      await showNotifications('copy')
+    }
+    return
+  }
+
+  // Skip triggering warnings for any keys pressed with modifiers (Ctrl or Alt)
+  if (event.ctrlKey || event.altKey) {
+    return
+  }
+
+  // List of keys to ignore (special keys and navigation keys)
+  const ignoredKeys = [
+    'Shift',
+    // Ctrl is used in copy/cut/paste so it might be dangerous to ignore it
+    // UPD: Made dedicated copy/cut/paste handler, so now it's fine
+    'Control',
+    'Alt',
+    'Meta',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'Tab',
+    'Escape',
+    'Enter',
+    'CapsLock',
+    'Home',
+    'End',
+    'PageUp',
+    'PageDown',
+    'F1',
+    'F2',
+    'F3',
+    'F4',
+    'F5',
+    'F6',
+    'F7',
+    'F8',
+    'F9',
+    'F10',
+    'F11',
+    'F12',
+  ]
+
+  // If the pressed key is in the ignored list, do nothing.
+  if (ignoredKeys.includes(event.key)) {
+    return
+  }
+
+  // Trigger notification if conditions are met.
+  if (safetyLevel.value === false && settings.value?.showWarningNotification) {
+    await showNotifications('input')
+  }
+}
+
+// Handle paste event
+async function handlePaste() {
+  if (safetyLevel.value === false && settings.value?.showWarningNotification)
+    await showNotifications('input')
+}
+
+// Handle copy/cut events
+async function handleCopyCut() {
+  if (safetyLevel.value === false && settings.value?.showWarningNotification)
+    await showNotifications('copy')
+}
+
+// Register listeners immediately with capture: true to prevent blocking
+window.addEventListener('keydown', handleKeydown, true)
+window.addEventListener('paste', handlePaste, true)
+window.addEventListener('copy', handleCopyCut, true)
+window.addEventListener('cut', handleCopyCut, true)
 
 let app: ReturnType<typeof createApp> | null = null
 let container: HTMLElement | null = null
@@ -75,12 +209,16 @@ async function mount() {
       return
     }
 
-    // Load settings before proceeding
-    await loadSettings()
+    // Wait for body to be available
+    while (!document.body) {
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    }
 
     // Only inject if notifications are enabled and site is not safe
+    // Note: settings and safety are already loaded by the init function
     const isNotificationsEnabled = settings.value.showWarningNotification
-    const isSiteSafe = await checkSiteSafety(window.location.href)
+    const isSiteSafe = safetyLevel.value
+
     // Exit if notifications are disabled or site is safe
     if (!isNotificationsEnabled || isSiteSafe) {
       return
@@ -114,6 +252,9 @@ async function mount() {
 
 // Firefox `browser.tabs.executeScript()` requires scripts return a primitive value
 (async () => {
+  // Initialize settings and check safety immediately
+  await loadSettings()
+  await checkSiteSafety(window.location.href)
   await mount()
 })()
 

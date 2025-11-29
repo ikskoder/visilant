@@ -1,7 +1,8 @@
 <!-- eslint-disable no-console -->
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { defaultSettings, settings } from '~/logic/storage'
+import { isIgnored, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
 import InputWarning from './InputWarning.vue'
 import 'uno.css'
 
@@ -11,58 +12,10 @@ async function sendMessageSafe<T = any>(id: string, data: any): Promise<T> {
   return await browser.runtime.sendMessage({ type: id, data }) as T
 }
 
-const showWarning = ref(false)
-const safetyLevel = ref<boolean | null>(null)
-const warningType = ref<'input' | 'copy'>('input')
-
-// Track notification state
-const hasNotifiedOnThisPage = ref(false)
 const hostname = ref('')
-const isIgnored = ref(false)
 
 // Initialize settings
 settings.value = settings.value || defaultSettings
-
-// Show notifications based on user preferences
-async function showNotifications(type: 'input' | 'copy') {
-  // Ensure settings are initialized
-  if (!settings.value) {
-    settings.value = defaultSettings
-  }
-
-  // Check if this site is ignored
-  if (isIgnored.value) {
-    return
-  }
-
-  // Check if we've already shown a notification on this page
-  if (hasNotifiedOnThisPage.value) {
-    return
-  }
-
-  // Check if the specific warning type is enabled
-  if (type === 'input' && !settings.value.showInputWarning) {
-    return
-  }
-
-  if (type === 'copy' && !settings.value.showCopyWarning) {
-    return
-  }
-
-  // Set the warning type
-  warningType.value = type
-
-  const style = settings.value.notificationStyle || defaultSettings.notificationStyle
-
-  if (style === 'browser' || style === 'both')
-    await sendMessageSafe('show-notification', { warningType: type }) // Show browser notification with type
-
-  if (style === 'in-page' || style === 'both')
-    showWarning.value = true
-
-  // Update tracking state
-  hasNotifiedOnThisPage.value = true
-}
 
 // Check site safety and update UI
 async function checkSiteSafety() {
@@ -77,79 +30,6 @@ async function checkSiteSafety() {
 
   // Update safety level
   safetyLevel.value = count >= settings.value.safety
-}
-
-// Handle keydown event
-async function handleKeydown(event: KeyboardEvent) {
-  // Check for copy/cut key combinations (Ctrl+C or Ctrl+X)
-  if (event.ctrlKey && (event.key === 'c' || event.key === 'C' || event.key === 'x' || event.key === 'X')) {
-    // For copy/cut operations, use the copy notification type instead of input
-    if (safetyLevel.value === false && settings.value?.showWarningNotification) {
-      await showNotifications('copy')
-    }
-    return
-  }
-
-  // Skip triggering warnings for any keys pressed with modifiers (Ctrl or Alt)
-  if (event.ctrlKey || event.altKey) {
-    return
-  }
-
-  // List of keys to ignore (special keys and navigation keys)
-  const ignoredKeys = [
-    'Shift',
-    // Ctrl is used in copy/cut/paste so it might be dangerous to ignore it
-    // UPD: Made dedicated copy/cut/paste handler, so now it's fine
-    'Control',
-    'Alt',
-    'Meta',
-    'ArrowUp',
-    'ArrowDown',
-    'ArrowLeft',
-    'ArrowRight',
-    'Tab',
-    'Escape',
-    'Enter',
-    'CapsLock',
-    'Home',
-    'End',
-    'PageUp',
-    'PageDown',
-    'F1',
-    'F2',
-    'F3',
-    'F4',
-    'F5',
-    'F6',
-    'F7',
-    'F8',
-    'F9',
-    'F10',
-    'F11',
-    'F12',
-  ]
-
-  // If the pressed key is in the ignored list, do nothing.
-  if (ignoredKeys.includes(event.key)) {
-    return
-  }
-
-  // Trigger notification if conditions are met.
-  if (safetyLevel.value === false && settings.value?.showWarningNotification) {
-    await showNotifications('input')
-  }
-}
-
-// Handle paste event
-async function handlePaste() {
-  if (safetyLevel.value === false && settings.value?.showWarningNotification)
-    await showNotifications('input')
-}
-
-// Handle copy/cut events
-async function handleCopyCut() {
-  if (safetyLevel.value === false && settings.value?.showWarningNotification)
-    await showNotifications('copy')
 }
 
 // Handle ignoring site
@@ -179,20 +59,6 @@ onMounted(async () => {
   }
 
   await checkSiteSafety()
-
-  // Add event listeners for keydown and paste
-  window.addEventListener('keydown', handleKeydown, true)
-  window.addEventListener('paste', handlePaste, true)
-  window.addEventListener('copy', handleCopyCut, true)
-  window.addEventListener('cut', handleCopyCut, true)
-})
-
-onUnmounted(() => {
-  // Clean up event listeners
-  window.removeEventListener('keydown', handleKeydown, true)
-  window.removeEventListener('paste', handlePaste, true)
-  window.removeEventListener('copy', handleCopyCut, true)
-  window.removeEventListener('cut', handleCopyCut, true)
 })
 </script>
 
