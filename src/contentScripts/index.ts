@@ -194,6 +194,8 @@ window.addEventListener('cut', handleCopyCut, true)
 
 let app: ReturnType<typeof createApp> | null = null
 let container: HTMLElement | null = null
+let observer: MutationObserver | null = null
+let internalObserver: MutationObserver | null = null
 let isMounting = false
 
 async function mount() {
@@ -236,7 +238,66 @@ async function mount() {
     const shadowDOM = container.attachShadow?.({ mode: __DEV__ ? 'open' : 'closed' }) || container
     shadowDOM.appendChild(styleEl)
     shadowDOM.appendChild(root)
+
+    // Watch for tampering (removal of our container)
+    // Start observing BEFORE appending to catch immediate removals
+    observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        mutation.removedNodes.forEach((node) => {
+          if (node === container) {
+            // Our container was removed!
+            // Check if it was intentional (e.g. during unmount)
+            if (app) { // If app still exists, it means we didn't initiate the unmount
+              sendMessageSafe('tampering-detected', {})
+              // Disconnect observer to avoid loops
+              observer?.disconnect()
+              observer = null
+              internalObserver?.disconnect()
+              internalObserver = null
+            }
+          }
+        })
+      }
+    })
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: false, // We only care if our direct container is removed from body
+    })
+
     document.body.appendChild(container)
+
+    // Immediate verification
+    if (!document.body.contains(container)) {
+      if (app) {
+        sendMessageSafe('tampering-detected', {})
+        observer?.disconnect()
+        observer = null
+      }
+    }
+
+    // Watch for internal tampering (removal of shadow DOM content)
+    internalObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        mutation.removedNodes.forEach((node) => {
+          // If the root div or style element is removed from shadow DOM
+          if (node === root || node === styleEl) {
+            if (app) {
+              sendMessageSafe('tampering-detected', {})
+              internalObserver?.disconnect()
+              internalObserver = null
+              observer?.disconnect()
+              observer = null
+            }
+          }
+        })
+      }
+    })
+
+    internalObserver.observe(shadowDOM, {
+      childList: true,
+      subtree: true, // Watch deep changes inside shadow DOM too if needed, but childList on shadowRoot is enough for direct children
+    })
 
     app = createApp(App)
     setupApp(app)
@@ -265,6 +326,14 @@ window.addEventListener('pageshow', async (event) => {
     if (app) {
       app.unmount()
       app = null
+    }
+    if (observer) {
+      observer.disconnect()
+      observer = null
+    }
+    if (internalObserver) {
+      internalObserver.disconnect()
+      internalObserver = null
     }
     if (container) {
       container.remove()

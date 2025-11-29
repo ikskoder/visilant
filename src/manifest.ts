@@ -44,10 +44,10 @@ export async function getManifest() {
       'tabs',
       'storage',
       'activeTab',
+      'notifications',
     ],
     optional_permissions: [
       'history',
-      'notifications',
     ],
     host_permissions: ['*://*/*'],
     content_scripts: [

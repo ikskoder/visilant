@@ -294,5 +294,9 @@
   "logoAlt": {
     "message": "Visilant logo",
     "description": "Alt text for logo"
+  },
+  "tamperingMessage": {
+    "message": "CRITICAL: Visilant extension protection was forcibly removed by this page! This site is highly suspicious!",
+    "description": "Message shown when tampering is detected"
   }
 }

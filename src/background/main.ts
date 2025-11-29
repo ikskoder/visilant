@@ -290,12 +290,35 @@ async function handleShowNotification(warningType: 'input' | 'copy') {
   return 'Notification sent'
 }
 
+// Handle tampering detection
+async function handleTampering() {
+  const title = await loadTranslation('securityWarning')
+  const message = await loadTranslation('tamperingMessage')
+
+  // Show high-priority notification
+  await browser.notifications.create({
+    type: 'basic',
+    title,
+    message,
+    iconUrl: browser.runtime.getURL('assets/site-danger-48.png'),
+    priority: 2,
+  })
+
+  // Update badge to show error state
+  await browser.action.setBadgeText({ text: '!!!' })
+  await browser.action.setBadgeBackgroundColor({ color: '#FF0000' })
+  await browser.action.setIcon({ path: getIconPaths('site-danger') })
+
+  return 'Tampering handled'
+}
+
 // Centralized message handlers map
 const messageHandlers = {
   'get-visit-count': (data: any) => getVisitCountLogic(data.url),
   'ignore-site': (data: any) => handleIgnoreSite(data.hostname),
   'get-settings': () => getSettingsLogic(),
   'show-notification': (data: any) => handleShowNotification(data.warningType),
+  'tampering-detected': () => handleTampering(),
 }
 
 // Register webext-bridge handlers

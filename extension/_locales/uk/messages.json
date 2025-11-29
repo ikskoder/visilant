@@ -294,5 +294,9 @@
   "logoAlt": {
     "message": "Логотип Visilant",
     "description": "Alt text for logo"
+  },
+  "tamperingMessage": {
+    "message": "ТРИВОГА: Захист розширення Visilant був примусово видалений цією сторінкою! Цей сайт вкрай підозрілий!",
+    "description": "Message shown when tampering is detected"
   }
 }
