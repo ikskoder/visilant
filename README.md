@@ -14,6 +14,32 @@ Note that the extension does not block any content; its effectiveness relies ent
 
 Imagine you're exhausted after a long flight or simply distracted by everyday demands. You click on a link that seems to be from a trusted service. Without Visilant, you might inadvertently enter your credentials on a visually convincing fake site, unknowingly handing them over to attackers — just as cybersecurity expert Troy Hunt (creator of the [Have I Been Pwned](https://haveibeenpwned.com/) service) experienced in a recent [incident](https://www.troyhunt.com/a-sneaky-phish-just-grabbed-my-mailchimp-mailing-list). Even if you’ve successfully identified phishing attempts in the past, a single moment of inattention can lead to a compromise — exactly why having a companion like Visilant is so vital. While Troy noted that his incident could have been prevented using passkeys, that solution depends on websites implementing passkey technology first — something many have yet to do. By contrast, Visilant provides immediate protection on any site without waiting for vendors to adopt new authentication methods. Its visual alerts serve as a critical prompt, helping you pause, reconsider, and verify a site’s authenticity, ultimately safeguarding your credentials.
 
+## Key Features
+
+### Advanced Homograph Protection
+Visilant employs several techniques to help you spot spoofed domains:
+- **Domain Highlighting**: Visually distinguishes the effective top-level domain (eTLD+1) from subdomains, making it easier to spot subtle tricks.
+- **Punycode Display**: Toggle between Unicode and Punycode (ASCII) formats to reveal internationalized domain attacks where characters look identical to Latin ones.
+- **Secure Rendering**: Uses a specialized rendering component to prevent visual spoofing techniques.
+
+### Interactive Popup Dashboard
+Clicking the extension icon reveals a dashboard where you can:
+- View visit statistics for the current domain and its subdomains.
+- **Sort Sites**: Organize the list by visit count or name to better understand your history with a domain family.
+- **Customize Display**: Toggle domain highlighting, change text case (uppercase/lowercase), switch Punycode modes, and adjust font size on the fly.
+
+### Smart Detection
+- **Local Resource Ignoring**: Visilant automatically ignores internal hosts (like `localhost` or intranet sites without dots in the hostname), preventing unnecessary alerts during development or local network usage.
+
+### Hardened Security
+Visilant implements multiple layers of protection to ensure reliable operation even on malicious sites:
+- **Early Injection**: Content scripts load at `document_start`, before any page scripts can interfere.
+- **All Frames Coverage**: Protection extends to all iframes on a page, not just the main document — preventing attacks that use embedded frames to bypass detection.
+- **Event Capturing**: All keyboard and clipboard events are intercepted in the capture phase, preventing malicious scripts from blocking them.
+- **Anti-Tampering Protection**: A MutationObserver monitors the extension's DOM presence. If a malicious page attempts to remove Visilant's components, you'll receive an immediate system notification.
+- **Randomized DOM Footprint**: The extension container uses a randomly generated ID for each page load, making it harder for malicious scripts to detect Visilant's presence by querying specific element IDs.
+- **Overlay Protection**: In-page warnings use maximum z-index and fixed positioning to prevent being hidden by page overlays.
+
 ## Getting Started:
 
 1. **Install Visilant from your preferred browser's extension store:**
@@ -23,9 +49,9 @@ Imagine you're exhausted after a long flight or simply distracted by everyday de
 
 2. Pin the Visilant icon to your browser toolbar for constant visibility (recommended due to [Script Injection Limitations](#limitations)).
 
-3. Click the Visilant icon to open the Settings page.
+3. Click the Visilant icon to open the extension popup. It provides an overview of your visit history for the current site and allows quick access to display settings.
 
-4. Configure the extension according to your preferences:
+4. Click the Settings icon (gear) in the popup to open the full configuration page. Configure the extension according to your preferences:
 
    - **Safety Threshold**: Specify how many visits classify a site as "familiar" (default is 10).
    - **Icon Settings**:
@@ -48,7 +74,7 @@ The extension triggers alerts (if enabled) only during specific interactions tha
 
 - **Keyboard Input or Content Paste**: Alerts trigger when credentials are typed or pasted into fields. Initially restricted to inputs, alpha testing showed many unconventional site implementations. Therefore, the extension now triggers alerts on any keystroke (excluding hotkeys) or paste event, striking a balance between intrusiveness and effectiveness.
 
-- **Content Cutting or Copying**: Although less common in phishing attacks, this trigger was added after viewing John Hammond's YouTube [video](https://www.youtube.com/watch?v=Wm0kqSlyEjE) demonstrating a phishing exploit involving clipboard manipulation ([reCAPTCHA Phish](https://github.com/JohnHammond/recaptcha-phish), intended for "EdyUkAYshuNaL PoRpoiSes only!!!11 🐬"). And by the way, watching John Hammond’s content inspired this extension’s creation, so thanks to him for his videos!
+- **Content Cutting or Copying**: Although less common in phishing attacks, this trigger was added after viewing YouTube [video](https://www.youtube.com/watch?v=Wm0kqSlyEjE) demonstrating a phishing exploit involving clipboard manipulation ([reCAPTCHA Phish](https://github.com/JohnHammond/recaptcha-phish)).
 
 **_Note:_** File downloads aren't listed as dangerous interactions because humans typically detect suspicious downloads easily, and handling virus-infected files is best left to antivirus software. Visilant addresses a specific gap not covered by traditional antiviruses.
 
@@ -56,10 +82,18 @@ The extension triggers alerts (if enabled) only during specific interactions tha
 
 Visilant is open-source and operates locally within your browser:
 
-- All data remains on your computer.
-- Extension only needs permissions necessary for it to work properly; other permissions are optional:
-  - **Browser history**: Required only if you choose to import it (recommended).
-  - **Notifications**: Required only if you choose OS-native browser notifications.
+- All data remains on your computer — nothing is sent to external servers.
+- The extension requests only the permissions necessary for proper operation:
+
+  **Required permissions:**
+  - **Tabs**: To detect the current website you're visiting and update the extension icon with visit count.
+  - **Storage**: To save your visit history, settings, and preferences locally.
+  - **ActiveTab**: To interact with the currently active tab when you click the extension icon.
+  - **Notifications**: To display system alerts when anti-tampering protection detects malicious interference.
+  - **Host permissions** (`*://*/*`): To inject content scripts that monitor keyboard and clipboard interactions on all websites.
+
+  **Optional permissions:**
+  - **Browser history**: Required only if you choose to import your existing browsing history to initialize visit counts (recommended for reducing false positives).
 
 ## Limitations
 
@@ -74,8 +108,14 @@ While Visilant enhances awareness of "unfamiliar" websites, its limitations incl
 - **False Positives and Negatives**:
   Legitimate sites with low visit counts may trigger warnings (false positives), while phishing sites visited repeatedly may go unflagged (false negatives).
 
+- **Compromised Trusted Sites**:
+  If attackers gain control of a legitimate domain you've previously visited, Visilant won't detect it as suspicious since your visit history marks it as "familiar." However, at that point, you're likely facing a much larger security breach — such as a domain hijack or server compromise — where Visilant's lack of protection is the least of your concerns.
+
+- **Partial Cross-Device Sync**:
+  While your configuration settings are synced across devices (if you're logged into your browser), your visit history is stored locally to accommodate its size. This means a site marked as "familiar" on one computer will still be treated as "unfamiliar" on another until you visit it enough times there. You can mitigate this by using the "Import History" feature on each new device to quickly populate the visit counter.
+
 - **Script Injection Limitations**:
-  To detect input and clipboard interactions, Visilant injects a small script into visited pages. If a malicious site removes this script from the DOM - which is unlikely but theoretically possible - warnings cease. In such cases, protection relies solely on the extension icon, emphasizing the importance of pinning it to the toolbar.
+  To detect input and clipboard interactions, Visilant injects a small script into visited pages. While Visilant implements anti-tampering protection that detects removal attempts and notifies you via system notifications, it's still recommended to pin the extension icon to your toolbar as an additional safeguard.
 
 Understanding these limitations is crucial for Visilant's effective use.
 
