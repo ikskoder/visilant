@@ -1,6 +1,17 @@
 import type { ProtocolWithReturn } from 'webext-bridge'
 import type { Settings } from './src/logic/storage'
 
+declare module 'webextension-polyfill' {
+  namespace Manifest {
+    interface FirefoxSpecificProperties {
+      data_collection_permissions?: {
+        required?: string[]
+        optional?: string[]
+      }
+    }
+  }
+}
+
 declare module 'webext-bridge' {
   export interface ProtocolMap {
     // define message protocol types

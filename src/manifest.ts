@@ -17,6 +17,9 @@ export async function getManifest() {
     browser_specific_settings: {
       gecko: {
         id: 'visilant@xcoder.non-existant-domain.com',
+        data_collection_permissions: {
+          required: ['none'],
+        },
       },
     },
     action: {
