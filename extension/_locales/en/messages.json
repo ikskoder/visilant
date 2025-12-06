@@ -256,7 +256,7 @@
     "description": "Tooltip for highlighting toggle with legend"
   },
   "togglePunycodeListMode": {
-    "message": "Toggle domain display format (Unicode / Punycode)",
+    "message": "Toggle domain display format (Original / Punycode)",
     "description": "Tooltip for punycode list mode toggle"
   },
   "domainOriginal": {
