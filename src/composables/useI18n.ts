@@ -1,5 +1,5 @@
-import { computed, ref, watch } from 'vue'
-import { settings as appSettings } from '~/logic/storage'
+import { computed, ref, triggerRef } from 'vue'
+import { storage } from 'webextension-polyfill'
 
 // Type for message format
 interface Message {
@@ -17,10 +17,12 @@ interface TranslationCache {
   [locale: string]: Messages
 }
 
+// Module-level state (singleton pattern)
 const translationCache: TranslationCache = {}
 const loadedTranslations = ref<Messages>({})
 const currentLanguage = ref('en')
 const isLoaded = ref(false)
+let initPromise: Promise<void> | null = null
 
 // Function to load translations for a language
 async function loadTranslations(lang: string): Promise<Messages | null> {
@@ -49,71 +51,117 @@ async function loadTranslations(lang: string): Promise<Messages | null> {
   }
 }
 
-// Function to get translation for a key
-function getTranslation(key: string): string {
-  if (!loadedTranslations.value || Object.keys(loadedTranslations.value).length === 0) {
-    return key // Return key if translations aren't loaded yet
+// Parse settings from storage (handles both string and object)
+function parseSettings(data: any): any {
+  if (!data?.settings)
+    return null
+
+  let parsed = data.settings
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed)
+    }
+    catch (e) {
+      console.error('Failed to parse settings:', e)
+      return null
+    }
   }
-  return loadedTranslations.value[key]?.message || key
+  return parsed
 }
 
-export function useI18n() {
-  const t = computed(() => (key: string) => {
-    return getTranslation(key)
-  })
+// Set language and update all necessary state
+async function applyLanguage(lang: string): Promise<void> {
+  const wasAlreadyLoaded = lang === currentLanguage.value && isLoaded.value
 
-  const setLanguage = async (lang: string) => {
-    // Update the source of truth
-    if (appSettings.value)
-      appSettings.value.selectedLanguage = lang
+  await loadTranslations(lang)
+  currentLanguage.value = lang
+  isLoaded.value = true
+
+  // Force reactivity trigger even if language was the same
+  // This ensures computed properties recalculate
+  if (!wasAlreadyLoaded) {
+    triggerRef(loadedTranslations)
+    triggerRef(currentLanguage)
   }
+}
 
-  // Sync with settings
-  watch(
-    () => appSettings.value?.selectedLanguage,
-    async (newLang) => {
-      if (newLang) {
-        // Load translations FIRST to avoid UI flickering with old texts
-        await loadTranslations(newLang)
-        // THEN update the current language state
-        currentLanguage.value = newLang
-        isLoaded.value = true
-      }
-    },
-    { immediate: true },
-  )
+// Initialize i18n from storage - runs once
+async function initializeI18n(): Promise<void> {
+  try {
+    // Read directly from storage for initial load
+    const data = await storage.sync.get('settings')
+    const parsed = parseSettings(data)
+    const lang = parsed?.selectedLanguage || 'en'
 
-  // Fallback: manually check storage to ensure we have the latest value
-  // This helps if useWebExtensionStorage is slow or fails to sync initially
-  browser.storage.sync.get('settings').then(async (data) => {
+    await applyLanguage(lang)
+  }
+  catch (e) {
+    console.error('Error initializing i18n:', e)
+    // Fallback to default language
+    await applyLanguage('en')
+  }
+}
+
+// Setup storage change listener (runs once at module load)
+// This handles changes from OTHER contexts (popup, other tabs)
+let listenerSetup = false
+function setupStorageListener(): void {
+  if (listenerSetup)
+    return
+  listenerSetup = true
+
+  storage.onChanged.addListener(async (changes, areaName) => {
+    if (areaName !== 'sync' || !changes.settings)
+      return
+
     try {
-      if (data?.settings) {
-        let parsed: any = data.settings
-        // Handle potential double-serialization or raw object
-        if (typeof parsed === 'string') {
-          try {
-            parsed = JSON.parse(parsed)
-          }
-          catch (e) {
-            console.error('Failed to parse settings:', e)
-          }
-        }
+      const newValue = changes.settings.newValue
+      const parsed = typeof newValue === 'string' ? JSON.parse(newValue) : newValue
+      const newLang = parsed?.selectedLanguage
 
-        if (parsed?.selectedLanguage && parsed.selectedLanguage !== currentLanguage.value) {
-          currentLanguage.value = parsed.selectedLanguage
-          await loadTranslations(parsed.selectedLanguage)
-
-          // Also update appSettings if it's out of sync
-          if (appSettings.value && appSettings.value.selectedLanguage !== parsed.selectedLanguage) {
-            appSettings.value.selectedLanguage = parsed.selectedLanguage
-          }
-        }
+      if (newLang && newLang !== currentLanguage.value) {
+        await applyLanguage(newLang)
       }
     }
     catch (e) {
-      console.error('Error in manual storage check:', e)
+      console.error('Error handling storage change:', e)
     }
   })
+}
+
+// Setup listener immediately at module load
+setupStorageListener()
+
+export function useI18n() {
+  // Computed that depends on loadedTranslations ref
+  // This ensures reactivity when translations change
+  const t = computed(() => {
+    // Access loadedTranslations.value to establish dependency
+    const translations = loadedTranslations.value
+    return (key: string): string => {
+      if (!translations || Object.keys(translations).length === 0) {
+        return key
+      }
+      return translations[key]?.message || key
+    }
+  })
+
+  const setLanguage = async (lang: string) => {
+    // Update translations immediately for responsive UI
+    await applyLanguage(lang)
+
+    // Persist to storage - this triggers storage.onChanged for other contexts
+    await storage.sync.get('settings').then(async (data) => {
+      const parsed = parseSettings(data) || {}
+      parsed.selectedLanguage = lang
+      await storage.sync.set({ settings: JSON.stringify(parsed) })
+    })
+  }
+
+  // Initialize on first use (singleton pattern)
+  if (!initPromise) {
+    initPromise = initializeI18n()
+  }
 
   return {
     t,

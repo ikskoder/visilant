@@ -124,13 +124,7 @@ const availableLanguages = [
 
 // Function to change language
 async function changeLanguage(langCode: string) {
-  // First update the language in settings to persist it
-  settings.value = {
-    ...settings.value,
-    selectedLanguage: langCode,
-  }
-
-  // Then update the UI language
+  // setLanguage handles both UI update and storage persistence
   await setLanguage(langCode)
   updateTranslations()
 }
