@@ -31,5 +31,5 @@ body,
   font-feature-settings: "zero" 1, "ss02" 1; 
   
   /* Additional readability */
-  letter-spacing: 0.15em;
+  letter-spacing: 0.25em;
 }

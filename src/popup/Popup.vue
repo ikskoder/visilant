@@ -182,12 +182,36 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="w-[600px] min-h-[400px] px-4 py-5 text-gray-700 relative">
+  <main class="w-[600px] min-h-[400px] px-4 py-5 text-gray-700 relative" :style="{ fontSize: `${settings.popupFontSize}%` }">
     <div class="flex justify-between items-center mb-4">
       <Logo class="h-8 w-auto" />
-      <button class="icon-btn text-2xl" :title="translations.settings" @click="openOptionsPage">
-        <div i-carbon-settings />
-      </button>
+      <div class="flex items-center gap-2">
+        <!-- Font size controls -->
+        <div class="flex items-center gap-1 text-gray-400">
+          <button
+            class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 transition-colors text-sm font-bold"
+            title="Decrease font size"
+            :disabled="settings.popupFontSize <= 70"
+            :class="{ 'opacity-30 cursor-not-allowed': settings.popupFontSize <= 70 }"
+            @click="settings.popupFontSize = Math.max(70, settings.popupFontSize - 10)"
+          >
+            A-
+          </button>
+          <span class="text-xs w-8 text-center tabular-nums">{{ settings.popupFontSize }}%</span>
+          <button
+            class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 transition-colors text-sm font-bold"
+            title="Increase font size"
+            :disabled="settings.popupFontSize >= 150"
+            :class="{ 'opacity-30 cursor-not-allowed': settings.popupFontSize >= 150 }"
+            @click="settings.popupFontSize = Math.min(150, settings.popupFontSize + 10)"
+          >
+            A+
+          </button>
+        </div>
+        <button class="icon-btn text-2xl" :title="translations.settings" @click="openOptionsPage">
+          <div i-carbon-settings />
+        </button>
+      </div>
     </div>
 
     <div v-if="currentHostname">
@@ -196,7 +220,7 @@ onMounted(async () => {
           {{ translations.currentDomain }}
         </div>
         <div class="flex justify-between items-end">
-          <div class="secure-domain-display font-bold break-all text-lg leading-tight mr-2">
+          <div class="secure-domain-display font-bold break-all leading-tight mr-2" style="font-size: 1.8em;">
             <template v-if="isPunycode">
               <div class="text-[10px] uppercase tracking-wider text-gray-400 font-sans font-normal mb-0.5">
                 {{ translations.domainOriginal }}
@@ -219,7 +243,7 @@ onMounted(async () => {
               <SecureText :text="currentHostname" />
             </template>
           </div>
-          <div class="font-mono font-bold text-xl" :class="getCountColor(currentDomainCount)">
+          <div class="font-mono font-bold" style="font-size: 1.3em;" :class="getCountColor(currentDomainCount)">
             {{ currentDomainCount }}
           </div>
         </div>
@@ -227,17 +251,17 @@ onMounted(async () => {
 
       <div v-if="relatedDomains.length > 0">
         <div class="mb-2">
-          <div class="flex justify-between items-center text-xs uppercase tracking-wider mb-1">
+          <div class="flex justify-between items-center uppercase tracking-wider mb-1" style="font-size: 0.75em;">
             <span class="opacity-50">{{ translations.familyVisits }}</span>
             <span class="font-mono font-bold" :class="getCountColor(cumulativeCount)">{{ translations.total }}{{ cumulativeCount }}</span>
           </div>
-          <div class="secure-domain-display font-bold text-sm break-all">
+          <div class="secure-domain-display font-bold break-all" style="font-size: 1.1em;">
             <SecureText :text="rootDomain" />
           </div>
         </div>
 
         <!-- Sort Controls -->
-        <div class="flex gap-2 mb-2 text-[10px] items-center">
+        <div class="flex gap-2 mb-2 items-center" style="font-size: 0.65em;">
           <span class="opacity-50">{{ translations.sortBy }}</span>
           <button
             class="px-2 py-1 rounded border transition-colors"
@@ -285,7 +309,7 @@ onMounted(async () => {
           </button>
         </div>
 
-        <div class="max-h-[300px] overflow-y-auto text-sm border border-gray-200 rounded-lg divide-y divide-gray-100 shadow-sm">
+        <div class="max-h-[300px] overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100 shadow-sm" style="font-size: 1.1em;">
           <div
             v-for="domain in sortedRelatedDomains" :key="domain"
             class="p-2.5 flex justify-between items-center hover:bg-gray-50 transition-colors"

@@ -25,6 +25,9 @@ export interface Settings {
   domainCase: 'lower' | 'upper'
   domainHighlighting: boolean
   punycodeListMode: 'unicode' | 'ascii'
+
+  // Font size (percentage, 100 = default)
+  popupFontSize: number
 }
 
 export const defaultSettings: Settings = {
@@ -52,6 +55,9 @@ export const defaultSettings: Settings = {
   domainCase: 'lower',
   domainHighlighting: false,
   punycodeListMode: 'unicode',
+
+  // Font size (percentage, 100 = default)
+  popupFontSize: 100,
 }
 
 export const settings = useWebExtensionStorage<Settings>(
