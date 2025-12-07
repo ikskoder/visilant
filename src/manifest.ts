@@ -23,11 +23,11 @@ export async function getManifest() {
       },
     },
     action: {
-      default_icon: './assets/icon-default.png',
-      default_popup: './dist/popup/index.html',
+      default_icon: 'assets/icon-default.png',
+      default_popup: 'dist/popup/index.html',
     },
     options_ui: {
-      page: './dist/options/index.html',
+      page: 'dist/options/index.html',
       open_in_tab: true,
     },
     background: isFirefox
@@ -36,12 +36,12 @@ export async function getManifest() {
           type: 'module',
         }
       : {
-          service_worker: './dist/background/index.mjs',
+          service_worker: 'dist/background/index.mjs',
         },
     icons: {
-      16: './assets/icon-default-16.png',
-      48: './assets/icon-default-48.png',
-      128: './assets/icon-default-128.png',
+      16: 'assets/icon-default-16.png',
+      48: 'assets/icon-default-48.png',
+      128: 'assets/icon-default-128.png',
     },
     permissions: [
       'tabs',
