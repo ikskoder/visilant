@@ -104,8 +104,8 @@ function isInternalPage(hostname: string): boolean {
   return !hostname.includes('.')
 }
 
-// Function to update visit count for a URL
-async function updateVisitCount(url: string, tabId?: number) {
+// Function to increment visit count for a URL (storage only — does NOT touch badge)
+async function incrementVisitCount(url: string) {
   const hostname = getHostname(url)
   const result = await browser.storage.local.get(hostname)
   const now = Date.now()
@@ -132,9 +132,6 @@ async function updateVisitCount(url: string, tabId?: number) {
       ignored,
     },
   })
-
-  // Update badge
-  await updateBadge(hostname, tabId)
 }
 
 // Function to update badge for current URL
@@ -186,23 +183,33 @@ browser.runtime.onInstalled.addListener(async (details): Promise<void> => {
 
 // Update visit count when tab is updated
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url) {
-    const hostname = getHostname(tab.url)
+  if (changeInfo.status !== 'complete' || !tab.url)
+    return
 
-    // Skip internal pages
-    if (isInternalPage(hostname)) {
-      // Reset badge for internal pages
-      await browser.action.setBadgeText({ text: '', tabId })
-      // Set default icon for internal pages
-      await browser.action.setIcon({
-        path: getIconPaths('icon-default'),
-        tabId,
-      })
-      return
-    }
+  const hostname = getHostname(tab.url)
 
-    await updateVisitCount(tab.url, tabId)
+  // Always count the visit, even if the tab is in the background
+  if (!isInternalPage(hostname))
+    await incrementVisitCount(tab.url)
+
+  // Only touch action badge/icon for the tab the user is actually looking at.
+  // In Chrome, ctrl+click opens a background tab whose onUpdated fires while
+  // the user stays on the original tab — setting per-tab badge state for that
+  // background tab would visibly change the action icon shown for the active
+  // tab. onActivated will refresh the badge if/when the user switches to it.
+  if (!tab.active)
+    return
+
+  if (isInternalPage(hostname)) {
+    await browser.action.setBadgeText({ text: '', tabId })
+    await browser.action.setIcon({
+      path: getIconPaths('icon-default'),
+      tabId,
+    })
+    return
   }
+
+  await updateBadge(hostname, tabId)
 })
 
 // Update badge when switching tabs
