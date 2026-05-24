@@ -630,5 +630,21 @@
   "antiTamperingTooltipOff": {
     "message": "Protection is disabled for this site. Tampering will not be detected. Enable if you no longer experience false alarms here.",
     "description": "Tooltip explaining the disabled state"
+  },
+  "themeSettings": {
+    "message": "Theme",
+    "description": "Label for theme selection"
+  },
+  "themeSystem": {
+    "message": "System",
+    "description": "Theme option: follow system preference"
+  },
+  "themeLight": {
+    "message": "Light",
+    "description": "Theme option: light mode"
+  },
+  "themeDark": {
+    "message": "Dark",
+    "description": "Theme option: dark mode"
   }
 }

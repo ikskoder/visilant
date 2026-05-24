@@ -5,6 +5,7 @@ defineProps<{
   safetyLevel: boolean | null
   show: boolean
   warningType: 'input' | 'copy'
+  isDark: boolean
 }>()
 
 const emit = defineEmits<{
@@ -26,74 +27,56 @@ const { t } = useI18n()
         <div class="absolute inset-0 bg-gradient-to-r from-yellow-200 to-red-300 rounded-lg animate-pulse opacity-50" />
 
         <!-- Main content -->
-        <div class="relative bg-gray-900 bg-opacity-95 p-4 rounded-lg border border-red-400/30">
-          <div class="flex items-start space-x-4">
-            <!-- Content -->
-            <div class="flex-1 min-w-0">
-              <h3 class="text-red-500 font-bold flex items-center space-x-2 heading-text">
-                <!-- Warning icon with pulse effect -->
-                <div class="flex-shrink-0 relative">
-                  <div class="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-25" />
-                  <svg
-                    class="h-6 w-6 text-red-500 relative" xmlns="http://www.w3.org/2000/svg" fill="none"
-                    viewBox="0 0 24 24" stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                    />
-                  </svg>
-                </div>
-                <span>{{ t('securityWarning') }}</span>
-              </h3>
-              <div class="text-left mt-2 text-gray-100">
-                <p class="leading-relaxed">
-                  <!-- Display different warning messages based on the warning type -->
-                  <template v-if="warningType === 'input'">
-                    {{ t('inputWarningMessage') }}
-                  </template>
-                  <template v-else>
-                    {{ t('copyWarningMessage') }}
-                  </template>
-                </p>
-                <ul class="mt-2 space-y-1">
-                  <li>{{ t('checkUrl') }}</li>
-                  <!-- Display different tips based on the warning type -->
-                  <template v-if="warningType === 'input'">
-                    <li>{{ t('avoidPasswords') }}</li>
-                    <li>{{ t('beCareful') }}</li>
-                  </template>
-                  <template v-else>
-                    <li>{{ t('avoidShell') }}</li>
-                    <li>{{ t('verifyContent') }}</li>
-                  </template>
-                </ul>
-              </div>
-
-              <!-- Actions -->
-              <div class="mt-4 flex items-center justify-between">
-                <button
-                  class="text-black bg-white duration-200 flex items-center space-x-1 group p-2"
-                  @click="emit('ignoreSite')"
-                >
-                  <span class="group-hover:underline">{{ t('dontShowAgain') }}</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Close button -->
+        <div class="relative px-4 pb-3 pt-0 rounded-lg border border-red-400/30" :class="isDark ? 'bg-gray-900 bg-opacity-95' : 'bg-white bg-opacity-98 shadow-lg'">
+          <!-- Title + close -->
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-5 h-5 text-red-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <h3 class="text-red-500 font-bold flex-1 heading-text">
+              {{ t('securityWarning') }}
+            </h3>
             <button
-              class="flex-shrink-0 text-gray-400 hover:text-white transition-colors duration-200 focus:outline-none"
+              class="close-btn flex-shrink-0 transition-opacity hover:opacity-70 cursor-pointer"
               @click="emit('close')"
             >
               <span class="sr-only">{{ t('dismiss') }}</span>
-              <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path
-                  fill-rule="evenodd"
-                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                  clip-rule="evenodd"
-                />
+              <svg class="w-5 h-5" :class="isDark ? 'text-gray-300' : 'text-gray-500'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
+            </button>
+          </div>
+
+          <div class="text-left" :class="isDark ? 'text-gray-100' : 'text-gray-700'">
+            <p class="leading-relaxed">
+              <template v-if="warningType === 'input'">
+                {{ t('inputWarningMessage') }}
+              </template>
+              <template v-else>
+                {{ t('copyWarningMessage') }}
+              </template>
+            </p>
+            <ul class="mt-2 space-y-1">
+              <li>{{ t('checkUrl') }}</li>
+              <template v-if="warningType === 'input'">
+                <li>{{ t('avoidPasswords') }}</li>
+                <li>{{ t('beCareful') }}</li>
+              </template>
+              <template v-else>
+                <li>{{ t('avoidShell') }}</li>
+                <li>{{ t('verifyContent') }}</li>
+              </template>
+            </ul>
+          </div>
+
+          <!-- Actions -->
+          <div class="mt-3 flex items-center">
+            <button
+              class="duration-200 flex items-center space-x-1 group px-3 py-2 rounded-lg"
+              :class="isDark ? 'text-black bg-white' : 'text-white bg-red-600 hover:bg-red-700'"
+              @click="emit('ignoreSite')"
+            >
+              <span class="group-hover:underline">{{ t('dontShowAgain') }}</span>
             </button>
           </div>
         </div>
@@ -146,7 +129,7 @@ const { t } = useI18n()
 
 /* Fixed pixel-based styles to ensure consistent sizing across all websites */
 .popup-container {
-  width: 500px !important;
+  width: min(500px, calc(100vw - 32px)) !important;
   box-sizing: border-box !important;
   font-size: 14px !important;
   line-height: 18px !important;
@@ -155,5 +138,11 @@ const { t } = useI18n()
 .heading-text {
   font-size: 18px !important;
   line-height: 22px !important;
+}
+
+.close-btn {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
 }
 </style>

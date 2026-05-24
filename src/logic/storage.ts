@@ -29,6 +29,9 @@ export interface Settings {
   // Font size (percentage, 100 = default)
   popupFontSize: number
 
+  // Theme
+  theme: 'system' | 'light' | 'dark'
+
   // Link safety settings
   linkSafety: LinkSafetySettings
 
@@ -78,6 +81,9 @@ export const defaultSettings: Settings = {
 
   // Font size (percentage, 100 = default)
   popupFontSize: 100,
+
+  // Theme
+  theme: 'system',
 
   // Anti-tampering exclusions
   antiTamperingExcludedDomains: '',

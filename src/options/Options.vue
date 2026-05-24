@@ -2,9 +2,11 @@
 import { onMounted, ref, watch } from 'vue'
 import logo from '~/assets/logo.svg'
 import { useI18n } from '~/composables/useI18n'
+import { useTheme } from '~/composables/useTheme'
 import { defaultSettings, settings } from '~/logic/storage'
 
 const { t, setLanguage, currentLanguage, isLoaded } = useI18n()
+useTheme()
 
 // Reactive translations
 const translations = ref<Record<string, string>>({})
@@ -98,6 +100,10 @@ function updateTranslations() {
     'antiTamperingExcludedDomainsDesc',
     'linkShortUrlCustomDomains',
     'linkShortUrlCustomDomainsDesc',
+    'themeSettings',
+    'themeSystem',
+    'themeLight',
+    'themeDark',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -316,11 +322,30 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <label class="text-sm font-medium mb-2">{{ translations.selectLanguage }}</label>
             <select
               v-model="currentLanguage"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               @change="(e) => changeLanguage((e.target as HTMLSelectElement).value)"
             >
               <option v-for="lang in availableLanguages" :key="lang.code" :value="lang.code">
                 {{ translations[lang.name] }}
+              </option>
+            </select>
+          </div>
+
+          <!-- Theme Settings -->
+          <div class="flex flex-col items-start mb-6">
+            <label class="text-sm font-medium mb-2">{{ translations.themeSettings }}</label>
+            <select
+              v-model="settings.theme"
+              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="system">
+                {{ translations.themeSystem }}
+              </option>
+              <option value="light">
+                {{ translations.themeLight }}
+              </option>
+              <option value="dark">
+                {{ translations.themeDark }}
               </option>
             </select>
           </div>
@@ -332,11 +357,11 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <div class="flex items-center w-full">
                 <input
                   :value="settings.safety" type="number" min="1"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   :placeholder="translations.defaultSafetyThreshold" @input="updateSafetyThreshold(($event.target as HTMLInputElement).value)"
                 >
               </div>
-              <p class="text-xs text-gray-500 mt-1">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {{ translations.visitsThresholdDesc }}
               </p>
             </div>
@@ -353,7 +378,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <div class="flex items-start justify-between">
               <div class="text-left">
                 <label class="text-sm font-medium">{{ translations.dynamicIcon }}</label>
-                <p class="text-xs text-gray-500">
+                <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ translations.dynamicIconDesc }}
                 </p>
               </div>
@@ -368,7 +393,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <div class="flex items-start justify-between">
               <div class="text-left">
                 <label class="text-sm font-medium">{{ translations.showBadge }}</label>
-                <p class="text-xs text-gray-500">
+                <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ translations.showBadgeDesc }}
                 </p>
               </div>
@@ -392,7 +417,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           <div class="flex items-start justify-between mb-4">
             <div class="text-left">
               <label class="text-sm font-medium">{{ translations.showWarningNotification }}</label>
-              <p class="text-xs text-gray-500">
+              <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ translations.showWarningNotificationDesc }}
               </p>
             </div>
@@ -486,7 +511,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           <h2 class="text-lg font-semibold mb-2">
             {{ translations.linkSafetySettings }}
           </h2>
-          <p class="text-xs text-gray-500 mb-4 text-left">
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-4 text-left">
             {{ translations.linkSafetySettingsDesc }}
           </p>
 
@@ -537,7 +562,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <div v-if="settings.linkSafety.scopeMode !== 'everywhere'" class="mt-3">
                 <textarea
                   v-model="settings.linkSafety.scopeDomains"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                   rows="3"
                   :placeholder="translations.linkScopeDomains"
                 />
@@ -564,7 +589,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   >
                   <span class="ml-2 text-left">
                     <span>{{ translations.linkTooltipTriggerClickLeft }}</span>
-                    <p class="text-xs text-gray-500">{{ translations.linkTooltipTriggerClickLeftDesc }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ translations.linkTooltipTriggerClickLeftDesc }}</p>
                   </span>
                 </label>
                 <label class="flex items-start">
@@ -574,7 +599,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   >
                   <span class="ml-2 text-left">
                     <span>{{ translations.linkTooltipTriggerClickRight }}</span>
-                    <p class="text-xs text-gray-500">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
                   </span>
                 </label>
               </div>
@@ -622,7 +647,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <h3 class="text-left text-sm font-medium mb-1">
                 {{ translations.linkShortUrlSection }}
               </h3>
-              <p class="text-left text-xs text-gray-500 mb-3">
+              <p class="text-left text-xs text-gray-500 dark:text-gray-400 mb-3">
                 {{ translations.linkShortUrlSectionWarning }}
               </p>
 
@@ -661,19 +686,19 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <input v-model="settings.linkSafety.shortUrlResolveAny" type="checkbox" class="flex-shrink-0 rounded" style="width: 16px; height: 16px; min-width: 16px; min-height: 16px; accent-color: #3b82f6;">
                   <span class="text-sm">{{ translations.linkShortUrlResolveAny }}</span>
                 </label>
-                <p v-if="settings.linkSafety.shortUrlResolveAny" class="text-left text-xs text-gray-500 ml-6">
+                <p v-if="settings.linkSafety.shortUrlResolveAny" class="text-left text-xs text-gray-500 dark:text-gray-400 ml-6">
                   {{ translations.linkShortUrlResolveAnyDesc }}
                 </p>
 
                 <!-- Custom shortener domains -->
                 <div class="text-left">
                   <label class="text-sm font-medium">{{ translations.linkShortUrlCustomDomains }}</label>
-                  <p class="text-xs text-gray-500 mb-1">
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
                     {{ translations.linkShortUrlCustomDomainsDesc }}
                   </p>
                   <textarea
                     v-model="customShortenersText"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                     rows="3"
                     placeholder="short.link&#10;go.example.com"
                   />
@@ -682,12 +707,12 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <!-- Remote list update URLs -->
                 <div class="text-left">
                   <label class="text-sm font-medium">{{ translations.linkShortUrlListUpdateUrl }}</label>
-                  <p class="text-xs text-gray-500 mb-1">
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
                     {{ translations.linkShortUrlListUpdateUrlDesc }}
                   </p>
                   <textarea
                     v-model="settings.linkSafety.shortUrlListUpdateUrl"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                     rows="2"
                     placeholder="https://raw.githubusercontent.com/..."
                   />
@@ -702,18 +727,18 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           <h2 class="text-lg font-semibold mb-2">
             {{ translations.antiTamperingSettings }}
           </h2>
-          <p class="text-xs text-gray-500 mb-4 text-left">
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-4 text-left">
             {{ translations.antiTamperingSettingsDesc }}
           </p>
 
           <div class="text-left">
             <label class="text-sm font-medium">{{ translations.antiTamperingExcludedDomains }}</label>
-            <p class="text-xs text-gray-500 mb-1">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
               {{ translations.antiTamperingExcludedDomainsDesc }}
             </p>
             <textarea
               v-model="settings.antiTamperingExcludedDomains"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
               rows="3"
               placeholder="example.com&#10;another-site.org"
             />
@@ -729,7 +754,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           <div class="space-y-4">
             <div>
               <button
-                class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                class="btn-primary w-full"
                 :disabled="isImporting" @click="importHistory"
               >
                 <template v-if="!isImporting">
@@ -745,7 +770,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   :style="{ width: `${(importProgress.current / importProgress.total) * 100}%` }"
                 />
               </div>
-              <p class="text-xs text-gray-500 mt-1">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {{ translations.importHistoryDesc }}
               </p>
             </div>
@@ -781,14 +806,13 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               </div>
 
               <button
-                class="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors mt-4
-                disabled:bg-gray-400 disabled:text-gray-200 disabled:cursor-not-allowed"
+                class="btn-danger w-full mt-4"
                 :disabled="isImporting || !Object.values(resetSelections).some(Boolean)"
                 @click="showResetConfirm = true"
               >
                 {{ translations.resetSelectedData }}
               </button>
-              <p class="text-xs text-gray-500 mt-1">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {{ translations.selectDataToReset }}
               </p>
             </div>
@@ -799,7 +823,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
   </main>
 
   <!-- Reset Confirmation Dialog -->
-  <div v-if="showResetConfirm" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+  <div v-if="showResetConfirm" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full">
       <h3 class="text-lg font-semibold mb-4">
         {{ translations.confirmReset }}
@@ -823,13 +847,13 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
       </p>
       <div class="flex space-x-3">
         <button
-          class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+          class="btn-primary flex-1"
           @click="showResetConfirm = false"
         >
           {{ translations.cancel }}
         </button>
         <button
-          class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          class="btn-danger flex-1"
           @click="resetSelected"
         >
           {{ translations.reset }}

@@ -1,12 +1,41 @@
 <!-- eslint-disable no-console -->
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { defaultSettings, settings } from '~/logic/storage'
 import { isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
 import InputWarning from './InputWarning.vue'
 import LinkInterceptDialog from './LinkInterceptDialog.vue'
 import LinkTooltip from './LinkTooltip.vue'
 import 'uno.css'
+
+// Theme support for content scripts
+const isDark = ref(true) // default dark until settings load
+const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
+function resolveTheme() {
+  const theme = settings.value?.theme || 'system'
+  if (theme === 'dark')
+    isDark.value = true
+  else if (theme === 'light')
+    isDark.value = false
+  else
+    isDark.value = mediaQuery.matches
+}
+
+function onSystemThemeChange() {
+  if (settings.value?.theme === 'system') {
+    isDark.value = mediaQuery.matches
+  }
+}
+
+mediaQuery.addEventListener('change', onSystemThemeChange)
+watch(() => settings.value?.theme, resolveTheme, { immediate: true })
+
+onBeforeUnmount(() => {
+  mediaQuery.removeEventListener('change', onSystemThemeChange)
+})
+
+provide('isDark', computed(() => isDark.value))
 
 // Helper to send message safely (fallback to runtime.sendMessage)
 async function sendMessageSafe<T = any>(id: string, data: any): Promise<T> {
@@ -132,6 +161,7 @@ onMounted(async () => {
     :safety-level="safetyLevel"
     :show="showWarning"
     :warning-type="warningType"
+    :is-dark="isDark"
     @close="showWarning = false"
     @ignore-site="ignoreSite"
   />
@@ -145,6 +175,7 @@ onMounted(async () => {
     :show-full-url="settings.linkSafety?.shortUrlShowFullUrl ?? false"
     :trace-chain="settings.linkSafety?.shortUrlTraceChain ?? false"
     :short-url-mode="settings.linkSafety?.shortUrlMode ?? 'off'"
+    :is-dark="isDark"
     @hover-enter="handleTooltipHoverEnter"
     @close="handleTooltipClose"
     @go="handleTooltipGo"
@@ -158,6 +189,7 @@ onMounted(async () => {
     :show-full-url="settings.linkSafety?.shortUrlShowFullUrl ?? false"
     :trace-chain="settings.linkSafety?.shortUrlTraceChain ?? false"
     :short-url-mode="settings.linkSafety?.shortUrlMode ?? 'off'"
+    :is-dark="isDark"
     @continue="handleInterceptContinue"
     @cancel="handleInterceptCancel"
     @details="handleTooltipDetails"

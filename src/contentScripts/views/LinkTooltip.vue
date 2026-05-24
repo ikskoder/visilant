@@ -14,6 +14,7 @@ const props = defineProps<{
   showFullUrl: boolean
   traceChain: boolean
   shortUrlMode: 'off' | 'button' | 'auto'
+  isDark: boolean
 }>()
 
 const emit = defineEmits<{
@@ -183,14 +184,14 @@ onBeforeUnmount(() => {
           ? { top: `-${GAP}px`, height: `${GAP}px` }
           : { bottom: `-${GAP}px`, height: `${GAP}px` }"
       />
-      <div class="tooltip-container bg-gray-900 bg-opacity-95 rounded-lg shadow-2xl border border-gray-700/50 p-3" :class="{ 'tooltip-wide': data.mismatch || (data.shortUrl?.status === 'resolved' && traceChain && data.shortUrl.chain.length > 2) }" :style="{ fontSize: `${fontScale}em` }">
+      <div class="tooltip-container rounded-lg shadow-2xl p-3" :class="[isDark ? 'bg-gray-900 bg-opacity-95 border border-gray-700/50' : 'bg-white border border-gray-200', { 'tooltip-wide': data.mismatch || (data.shortUrl?.status === 'resolved' && traceChain && data.shortUrl.chain.length > 2) }]" :style="{ fontSize: `${fontScale}em` }">
         <!-- Mismatch: warning + comparison table -->
         <template v-if="data.mismatch">
           <div class="flex items-center gap-2 mb-2">
             <svg class="w-6 h-6 text-red-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            <span class="tooltip-label text-red-400 font-medium">{{ t('linkTooltipMismatchWarning') }}</span>
+            <span class="tooltip-label font-medium" :class="isDark ? 'text-red-400' : 'text-red-600'">{{ t('linkTooltipMismatchWarning') }}</span>
           </div>
 
           <MismatchTable
@@ -207,14 +208,15 @@ onBeforeUnmount(() => {
           />
 
           <!-- Punycode warning -->
-          <div v-if="data.punycode" class="flex items-center gap-1 mb-2 tooltip-label text-yellow-400">
+          <div v-if="data.punycode" class="flex items-center gap-1 mb-2 tooltip-label" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
             <span>{{ t('linkTooltipPunycode') }}: {{ data.punycode }}</span>
           </div>
 
           <!-- Go button -->
           <button
             v-if="showGoButton"
-            class="w-full px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded border border-gray-600 transition-colors tooltip-label text-center"
+            class="w-full px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
+            :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
             @click="emit('go', data.href)"
           >
             {{ t('linkTooltipGoToLink') }} &rarr;
@@ -225,7 +227,7 @@ onBeforeUnmount(() => {
         <template v-else>
           <!-- Destination label + status -->
           <div class="flex items-center flex-wrap gap-1.5 mb-1">
-            <span class="tooltip-label text-gray-400">{{ t('linkTooltipDestination') }}</span>
+            <span class="tooltip-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">{{ t('linkTooltipDestination') }}</span>
             <!-- For known shorteners: only show orange "shortener" badge, never safe/unfamiliar -->
             <template v-if="data.shortUrl?.isKnownShortener">
               <span class="tooltip-label px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-400">
@@ -255,13 +257,13 @@ onBeforeUnmount(() => {
                 ? 'bg-orange-500'
                 : data.isSafe ? 'bg-green-500' : 'bg-red-500'"
             />
-            <span class="text-white font-medium tooltip-domain">
+            <span class="font-medium tooltip-domain" :class="isDark ? 'text-white' : 'text-gray-900'">
               <SecureText :text="data.domain" :force-highlight="true" :danger-only="true" />
             </span>
           </div>
 
           <!-- Visit count: never show for known shorteners -->
-          <div v-if="!data.shortUrl?.isKnownShortener && shouldShowCount(data.isSafe)" class="tooltip-label text-white mb-2">
+          <div v-if="!data.shortUrl?.isKnownShortener && shouldShowCount(data.isSafe)" class="tooltip-label mb-2" :class="isDark ? 'text-white' : 'text-gray-800'">
             {{ t('linkTooltipVisits') }}: {{ data.count }}
           </div>
 
@@ -271,7 +273,8 @@ onBeforeUnmount(() => {
               {{ t('linkTooltipShortUrlWarning') }}
             </div>
             <button
-              class="w-full px-3 py-1.5 bg-orange-700/60 hover:bg-orange-600/60 text-orange-100 rounded border border-orange-700/50 transition-colors tooltip-label text-center"
+              class="w-full px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
+              :class="isDark ? 'bg-orange-700/60 hover:bg-orange-600/60 text-orange-100 border-orange-700/50' : 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300'"
               @click.stop="handleResolveClick()"
             >
               {{ t('linkTooltipResolveButton') }}
@@ -281,7 +284,8 @@ onBeforeUnmount(() => {
           <!-- Short URL: loading -->
           <div v-if="data.shortUrl?.status === 'loading'" class="mt-2 mb-1">
             <button
-              class="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-gray-700 text-gray-400 rounded border border-gray-600 tooltip-label text-center cursor-wait"
+              class="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border tooltip-label text-center cursor-wait"
+              :class="isDark ? 'bg-gray-700 text-gray-400 border-gray-600' : 'bg-gray-100 text-gray-500 border-gray-300'"
               disabled
             >
               <div class="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
@@ -290,8 +294,8 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- Short URL: resolved -->
-          <div v-if="data.shortUrl?.status === 'resolved'" class="mt-2 mb-2 pt-2 border-t border-gray-700/50">
-            <div class="flex items-center gap-1 mb-1 tooltip-label text-orange-400">
+          <div v-if="data.shortUrl?.status === 'resolved'" class="mt-2 mb-2 pt-2" :class="isDark ? 'border-t border-gray-700/50' : 'border-t border-gray-200'">
+            <div class="flex items-center gap-1 mb-1 tooltip-label" :class="isDark ? 'text-orange-400' : 'text-orange-600'">
               <svg class="w-3.5 h-3.5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
               </svg>
@@ -304,13 +308,13 @@ onBeforeUnmount(() => {
                 class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
                 :class="data.shortUrl.resolvedIsSafe ? 'bg-green-500' : 'bg-red-500'"
               />
-              <span class="text-white font-medium tooltip-domain">
+              <span class="font-medium tooltip-domain" :class="isDark ? 'text-white' : 'text-gray-900'">
                 <SecureText :text="data.shortUrl.resolvedDomain" :force-highlight="true" :danger-only="true" />
               </span>
             </div>
 
             <!-- Full URL if enabled -->
-            <div v-if="showFullUrl && data.shortUrl.resolvedUrl" class="tooltip-label text-gray-400 mb-1 break-all" style="word-break: break-all !important; max-width: 560px !important;">
+            <div v-if="showFullUrl && data.shortUrl.resolvedUrl" class="tooltip-label mb-1 break-all" :class="isDark ? 'text-gray-400' : 'text-gray-500'" style="word-break: break-all !important; max-width: min(560px, 85vw) !important;">
               {{ data.shortUrl.resolvedUrl }}
             </div>
 
@@ -327,16 +331,16 @@ onBeforeUnmount(() => {
                 {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedCount).text.toLowerCase() }}
               </span>
             </div>
-            <div v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)" class="tooltip-label text-white">
+            <div v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)" class="tooltip-label" :class="isDark ? 'text-white' : 'text-gray-800'">
               {{ t('linkTooltipVisits') }}: {{ data.shortUrl.resolvedCount }}
             </div>
 
             <!-- Redirect chain trace -->
-            <div v-if="traceChain && data.shortUrl.chain.length > 2" class="mt-2 pt-2 border-t border-gray-700/50">
-              <div class="tooltip-label text-gray-400 mb-1">
+            <div v-if="traceChain && data.shortUrl.chain.length > 2" class="mt-2 pt-2" :class="isDark ? 'border-t border-gray-700/50' : 'border-t border-gray-200'">
+              <div class="tooltip-label mb-1" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
                 {{ t('linkTooltipRedirectChain') }} ({{ data.shortUrl.chain.length }})
               </div>
-              <div class="tooltip-label text-gray-300 space-y-0.5" style="max-height: 120px !important; overflow-y: auto !important;">
+              <div class="tooltip-label space-y-0.5" :class="isDark ? 'text-gray-300' : 'text-gray-600'" style="max-height: 120px !important; overflow-y: auto !important;">
                 <div v-for="(hop, i) in data.shortUrl.chain" :key="i" class="flex items-start gap-1">
                   <span class="text-gray-500 flex-shrink-0">{{ i + 1 }}.</span>
                   <span class="break-all" style="word-break: break-all !important;">{{ hop }}</span>
@@ -345,14 +349,15 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- Disclaimer -->
-            <div class="mt-2 tooltip-label text-white italic" style="font-size: 0.75em !important;">
+            <div class="mt-2 tooltip-label italic" :class="isDark ? 'text-white' : 'text-gray-600'" style="font-size: 0.75em !important;">
               {{ t('linkTooltipResolveDisclaimer') }}
             </div>
 
             <!-- Mark as shortener after successful resolve (only if not already known) -->
             <button
               v-if="!data.shortUrl.isKnownShortener"
-              class="w-full mt-2 px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 rounded border border-gray-700 transition-colors tooltip-label text-center"
+              class="w-full mt-2 px-3 py-1 rounded-lg border transition-colors tooltip-label text-center"
+              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
               @click.stop="handleMarkAsShortener()"
             >
               {{ t('linkTooltipMarkAsShortener') }}
@@ -361,12 +366,13 @@ onBeforeUnmount(() => {
 
           <!-- Short URL: error -->
           <div v-if="data.shortUrl?.status === 'error'" class="mt-2 mb-1">
-            <div class="tooltip-label text-gray-400 mb-2">
+            <div class="tooltip-label mb-2" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
               {{ data.shortUrl.error === 'same_domain' ? t('linkTooltipResolveSameDomain') : t('linkTooltipResolveError') }}
             </div>
             <button
               v-if="data.shortUrl.error !== 'same_domain'"
-              class="w-full px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded border border-gray-600 transition-colors tooltip-label text-center"
+              class="w-full px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
+              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
               @click.stop="handleResolveClick()"
             >
               {{ t('linkTooltipRetryResolve') }}
@@ -374,7 +380,7 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- Punycode warning -->
-          <div v-if="data.punycode" class="flex items-center gap-1 mb-2 tooltip-label text-yellow-400">
+          <div v-if="data.punycode" class="flex items-center gap-1 mb-2 tooltip-label" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
             <span>{{ t('linkTooltipPunycode') }}: {{ data.punycode }}</span>
           </div>
 
@@ -382,13 +388,15 @@ onBeforeUnmount(() => {
           <div class="flex gap-2 mt-1">
             <button
               v-if="showGoButton"
-              class="flex-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded border border-gray-600 transition-colors tooltip-label text-center"
+              class="flex-1 px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
+              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
               @click="emit('go', data.href)"
             >
               {{ t('linkTooltipGoToLink') }} &rarr;
             </button>
             <button
-              class="flex-1 px-3 py-1.5 bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 rounded border border-gray-600 transition-colors tooltip-label text-center"
+              class="flex-1 px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
+              :class="isDark ? 'bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 border-gray-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300'"
               @click="emit('details', data.shortUrl?.status === 'resolved' ? data.shortUrl.resolvedDomain : data.domain)"
             >
               {{ t('linkTooltipDetails') }}
@@ -398,13 +406,15 @@ onBeforeUnmount(() => {
           <!-- Resolve once + Mark as shortener: shown when domain is not detected as shortener and short URL detection is enabled -->
           <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-2">
             <button
-              class="flex-1 px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded border border-gray-700 transition-colors tooltip-label text-center"
+              class="flex-1 px-3 py-1 rounded-lg border transition-colors tooltip-label text-center"
+              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 border-gray-300'"
               @click.stop="handleResolveOnce()"
             >
               {{ t('linkTooltipResolveOnce') }}
             </button>
             <button
-              class="flex-1 px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 rounded border border-gray-700 transition-colors tooltip-label text-center"
+              class="flex-1 px-3 py-1 rounded-lg border transition-colors tooltip-label text-center"
+              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
               @click.stop="handleMarkAsShortener()"
             >
               {{ t('linkTooltipMarkAsShortener') }}
@@ -428,14 +438,14 @@ button {
 }
 
 .tooltip-container {
-  min-width: 200px !important;
-  max-width: 600px !important;
+  min-width: min(200px, 80vw) !important;
+  max-width: min(600px, 90vw) !important;
   width: auto !important;
   box-sizing: border-box !important;
 }
 
 .tooltip-container.tooltip-wide {
-  width: 600px !important;
+  width: min(600px, 90vw) !important;
 }
 
 .tooltip-label {

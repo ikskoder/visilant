@@ -630,5 +630,21 @@
   "antiTamperingTooltipOff": {
     "message": "Захист вимкнений для цього сайту. Втручання не буде виявлено. Увімкніть, якщо хибні спрацьовування на цьому сайті більше не виникають.",
     "description": "Tooltip explaining the disabled state"
+  },
+  "themeSettings": {
+    "message": "Тема",
+    "description": "Label for theme selection"
+  },
+  "themeSystem": {
+    "message": "Системна",
+    "description": "Theme option: follow system preference"
+  },
+  "themeLight": {
+    "message": "Світла",
+    "description": "Theme option: light mode"
+  },
+  "themeDark": {
+    "message": "Темна",
+    "description": "Theme option: dark mode"
   }
 }

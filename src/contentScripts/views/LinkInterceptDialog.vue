@@ -12,6 +12,7 @@ const props = defineProps<{
   showFullUrl: boolean
   traceChain: boolean
   shortUrlMode: 'off' | 'button' | 'auto'
+  isDark: boolean
 }>()
 
 const emit = defineEmits<{
@@ -70,37 +71,30 @@ const resolvedIsSafe = computed(() => {
       <div class="absolute inset-0 bg-black/60" />
 
       <!-- Dialog card -->
-      <div class="relative dialog-container bg-gray-900 rounded-xl shadow-2xl border border-gray-700/50 p-6" :class="{ 'dialog-wide': data?.mismatch, 'dialog-full': hasTraceData }">
-        <!-- Close button -->
-        <button
-          class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-gray-500 hover:text-white rounded-lg hover:bg-gray-700/50 transition-colors"
-          @click="emit('cancel')"
-        >
-          <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+      <div class="relative dialog-container rounded-xl shadow-2xl px-5 pb-3 pt-0" :class="[isDark ? 'bg-gray-900 border border-gray-700/50' : 'bg-white border border-gray-200', { 'dialog-wide': data?.mismatch, 'dialog-full': hasTraceData }]">
+        <!-- Warning icon + title + close -->
+        <div class="flex items-center gap-2 mb-3">
+          <svg class="w-5 h-5 text-red-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-        </button>
-
-        <!-- Warning icon -->
-        <div class="flex items-center gap-3 mb-4">
-          <div class="flex-shrink-0 relative">
-            <div class="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-20" />
-            <div class="relative w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center">
-              <svg class="w-6 h-6 text-red-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-          </div>
-          <h2 class="dialog-title text-white font-bold">
+          <h2 class="dialog-title font-bold flex-1" :class="isDark ? 'text-white' : 'text-gray-900'">
             {{ t('linkInterceptTitle') }}
           </h2>
+          <button
+            class="close-btn flex-shrink-0 transition-opacity hover:opacity-70 cursor-pointer"
+            @click="emit('cancel')"
+          >
+            <svg class="w-5 h-5" :class="isDark ? 'text-gray-300' : 'text-gray-500'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
         <!-- Message -->
-        <p class="dialog-text text-gray-300 mb-2">
+        <p class="dialog-text mb-2" :class="isDark ? 'text-gray-300' : 'text-gray-600'">
           {{ t('linkInterceptMessage') }}
         </p>
-        <p class="dialog-label text-yellow-400/80 mb-4">
+        <p class="dialog-label mb-4" :class="isDark ? 'text-yellow-400/80' : 'text-yellow-600'">
           {{ t('linkInterceptPhishingHint') }}
         </p>
 
@@ -110,7 +104,7 @@ const resolvedIsSafe = computed(() => {
             <svg class="w-6 h-6 text-red-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            <span class="dialog-text text-red-400 font-medium">{{ t('linkInterceptMismatchWarning') }}</span>
+            <span class="dialog-text font-medium" :class="isDark ? 'text-red-400' : 'text-red-600'">{{ t('linkInterceptMismatchWarning') }}</span>
           </div>
 
           <MismatchTable
@@ -127,13 +121,13 @@ const resolvedIsSafe = computed(() => {
           />
 
           <!-- Punycode -->
-          <div v-if="data.punycode" class="dialog-label text-yellow-400 mt-2">
+          <div v-if="data.punycode" class="dialog-label mt-2" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
             {{ t('linkTooltipPunycode') }}: {{ data.punycode }}
           </div>
         </div>
 
         <!-- No mismatch: standard domain info -->
-        <div v-else class="bg-gray-800 rounded-lg p-3 mb-4">
+        <div v-else class="rounded-lg p-3 mb-4" :class="isDark ? 'bg-gray-800' : 'bg-gray-50 border border-gray-200'">
           <div class="flex items-center gap-2 mb-2">
             <span
               class="inline-block w-3 h-3 rounded-full flex-shrink-0"
@@ -141,17 +135,17 @@ const resolvedIsSafe = computed(() => {
                 ? 'bg-orange-500'
                 : data.isSafe ? 'bg-green-500' : 'bg-red-500'"
             />
-            <span class="dialog-domain text-white font-medium">
+            <span class="dialog-domain font-medium" :class="isDark ? 'text-white' : 'text-gray-900'">
               <SecureText :text="data.domain" :force-highlight="true" :danger-only="true" />
             </span>
             <span v-if="data.shortUrl?.isKnownShortener" class="dialog-label px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-400">
               {{ t('linkTooltipShortener').toLowerCase() }}
             </span>
           </div>
-          <div v-if="!data.shortUrl?.isKnownShortener" class="dialog-label text-gray-400">
+          <div v-if="!data.shortUrl?.isKnownShortener" class="dialog-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
             <template v-if="shouldShowCount(data.isSafe)">
               {{ t('linkTooltipVisits') }}:
-              <span class="text-white font-medium">{{ data.count }}</span>
+              <span class="font-medium" :class="isDark ? 'text-white' : 'text-gray-900'">{{ data.count }}</span>
               <span class="mx-1">&middot;</span>
             </template>
             <span :class="statusLabel(data.isSafe, data.count).class">
@@ -160,12 +154,13 @@ const resolvedIsSafe = computed(() => {
           </div>
 
           <!-- Short URL: idle — resolve button -->
-          <div v-if="data.shortUrl?.status === 'idle'" class="mt-3 pt-3 border-t border-gray-700">
-            <div v-if="data.shortUrl.isKnownShortener" class="dialog-label text-orange-400/80 mb-2">
+          <div v-if="data.shortUrl?.status === 'idle'" class="mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">
+            <div v-if="data.shortUrl.isKnownShortener" class="dialog-label mb-2" :class="isDark ? 'text-orange-400/80' : 'text-orange-600'">
               {{ t('linkTooltipShortUrlWarning') }}
             </div>
             <button
-              class="w-full px-3 py-2 bg-orange-700/60 hover:bg-orange-600/60 text-orange-100 rounded-lg border border-orange-700/50 transition-colors dialog-button text-center"
+              class="w-full px-3 py-2 rounded-lg border transition-colors dialog-button text-center"
+              :class="isDark ? 'bg-orange-700/60 hover:bg-orange-600/60 text-orange-100 border-orange-700/50' : 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300'"
               @click="emit('resolveShortUrl')"
             >
               {{ t('linkTooltipResolveButton') }}
@@ -173,9 +168,10 @@ const resolvedIsSafe = computed(() => {
           </div>
 
           <!-- Short URL: loading -->
-          <div v-if="data.shortUrl?.status === 'loading'" class="mt-3 pt-3 border-t border-gray-700">
+          <div v-if="data.shortUrl?.status === 'loading'" class="mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">
             <button
-              class="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-700 text-gray-400 rounded-lg border border-gray-600 dialog-button text-center cursor-wait"
+              class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border dialog-button text-center cursor-wait"
+              :class="isDark ? 'bg-gray-700 text-gray-400 border-gray-600' : 'bg-gray-100 text-gray-500 border-gray-300'"
               disabled
             >
               <div class="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
@@ -184,8 +180,8 @@ const resolvedIsSafe = computed(() => {
           </div>
 
           <!-- Short URL: resolved -->
-          <div v-if="data.shortUrl?.status === 'resolved'" class="mt-3 pt-3 border-t border-gray-700">
-            <div class="flex items-center gap-1 mb-2 dialog-label text-orange-400">
+          <div v-if="data.shortUrl?.status === 'resolved'" class="mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">
+            <div class="flex items-center gap-1 mb-2 dialog-label" :class="isDark ? 'text-orange-400' : 'text-orange-600'">
               <svg class="w-3.5 h-3.5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
               </svg>
@@ -196,20 +192,20 @@ const resolvedIsSafe = computed(() => {
                 class="inline-block w-3 h-3 rounded-full flex-shrink-0"
                 :class="data.shortUrl.resolvedIsSafe ? 'bg-green-500' : 'bg-red-500'"
               />
-              <span class="dialog-domain text-white font-medium">
+              <span class="dialog-domain font-medium" :class="isDark ? 'text-white' : 'text-gray-900'">
                 <SecureText :text="data.shortUrl.resolvedDomain" :force-highlight="true" :danger-only="true" />
               </span>
             </div>
 
             <!-- Full URL -->
-            <div v-if="showFullUrl && data.shortUrl.resolvedUrl" class="dialog-label text-gray-400 mb-1 break-all" style="word-break: break-all !important;">
+            <div v-if="showFullUrl && data.shortUrl.resolvedUrl" class="dialog-label mb-1 break-all" :class="isDark ? 'text-gray-400' : 'text-gray-500'" style="word-break: break-all !important;">
               {{ data.shortUrl.resolvedUrl }}
             </div>
 
-            <div class="dialog-label text-gray-400">
+            <div class="dialog-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
               <template v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)">
                 {{ t('linkTooltipVisits') }}:
-                <span class="text-white font-medium">{{ data.shortUrl.resolvedCount }}</span>
+                <span class="font-medium" :class="isDark ? 'text-white' : 'text-gray-900'">{{ data.shortUrl.resolvedCount }}</span>
                 <span class="mx-1">&middot;</span>
               </template>
               <span :class="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedCount).class">
@@ -218,11 +214,11 @@ const resolvedIsSafe = computed(() => {
             </div>
 
             <!-- Redirect chain trace -->
-            <div v-if="traceChain && data.shortUrl.chain.length > 2" class="mt-3 pt-3 border-t border-gray-700">
-              <div class="dialog-label text-gray-400 mb-2">
+            <div v-if="traceChain && data.shortUrl.chain.length > 2" class="mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">
+              <div class="dialog-label mb-2" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
                 {{ t('linkTooltipRedirectChain') }} ({{ data.shortUrl.chain.length }})
               </div>
-              <div class="dialog-label text-gray-300 space-y-1" style="max-height: 200px !important; overflow-y: auto !important;">
+              <div class="dialog-label space-y-1" :class="isDark ? 'text-gray-300' : 'text-gray-600'" style="max-height: 200px !important; overflow-y: auto !important;">
                 <div v-for="(hop, i) in data.shortUrl.chain" :key="i" class="flex items-start gap-1.5">
                   <span class="text-gray-500 flex-shrink-0 font-mono">{{ i + 1 }}.</span>
                   <span class="break-all" style="word-break: break-all !important;">{{ hop }}</span>
@@ -231,14 +227,15 @@ const resolvedIsSafe = computed(() => {
             </div>
 
             <!-- Disclaimer -->
-            <div class="mt-3 dialog-label text-white italic" style="font-size: 11px !important;">
+            <div class="mt-3 dialog-label italic" :class="isDark ? 'text-white' : 'text-gray-600'" style="font-size: 11px !important;">
               {{ t('linkTooltipResolveDisclaimer') }}
             </div>
 
             <!-- Mark as shortener after successful resolve (only if not already known) -->
             <button
               v-if="!data.shortUrl.isKnownShortener"
-              class="w-full mt-3 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 rounded-lg border border-gray-700 transition-colors dialog-button text-center"
+              class="w-full mt-3 px-3 py-2 rounded-lg border transition-colors dialog-button text-center"
+              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
               @click.stop="handleMarkAsShortener()"
             >
               {{ t('linkTooltipMarkAsShortener') }}
@@ -246,13 +243,14 @@ const resolvedIsSafe = computed(() => {
           </div>
 
           <!-- Short URL: error -->
-          <div v-if="data.shortUrl?.status === 'error'" class="mt-3 pt-3 border-t border-gray-700">
-            <div class="dialog-label text-gray-400 mb-2">
+          <div v-if="data.shortUrl?.status === 'error'" class="mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">
+            <div class="dialog-label mb-2" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
               {{ data.shortUrl.error === 'same_domain' ? t('linkTooltipResolveSameDomain') : t('linkTooltipResolveError') }}
             </div>
             <button
               v-if="data.shortUrl.error !== 'same_domain'"
-              class="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg border border-gray-600 transition-colors dialog-button text-center"
+              class="w-full px-3 py-2 rounded-lg border transition-colors dialog-button text-center"
+              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
               @click="emit('resolveShortUrl')"
             >
               {{ t('linkTooltipRetryResolve') }}
@@ -260,20 +258,22 @@ const resolvedIsSafe = computed(() => {
           </div>
 
           <!-- Punycode -->
-          <div v-if="data.punycode" class="dialog-label text-yellow-400 mt-2">
+          <div v-if="data.punycode" class="dialog-label mt-2" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
             {{ t('linkTooltipPunycode') }}: {{ data.punycode }}
           </div>
 
           <!-- Resolve once + Mark as shortener: shown when domain is not detected as shortener and short URL detection is enabled -->
-          <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-3 pt-3 border-t border-gray-700">
+          <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">
             <button
-              class="flex-1 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded-lg border border-gray-700 transition-colors dialog-button text-center"
+              class="flex-1 px-3 py-2 rounded-lg border transition-colors dialog-button text-center"
+              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 border-gray-300'"
               @click.stop="handleResolveOnce()"
             >
               {{ t('linkTooltipResolveOnce') }}
             </button>
             <button
-              class="flex-1 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 rounded-lg border border-gray-700 transition-colors dialog-button text-center"
+              class="flex-1 px-3 py-2 rounded-lg border transition-colors dialog-button text-center"
+              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
               @click.stop="handleMarkAsShortener()"
             >
               {{ t('linkTooltipMarkAsShortener') }}
@@ -285,7 +285,8 @@ const resolvedIsSafe = computed(() => {
         <div class="flex gap-3">
           <button
             v-if="!data.mismatch"
-            class="flex-1 px-4 py-2.5 bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 rounded-lg border border-gray-600 transition-colors dialog-button"
+            class="flex-1 px-4 py-2.5 rounded-lg border transition-colors dialog-button"
+            :class="isDark ? 'bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 border-gray-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300'"
             @click="emit('details', data.shortUrl?.status === 'resolved' ? data.shortUrl.resolvedDomain : data.domain)"
           >
             {{ t('linkInterceptDomainInfo') }}
@@ -293,8 +294,8 @@ const resolvedIsSafe = computed(() => {
           <button
             class="flex-1 px-4 py-2.5 rounded-lg border transition-colors dialog-button"
             :class="resolvedIsSafe
-              ? 'bg-blue-700/60 border-blue-700 hover:bg-blue-600/60 text-white'
-              : 'bg-red-900/40 border-red-700 hover:bg-red-800/50 text-white'"
+              ? (isDark ? 'bg-blue-700/60 border-blue-700 hover:bg-blue-600/60 text-white' : 'bg-blue-600 border-blue-600 hover:bg-blue-700 text-white')
+              : (isDark ? 'bg-red-900/40 border-red-700 hover:bg-red-800/50 text-white' : 'bg-red-600 border-red-600 hover:bg-red-700 text-white')"
             @click="emit('continue')"
           >
             {{ t('linkInterceptContinue') }}
@@ -316,18 +317,24 @@ button {
   outline: none !important;
 }
 
+.close-btn {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
 .dialog-container {
-  width: 420px !important;
+  width: min(420px, 90vw) !important;
   max-width: 90vw !important;
   box-sizing: border-box !important;
 }
 
 .dialog-container.dialog-wide {
-  width: 560px !important;
+  width: min(560px, 90vw) !important;
 }
 
 .dialog-container.dialog-full {
-  width: 680px !important;
+  width: min(680px, 90vw) !important;
 }
 
 .dialog-title {
