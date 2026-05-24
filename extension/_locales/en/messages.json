@@ -554,5 +554,49 @@
   "linkTooltipMarkAsShortener": {
     "message": "Mark as shortener",
     "description": "Button to mark current domain as a URL shortener"
+  },
+  "antiTamperingSettings": {
+    "message": "Anti-tampering protection",
+    "description": "Title for anti-tampering settings section"
+  },
+  "antiTamperingSettingsDesc": {
+    "message": "Detects when a page forcibly removes the extension's UI from the DOM. If tampering is detected, you'll receive a critical security warning. Some legitimate sites (especially SPAs or sites with aggressive DOM cleanup) may trigger false positives — add them to the exclusion list below",
+    "description": "Description for anti-tampering settings"
+  },
+  "antiTamperingExcludedDomains": {
+    "message": "Excluded domains",
+    "description": "Label for anti-tampering excluded domains textarea"
+  },
+  "antiTamperingExcludedDomainsDesc": {
+    "message": "Anti-tampering protection will be disabled on these domains (one per line or comma-separated)",
+    "description": "Description for excluded domains setting"
+  },
+  "antiTamperingProtected": {
+    "message": "Anti-tampering: active",
+    "description": "Status text when anti-tampering protection is enabled for the current site"
+  },
+  "antiTamperingNotProtected": {
+    "message": "Anti-tampering: off",
+    "description": "Status text when anti-tampering protection is disabled for the current site"
+  },
+  "antiTamperingDisableForSite": {
+    "message": "Disable",
+    "description": "Button in popup to disable anti-tampering for current site"
+  },
+  "antiTamperingEnableForSite": {
+    "message": "Enable",
+    "description": "Button in popup to re-enable anti-tampering for current site"
+  },
+  "antiTamperingTooltipWhat": {
+    "message": "Anti-tampering monitors whether the page tries to remove the extension's UI. Malicious sites may do this to hide security warnings.",
+    "description": "Tooltip explaining what anti-tampering does"
+  },
+  "antiTamperingTooltipOn": {
+    "message": "Protection is active. You will be alerted if this site tries to interfere with the extension. Disable if this site triggers false alarms.",
+    "description": "Tooltip explaining the enabled state"
+  },
+  "antiTamperingTooltipOff": {
+    "message": "Protection is disabled for this site. Tampering will not be detected. Enable if you no longer experience false alarms here.",
+    "description": "Tooltip explaining the disabled state"
   }
 }

@@ -91,6 +91,10 @@ function updateTranslations() {
     'linkScopeWhitelist',
     'linkScopeBlacklist',
     'linkScopeDomains',
+    'antiTamperingSettings',
+    'antiTamperingSettingsDesc',
+    'antiTamperingExcludedDomains',
+    'antiTamperingExcludedDomainsDesc',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -660,6 +664,29 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Anti-Tampering Settings -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h2 class="text-lg font-semibold mb-2">
+            {{ translations.antiTamperingSettings }}
+          </h2>
+          <p class="text-xs text-gray-500 mb-4 text-left">
+            {{ translations.antiTamperingSettingsDesc }}
+          </p>
+
+          <div class="text-left">
+            <label class="text-sm font-medium">{{ translations.antiTamperingExcludedDomains }}</label>
+            <p class="text-xs text-gray-500 mb-1">
+              {{ translations.antiTamperingExcludedDomainsDesc }}
+            </p>
+            <textarea
+              v-model="settings.antiTamperingExcludedDomains"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              rows="3"
+              placeholder="example.com, another-site.org"
+            />
           </div>
         </div>
 

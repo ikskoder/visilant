@@ -31,6 +31,9 @@ export interface Settings {
 
   // Link safety settings
   linkSafety: LinkSafetySettings
+
+  // Anti-tampering exclusions
+  antiTamperingExcludedDomains: string
 }
 
 export interface LinkSafetySettings {
@@ -76,6 +79,9 @@ export const defaultSettings: Settings = {
 
   // Font size (percentage, 100 = default)
   popupFontSize: 100,
+
+  // Anti-tampering exclusions
+  antiTamperingExcludedDomains: '',
 
   // Link safety settings
   linkSafety: {

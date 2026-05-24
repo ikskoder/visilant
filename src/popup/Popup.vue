@@ -36,6 +36,13 @@ function updateTranslations() {
     'noVisitData',
     'visitWebsite',
     'settings',
+    'antiTamperingProtected',
+    'antiTamperingNotProtected',
+    'antiTamperingDisableForSite',
+    'antiTamperingEnableForSite',
+    'antiTamperingTooltipWhat',
+    'antiTamperingTooltipOn',
+    'antiTamperingTooltipOff',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -111,6 +118,39 @@ function setSortOption(option: 'name' | 'visits') {
 
 function openOptionsPage() {
   browser.runtime.openOptionsPage()
+}
+
+const isAntiTamperingExcluded = computed(() => {
+  const hostname = currentHostname.value
+  if (!hostname)
+    return false
+  const excludedStr = settings.value.antiTamperingExcludedDomains || ''
+  if (!excludedStr)
+    return false
+  const excluded = excludedStr.split(/[,\n]/).map(d => d.trim().toLowerCase()).filter(Boolean)
+  const lowerHostname = hostname.toLowerCase()
+  return excluded.some(domain => lowerHostname === domain || lowerHostname.endsWith(`.${domain}`))
+})
+
+function toggleAntiTampering() {
+  const hostname = currentHostname.value
+  if (!hostname)
+    return
+
+  const excludedStr = settings.value.antiTamperingExcludedDomains || ''
+  const excluded = excludedStr.split(/[,\n]/).map(d => d.trim().toLowerCase()).filter(Boolean)
+  const lowerHostname = hostname.toLowerCase()
+
+  if (isAntiTamperingExcluded.value) {
+    // Remove from exclusion list
+    const filtered = excluded.filter(d => d !== lowerHostname)
+    settings.value.antiTamperingExcludedDomains = filtered.join('\n')
+  }
+  else {
+    // Add to exclusion list
+    excluded.push(lowerHostname)
+    settings.value.antiTamperingExcludedDomains = excluded.join('\n')
+  }
 }
 
 function getCountColor(count: number) {
@@ -198,7 +238,7 @@ onMounted(async () => {
   <div :class="isStandalonePage ? 'min-h-screen flex justify-center bg-gray-50 py-8' : ''">
     <main
       class="px-4 py-5 text-gray-700 relative"
-      :class="isStandalonePage ? 'w-[600px] bg-white rounded-xl shadow-lg border border-gray-200' : 'w-[600px] min-h-[400px]'"
+      :class="isStandalonePage ? 'w-[600px] bg-white rounded-xl shadow-lg border border-gray-200' : 'w-[600px]'"
       :style="{ fontSize: `${settings.popupFontSize}%` }"
     >
       <div class="flex justify-between items-center mb-4">
@@ -265,6 +305,28 @@ onMounted(async () => {
               {{ currentDomainCount }}
             </div>
           </div>
+          <!-- Anti-Tampering Status -->
+          <div class="mt-2 pt-2 border-t border-gray-200 flex items-center justify-between">
+            <div
+              class="flex items-center gap-1.5 cursor-help"
+              :title="`${translations.antiTamperingTooltipWhat}\n\n${isAntiTamperingExcluded ? translations.antiTamperingTooltipOff : translations.antiTamperingTooltipOn}`"
+            >
+              <div
+                class="w-2 h-2 rounded-full flex-shrink-0"
+                :class="isAntiTamperingExcluded ? 'bg-amber-400' : 'bg-green-500'"
+              />
+              <span class="text-[11px]" :class="isAntiTamperingExcluded ? 'text-amber-600' : 'text-gray-400'">
+                {{ isAntiTamperingExcluded ? translations.antiTamperingNotProtected : translations.antiTamperingProtected }}
+              </span>
+            </div>
+            <button
+              class="text-[11px] text-blue-500 hover:text-blue-700 hover:underline transition-colors"
+              :title="isAntiTamperingExcluded ? translations.antiTamperingTooltipOn : translations.antiTamperingTooltipOff"
+              @click="toggleAntiTampering"
+            >
+              {{ isAntiTamperingExcluded ? translations.antiTamperingEnableForSite : translations.antiTamperingDisableForSite }}
+            </button>
+          </div>
         </div>
 
         <div v-if="relatedDomains.length > 0">
@@ -329,7 +391,7 @@ onMounted(async () => {
 
           <div
             class="overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100 shadow-sm"
-            :class="isStandalonePage ? '' : 'max-h-[300px]'"
+            :class="isStandalonePage ? '' : 'max-h-[265px]'"
             style="font-size: 1.1em;"
           >
             <div
@@ -377,6 +439,11 @@ onMounted(async () => {
 </template>
 
 <style>
+/* Prevent popup-level scrollbar */
+html, body {
+  overflow: hidden;
+}
+
 /* Hide scrollbar for Chrome, Safari and Opera */
 .overflow-y-auto::-webkit-scrollbar {
   display: none;

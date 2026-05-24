@@ -554,5 +554,49 @@
   "linkTooltipMarkAsShortener": {
     "message": "Це скорочувач",
     "description": "Button to mark current domain as a URL shortener"
+  },
+  "antiTamperingSettings": {
+    "message": "Захист від втручання",
+    "description": "Title for anti-tampering settings section"
+  },
+  "antiTamperingSettingsDesc": {
+    "message": "Виявляє спроби сторінки примусово видалити інтерфейс розширення з DOM. При виявленні втручання ви отримаєте критичне попередження безпеки. Деякі легітимні сайти (особливо SPA або сайти з агресивним очищенням DOM) можуть викликати хибні спрацьовування — додайте їх до списку виключень нижче",
+    "description": "Description for anti-tampering settings"
+  },
+  "antiTamperingExcludedDomains": {
+    "message": "Виключені домени",
+    "description": "Label for anti-tampering excluded domains textarea"
+  },
+  "antiTamperingExcludedDomainsDesc": {
+    "message": "Захист від втручання буде вимкнено на цих доменах (по одному на рядок або через кому)",
+    "description": "Description for excluded domains setting"
+  },
+  "antiTamperingProtected": {
+    "message": "Захист від втручання: увімкнений",
+    "description": "Status text when anti-tampering protection is enabled for the current site"
+  },
+  "antiTamperingNotProtected": {
+    "message": "Захист від втручання: вимкнений",
+    "description": "Status text when anti-tampering protection is disabled for the current site"
+  },
+  "antiTamperingDisableForSite": {
+    "message": "Вимкнути",
+    "description": "Button in popup to disable anti-tampering for current site"
+  },
+  "antiTamperingEnableForSite": {
+    "message": "Увімкнути",
+    "description": "Button in popup to re-enable anti-tampering for current site"
+  },
+  "antiTamperingTooltipWhat": {
+    "message": "Захист від втручання відстежує, чи не намагається сторінка видалити інтерфейс розширення. Шкідливі сайти можуть робити це, щоб приховати попередження безпеки.",
+    "description": "Tooltip explaining what anti-tampering does"
+  },
+  "antiTamperingTooltipOn": {
+    "message": "Захист активний. Ви отримаєте попередження, якщо сайт спробує втрутитися в роботу розширення. Вимкніть, якщо цей сайт викликає хибні спрацьовування.",
+    "description": "Tooltip explaining the enabled state"
+  },
+  "antiTamperingTooltipOff": {
+    "message": "Захист вимкнений для цього сайту. Втручання не буде виявлено. Увімкніть, якщо хибні спрацьовування на цьому сайті більше не виникають.",
+    "description": "Tooltip explaining the disabled state"
   }
 }
