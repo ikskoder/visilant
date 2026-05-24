@@ -82,15 +82,20 @@ function handleTooltipDetails(domain: string) {
 
 // Link intercept handlers
 function handleInterceptContinue() {
-  const url = linkInterceptData.value?.url
+  const data = linkInterceptData.value
   linkInterceptVisible.value = false
   linkInterceptData.value = null
   if (linkInterceptResolve.value) {
     linkInterceptResolve.value(true)
     linkInterceptResolve.value = null
   }
-  if (url)
-    window.location.href = url
+  if (data?.url) {
+    const target = data.target || '_self'
+    if (target === '_blank' || target === '_new')
+      window.open(data.url, '_blank', 'noopener,noreferrer')
+    else
+      window.location.href = data.url
+  }
 }
 
 function handleInterceptCancel() {
@@ -126,6 +131,7 @@ onMounted(async () => {
     :data="linkTooltipData"
     :show-go-button="settings.linkSafety?.tooltipTrigger === 'click-left'"
     :font-size="settings.popupFontSize"
+    :show-visit-count="settings.linkSafety?.showVisitCount ?? 'always'"
     @hover-enter="handleTooltipHoverEnter"
     @close="handleTooltipClose"
     @go="handleTooltipGo"
@@ -135,8 +141,10 @@ onMounted(async () => {
   <LinkInterceptDialog
     :visible="linkInterceptVisible"
     :data="linkInterceptData"
+    :show-visit-count="settings.linkSafety?.showVisitCount || 'always'"
     @continue="handleInterceptContinue"
     @cancel="handleInterceptCancel"
+    @details="handleTooltipDetails"
   />
 </template>
 

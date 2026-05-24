@@ -11,7 +11,7 @@ export interface LinkTooltipData {
   domain: string
   count: number
   isSafe: boolean
-  mismatch: { textDomain: string } | null
+  mismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null
   punycode: string | null
   position: { top: number, left: number }
   href: string
@@ -24,9 +24,10 @@ export const linkTooltipData = ref<LinkTooltipData | null>(null)
 export interface LinkInterceptData {
   domain: string
   url: string
+  target: string
   count: number
   isSafe: boolean
-  mismatch: { textDomain: string } | null
+  mismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null
   punycode: string | null
 }
 

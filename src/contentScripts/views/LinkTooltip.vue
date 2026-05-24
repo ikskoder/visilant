@@ -3,12 +3,14 @@ import type { LinkTooltipData } from '~/logic/ui-state'
 import { computed } from 'vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
+import MismatchTable from './MismatchTable.vue'
 
 const props = defineProps<{
   visible: boolean
   data: LinkTooltipData | null
   showGoButton: boolean
   fontSize: number
+  showVisitCount: 'always' | 'never' | 'unfamiliar' | 'familiar'
 }>()
 
 const emit = defineEmits<{
@@ -20,7 +22,25 @@ const emit = defineEmits<{
 
 const fontScale = computed(() => props.fontSize / 100)
 
+function shouldShowCount(isSafe: boolean) {
+  switch (props.showVisitCount) {
+    case 'always': return true
+    case 'never': return false
+    case 'unfamiliar': return !isSafe
+    case 'familiar': return isSafe
+    default: return true
+  }
+}
+
 const { t } = useI18n()
+
+const statusLabel = computed(() => (isSafe: boolean, count: number) => {
+  if (isSafe)
+    return { text: t.value('linkTooltipFamiliar'), class: 'text-green-400' }
+  if (count === 0)
+    return { text: t.value('linkTooltipNeverVisited'), class: 'text-red-400' }
+  return { text: t.value('linkTooltipUnfamiliar'), class: 'text-yellow-400' }
+})
 </script>
 
 <template>
@@ -32,82 +52,99 @@ const { t } = useI18n()
       @mouseenter="emit('hoverEnter')"
       @mouseleave="emit('close')"
     >
-      <div class="tooltip-container bg-gray-900 bg-opacity-95 rounded-lg shadow-2xl border border-gray-700/50 p-3" :style="{ fontSize: `${fontScale}em` }">
-        <!-- Destination domain -->
-        <div class="flex items-center gap-2 mb-1">
-          <span class="tooltip-label text-gray-400">{{ t('linkTooltipDestination') }}</span>
-        </div>
-        <div class="flex items-center gap-2 mb-2">
-          <!-- Safety indicator dot -->
-          <span
-            class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-            :class="data.isSafe ? 'bg-green-500' : 'bg-red-500'"
-          />
-          <span class="text-white font-medium tooltip-domain">
-            <SecureText :text="data.domain" :force-highlight="true" />
-          </span>
-        </div>
-
-        <!-- Visit count & safety label -->
-        <div class="flex items-center gap-3 mb-2">
-          <span class="tooltip-label text-gray-400">
-            {{ t('linkTooltipVisits') }}:
-            <span class="text-white font-medium">{{ data.count }}</span>
-          </span>
-          <span
-            class="tooltip-label px-1.5 py-0.5 rounded"
-            :class="data.isSafe
-              ? 'bg-green-900/40 text-green-400'
-              : data.count === 0
-                ? 'bg-red-900/40 text-red-400'
-                : 'bg-yellow-900/40 text-yellow-400'"
-          >
-            {{ data.isSafe
-              ? t('linkTooltipFamiliar')
-              : data.count === 0
-                ? t('linkTooltipNeverVisited')
-                : t('linkTooltipUnfamiliar')
-            }}
-          </span>
-        </div>
-
-        <!-- Punycode warning -->
-        <div v-if="data.punycode" class="flex items-center gap-1 mb-2 tooltip-label text-yellow-400">
-          <span>{{ t('linkTooltipPunycode') }}: {{ data.punycode }}</span>
-        </div>
-
-        <!-- Mismatch warning -->
-        <div v-if="data.mismatch" class="bg-red-900/40 border border-red-500/40 rounded p-2 mb-2">
-          <div class="flex items-center gap-1 mb-1">
-            <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div class="tooltip-container bg-gray-900 bg-opacity-95 rounded-lg shadow-2xl border border-gray-700/50 p-3" :class="{ 'tooltip-wide': data.mismatch }" :style="{ fontSize: `${fontScale}em` }">
+        <!-- Mismatch: warning + comparison table -->
+        <template v-if="data.mismatch">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-6 h-6 text-red-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
             <span class="tooltip-label text-red-400 font-medium">{{ t('linkTooltipMismatchWarning') }}</span>
           </div>
-          <div class="tooltip-label text-red-300">
-            {{ t('linkTooltipShowsDomain') }}: <span class="font-medium">{{ data.mismatch.textDomain }}</span>
-          </div>
-          <div class="tooltip-label text-red-300">
-            {{ t('linkTooltipLeadsTo') }}: <span class="font-medium">{{ data.domain }}</span>
-          </div>
-        </div>
 
-        <!-- Action buttons -->
-        <div class="flex gap-2 mt-1">
+          <MismatchTable
+            class="tooltip-label mb-2"
+            :text-domain="data.mismatch.textDomain"
+            :text-domain-is-safe="data.mismatch.textDomainIsSafe"
+            :text-domain-count="data.mismatch.textDomainCount"
+            :dest-domain="data.domain"
+            :dest-is-safe="data.isSafe"
+            :dest-count="data.count"
+            :show-visit-count="showVisitCount"
+            cell-padding="p-1.5"
+            @details="emit('details', $event)"
+          />
+
+          <!-- Punycode warning -->
+          <div v-if="data.punycode" class="flex items-center gap-1 mb-2 tooltip-label text-yellow-400">
+            <span>{{ t('linkTooltipPunycode') }}: {{ data.punycode }}</span>
+          </div>
+
+          <!-- Go button -->
           <button
             v-if="showGoButton"
-            class="flex-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors tooltip-label text-center"
+            class="w-full px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded border border-gray-600 transition-colors tooltip-label text-center"
             @click="emit('go', data.href)"
           >
             {{ t('linkTooltipGoToLink') }} &rarr;
           </button>
-          <button
-            class="flex-1 px-3 py-1.5 bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 rounded transition-colors tooltip-label text-center"
-            @click="emit('details', data.domain)"
-          >
-            {{ t('linkTooltipDetails') }}
-          </button>
-        </div>
+        </template>
+
+        <!-- No mismatch: standard view -->
+        <template v-else>
+          <!-- Destination label + status -->
+          <div class="flex items-center flex-wrap gap-1.5 mb-1">
+            <span class="tooltip-label text-gray-400">{{ t('linkTooltipDestination') }}</span>
+            <span
+              class="tooltip-label px-1.5 py-0.5 rounded"
+              :class="data.isSafe
+                ? 'bg-green-900/40 text-green-400'
+                : data.count === 0
+                  ? 'bg-red-900/40 text-red-400'
+                  : 'bg-yellow-900/40 text-yellow-400'"
+            >
+              {{ statusLabel(data.isSafe, data.count).text.toLowerCase() }}
+            </span>
+          </div>
+
+          <!-- Domain -->
+          <div class="flex items-center gap-2 mb-1">
+            <span
+              class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+              :class="data.isSafe ? 'bg-green-500' : 'bg-red-500'"
+            />
+            <span class="text-white font-medium tooltip-domain">
+              <SecureText :text="data.domain" :force-highlight="true" :danger-only="true" />
+            </span>
+          </div>
+
+          <!-- Visit count -->
+          <div v-if="shouldShowCount(data.isSafe)" class="tooltip-label text-white mb-2">
+            {{ t('linkTooltipVisits') }}: {{ data.count }}
+          </div>
+
+          <!-- Punycode warning -->
+          <div v-if="data.punycode" class="flex items-center gap-1 mb-2 tooltip-label text-yellow-400">
+            <span>{{ t('linkTooltipPunycode') }}: {{ data.punycode }}</span>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="flex gap-2 mt-1">
+            <button
+              v-if="showGoButton"
+              class="flex-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded border border-gray-600 transition-colors tooltip-label text-center"
+              @click="emit('go', data.href)"
+            >
+              {{ t('linkTooltipGoToLink') }} &rarr;
+            </button>
+            <button
+              class="flex-1 px-3 py-1.5 bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 rounded border border-gray-600 transition-colors tooltip-label text-center"
+              @click="emit('details', data.domain)"
+            >
+              {{ t('linkTooltipDetails') }}
+            </button>
+          </div>
+        </template>
       </div>
     </div>
   </Transition>
@@ -118,9 +155,21 @@ const { t } = useI18n()
   font-family: Arial, Helvetica, sans-serif !important;
 }
 
+button {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  outline: none !important;
+}
+
 .tooltip-container {
-  width: 320px !important;
+  min-width: 200px !important;
+  max-width: 600px !important;
+  width: auto !important;
   box-sizing: border-box !important;
+}
+
+.tooltip-container.tooltip-wide {
+  width: 600px !important;
 }
 
 .tooltip-label {

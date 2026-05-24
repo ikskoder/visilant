@@ -35,7 +35,8 @@ export interface Settings {
 
 export interface LinkSafetySettings {
   enabled: boolean
-  tooltipTrigger: 'hover' | 'click-left' | 'click-right'
+  tooltipTrigger: 'hover' | 'click-left'
+  showVisitCount: 'always' | 'never' | 'unfamiliar' | 'familiar'
   interceptEnabled: boolean
   scopeMode: 'everywhere' | 'whitelist' | 'blacklist'
   scopeDomains: string
@@ -74,6 +75,7 @@ export const defaultSettings: Settings = {
   linkSafety: {
     enabled: true,
     tooltipTrigger: 'hover',
+    showVisitCount: 'always',
     interceptEnabled: false,
     scopeMode: 'everywhere',
     scopeDomains: '',

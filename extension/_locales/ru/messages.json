@@ -304,7 +304,7 @@
     "description": "Title for link safety settings section"
   },
   "linkSafetySettingsDesc": {
-    "message": "Анализ ссылок на страницах и предупреждения о незнакомых или подозрительных адресах",
+    "message": "Узнайте куда ведёт ссылка до перехода. Некоторые сайты могут навредить в момент открытия — без ввода данных и каких-либо действий",
     "description": "Description for link safety feature"
   },
   "linkSafetyEnabled": {
@@ -312,7 +312,7 @@
     "description": "Label for link safety master toggle"
   },
   "linkTooltipTrigger": {
-    "message": "Триггер подсказки",
+    "message": "Способ активации подсказки",
     "description": "Label for tooltip trigger selection"
   },
   "linkTooltipTriggerHover": {
@@ -320,12 +320,28 @@
     "description": "Tooltip trigger option: hover"
   },
   "linkTooltipTriggerClickLeft": {
-    "message": "По левому клику",
+    "message": "По клику",
     "description": "Tooltip trigger option: left click"
   },
-  "linkTooltipTriggerClickRight": {
-    "message": "По правому клику",
-    "description": "Tooltip trigger option: right click"
+  "linkShowVisitCount": {
+    "message": "Показывать кол-во посещений в подсказке",
+    "description": "Setting label for visit count display mode"
+  },
+  "linkShowVisitCountAlways": {
+    "message": "Всегда",
+    "description": "Show visit count for all links"
+  },
+  "linkShowVisitCountNever": {
+    "message": "Никогда",
+    "description": "Never show visit count"
+  },
+  "linkShowVisitCountUnfamiliar": {
+    "message": "Только для незнакомых сайтов",
+    "description": "Show visit count only for unfamiliar sites"
+  },
+  "linkShowVisitCountFamiliar": {
+    "message": "Только для знакомых сайтов",
+    "description": "Show visit count only for familiar sites"
   },
   "linkInterceptEnabled": {
     "message": "Перехват навигации",
@@ -364,16 +380,20 @@
     "description": "Label for familiar/safe site in tooltip"
   },
   "linkTooltipUnfamiliar": {
-    "message": "Незнакомый сайт",
+    "message": "Малознакомый сайт",
     "description": "Label for unfamiliar/unsafe site in tooltip"
   },
   "linkTooltipNeverVisited": {
-    "message": "Не посещался",
+    "message": "Незнакомый сайт",
     "description": "Label when site has 0 visits"
   },
   "linkTooltipMismatchWarning": {
-    "message": "Текст ссылки показывает другой домен, чем фактический адрес!",
+    "message": "Ссылка ведёт не туда, куда написано!",
     "description": "Warning about mismatched link text and href"
+  },
+  "linkInterceptMismatchWarning": {
+    "message": "Более того — ссылка ведёт совсем не туда, куда написано!",
+    "description": "Mismatch warning in intercept dialog (adds to existing unfamiliar site warning)"
   },
   "linkTooltipShowsDomain": {
     "message": "Показывает",
@@ -395,13 +415,21 @@
     "message": "Подробнее",
     "description": "Button to open detailed domain info in a new tab"
   },
+  "mismatchVisitsHidden": {
+    "message": "скрыто настройками",
+    "description": "Shown in mismatch table when visit count is hidden per user settings"
+  },
   "linkInterceptTitle": {
-    "message": "Незнакомый сайт впереди",
+    "message": "Незнакомый сайт",
     "description": "Title for navigation intercept dialog"
   },
   "linkInterceptMessage": {
-    "message": "Вы собираетесь перейти на сайт, который посещали очень редко",
+    "message": "Вы собираетесь перейти на малознакомый сайт",
     "description": "Message in navigation intercept dialog"
+  },
+  "linkInterceptPhishingHint": {
+    "message": "Если вы считаете, что этот сайт должен быть отмечен как знакомый — возможно, он выдаёт себя за другой сайт",
+    "description": "Phishing warning hint in intercept dialog"
   },
   "linkInterceptContinue": {
     "message": "Всё равно перейти",
@@ -411,8 +439,16 @@
     "message": "Назад",
     "description": "Button to cancel navigation"
   },
+  "linkInterceptDomain": {
+    "message": "Домен",
+    "description": "Row label for domain name in mismatch comparison table"
+  },
+  "linkInterceptStatus": {
+    "message": "Статус",
+    "description": "Row label for familiarity status in mismatch comparison table"
+  },
   "linkTooltipDestination": {
-    "message": "Назначение",
+    "message": "Ведёт на",
     "description": "Label for destination domain in tooltip"
   },
   "linkContextMenuCheck": {

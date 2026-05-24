@@ -67,7 +67,11 @@ function updateTranslations() {
     'linkTooltipTrigger',
     'linkTooltipTriggerHover',
     'linkTooltipTriggerClickLeft',
-    'linkTooltipTriggerClickRight',
+    'linkShowVisitCount',
+    'linkShowVisitCountAlways',
+    'linkShowVisitCountNever',
+    'linkShowVisitCountUnfamiliar',
+    'linkShowVisitCountFamiliar',
     'linkInterceptEnabled',
     'linkInterceptEnabledDesc',
     'linkScopeMode',
@@ -477,12 +481,42 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   >
                   <span class="ml-2">{{ translations.linkTooltipTriggerClickLeft }}</span>
                 </label>
+              </div>
+            </div>
+
+            <!-- Show Visit Count -->
+            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h3 class="text-left text-sm font-medium mb-3">
+                {{ translations.linkShowVisitCount }}:
+              </h3>
+              <div class="space-y-2">
                 <label class="flex items-center">
                   <input
-                    v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-right"
+                    v-model="settings.linkSafety.showVisitCount" type="radio" value="always"
                     class="form-radio h-4 w-4 text-teal-600"
                   >
-                  <span class="ml-2">{{ translations.linkTooltipTriggerClickRight }}</span>
+                  <span class="ml-2">{{ translations.linkShowVisitCountAlways }}</span>
+                </label>
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.showVisitCount" type="radio" value="unfamiliar"
+                    class="form-radio h-4 w-4 text-teal-600"
+                  >
+                  <span class="ml-2">{{ translations.linkShowVisitCountUnfamiliar }}</span>
+                </label>
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.showVisitCount" type="radio" value="familiar"
+                    class="form-radio h-4 w-4 text-teal-600"
+                  >
+                  <span class="ml-2">{{ translations.linkShowVisitCountFamiliar }}</span>
+                </label>
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.showVisitCount" type="radio" value="never"
+                    class="form-radio h-4 w-4 text-teal-600"
+                  >
+                  <span class="ml-2">{{ translations.linkShowVisitCountNever }}</span>
                 </label>
               </div>
             </div>

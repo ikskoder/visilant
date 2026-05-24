@@ -304,7 +304,7 @@
     "description": "Title for link safety settings section"
   },
   "linkSafetySettingsDesc": {
-    "message": "Analyze links on pages and warn about unfamiliar or suspicious destinations",
+    "message": "Know where a link leads before you click. Some sites can cause harm the moment you open them — no login or interaction required",
     "description": "Description for link safety feature"
   },
   "linkSafetyEnabled": {
@@ -320,12 +320,28 @@
     "description": "Tooltip trigger option: hover"
   },
   "linkTooltipTriggerClickLeft": {
-    "message": "On left click",
+    "message": "On click",
     "description": "Tooltip trigger option: left click"
   },
-  "linkTooltipTriggerClickRight": {
-    "message": "On right click",
-    "description": "Tooltip trigger option: right click"
+  "linkShowVisitCount": {
+    "message": "Show visit count in tooltip",
+    "description": "Setting label for visit count display mode"
+  },
+  "linkShowVisitCountAlways": {
+    "message": "Always",
+    "description": "Show visit count for all links"
+  },
+  "linkShowVisitCountNever": {
+    "message": "Never",
+    "description": "Never show visit count"
+  },
+  "linkShowVisitCountUnfamiliar": {
+    "message": "Only for unfamiliar sites",
+    "description": "Show visit count only for unfamiliar sites"
+  },
+  "linkShowVisitCountFamiliar": {
+    "message": "Only for familiar sites",
+    "description": "Show visit count only for familiar sites"
   },
   "linkInterceptEnabled": {
     "message": "Navigation intercept",
@@ -375,6 +391,10 @@
     "message": "Link text shows a different domain than the actual destination!",
     "description": "Warning about mismatched link text and href"
   },
+  "linkInterceptMismatchWarning": {
+    "message": "On top of that, the link doesn't lead where it says!",
+    "description": "Mismatch warning in intercept dialog (adds to existing unfamiliar site warning)"
+  },
   "linkTooltipShowsDomain": {
     "message": "Shows",
     "description": "Prefix for the domain shown in link text"
@@ -395,6 +415,10 @@
     "message": "Details",
     "description": "Button to open detailed domain info in a new tab"
   },
+  "mismatchVisitsHidden": {
+    "message": "hidden by settings",
+    "description": "Shown in mismatch table when visit count is hidden per user settings"
+  },
   "linkInterceptTitle": {
     "message": "Unfamiliar site ahead",
     "description": "Title for navigation intercept dialog"
@@ -403,6 +427,10 @@
     "message": "You are about to visit a site you have rarely visited before",
     "description": "Message in navigation intercept dialog"
   },
+  "linkInterceptPhishingHint": {
+    "message": "If you believe this site should be marked as familiar based on your past visits, it may be impersonating a site you trust",
+    "description": "Phishing warning hint in intercept dialog"
+  },
   "linkInterceptContinue": {
     "message": "Continue anyway",
     "description": "Button to proceed with navigation"
@@ -410,6 +438,14 @@
   "linkInterceptGoBack": {
     "message": "Go back",
     "description": "Button to cancel navigation"
+  },
+  "linkInterceptDomain": {
+    "message": "Domain",
+    "description": "Row label for domain name in mismatch comparison table"
+  },
+  "linkInterceptStatus": {
+    "message": "Status",
+    "description": "Row label for familiarity status in mismatch comparison table"
   },
   "linkTooltipDestination": {
     "message": "Destination",

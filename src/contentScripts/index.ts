@@ -296,6 +296,13 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
   const linkText = anchor.textContent || ''
   const mismatchResult = checkDomainMismatch(linkText, hostname)
 
+  // Fetch textDomain visit data if mismatch
+  let mismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null = null
+  if (mismatchResult.mismatch && mismatchResult.textDomain) {
+    const textDomainData = await fetchLinkData(`https://${mismatchResult.textDomain}`, mismatchResult.textDomain)
+    mismatch = { textDomain: mismatchResult.textDomain, textDomainCount: textDomainData.count, textDomainIsSafe: textDomainData.isSafe }
+  }
+
   // Check for punycode/unicode
   const punycodeResult = getPunycodeInfo(hostname)
 
@@ -305,7 +312,7 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
     domain: hostname,
     count: visitData.count,
     isSafe: visitData.isSafe,
-    mismatch: mismatchResult.mismatch ? { textDomain: mismatchResult.textDomain! } : null,
+    mismatch,
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
     position,
     href,
@@ -313,40 +320,55 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
   linkTooltipVisible.value = true
 }
 
-async function handleLinkIntercept(anchor: HTMLAnchorElement, event: MouseEvent): Promise<boolean> {
-  const linkSafety = settings.value.linkSafety
-  if (!linkSafety?.interceptEnabled)
-    return false
+function navigateToUrl(url: string, target: string) {
+  if (target === '_blank' || target === '_new')
+    window.open(url, '_blank', 'noopener,noreferrer')
+  else
+    window.location.href = url
+}
 
+async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: boolean): Promise<boolean> {
   const href = anchor.href
+  const target = openInNewTab ? '_blank' : (anchor.target || '_self')
   const hostname = getHostnameFromHref(href)
-  if (!hostname)
+  if (!hostname) {
+    navigateToUrl(href, target)
     return false
+  }
 
   const currentHostname = window.location.hostname
-  if (!isExternalLink(href, currentHostname))
+  if (!isExternalLink(href, currentHostname)) {
+    navigateToUrl(href, target)
     return false
+  }
 
   const visitData = await fetchLinkData(href, hostname)
 
-  // Only intercept unfamiliar sites
-  if (visitData.isSafe)
+  // Safe site — allow navigation
+  if (visitData.isSafe) {
+    navigateToUrl(href, target)
     return false
-
-  event.preventDefault()
-  event.stopPropagation()
+  }
 
   // Check for mismatch and punycode
   const linkText = anchor.textContent || ''
   const mismatchResult = checkDomainMismatch(linkText, hostname)
   const punycodeResult = getPunycodeInfo(hostname)
 
+  // Fetch textDomain visit data if mismatch
+  let interceptMismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null = null
+  if (mismatchResult.mismatch && mismatchResult.textDomain) {
+    const textDomainData = await fetchLinkData(`https://${mismatchResult.textDomain}`, mismatchResult.textDomain)
+    interceptMismatch = { textDomain: mismatchResult.textDomain, textDomainCount: textDomainData.count, textDomainIsSafe: textDomainData.isSafe }
+  }
+
   linkInterceptData.value = {
     domain: hostname,
     url: href,
+    target,
     count: visitData.count,
     isSafe: visitData.isSafe,
-    mismatch: mismatchResult.mismatch ? { textDomain: mismatchResult.textDomain! } : null,
+    mismatch: interceptMismatch,
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
   }
   linkInterceptVisible.value = true
@@ -452,8 +474,11 @@ function setupLinkSafety() {
     }
 
     // Navigation intercept (only for left clicks, not already handled by click-left trigger)
+    // Block navigation immediately (synchronously) before async check
     if (linkSafety.interceptEnabled && event.button === 0) {
-      handleLinkIntercept(anchor, event)
+      event.preventDefault()
+      event.stopPropagation()
+      handleLinkIntercept(anchor, event.ctrlKey || event.metaKey)
     }
   }
 
