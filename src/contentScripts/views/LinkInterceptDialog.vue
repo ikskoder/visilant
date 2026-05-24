@@ -11,6 +11,7 @@ const props = defineProps<{
   showVisitCount: 'always' | 'never' | 'unfamiliar' | 'familiar'
   showFullUrl: boolean
   traceChain: boolean
+  shortUrlMode: 'off' | 'button' | 'auto'
 }>()
 
 const emit = defineEmits<{
@@ -21,6 +22,14 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+function handleResolveOnce() {
+  ;(window as any).__visilant_resolveInterceptOnce?.()
+}
+
+function handleMarkAsShortener() {
+  ;(window as any).__visilant_markInterceptAsShortener?.()
+}
 
 function shouldShowCount(isSafe: boolean) {
   switch (props.showVisitCount) {
@@ -43,6 +52,11 @@ const statusLabel = computed(() => (isSafe: boolean, count: number) => {
 const hasTraceData = computed(() => {
   return props.traceChain && props.data?.shortUrl?.status === 'resolved' && (props.data.shortUrl.chain.length > 2)
 })
+
+// After tracing, if the resolved destination is safe — soften the warning
+const resolvedIsSafe = computed(() => {
+  return props.data?.shortUrl?.status === 'resolved' && props.data.shortUrl.resolvedIsSafe
+})
 </script>
 
 <template>
@@ -57,6 +71,16 @@ const hasTraceData = computed(() => {
 
       <!-- Dialog card -->
       <div class="relative dialog-container bg-gray-900 rounded-xl shadow-2xl border border-gray-700/50 p-6" :class="{ 'dialog-wide': data?.mismatch, 'dialog-full': hasTraceData }">
+        <!-- Close button -->
+        <button
+          class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-gray-500 hover:text-white rounded-lg hover:bg-gray-700/50 transition-colors"
+          @click="emit('cancel')"
+        >
+          <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
         <!-- Warning icon -->
         <div class="flex items-center gap-3 mb-4">
           <div class="flex-shrink-0 relative">
@@ -210,14 +234,24 @@ const hasTraceData = computed(() => {
             <div class="mt-3 dialog-label text-white italic" style="font-size: 11px !important;">
               {{ t('linkTooltipResolveDisclaimer') }}
             </div>
+
+            <!-- Mark as shortener after successful resolve (only if not already known) -->
+            <button
+              v-if="!data.shortUrl.isKnownShortener"
+              class="w-full mt-3 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 rounded-lg border border-gray-700 transition-colors dialog-button text-center"
+              @click.stop="handleMarkAsShortener()"
+            >
+              {{ t('linkTooltipMarkAsShortener') }}
+            </button>
           </div>
 
           <!-- Short URL: error -->
           <div v-if="data.shortUrl?.status === 'error'" class="mt-3 pt-3 border-t border-gray-700">
             <div class="dialog-label text-gray-400 mb-2">
-              {{ t('linkTooltipResolveError') }}
+              {{ data.shortUrl.error === 'same_domain' ? t('linkTooltipResolveSameDomain') : t('linkTooltipResolveError') }}
             </div>
             <button
+              v-if="data.shortUrl.error !== 'same_domain'"
               class="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg border border-gray-600 transition-colors dialog-button text-center"
               @click="emit('resolveShortUrl')"
             >
@@ -229,25 +263,38 @@ const hasTraceData = computed(() => {
           <div v-if="data.punycode" class="dialog-label text-yellow-400 mt-2">
             {{ t('linkTooltipPunycode') }}: {{ data.punycode }}
           </div>
+
+          <!-- Resolve once + Mark as shortener: shown when domain is not detected as shortener and short URL detection is enabled -->
+          <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-3 pt-3 border-t border-gray-700">
+            <button
+              class="flex-1 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded-lg border border-gray-700 transition-colors dialog-button text-center"
+              @click.stop="handleResolveOnce()"
+            >
+              {{ t('linkTooltipResolveOnce') }}
+            </button>
+            <button
+              class="flex-1 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 rounded-lg border border-gray-700 transition-colors dialog-button text-center"
+              @click.stop="handleMarkAsShortener()"
+            >
+              {{ t('linkTooltipMarkAsShortener') }}
+            </button>
+          </div>
         </div>
 
         <!-- Action buttons -->
         <div class="flex gap-3">
           <button
-            class="flex-1 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg border border-gray-600 transition-colors dialog-button font-medium"
-            @click="emit('cancel')"
-          >
-            {{ t('linkInterceptGoBack') }}
-          </button>
-          <button
             v-if="!data.mismatch"
-            class="px-4 py-2.5 bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 rounded-lg border border-gray-600 transition-colors dialog-button"
+            class="flex-1 px-4 py-2.5 bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 rounded-lg border border-gray-600 transition-colors dialog-button"
             @click="emit('details', data.shortUrl?.status === 'resolved' ? data.shortUrl.resolvedDomain : data.domain)"
           >
-            {{ t('linkTooltipDetails') }}
+            {{ t('linkInterceptDomainInfo') }}
           </button>
           <button
-            class="flex-1 px-4 py-2.5 bg-red-900/40 border border-red-700 hover:bg-red-800/50 text-red-300 hover:text-red-200 rounded-lg transition-colors dialog-button"
+            class="flex-1 px-4 py-2.5 rounded-lg border transition-colors dialog-button"
+            :class="resolvedIsSafe
+              ? 'bg-blue-700/60 border-blue-700 hover:bg-blue-600/60 text-white'
+              : 'bg-red-900/40 border-red-700 hover:bg-red-800/50 text-white'"
             @click="emit('continue')"
           >
             {{ t('linkInterceptContinue') }}

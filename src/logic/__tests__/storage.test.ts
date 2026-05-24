@@ -60,10 +60,6 @@ describe('defaultSettings', () => {
       expect(ls.showVisitCount).toBe('always')
     })
 
-    it('has intercept disabled by default', () => {
-      expect(ls.interceptEnabled).toBe(false)
-    })
-
     it('has short URL mode set to button', () => {
       expect(ls.shortUrlMode).toBe('button')
     })

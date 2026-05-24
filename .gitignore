@@ -17,9 +17,9 @@ src/components.d.ts
 .eslintcache
 Build.md
 .cursor
+.claude
 .vscode
 Build.md
 .envrc
 .direnv
-.playwright-browsers
 test-results

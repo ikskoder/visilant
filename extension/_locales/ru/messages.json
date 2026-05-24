@@ -312,7 +312,7 @@
     "description": "Label for link safety master toggle"
   },
   "linkTooltipTrigger": {
-    "message": "Способ активации подсказки",
+    "message": "Способ активации",
     "description": "Label for tooltip trigger selection"
   },
   "linkTooltipTriggerHover": {
@@ -320,11 +320,23 @@
     "description": "Tooltip trigger option: hover"
   },
   "linkTooltipTriggerClickLeft": {
-    "message": "По клику",
-    "description": "Tooltip trigger option: left click"
+    "message": "По клику (перехват)",
+    "description": "Tooltip trigger option: left click shows intercept modal"
+  },
+  "linkTooltipTriggerClickLeftDesc": {
+    "message": "При клике на ссылку будет показано окно подтверждения вместо прямого перехода",
+    "description": "Description for left click trigger option"
+  },
+  "linkTooltipTriggerClickRight": {
+    "message": "По правому клику (контекстное меню)",
+    "description": "Tooltip trigger option: right click via context menu"
+  },
+  "linkTooltipTriggerClickRightDesc": {
+    "message": "При правом клике на ссылку в контекстном меню появится опция «Проверить безопасность ссылки»",
+    "description": "Description for right click trigger option"
   },
   "linkShowVisitCount": {
-    "message": "Показывать кол-во посещений в подсказке",
+    "message": "Показывать кол-во посещений при проверке ссылок",
     "description": "Setting label for visit count display mode"
   },
   "linkShowVisitCountAlways": {
@@ -471,6 +483,10 @@
     "message": "Если вы считаете, что этот сайт должен быть отмечен как знакомый — возможно, он выдаёт себя за другой сайт",
     "description": "Phishing warning hint in intercept dialog"
   },
+  "linkInterceptDomainInfo": {
+    "message": "Инфо про домен",
+    "description": "Button to open detailed domain info in a new tab (intercept dialog)"
+  },
   "linkInterceptContinue": {
     "message": "Всё равно перейти",
     "description": "Button to proceed with navigation"
@@ -491,9 +507,13 @@
     "message": "Ведёт на",
     "description": "Label for destination domain in tooltip"
   },
-  "linkContextMenuCheck": {
+  "linkContextMenuCheckDomain": {
+    "message": "Проверить безопасность домена",
+    "description": "Context menu item to check domain safety (opens popup tab)"
+  },
+  "linkContextMenuCheckLink": {
     "message": "Проверить безопасность ссылки",
-    "description": "Context menu item to check link safety"
+    "description": "Context menu item to check link safety (shows intercept dialog)"
   },
   "linkTooltipShortener": {
     "message": "сокращатель",
@@ -510,6 +530,10 @@
   "linkTooltipResolveError": {
     "message": "Не удалось определить адрес",
     "description": "Error state when URL resolution fails"
+  },
+  "linkTooltipResolveSameDomain": {
+    "message": "Домен назначения совпадает с доменом ссылки — либо это не сокращатель, либо на сайте жёсткая защита от ботов, которая не дала пройти по редиректу",
+    "description": "Error state when resolved URL has same domain as original"
   },
   "linkTooltipResolveButton": {
     "message": "Узнать реальный адрес",

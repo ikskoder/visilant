@@ -13,6 +13,7 @@ const props = defineProps<{
   showVisitCount: 'always' | 'never' | 'unfamiliar' | 'familiar'
   showFullUrl: boolean
   traceChain: boolean
+  shortUrlMode: 'off' | 'button' | 'auto'
 }>()
 
 const emit = defineEmits<{
@@ -361,9 +362,10 @@ onBeforeUnmount(() => {
           <!-- Short URL: error -->
           <div v-if="data.shortUrl?.status === 'error'" class="mt-2 mb-1">
             <div class="tooltip-label text-gray-400 mb-2">
-              {{ t('linkTooltipResolveError') }}
+              {{ data.shortUrl.error === 'same_domain' ? t('linkTooltipResolveSameDomain') : t('linkTooltipResolveError') }}
             </div>
             <button
+              v-if="data.shortUrl.error !== 'same_domain'"
               class="w-full px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded border border-gray-600 transition-colors tooltip-label text-center"
               @click.stop="handleResolveClick()"
             >
@@ -393,8 +395,8 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
-          <!-- Resolve once + Mark as shortener: shown when domain is not detected as shortener -->
-          <div v-if="!data.shortUrl" class="flex gap-2 mt-2">
+          <!-- Resolve once + Mark as shortener: shown when domain is not detected as shortener and short URL detection is enabled -->
+          <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-2">
             <button
               class="flex-1 px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded border border-gray-700 transition-colors tooltip-label text-center"
               @click.stop="handleResolveOnce()"

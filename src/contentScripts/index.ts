@@ -260,6 +260,77 @@ function getAnchorRect(anchor: HTMLAnchorElement) {
   return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }
 }
 
+// Show intercept dialog for a URL without an anchor element (used by right-click context menu)
+async function showLinkInterceptByUrl(url: string) {
+  const hostname = getHostnameFromHref(url)
+  if (!hostname)
+    return
+
+  const currentHostname = window.location.hostname
+  if (!isExternalLink(url, currentHostname))
+    return
+
+  const visitData = await fetchLinkData(url, hostname)
+  const punycodeResult = getPunycodeInfo(hostname)
+
+  // Handle shortened URLs
+  const shortUrlMode = settings.value.linkSafety.shortUrlMode
+  const isKnownShortener = isShortenedUrl(hostname)
+  const resolveAny = settings.value.linkSafety.shortUrlResolveAny
+  const shouldResolve = shortUrlMode === 'auto' && (isKnownShortener || resolveAny)
+  let shortUrlInfo: import('~/logic/ui-state').ShortUrlInfo | null = null
+
+  if (shouldResolve) {
+    try {
+      const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url })
+      if (result && result.status === 'resolved' && result.finalHostname && result.finalHostname !== hostname) {
+        const resolvedVisitData = await fetchLinkData(`https://${result.finalHostname}`, result.finalHostname)
+        shortUrlInfo = {
+          originalUrl: url,
+          resolvedUrl: result.finalUrl,
+          resolvedDomain: result.finalHostname,
+          resolvedCount: resolvedVisitData.count,
+          resolvedIsSafe: resolvedVisitData.isSafe,
+          chain: result.chain,
+          status: 'resolved',
+          isKnownShortener,
+        }
+      }
+    }
+    catch {
+      // Resolution failed — show intercept anyway
+    }
+  }
+  else if (shortUrlMode === 'button' && (isKnownShortener || resolveAny)) {
+    shortUrlInfo = {
+      originalUrl: url,
+      resolvedUrl: '',
+      resolvedDomain: '',
+      resolvedCount: 0,
+      resolvedIsSafe: false,
+      chain: [],
+      status: 'idle',
+      isKnownShortener,
+    }
+  }
+
+  linkInterceptData.value = {
+    domain: hostname,
+    url,
+    target: '_blank',
+    count: visitData.count,
+    isSafe: visitData.isSafe,
+    mismatch: null,
+    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    shortUrl: shortUrlInfo,
+  }
+  linkInterceptVisible.value = true
+
+  return new Promise<boolean>((resolve) => {
+    linkInterceptResolve.value = resolve
+  })
+}
+
 // Show tooltip for a URL without an anchor element (used by context menu)
 async function showLinkTooltipByUrl(url: string) {
   const hostname = getHostnameFromHref(url)
@@ -440,24 +511,20 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
     resolveAndUpdateTooltip(data.href, domain)
 }
 
-// Expose resolve function for intercept dialog button click
-;(window as any).__visilant_resolveInterceptUrl = async () => {
+// Core intercept resolve logic (shared by button click and resolve-once)
+async function resolveAndUpdateIntercept() {
   const data = linkInterceptData.value
-  if (!data?.shortUrl || (data.shortUrl.status !== 'idle' && data.shortUrl.status !== 'error'))
+  if (!data?.shortUrl)
     return
 
-  // Set loading state
-  linkInterceptData.value = {
-    ...data,
-    shortUrl: { ...data.shortUrl, status: 'loading' },
-  }
+  const url = data.url
+  const isKnownShortener = data.shortUrl.isKnownShortener
 
   try {
-    const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url: data.url })
-    if (!linkInterceptData.value || linkInterceptData.value.url !== data.url)
+    const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url })
+    if (!linkInterceptData.value || linkInterceptData.value.url !== url)
       return
 
-    const isKnownShortener = data.shortUrl.isKnownShortener
     const didResolve = result && result.status === 'resolved' && result.finalHostname && result.finalHostname !== data.domain
 
     if (didResolve) {
@@ -465,7 +532,7 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
       linkInterceptData.value = {
         ...linkInterceptData.value,
         shortUrl: {
-          originalUrl: data.url,
+          originalUrl: url,
           resolvedUrl: result.finalUrl,
           resolvedDomain: result.finalHostname,
           resolvedCount: resolvedVisitData.count,
@@ -480,12 +547,12 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
       linkInterceptData.value = {
         ...linkInterceptData.value,
         shortUrl: {
-          originalUrl: data.url,
+          originalUrl: url,
           resolvedUrl: '',
           resolvedDomain: '',
           resolvedCount: 0,
           resolvedIsSafe: false,
-          chain: result?.chain || [data.url],
+          chain: result?.chain || [url],
           status: 'error',
           error: result?.error || 'same_domain',
           isKnownShortener,
@@ -494,13 +561,94 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
     }
   }
   catch {
-    if (linkInterceptData.value && linkInterceptData.value.url === data.url) {
+    if (linkInterceptData.value && linkInterceptData.value.url === url) {
       linkInterceptData.value = {
         ...linkInterceptData.value,
-        shortUrl: { ...data.shortUrl, status: 'error', error: 'failed' },
+        shortUrl: {
+          originalUrl: url,
+          resolvedUrl: '',
+          resolvedDomain: '',
+          resolvedCount: 0,
+          resolvedIsSafe: false,
+          chain: [url],
+          status: 'error',
+          error: 'failed',
+          isKnownShortener,
+        },
       }
     }
   }
+}
+
+// Expose resolve function for intercept dialog button click
+;(window as any).__visilant_resolveInterceptUrl = async () => {
+  const data = linkInterceptData.value
+  if (!data?.shortUrl || (data.shortUrl.status !== 'idle' && data.shortUrl.status !== 'error'))
+    return
+
+  // Set loading state
+  linkInterceptData.value = {
+    ...data,
+    shortUrl: { ...data.shortUrl, status: 'loading' },
+  }
+
+  await resolveAndUpdateIntercept()
+}
+
+// Expose function to resolve once in intercept without marking domain as shortener
+;(window as any).__visilant_resolveInterceptOnce = () => {
+  const data = linkInterceptData.value
+  if (!data)
+    return
+
+  linkInterceptData.value = {
+    ...data,
+    shortUrl: {
+      originalUrl: data.url,
+      resolvedUrl: '',
+      resolvedDomain: '',
+      resolvedCount: 0,
+      resolvedIsSafe: false,
+      chain: [],
+      status: 'loading',
+      isKnownShortener: false,
+    },
+  }
+
+  resolveAndUpdateIntercept()
+}
+
+// Expose function to mark intercept domain as shortener
+;(window as any).__visilant_markInterceptAsShortener = async () => {
+  const data = linkInterceptData.value
+  if (!data)
+    return
+
+  const domain = data.domain
+  addCustomShortener(domain)
+  await sendMessageSafe('add-custom-shortener', { domain })
+
+  const shortUrlMode = settings.value.linkSafety.shortUrlMode
+  if (shortUrlMode === 'off')
+    return
+
+  const shouldAutoResolve = shortUrlMode === 'auto'
+  linkInterceptData.value = {
+    ...data,
+    shortUrl: {
+      originalUrl: data.url,
+      resolvedUrl: '',
+      resolvedDomain: '',
+      resolvedCount: 0,
+      resolvedIsSafe: false,
+      chain: [],
+      status: shouldAutoResolve ? 'loading' : 'idle',
+      isKnownShortener: true,
+    },
+  }
+
+  if (shouldAutoResolve)
+    (window as any).__visilant_resolveInterceptUrl?.()
 }
 
 async function showLinkTooltip(anchor: HTMLAnchorElement) {
@@ -739,8 +887,11 @@ function setupLinkSafety() {
     }
   }
 
-  // Click handler for left-click tooltip trigger AND navigation intercept
+  // Click handler for left-click intercept trigger
   function handleClick(event: MouseEvent) {
+    if (trigger !== 'click-left' || event.button !== 0)
+      return
+
     const anchor = findAnchorElement(event.target)
     if (!anchor || !anchor.href)
       return
@@ -748,21 +899,9 @@ function setupLinkSafety() {
     if (!isExternalLink(anchor.href, currentHostname))
       return
 
-    // Left click tooltip trigger
-    if (trigger === 'click-left') {
-      event.preventDefault()
-      event.stopPropagation()
-      showLinkTooltip(anchor)
-      return
-    }
-
-    // Navigation intercept (only for left clicks, not already handled by click-left trigger)
-    // Block navigation immediately (synchronously) before async check
-    if (linkSafety.interceptEnabled && event.button === 0) {
-      event.preventDefault()
-      event.stopPropagation()
-      handleLinkIntercept(anchor, event.ctrlKey || event.metaKey)
-    }
+    event.preventDefault()
+    event.stopPropagation()
+    handleLinkIntercept(anchor, event.ctrlKey || event.metaKey)
   }
 
   // Dismiss tooltip on scroll or Escape
@@ -971,10 +1110,15 @@ async function mount() {
   await mount()
 })()
 
-// Listen for context menu tooltip requests from background
+// Listen for context menu requests from background
 browser.runtime.onMessage.addListener((message: any) => {
   if (message.type === 'show-link-tooltip-at-cursor' && message.data?.url) {
     showLinkTooltipByUrl(message.data.url)
+    return undefined
+  }
+  if (message.type === 'show-link-intercept' && message.data?.url) {
+    showLinkInterceptByUrl(message.data.url)
+    return undefined
   }
 })
 

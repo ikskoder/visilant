@@ -312,7 +312,7 @@
     "description": "Label for link safety master toggle"
   },
   "linkTooltipTrigger": {
-    "message": "Спосіб активації підказки",
+    "message": "Спосіб активації",
     "description": "Label for tooltip trigger selection"
   },
   "linkTooltipTriggerHover": {
@@ -320,11 +320,23 @@
     "description": "Tooltip trigger option: hover"
   },
   "linkTooltipTriggerClickLeft": {
-    "message": "По кліку",
-    "description": "Tooltip trigger option: left click"
+    "message": "По кліку (перехоплення)",
+    "description": "Tooltip trigger option: left click shows intercept modal"
+  },
+  "linkTooltipTriggerClickLeftDesc": {
+    "message": "При натисканні на посилання буде показано вікно підтвердження замість прямого переходу",
+    "description": "Description for left click trigger option"
+  },
+  "linkTooltipTriggerClickRight": {
+    "message": "По правому кліку (контекстне меню)",
+    "description": "Tooltip trigger option: right click via context menu"
+  },
+  "linkTooltipTriggerClickRightDesc": {
+    "message": "При правому кліку на посилання в контекстному меню з'явиться опція «Перевірити безпеку посилання»",
+    "description": "Description for right click trigger option"
   },
   "linkShowVisitCount": {
-    "message": "Показувати кількість відвідувань у підказці",
+    "message": "Показувати кількість відвідувань при перевірці посилань",
     "description": "Setting label for visit count display mode"
   },
   "linkShowVisitCountAlways": {
@@ -471,6 +483,10 @@
     "message": "Якщо ви вважаєте, що цей сайт має бути позначений як знайомий — можливо, він видає себе за інший сайт",
     "description": "Phishing warning hint in intercept dialog"
   },
+  "linkInterceptDomainInfo": {
+    "message": "Інфо про домен",
+    "description": "Button to open detailed domain info in a new tab (intercept dialog)"
+  },
   "linkInterceptContinue": {
     "message": "Все одно перейти",
     "description": "Button to proceed with navigation"
@@ -491,9 +507,13 @@
     "message": "Веде на",
     "description": "Label for destination domain in tooltip"
   },
-  "linkContextMenuCheck": {
+  "linkContextMenuCheckDomain": {
+    "message": "Перевірити безпеку домену",
+    "description": "Context menu item to check domain safety (opens popup tab)"
+  },
+  "linkContextMenuCheckLink": {
     "message": "Перевірити безпеку посилання",
-    "description": "Context menu item to check link safety"
+    "description": "Context menu item to check link safety (shows intercept dialog)"
   },
   "linkTooltipShortener": {
     "message": "скорочувач",
@@ -510,6 +530,10 @@
   "linkTooltipResolveError": {
     "message": "Не вдалося визначити адресу",
     "description": "Error state when URL resolution fails"
+  },
+  "linkTooltipResolveSameDomain": {
+    "message": "Домен призначення збігається з доменом посилання — або це не скорочувач, або на сайті жорсткий захист від ботів, який не дав пройти по редиректу",
+    "description": "Error state when resolved URL has same domain as original"
   },
   "linkTooltipResolveButton": {
     "message": "Дізнатися справжню адресу",

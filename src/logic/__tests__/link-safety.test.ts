@@ -131,7 +131,6 @@ describe('isDomainInScope', () => {
     enabled: true,
     tooltipTrigger: 'hover',
     showVisitCount: 'always',
-    interceptEnabled: false,
     shortUrlMode: 'off',
     shortUrlShowFullUrl: false,
     shortUrlTraceChain: false,

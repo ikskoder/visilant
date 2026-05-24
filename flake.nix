@@ -48,8 +48,6 @@
             just
           ];
 
-          PLAYWRIGHT_BROWSERS_PATH = ".playwright-browsers";
-
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath playwrightLibs;
 
           shellHook = ''

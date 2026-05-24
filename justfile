@@ -51,7 +51,7 @@ test-e2e:
 
 # Run e2e tests with visible browser
 test-e2e-headed:
-  PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers npx playwright test --headed
+  npx playwright test --headed
 
 # Install Playwright browsers locally
 playwright-install:

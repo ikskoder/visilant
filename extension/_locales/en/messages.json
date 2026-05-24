@@ -312,7 +312,7 @@
     "description": "Label for link safety master toggle"
   },
   "linkTooltipTrigger": {
-    "message": "Tooltip trigger",
+    "message": "Activation method",
     "description": "Label for tooltip trigger selection"
   },
   "linkTooltipTriggerHover": {
@@ -320,11 +320,23 @@
     "description": "Tooltip trigger option: hover"
   },
   "linkTooltipTriggerClickLeft": {
-    "message": "On click",
-    "description": "Tooltip trigger option: left click"
+    "message": "On click (intercept)",
+    "description": "Tooltip trigger option: left click shows intercept modal"
+  },
+  "linkTooltipTriggerClickLeftDesc": {
+    "message": "Clicking a link will show a confirmation dialog instead of navigating directly",
+    "description": "Description for left click trigger option"
+  },
+  "linkTooltipTriggerClickRight": {
+    "message": "On right-click (context menu)",
+    "description": "Tooltip trigger option: right click via context menu"
+  },
+  "linkTooltipTriggerClickRightDesc": {
+    "message": "Right-clicking a link will show a \"Check link safety\" option in the context menu",
+    "description": "Description for right click trigger option"
   },
   "linkShowVisitCount": {
-    "message": "Show visit count in tooltip",
+    "message": "Show visit count when checking links",
     "description": "Setting label for visit count display mode"
   },
   "linkShowVisitCountAlways": {
@@ -471,6 +483,10 @@
     "message": "If you believe this site should be marked as familiar based on your past visits, it may be impersonating a site you trust",
     "description": "Phishing warning hint in intercept dialog"
   },
+  "linkInterceptDomainInfo": {
+    "message": "Domain info",
+    "description": "Button to open detailed domain info in a new tab (intercept dialog)"
+  },
   "linkInterceptContinue": {
     "message": "Continue anyway",
     "description": "Button to proceed with navigation"
@@ -491,9 +507,13 @@
     "message": "Destination",
     "description": "Label for destination domain in tooltip"
   },
-  "linkContextMenuCheck": {
+  "linkContextMenuCheckDomain": {
+    "message": "Check domain safety",
+    "description": "Context menu item to check domain safety (opens popup tab)"
+  },
+  "linkContextMenuCheckLink": {
     "message": "Check link safety",
-    "description": "Context menu item to check link safety"
+    "description": "Context menu item to check link safety (shows intercept dialog)"
   },
   "linkTooltipShortener": {
     "message": "shortener",
@@ -510,6 +530,10 @@
   "linkTooltipResolveError": {
     "message": "Could not resolve URL",
     "description": "Error state when URL resolution fails"
+  },
+  "linkTooltipResolveSameDomain": {
+    "message": "The destination domain is the same as the link — either this is not a shortener, or the site has strong bot protection that prevented following the redirect",
+    "description": "Error state when resolved URL has same domain as original"
   },
   "linkTooltipResolveButton": {
     "message": "Resolve real destination",

@@ -67,13 +67,14 @@ function updateTranslations() {
     'linkTooltipTrigger',
     'linkTooltipTriggerHover',
     'linkTooltipTriggerClickLeft',
+    'linkTooltipTriggerClickRight',
+    'linkTooltipTriggerClickLeftDesc',
+    'linkTooltipTriggerClickRightDesc',
     'linkShowVisitCount',
     'linkShowVisitCountAlways',
     'linkShowVisitCountNever',
     'linkShowVisitCountUnfamiliar',
     'linkShowVisitCountFamiliar',
-    'linkInterceptEnabled',
-    'linkInterceptEnabledDesc',
     'linkShortUrlSection',
     'linkShortUrlSectionWarning',
     'linkShortUrlModeOff',
@@ -503,6 +504,46 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           </div>
 
           <div v-if="settings.linkSafety.enabled">
+            <!-- Scope Mode -->
+            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h3 class="text-left text-sm font-medium mb-3">
+                {{ translations.linkScopeMode }}:
+              </h3>
+              <div class="space-y-2">
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.scopeMode" type="radio" value="everywhere"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                  >
+                  <span class="ml-2">{{ translations.linkScopeEverywhere }}</span>
+                </label>
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.scopeMode" type="radio" value="whitelist"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                  >
+                  <span class="ml-2">{{ translations.linkScopeWhitelist }}</span>
+                </label>
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.scopeMode" type="radio" value="blacklist"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                  >
+                  <span class="ml-2">{{ translations.linkScopeBlacklist }}</span>
+                </label>
+              </div>
+
+              <!-- Domain List -->
+              <div v-if="settings.linkSafety.scopeMode !== 'everywhere'" class="mt-3">
+                <textarea
+                  v-model="settings.linkSafety.scopeDomains"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  rows="3"
+                  :placeholder="translations.linkScopeDomains"
+                />
+              </div>
+            </div>
+
             <!-- Tooltip Trigger -->
             <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
               <h3 class="text-left text-sm font-medium mb-3">
@@ -516,12 +557,25 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   >
                   <span class="ml-2">{{ translations.linkTooltipTriggerHover }}</span>
                 </label>
-                <label class="flex items-center">
+                <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-left"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                    class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;"
                   >
-                  <span class="ml-2">{{ translations.linkTooltipTriggerClickLeft }}</span>
+                  <span class="ml-2 text-left">
+                    <span>{{ translations.linkTooltipTriggerClickLeft }}</span>
+                    <p class="text-xs text-gray-500">{{ translations.linkTooltipTriggerClickLeftDesc }}</p>
+                  </span>
+                </label>
+                <label class="flex items-start">
+                  <input
+                    v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-right"
+                    class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;"
+                  >
+                  <span class="ml-2 text-left">
+                    <span>{{ translations.linkTooltipTriggerClickRight }}</span>
+                    <p class="text-xs text-gray-500">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
+                  </span>
                 </label>
               </div>
             </div>
@@ -563,24 +617,6 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               </div>
             </div>
 
-            <!-- Navigation Intercept -->
-            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-              <div class="flex items-start justify-between">
-                <div class="text-left">
-                  <label class="text-sm font-medium">{{ translations.linkInterceptEnabled }}</label>
-                  <p class="text-xs text-gray-500">
-                    {{ translations.linkInterceptEnabledDesc }}
-                  </p>
-                </div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input v-model="settings.linkSafety.interceptEnabled" type="checkbox" class="sr-only peer">
-                  <div
-                    class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
-                  />
-                </label>
-              </div>
-            </div>
-
             <!-- Shortened URL Settings -->
             <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
               <h3 class="text-left text-sm font-medium mb-1">
@@ -607,7 +643,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               </div>
 
               <!-- Sub-options (only when not off) -->
-              <div v-if="settings.linkSafety.shortUrlMode !== 'off'" class="text-left space-y-3 ml-2 pl-3 border-l-2 border-gray-200 dark:border-gray-700">
+              <div v-if="settings.linkSafety.shortUrlMode !== 'off'" class="text-left space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
                 <!-- Show full URL -->
                 <label class="flex items-center gap-2 cursor-pointer">
                   <input v-model="settings.linkSafety.shortUrlShowFullUrl" type="checkbox" class="flex-shrink-0 rounded" style="width: 16px; height: 16px; min-width: 16px; min-height: 16px; accent-color: #3b82f6;">
@@ -656,46 +692,6 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     placeholder="https://raw.githubusercontent.com/..."
                   />
                 </div>
-              </div>
-            </div>
-
-            <!-- Scope Mode -->
-            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-              <h3 class="text-left text-sm font-medium mb-3">
-                {{ translations.linkScopeMode }}:
-              </h3>
-              <div class="space-y-2">
-                <label class="flex items-center">
-                  <input
-                    v-model="settings.linkSafety.scopeMode" type="radio" value="everywhere"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
-                  >
-                  <span class="ml-2">{{ translations.linkScopeEverywhere }}</span>
-                </label>
-                <label class="flex items-center">
-                  <input
-                    v-model="settings.linkSafety.scopeMode" type="radio" value="whitelist"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
-                  >
-                  <span class="ml-2">{{ translations.linkScopeWhitelist }}</span>
-                </label>
-                <label class="flex items-center">
-                  <input
-                    v-model="settings.linkSafety.scopeMode" type="radio" value="blacklist"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
-                  >
-                  <span class="ml-2">{{ translations.linkScopeBlacklist }}</span>
-                </label>
-              </div>
-
-              <!-- Domain List -->
-              <div v-if="settings.linkSafety.scopeMode !== 'everywhere'" class="mt-3">
-                <textarea
-                  v-model="settings.linkSafety.scopeDomains"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                  rows="3"
-                  :placeholder="translations.linkScopeDomains"
-                />
               </div>
             </div>
           </div>

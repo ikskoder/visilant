@@ -380,19 +380,30 @@ browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
 // Context Menu for Link Safety (right-click)
 // ==========================================
 
-const CONTEXT_MENU_ID = 'visilant-check-link'
+const CONTEXT_MENU_DOMAIN_ID = 'visilant-check-domain'
+const CONTEXT_MENU_LINK_ID = 'visilant-check-link-safety'
 
 async function setupContextMenu() {
   // Remove existing items first
   await browser.contextMenus.removeAll()
 
-  // Always show context menu item for link safety check, regardless of settings
-  const title = await loadTranslation('linkContextMenuCheck')
+  // Always show domain safety check
+  const domainTitle = await loadTranslation('linkContextMenuCheckDomain')
   browser.contextMenus.create({
-    id: CONTEXT_MENU_ID,
-    title,
+    id: CONTEXT_MENU_DOMAIN_ID,
+    title: domainTitle,
     contexts: ['link'],
   })
+
+  // Show link safety check only when right-click trigger is selected
+  if (appSettings.value.linkSafety?.enabled && appSettings.value.linkSafety?.tooltipTrigger === 'click-right') {
+    const linkTitle = await loadTranslation('linkContextMenuCheckLink')
+    browser.contextMenus.create({
+      id: CONTEXT_MENU_LINK_ID,
+      title: linkTitle,
+      contexts: ['link'],
+    })
+  }
 }
 
 // Create context menu on install
@@ -401,14 +412,24 @@ browser.runtime.onInstalled.addListener(async () => {
 })
 
 // Handle context menu click
-browser.contextMenus.onClicked.addListener(async (info) => {
-  if (info.menuItemId !== CONTEXT_MENU_ID || !info.linkUrl)
+browser.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (!info.linkUrl)
     return
 
-  // Open detailed popup in a new tab for the link's domain
-  const hostname = getHostname(info.linkUrl)
-  if (hostname)
-    await handleOpenPopupTab(hostname)
+  if (info.menuItemId === CONTEXT_MENU_DOMAIN_ID) {
+    // Open detailed popup in a new tab for the link's domain
+    const hostname = getHostname(info.linkUrl)
+    if (hostname)
+      await handleOpenPopupTab(hostname)
+  }
+
+  if (info.menuItemId === CONTEXT_MENU_LINK_ID && tab?.id) {
+    // Send message to content script to show intercept dialog for this link
+    await browser.tabs.sendMessage(tab.id, {
+      type: 'show-link-intercept',
+      data: { url: info.linkUrl },
+    })
+  }
 })
 
 // Listen for changes in storage
