@@ -35,6 +35,10 @@ build-firefox:
   pnpm build-firefox
   pnpm pack:xpi
 
+# Pack source code for AMO submission (uses git archive — only tracked files)
+pack-src:
+  pnpm pack:src
+
 # === TESTING ===
 
 # Run unit tests

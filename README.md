@@ -19,10 +19,13 @@ Imagine you're exhausted after a long flight or simply distracted by everyday de
 ### Link Safety — Proactive Link Analysis
 Visilant can analyze links on a page before you navigate, giving you visibility into where each link leads and whether you've been there before. Some sites can cause harm the moment you open them — no login or interaction required — so knowing the destination beforehand is critical.
 
+This is a significant step up over the original reactive-only approach: instead of warning you after you've already landed on an unfamiliar site and started typing, Visilant now surfaces the destination domain and its familiarity status *before* you click, so you can compare the link text against the actual target and catch impersonation attempts up front.
+
 - **Link Tooltip**: Hovering over (or clicking, depending on your settings) any external link (i.e. pointing to a different domain than the current page) shows a compact tooltip with the destination domain, your visit count, and a familiarity indicator (familiar / unfamiliar / never visited). The tooltip trigger is configurable: hover (default) or click (prevents navigation until you choose to proceed — the safest option).
 - **URL Mismatch Detection**: A classic phishing trick is making a link's visible text look like one domain (e.g. `paypal.com`) while the actual destination is completely different. Visilant detects this and shows a side-by-side comparison table with familiarity status and visit counts for both domains.
 - **Punycode / Unicode Detection**: Domains containing non-Latin characters that visually resemble Latin ones (homograph attacks) are flagged, with the ASCII (punycode) representation displayed.
-- **Navigation Intercept** (opt-in): When enabled, clicking a link to an unfamiliar site triggers a full-screen confirmation dialog before navigation proceeds. The dialog shows the destination domain, your visit history with it, and any mismatch or punycode warnings. You can go back or continue at your discretion.
+- **Shortened URL Detection**: Shortened links (bit.ly, t.co, etc.) hide the real destination — a classic trick in clone phishing. Visilant can resolve them to reveal where they actually lead. Three modes: off, on-demand (button in tooltip), or automatic. You can also display the full redirect chain, resolve arbitrary URLs (not just known shorteners), maintain your own list of shortener domains (marking any domain as a shortener on the fly), or configure remote shortener lists to augment the built-in list.
+- **Navigation Intercept** (opt-in): When enabled, clicking a link to an unfamiliar site triggers a full-screen confirmation dialog before navigation proceeds. The dialog shows the destination domain, your visit history with it, any mismatch or punycode warnings, and the resolved real destination if the link uses a shortener. You can go back or continue at your discretion.
 - **Context Menu Integration**: Right-clicking any link provides a "Check link safety" option that opens the extension's detailed popup view for that domain in a new tab — available regardless of whether Link Safety is enabled in settings.
 - **Scope Control**: Link Safety can be active on all websites, only on specific domains (e.g. your email client), or everywhere except certain domains (e.g. your intranet).
 
@@ -37,6 +40,12 @@ Clicking the extension icon reveals a dashboard where you can:
 - View visit statistics for the current domain and its subdomains.
 - **Sort Sites**: Organize the list by visit count or name to better understand your history with a domain family.
 - **Customize Display**: Toggle domain highlighting, change text case (uppercase/lowercase), switch Punycode modes, and adjust font size on the fly.
+- **Per-Site Anti-Tampering Toggle**: See whether tamper detection is active for the current site and quickly disable or re-enable it without leaving the popup.
+
+### Theming & Responsive UI
+
+- **Light / Dark / System Theme**: Pick a theme that suits your environment or follow your system preference.
+- **Responsive Layout**: The popup and settings adapt to narrow widths — works when opened in a tab or on mobile-form-factor windows.
 
 ### Smart Detection
 - **Local Resource Ignoring**: Visilant automatically ignores internal hosts (like `localhost` or intranet sites without dots in the hostname), preventing unnecessary alerts during development or local network usage.
@@ -45,7 +54,7 @@ Clicking the extension icon reveals a dashboard where you can:
 Visilant implements multiple layers of protection to ensure reliable operation even on malicious sites:
 - **Early Injection**: Content scripts load at `document_start`, before any page scripts can interfere.
 - **Event Capturing**: All keyboard and clipboard events are intercepted in the capture phase, preventing malicious scripts from blocking them.
-- **Anti-Tampering Protection**: A MutationObserver monitors the extension's DOM presence. If a malicious page attempts to remove Visilant's components, you'll receive an immediate system notification.
+- **Anti-Tampering Protection**: A MutationObserver monitors the extension's DOM presence. If a malicious page attempts to remove Visilant's components, you'll receive an immediate system notification. The check can be disabled per-site (from the popup or via an exclusion list in settings) for trusted sites that heavily rebuild their page (e.g. some SPAs) and trigger false alarms.
 - **Randomized DOM Footprint**: The extension container uses a randomly generated ID for each page load, making it harder for malicious scripts to detect Visilant's presence by querying specific element IDs.
 - **Overlay Protection**: In-page warnings use maximum z-index and fixed positioning to prevent being hidden by page overlays.
 
@@ -71,10 +80,13 @@ Visilant implements multiple layers of protection to ensure reliable operation e
    - **Link Safety Settings**:
 
      - Link Safety is enabled by default. It analyzes external links on pages and shows a tooltip with the destination domain's familiarity status.
-     - Choose the tooltip trigger: hover (default) or click (safest — prevents navigation until you review).
+     - Choose the tooltip trigger: hover (default), left-click (safest — prevents navigation until you review), or right-click (adds a "Check link safety" item to the context menu).
      - Configure visit count visibility in tooltips: always, never, only for unfamiliar sites, or only for familiar sites.
      - Optionally enable navigation intercept to require confirmation before visiting unfamiliar sites.
+     - Configure shortened URL detection: off, on-demand button, or automatic. Optionally show the full resolved URL (not just the domain), display the redirect chain, resolve arbitrary URLs (not just known shorteners), or maintain your own list of custom shortener domains. You can also point the extension at remote shortener lists to keep the built-in list up to date.
      - Set the scope: all websites, only specific domains, or everywhere except certain domains.
+
+   - **Appearance**: Choose a light, dark, or system-matching theme.
 
    - **Notification Settings**:
 
@@ -83,7 +95,7 @@ Visilant implements multiple layers of protection to ensure reliable operation e
      - **_Note:_** When an in-page alert is displayed, you can disable further warnings for that specific site regardless of its visit count or threshold settings.
      - You can also disable notifications completely if you prefer a non-intrusive browsing experience. However, be sure to check the visit count on the extension icon during important interactions, as otherwise, the extension's effectiveness is greatly diminished.
 
-5. Import your browser history to initialize the visit counter with previously visited sites. This helps reduce false positives and unnecessary warnings for "familiar" sites.
+5. Import your browser history to populate the visit counter with previously visited sites. This helps reduce false positives and unnecessary warnings for "familiar" sites.
 
 ### Notification Triggers
 
@@ -111,7 +123,7 @@ Visilant is open-source and operates locally within your browser:
   - **Host permissions** (`*://*/*`): To inject content scripts that monitor keyboard and clipboard interactions and analyze links on all websites.
 
   **Optional permissions:**
-  - **Browser history**: Required only if you choose to import your existing browsing history to initialize visit counts (recommended for reducing false positives).
+  - **Browser history**: Required only if you choose to import your existing browsing history to populate visit counts (recommended for reducing false positives).
 
 ## Limitations
 

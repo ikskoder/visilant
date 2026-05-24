@@ -1,7 +1,7 @@
 {
   "name": "visilant",
   "displayName": "Visilant",
-  "version": "1.1.1",
+  "version": "1.9.0",
   "private": true,
   "packageManager": "pnpm@9.7.1",
   "description": "Browser-extension to provide protection against Homograph Attack & Clone Phishing based on your site visiting statistics",
@@ -23,6 +23,7 @@
     "pack:zip": "rimraf extension.zip && jszip-cli add extension/* -o ./extension.zip",
     "pack:crx": "crx pack extension -o ./extension.crx",
     "pack:xpi": "cross-env WEB_EXT_ARTIFACTS_DIR=./ web-ext build --source-dir ./extension --filename extension.xpi --overwrite-dest",
+    "pack:src": "rimraf source.zip && git archive --format=zip --output=source.zip HEAD",
     "start:chromium": "web-ext run --source-dir ./extension --target=chromium",
     "start:firefox": "LD_LIBRARY_PATH= web-ext run --source-dir ./extension --target=firefox-desktop",
     "start:firefox:wait": "node -e \"const fs=require('fs'); const sleep=ms=>new Promise(r=>setTimeout(r,ms)); (async()=>{while(fs.existsSync('extension/manifest.json'))await sleep(200);while(!fs.existsSync('extension/manifest.json'))await sleep(200);})()\" && npm run start:firefox",
