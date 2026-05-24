@@ -19,6 +19,7 @@ const defaultProps = {
   showVisitCount: 'always' as const,
   showFullUrl: false,
   traceChain: false,
+  shortUrlMode: 'off' as const,
 }
 
 describe('linkInterceptDialog component', () => {
@@ -46,12 +47,11 @@ describe('linkInterceptDialog component', () => {
     expect(wrapper.text()).toContain('suspicious.com')
   })
 
-  it('emits cancel when go back button is clicked', async () => {
+  it('emits cancel when close button is clicked', async () => {
     const wrapper = mount(LinkInterceptDialog, { props: defaultProps })
-    const buttons = wrapper.findAll('button')
-    // Go back button has teal background
-    const goBackBtn = buttons.find(b => b.classes().some(c => c.includes('bg-teal')))
-    await goBackBtn!.trigger('click')
+    // Close button is the X icon in the top-right corner
+    const closeBtn = wrapper.find('button.absolute.top-3.right-3')
+    await closeBtn.trigger('click')
     expect(wrapper.emitted('cancel')).toBeTruthy()
   })
 

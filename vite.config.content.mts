@@ -26,7 +26,7 @@ export default defineConfig({
       name: packageJson.name,
       formats: ['iife'],
     },
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         entryFileNames: 'index.global.js',
         extend: true,
