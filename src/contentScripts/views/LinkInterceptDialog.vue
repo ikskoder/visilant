@@ -9,12 +9,15 @@ const props = defineProps<{
   visible: boolean
   data: LinkInterceptData | null
   showVisitCount: 'always' | 'never' | 'unfamiliar' | 'familiar'
+  showFullUrl: boolean
+  traceChain: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'continue'): void
   (e: 'cancel'): void
   (e: 'details', domain: string): void
+  (e: 'resolveShortUrl'): void
 }>()
 
 const { t } = useI18n()
@@ -36,6 +39,10 @@ const statusLabel = computed(() => (isSafe: boolean, count: number) => {
     return { text: t.value('linkTooltipNeverVisited'), class: 'text-red-400' }
   return { text: t.value('linkTooltipUnfamiliar'), class: 'text-yellow-400' }
 })
+
+const hasTraceData = computed(() => {
+  return props.traceChain && props.data?.shortUrl?.status === 'resolved' && (props.data.shortUrl.chain.length > 2)
+})
 </script>
 
 <template>
@@ -49,7 +56,7 @@ const statusLabel = computed(() => (isSafe: boolean, count: number) => {
       <div class="absolute inset-0 bg-black/60" />
 
       <!-- Dialog card -->
-      <div class="relative dialog-container bg-gray-900 rounded-xl shadow-2xl border border-gray-700/50 p-6" :class="{ 'dialog-wide': data?.mismatch }">
+      <div class="relative dialog-container bg-gray-900 rounded-xl shadow-2xl border border-gray-700/50 p-6" :class="{ 'dialog-wide': data?.mismatch, 'dialog-full': hasTraceData }">
         <!-- Warning icon -->
         <div class="flex items-center gap-3 mb-4">
           <div class="flex-shrink-0 relative">
@@ -106,13 +113,18 @@ const statusLabel = computed(() => (isSafe: boolean, count: number) => {
           <div class="flex items-center gap-2 mb-2">
             <span
               class="inline-block w-3 h-3 rounded-full flex-shrink-0"
-              :class="data.isSafe ? 'bg-green-500' : 'bg-red-500'"
+              :class="data.shortUrl?.isKnownShortener
+                ? 'bg-orange-500'
+                : data.isSafe ? 'bg-green-500' : 'bg-red-500'"
             />
             <span class="dialog-domain text-white font-medium">
               <SecureText :text="data.domain" :force-highlight="true" :danger-only="true" />
             </span>
+            <span v-if="data.shortUrl?.isKnownShortener" class="dialog-label px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-400">
+              {{ t('linkTooltipShortener').toLowerCase() }}
+            </span>
           </div>
-          <div class="dialog-label text-gray-400">
+          <div v-if="!data.shortUrl?.isKnownShortener" class="dialog-label text-gray-400">
             <template v-if="shouldShowCount(data.isSafe)">
               {{ t('linkTooltipVisits') }}:
               <span class="text-white font-medium">{{ data.count }}</span>
@@ -121,6 +133,96 @@ const statusLabel = computed(() => (isSafe: boolean, count: number) => {
             <span :class="statusLabel(data.isSafe, data.count).class">
               {{ statusLabel(data.isSafe, data.count).text }}
             </span>
+          </div>
+
+          <!-- Short URL: idle — resolve button -->
+          <div v-if="data.shortUrl?.status === 'idle'" class="mt-3 pt-3 border-t border-gray-700">
+            <div v-if="data.shortUrl.isKnownShortener" class="dialog-label text-orange-400/80 mb-2">
+              {{ t('linkTooltipShortUrlWarning') }}
+            </div>
+            <button
+              class="w-full px-3 py-2 bg-orange-700/60 hover:bg-orange-600/60 text-orange-100 rounded-lg border border-orange-700/50 transition-colors dialog-button text-center"
+              @click="emit('resolveShortUrl')"
+            >
+              {{ t('linkTooltipResolveButton') }}
+            </button>
+          </div>
+
+          <!-- Short URL: loading -->
+          <div v-if="data.shortUrl?.status === 'loading'" class="mt-3 pt-3 border-t border-gray-700">
+            <button
+              class="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-700 text-gray-400 rounded-lg border border-gray-600 dialog-button text-center cursor-wait"
+              disabled
+            >
+              <div class="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              {{ t('linkTooltipResolvingUrl') }}
+            </button>
+          </div>
+
+          <!-- Short URL: resolved -->
+          <div v-if="data.shortUrl?.status === 'resolved'" class="mt-3 pt-3 border-t border-gray-700">
+            <div class="flex items-center gap-1 mb-2 dialog-label text-orange-400">
+              <svg class="w-3.5 h-3.5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              <span>{{ t('linkInterceptRealDestination') }}</span>
+            </div>
+            <div class="flex items-center gap-2 mb-1">
+              <span
+                class="inline-block w-3 h-3 rounded-full flex-shrink-0"
+                :class="data.shortUrl.resolvedIsSafe ? 'bg-green-500' : 'bg-red-500'"
+              />
+              <span class="dialog-domain text-white font-medium">
+                <SecureText :text="data.shortUrl.resolvedDomain" :force-highlight="true" :danger-only="true" />
+              </span>
+            </div>
+
+            <!-- Full URL -->
+            <div v-if="showFullUrl && data.shortUrl.resolvedUrl" class="dialog-label text-gray-400 mb-1 break-all" style="word-break: break-all !important;">
+              {{ data.shortUrl.resolvedUrl }}
+            </div>
+
+            <div class="dialog-label text-gray-400">
+              <template v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)">
+                {{ t('linkTooltipVisits') }}:
+                <span class="text-white font-medium">{{ data.shortUrl.resolvedCount }}</span>
+                <span class="mx-1">&middot;</span>
+              </template>
+              <span :class="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedCount).class">
+                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedCount).text }}
+              </span>
+            </div>
+
+            <!-- Redirect chain trace -->
+            <div v-if="traceChain && data.shortUrl.chain.length > 2" class="mt-3 pt-3 border-t border-gray-700">
+              <div class="dialog-label text-gray-400 mb-2">
+                {{ t('linkTooltipRedirectChain') }} ({{ data.shortUrl.chain.length }})
+              </div>
+              <div class="dialog-label text-gray-300 space-y-1" style="max-height: 200px !important; overflow-y: auto !important;">
+                <div v-for="(hop, i) in data.shortUrl.chain" :key="i" class="flex items-start gap-1.5">
+                  <span class="text-gray-500 flex-shrink-0 font-mono">{{ i + 1 }}.</span>
+                  <span class="break-all" style="word-break: break-all !important;">{{ hop }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Disclaimer -->
+            <div class="mt-3 dialog-label text-white italic" style="font-size: 11px !important;">
+              {{ t('linkTooltipResolveDisclaimer') }}
+            </div>
+          </div>
+
+          <!-- Short URL: error -->
+          <div v-if="data.shortUrl?.status === 'error'" class="mt-3 pt-3 border-t border-gray-700">
+            <div class="dialog-label text-gray-400 mb-2">
+              {{ t('linkTooltipResolveError') }}
+            </div>
+            <button
+              class="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg border border-gray-600 transition-colors dialog-button text-center"
+              @click="emit('resolveShortUrl')"
+            >
+              {{ t('linkTooltipRetryResolve') }}
+            </button>
           </div>
 
           <!-- Punycode -->
@@ -140,7 +242,7 @@ const statusLabel = computed(() => (isSafe: boolean, count: number) => {
           <button
             v-if="!data.mismatch"
             class="px-4 py-2.5 bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 rounded-lg border border-gray-600 transition-colors dialog-button"
-            @click="emit('details', data.domain)"
+            @click="emit('details', data.shortUrl?.status === 'resolved' ? data.shortUrl.resolvedDomain : data.domain)"
           >
             {{ t('linkTooltipDetails') }}
           </button>
@@ -175,6 +277,10 @@ button {
 
 .dialog-container.dialog-wide {
   width: 560px !important;
+}
+
+.dialog-container.dialog-full {
+  width: 680px !important;
 }
 
 .dialog-title {

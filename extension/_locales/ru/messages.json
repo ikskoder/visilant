@@ -351,6 +351,46 @@
     "message": "Запрашивать подтверждение перед переходом на незнакомые сайты",
     "description": "Description for navigation intercept"
   },
+  "linkShortUrlSection": {
+    "message": "Детекция сокращённых ссылок",
+    "description": "Section header for shortened URL settings"
+  },
+  "linkShortUrlModeOff": {
+    "message": "Выключено",
+    "description": "Short URL mode: off"
+  },
+  "linkShortUrlModeButton": {
+    "message": "Разворачивать по нажатию кнопки",
+    "description": "Short URL mode: manual button"
+  },
+  "linkShortUrlModeAuto": {
+    "message": "Авторазворот",
+    "description": "Short URL mode: automatic"
+  },
+  "linkShortUrlShowFullUrl": {
+    "message": "Показывать полную ссылку (не только домен)",
+    "description": "Toggle to show full URL vs domain only"
+  },
+  "linkShortUrlTraceChain": {
+    "message": "Показывать цепочку редиректов",
+    "description": "Toggle to show full redirect hop chain"
+  },
+  "linkShortUrlResolveAny": {
+    "message": "Разворачивать любые ссылки (не только известные сокращатели)",
+    "description": "Toggle to enable resolving any link"
+  },
+  "linkShortUrlResolveAnyDesc": {
+    "message": "Полезно, если сокращатель отсутствует в встроенном списке",
+    "description": "Explanation for resolve-any option"
+  },
+  "linkShortUrlListUpdateUrl": {
+    "message": "URL удалённого списка сокращателей",
+    "description": "Label for remote list URL input"
+  },
+  "linkShortUrlListUpdateUrlDesc": {
+    "message": "Периодически загружать обновлённый список доменов-сокращателей (один на строку)",
+    "description": "Description for remote list URL"
+  },
   "linkScopeMode": {
     "message": "Активно на",
     "description": "Label for scope mode selection"
@@ -454,5 +494,65 @@
   "linkContextMenuCheck": {
     "message": "Проверить безопасность ссылки",
     "description": "Context menu item to check link safety"
+  },
+  "linkTooltipShortener": {
+    "message": "сокращатель",
+    "description": "Label indicating a URL shortener domain"
+  },
+  "linkTooltipShortenedUrl": {
+    "message": "Реальный адрес:",
+    "description": "Label for resolved shortened URL destination"
+  },
+  "linkTooltipResolvingUrl": {
+    "message": "Определение...",
+    "description": "Loading state while resolving shortened URL"
+  },
+  "linkTooltipResolveError": {
+    "message": "Не удалось определить адрес",
+    "description": "Error state when URL resolution fails"
+  },
+  "linkTooltipResolveButton": {
+    "message": "Узнать реальный адрес",
+    "description": "Button to manually resolve a shortened URL"
+  },
+  "linkShortUrlSectionWarning": {
+    "message": "Для раскрытия сокращённой ссылки выполняется запрос по цепочке перенаправлений. Сокращатель увидит этот запрос. Если ссылка выглядит подозрительно — безопаснее вообще её не раскрывать.",
+    "description": "Warning in settings about risks of URL resolution"
+  },
+  "linkTooltipRetryResolve": {
+    "message": "Повторить",
+    "description": "Button to retry URL resolution after error"
+  },
+  "linkTooltipShortUrlWarning": {
+    "message": "Эта ссылка использует сокращатель — реальный адрес скрыт",
+    "description": "Warning about shortened URL hiding destination"
+  },
+  "linkTooltipRedirectChain": {
+    "message": "Цепочка редиректов",
+    "description": "Label for redirect chain trace display"
+  },
+  "linkTooltipResolveDisclaimer": {
+    "message": "Скорее всего это конечный адрес, но 100% гарантии нет",
+    "description": "Disclaimer that resolved URL might not be final"
+  },
+  "linkInterceptRealDestination": {
+    "message": "Настоящий адрес:",
+    "description": "Label for real destination in intercept dialog"
+  },
+  "linkShortUrlResetCustom": {
+    "message": "Собственные домены-сокращатели",
+    "description": "Button to clear user-defined shortener domains"
+  },
+  "linkShortUrlResetCustomDesc": {
+    "message": "Очистить все домены, которые вы вручную пометили как сокращатели",
+    "description": "Description for reset custom shorteners button"
+  },
+  "linkTooltipResolveOnce": {
+    "message": "Раскрутить путь",
+    "description": "Button to resolve URL once without marking domain as shortener"
+  },
+  "linkTooltipMarkAsShortener": {
+    "message": "Это сокращатель",
+    "description": "Button to mark current domain as a URL shortener"
   }
 }

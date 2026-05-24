@@ -11,6 +11,8 @@ const props = defineProps<{
   showGoButton: boolean
   fontSize: number
   showVisitCount: 'always' | 'never' | 'unfamiliar' | 'familiar'
+  showFullUrl: boolean
+  traceChain: boolean
 }>()
 
 const emit = defineEmits<{
@@ -41,6 +43,18 @@ const statusLabel = computed(() => (isSafe: boolean, count: number) => {
     return { text: t.value('linkTooltipNeverVisited'), class: 'text-red-400' }
   return { text: t.value('linkTooltipUnfamiliar'), class: 'text-yellow-400' }
 })
+
+function handleResolveClick() {
+  ;(window as any).__visilant_resolveTooltipUrl?.()
+}
+
+function handleMarkAsShortener() {
+  ;(window as any).__visilant_markAsShortener?.()
+}
+
+function handleResolveOnce() {
+  ;(window as any).__visilant_resolveOnce?.()
+}
 </script>
 
 <template>
@@ -52,7 +66,7 @@ const statusLabel = computed(() => (isSafe: boolean, count: number) => {
       @mouseenter="emit('hoverEnter')"
       @mouseleave="emit('close')"
     >
-      <div class="tooltip-container bg-gray-900 bg-opacity-95 rounded-lg shadow-2xl border border-gray-700/50 p-3" :class="{ 'tooltip-wide': data.mismatch }" :style="{ fontSize: `${fontScale}em` }">
+      <div class="tooltip-container bg-gray-900 bg-opacity-95 rounded-lg shadow-2xl border border-gray-700/50 p-3" :class="{ 'tooltip-wide': data.mismatch || (data.shortUrl?.status === 'resolved' && traceChain && data.shortUrl.chain.length > 2) }" :style="{ fontSize: `${fontScale}em` }">
         <!-- Mismatch: warning + comparison table -->
         <template v-if="data.mismatch">
           <div class="flex items-center gap-2 mb-2">
@@ -95,32 +109,150 @@ const statusLabel = computed(() => (isSafe: boolean, count: number) => {
           <!-- Destination label + status -->
           <div class="flex items-center flex-wrap gap-1.5 mb-1">
             <span class="tooltip-label text-gray-400">{{ t('linkTooltipDestination') }}</span>
-            <span
-              class="tooltip-label px-1.5 py-0.5 rounded"
-              :class="data.isSafe
-                ? 'bg-green-900/40 text-green-400'
-                : data.count === 0
-                  ? 'bg-red-900/40 text-red-400'
-                  : 'bg-yellow-900/40 text-yellow-400'"
-            >
-              {{ statusLabel(data.isSafe, data.count).text.toLowerCase() }}
-            </span>
+            <!-- For known shorteners: only show orange "shortener" badge, never safe/unfamiliar -->
+            <template v-if="data.shortUrl?.isKnownShortener">
+              <span class="tooltip-label px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-400">
+                {{ t('linkTooltipShortener') }}
+              </span>
+            </template>
+            <!-- For regular links: show safety status -->
+            <template v-else-if="!data.shortUrl || data.shortUrl.status !== 'resolved'">
+              <span
+                class="tooltip-label px-1.5 py-0.5 rounded"
+                :class="data.isSafe
+                  ? 'bg-green-900/40 text-green-400'
+                  : data.count === 0
+                    ? 'bg-red-900/40 text-red-400'
+                    : 'bg-yellow-900/40 text-yellow-400'"
+              >
+                {{ statusLabel(data.isSafe, data.count).text.toLowerCase() }}
+              </span>
+            </template>
           </div>
 
           <!-- Domain -->
           <div class="flex items-center gap-2 mb-1">
             <span
               class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-              :class="data.isSafe ? 'bg-green-500' : 'bg-red-500'"
+              :class="data.shortUrl?.isKnownShortener
+                ? 'bg-orange-500'
+                : data.isSafe ? 'bg-green-500' : 'bg-red-500'"
             />
             <span class="text-white font-medium tooltip-domain">
               <SecureText :text="data.domain" :force-highlight="true" :danger-only="true" />
             </span>
           </div>
 
-          <!-- Visit count -->
-          <div v-if="shouldShowCount(data.isSafe)" class="tooltip-label text-white mb-2">
+          <!-- Visit count: never show for known shorteners -->
+          <div v-if="!data.shortUrl?.isKnownShortener && shouldShowCount(data.isSafe)" class="tooltip-label text-white mb-2">
             {{ t('linkTooltipVisits') }}: {{ data.count }}
+          </div>
+
+          <!-- Short URL: idle state — resolve button -->
+          <div v-if="data.shortUrl?.status === 'idle'" class="mt-2 mb-1">
+            <div v-if="data.shortUrl.isKnownShortener" class="tooltip-label text-orange-400/80 mb-2">
+              {{ t('linkTooltipShortUrlWarning') }}
+            </div>
+            <button
+              class="w-full px-3 py-1.5 bg-orange-700/60 hover:bg-orange-600/60 text-orange-100 rounded border border-orange-700/50 transition-colors tooltip-label text-center"
+              @click.stop="handleResolveClick()"
+            >
+              {{ t('linkTooltipResolveButton') }}
+            </button>
+          </div>
+
+          <!-- Short URL: loading -->
+          <div v-if="data.shortUrl?.status === 'loading'" class="mt-2 mb-1">
+            <button
+              class="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-gray-700 text-gray-400 rounded border border-gray-600 tooltip-label text-center cursor-wait"
+              disabled
+            >
+              <div class="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              {{ t('linkTooltipResolvingUrl') }}
+            </button>
+          </div>
+
+          <!-- Short URL: resolved -->
+          <div v-if="data.shortUrl?.status === 'resolved'" class="mt-2 mb-2 pt-2 border-t border-gray-700/50">
+            <div class="flex items-center gap-1 mb-1 tooltip-label text-orange-400">
+              <svg class="w-3.5 h-3.5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              <span>{{ t('linkTooltipShortenedUrl') }}</span>
+            </div>
+
+            <!-- Resolved domain -->
+            <div class="flex items-center gap-2 mb-1">
+              <span
+                class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+                :class="data.shortUrl.resolvedIsSafe ? 'bg-green-500' : 'bg-red-500'"
+              />
+              <span class="text-white font-medium tooltip-domain">
+                <SecureText :text="data.shortUrl.resolvedDomain" :force-highlight="true" :danger-only="true" />
+              </span>
+            </div>
+
+            <!-- Full URL if enabled -->
+            <div v-if="showFullUrl && data.shortUrl.resolvedUrl" class="tooltip-label text-gray-400 mb-1 break-all" style="word-break: break-all !important; max-width: 560px !important;">
+              {{ data.shortUrl.resolvedUrl }}
+            </div>
+
+            <!-- Status + visit count -->
+            <div class="flex items-center flex-wrap gap-1.5 mb-1">
+              <span
+                class="tooltip-label px-1.5 py-0.5 rounded"
+                :class="data.shortUrl.resolvedIsSafe
+                  ? 'bg-green-900/40 text-green-400'
+                  : data.shortUrl.resolvedCount === 0
+                    ? 'bg-red-900/40 text-red-400'
+                    : 'bg-yellow-900/40 text-yellow-400'"
+              >
+                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedCount).text.toLowerCase() }}
+              </span>
+            </div>
+            <div v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)" class="tooltip-label text-white">
+              {{ t('linkTooltipVisits') }}: {{ data.shortUrl.resolvedCount }}
+            </div>
+
+            <!-- Redirect chain trace -->
+            <div v-if="traceChain && data.shortUrl.chain.length > 2" class="mt-2 pt-2 border-t border-gray-700/50">
+              <div class="tooltip-label text-gray-400 mb-1">
+                {{ t('linkTooltipRedirectChain') }} ({{ data.shortUrl.chain.length }})
+              </div>
+              <div class="tooltip-label text-gray-300 space-y-0.5" style="max-height: 120px !important; overflow-y: auto !important;">
+                <div v-for="(hop, i) in data.shortUrl.chain" :key="i" class="flex items-start gap-1">
+                  <span class="text-gray-500 flex-shrink-0">{{ i + 1 }}.</span>
+                  <span class="break-all" style="word-break: break-all !important;">{{ hop }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Disclaimer -->
+            <div class="mt-2 tooltip-label text-white italic" style="font-size: 0.75em !important;">
+              {{ t('linkTooltipResolveDisclaimer') }}
+            </div>
+
+            <!-- Mark as shortener after successful resolve (only if not already known) -->
+            <button
+              v-if="!data.shortUrl.isKnownShortener"
+              class="w-full mt-2 px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 rounded border border-gray-700 transition-colors tooltip-label text-center"
+              @click.stop="handleMarkAsShortener()"
+            >
+              {{ t('linkTooltipMarkAsShortener') }}
+            </button>
+          </div>
+
+          <!-- Short URL: error -->
+          <div v-if="data.shortUrl?.status === 'error'" class="mt-2 mb-1">
+            <div class="tooltip-label text-gray-400 mb-2">
+              {{ t('linkTooltipResolveError') }}
+            </div>
+            <button
+              class="w-full px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded border border-gray-600 transition-colors tooltip-label text-center"
+              @click.stop="handleResolveClick()"
+            >
+              {{ t('linkTooltipRetryResolve') }}
+            </button>
           </div>
 
           <!-- Punycode warning -->
@@ -139,9 +271,25 @@ const statusLabel = computed(() => (isSafe: boolean, count: number) => {
             </button>
             <button
               class="flex-1 px-3 py-1.5 bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 rounded border border-gray-600 transition-colors tooltip-label text-center"
-              @click="emit('details', data.domain)"
+              @click="emit('details', data.shortUrl?.status === 'resolved' ? data.shortUrl.resolvedDomain : data.domain)"
             >
               {{ t('linkTooltipDetails') }}
+            </button>
+          </div>
+
+          <!-- Resolve once + Mark as shortener: shown when domain is not detected as shortener -->
+          <div v-if="!data.shortUrl" class="flex gap-2 mt-2">
+            <button
+              class="flex-1 px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded border border-gray-700 transition-colors tooltip-label text-center"
+              @click.stop="handleResolveOnce()"
+            >
+              {{ t('linkTooltipResolveOnce') }}
+            </button>
+            <button
+              class="flex-1 px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 rounded border border-gray-700 transition-colors tooltip-label text-center"
+              @click.stop="handleMarkAsShortener()"
+            >
+              {{ t('linkTooltipMarkAsShortener') }}
             </button>
           </div>
         </template>

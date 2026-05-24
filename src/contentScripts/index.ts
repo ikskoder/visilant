@@ -1,9 +1,11 @@
 import type { Settings } from '~/logic/storage'
+import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { createApp } from 'vue'
 import { setupApp } from '~/logic/common-setup'
 import { checkDomainMismatch, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, setCachedVisitCount } from '~/logic/link-safety'
 import { defaultSettings, settings } from '~/logic/storage'
 import { hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, safetyLevel, setOnTooltipHoverEnter, showWarning, warningType } from '~/logic/ui-state'
+import { addCustomShortener, isShortenedUrl, loadCustomShorteners } from '~/logic/url-shorteners'
 import App from './views/App.vue'
 
 // Helper to send message safely (fallback to runtime.sendMessage)
@@ -62,6 +64,11 @@ async function loadSettings() {
       // Update settings with values from storage
       settings.value = settingsData
     }
+    // Load user-defined shortener domains into content script's runtime set
+    const stored = await browser.storage.local.get('customShorteners')
+    const customList = (stored.customShorteners as string[]) || []
+    if (customList.length > 0)
+      loadCustomShorteners(customList)
   }
   catch (error) {
     console.error('Failed to load settings:', error)
@@ -229,22 +236,48 @@ async function fetchLinkData(href: string, hostname: string) {
 
 function calculateTooltipPosition(anchor: HTMLAnchorElement): { top: number, left: number } {
   const rect = anchor.getBoundingClientRect()
-  const tooltipHeight = 120 // estimated base height (expands with mismatch/punycode warnings)
+  const tooltipHeight = 280 // generous estimate for expanded tooltip (shortUrl resolved + chain + disclaimer)
   const tooltipWidth = 320
+  const gap = 6 // gap between anchor and tooltip
+  const margin = 8 // margin from viewport edges
+  const vh = window.innerHeight
+  const vw = window.innerWidth
 
-  let top = rect.bottom + 6
-  let left = rect.left
+  let top: number
+  let left: number
 
-  // Flip above if near bottom of viewport
-  if (top + tooltipHeight > window.innerHeight)
-    top = rect.top - tooltipHeight - 6
+  const spaceBelow = vh - rect.bottom - gap
+  const spaceAbove = rect.top - gap
 
-  // Clamp horizontally
-  if (left + tooltipWidth > window.innerWidth)
-    left = window.innerWidth - tooltipWidth - 8
+  if (spaceBelow >= tooltipHeight) {
+    // Fits below the link
+    top = rect.bottom + gap
+  }
+  else if (spaceAbove >= tooltipHeight) {
+    // Fits above the link
+    top = rect.top - tooltipHeight - gap
+  }
+  else {
+    // Doesn't fit above or below — clamp to viewport but ensure link stays visible
+    // Place below if more space below, otherwise above, and clamp
+    if (spaceBelow >= spaceAbove) {
+      top = rect.bottom + gap
+      // Don't let it go below viewport
+      top = Math.min(top, vh - tooltipHeight - margin)
+    }
+    else {
+      top = rect.top - tooltipHeight - gap
+      // Don't let it go above viewport
+      top = Math.max(top, margin)
+    }
+  }
 
-  if (left < 8)
-    left = 8
+  // Horizontal: try to align with link, clamp to viewport
+  left = rect.left
+  if (left + tooltipWidth > vw - margin)
+    left = vw - tooltipWidth - margin
+  if (left < margin)
+    left = margin
 
   return { top, left }
 }
@@ -268,16 +301,226 @@ async function showLinkTooltipByUrl(url: string) {
     left: Math.max(8, (window.innerWidth - 320) / 2),
   }
 
+  const shortUrlMode = settings.value.linkSafety.shortUrlMode
+  const isKnownShortener = isShortenedUrl(hostname)
+  const resolveAny = settings.value.linkSafety.shortUrlResolveAny
+  const shouldShowShortUrl = shortUrlMode !== 'off' && (isKnownShortener || resolveAny)
+  const shouldAutoResolve = shortUrlMode === 'auto' && shouldShowShortUrl
+
   linkTooltipData.value = {
     domain: hostname,
     count: visitData.count,
     isSafe: visitData.isSafe,
     mismatch: null, // No text to compare from context menu
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    shortUrl: shouldShowShortUrl
+      ? { originalUrl: url, resolvedUrl: '', resolvedDomain: '', resolvedCount: 0, resolvedIsSafe: false, chain: [], status: shouldAutoResolve ? 'loading' : 'idle', isKnownShortener }
+      : null,
     position,
     href: url,
   }
   linkTooltipVisible.value = true
+
+  if (shouldAutoResolve)
+    resolveAndUpdateTooltip(url, hostname)
+}
+
+/**
+ * Resolve a shortened URL and update the current tooltip data.
+ * Called automatically (auto mode) or on button click (button mode).
+ */
+async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
+  // Set loading state
+  if (linkTooltipData.value && linkTooltipData.value.href === url && linkTooltipData.value.shortUrl) {
+    linkTooltipData.value = {
+      ...linkTooltipData.value,
+      shortUrl: { ...linkTooltipData.value.shortUrl, status: 'loading' },
+    }
+  }
+
+  try {
+    const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url })
+    if (!linkTooltipData.value || linkTooltipData.value.href !== url)
+      return // tooltip already dismissed or changed
+
+    const isKnownShortener = linkTooltipData.value.shortUrl?.isKnownShortener ?? false
+
+    // If final hostname is still the same as original — resolution failed to uncover real destination
+    const didResolve = result && result.status === 'resolved' && result.finalHostname && result.finalHostname !== originalHostname
+
+    if (didResolve) {
+      const resolvedVisitData = await fetchLinkData(`https://${result.finalHostname}`, result.finalHostname)
+      linkTooltipData.value = {
+        ...linkTooltipData.value,
+        shortUrl: {
+          originalUrl: url,
+          resolvedUrl: result.finalUrl,
+          resolvedDomain: result.finalHostname,
+          resolvedCount: resolvedVisitData.count,
+          resolvedIsSafe: resolvedVisitData.isSafe,
+          chain: result.chain,
+          status: 'resolved',
+          isKnownShortener,
+        },
+      }
+    }
+    else {
+      linkTooltipData.value = {
+        ...linkTooltipData.value,
+        shortUrl: {
+          originalUrl: url,
+          resolvedUrl: '',
+          resolvedDomain: '',
+          resolvedCount: 0,
+          resolvedIsSafe: false,
+          chain: result?.chain || [url],
+          status: 'error',
+          error: result?.error || 'same_domain',
+          isKnownShortener,
+        },
+      }
+    }
+  }
+  catch {
+    if (linkTooltipData.value && linkTooltipData.value.href === url) {
+      const isKnownShortener = linkTooltipData.value.shortUrl?.isKnownShortener ?? false
+      linkTooltipData.value = {
+        ...linkTooltipData.value,
+        shortUrl: { originalUrl: url, resolvedUrl: '', resolvedDomain: '', resolvedCount: 0, resolvedIsSafe: false, chain: [url], status: 'error', error: 'failed', isKnownShortener },
+      }
+    }
+  }
+}
+
+// Expose resolve function for tooltip button click
+;(window as any).__visilant_resolveTooltipUrl = () => {
+  const data = linkTooltipData.value
+  if (data?.shortUrl && (data.shortUrl.status === 'idle' || data.shortUrl.status === 'error')) {
+    resolveAndUpdateTooltip(data.href, data.domain)
+  }
+}
+
+// Expose function to resolve once without marking domain as shortener
+;(window as any).__visilant_resolveOnce = () => {
+  const data = linkTooltipData.value
+  if (!data)
+    return
+
+  // Set shortUrl to loading state without persisting domain
+  linkTooltipData.value = {
+    ...data,
+    shortUrl: {
+      originalUrl: data.href,
+      resolvedUrl: '',
+      resolvedDomain: '',
+      resolvedCount: 0,
+      resolvedIsSafe: false,
+      chain: [],
+      status: 'loading',
+      isKnownShortener: false,
+    },
+  }
+
+  resolveAndUpdateTooltip(data.href, data.domain)
+}
+
+// Expose function to mark current tooltip domain as shortener
+;(window as any).__visilant_markAsShortener = async () => {
+  const data = linkTooltipData.value
+  if (!data)
+    return
+
+  const domain = data.domain
+  // Update content script's own runtime set so isShortenedUrl() works on this page
+  addCustomShortener(domain)
+  // Persist via background
+  await sendMessageSafe('add-custom-shortener', { domain })
+
+  // Immediately update tooltip to show resolve button
+  const shortUrlMode = settings.value.linkSafety.shortUrlMode
+  if (shortUrlMode === 'off')
+    return
+
+  const shouldAutoResolve = shortUrlMode === 'auto'
+  linkTooltipData.value = {
+    ...data,
+    shortUrl: {
+      originalUrl: data.href,
+      resolvedUrl: '',
+      resolvedDomain: '',
+      resolvedCount: 0,
+      resolvedIsSafe: false,
+      chain: [],
+      status: shouldAutoResolve ? 'loading' : 'idle',
+      isKnownShortener: true,
+    },
+  }
+
+  if (shouldAutoResolve)
+    resolveAndUpdateTooltip(data.href, domain)
+}
+
+// Expose resolve function for intercept dialog button click
+;(window as any).__visilant_resolveInterceptUrl = async () => {
+  const data = linkInterceptData.value
+  if (!data?.shortUrl || (data.shortUrl.status !== 'idle' && data.shortUrl.status !== 'error'))
+    return
+
+  // Set loading state
+  linkInterceptData.value = {
+    ...data,
+    shortUrl: { ...data.shortUrl, status: 'loading' },
+  }
+
+  try {
+    const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url: data.url })
+    if (!linkInterceptData.value || linkInterceptData.value.url !== data.url)
+      return
+
+    const isKnownShortener = data.shortUrl.isKnownShortener
+    const didResolve = result && result.status === 'resolved' && result.finalHostname && result.finalHostname !== data.domain
+
+    if (didResolve) {
+      const resolvedVisitData = await fetchLinkData(`https://${result.finalHostname}`, result.finalHostname)
+      linkInterceptData.value = {
+        ...linkInterceptData.value,
+        shortUrl: {
+          originalUrl: data.url,
+          resolvedUrl: result.finalUrl,
+          resolvedDomain: result.finalHostname,
+          resolvedCount: resolvedVisitData.count,
+          resolvedIsSafe: resolvedVisitData.isSafe,
+          chain: result.chain,
+          status: 'resolved',
+          isKnownShortener,
+        },
+      }
+    }
+    else {
+      linkInterceptData.value = {
+        ...linkInterceptData.value,
+        shortUrl: {
+          originalUrl: data.url,
+          resolvedUrl: '',
+          resolvedDomain: '',
+          resolvedCount: 0,
+          resolvedIsSafe: false,
+          chain: result?.chain || [data.url],
+          status: 'error',
+          error: result?.error || 'same_domain',
+          isKnownShortener,
+        },
+      }
+    }
+  }
+  catch {
+    if (linkInterceptData.value && linkInterceptData.value.url === data.url) {
+      linkInterceptData.value = {
+        ...linkInterceptData.value,
+        shortUrl: { ...data.shortUrl, status: 'error', error: 'failed' },
+      }
+    }
+  }
 }
 
 async function showLinkTooltip(anchor: HTMLAnchorElement) {
@@ -308,16 +551,28 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
 
   const position = calculateTooltipPosition(anchor)
 
+  const shortUrlMode = settings.value.linkSafety.shortUrlMode
+  const isKnownShortener = isShortenedUrl(hostname)
+  const resolveAny = settings.value.linkSafety.shortUrlResolveAny
+  const shouldShowShortUrl = shortUrlMode !== 'off' && (isKnownShortener || resolveAny)
+  const shouldAutoResolve = shortUrlMode === 'auto' && shouldShowShortUrl
+
   linkTooltipData.value = {
     domain: hostname,
     count: visitData.count,
     isSafe: visitData.isSafe,
     mismatch,
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    shortUrl: shouldShowShortUrl
+      ? { originalUrl: href, resolvedUrl: '', resolvedDomain: '', resolvedCount: 0, resolvedIsSafe: false, chain: [], status: shouldAutoResolve ? 'loading' : 'idle', isKnownShortener }
+      : null,
     position,
     href,
   }
   linkTooltipVisible.value = true
+
+  if (shouldAutoResolve)
+    resolveAndUpdateTooltip(href, hostname)
 }
 
 function navigateToUrl(url: string, target: string) {
@@ -344,8 +599,55 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
 
   const visitData = await fetchLinkData(href, hostname)
 
-  // Safe site — allow navigation
-  if (visitData.isSafe) {
+  // Resolve shortened URL if auto mode is enabled
+  const shortUrlMode = settings.value.linkSafety.shortUrlMode
+  const isKnownShortener = isShortenedUrl(hostname)
+  const resolveAny = settings.value.linkSafety.shortUrlResolveAny
+  const shouldResolve = shortUrlMode === 'auto' && (isKnownShortener || resolveAny)
+  let shortUrlInfo: import('~/logic/ui-state').ShortUrlInfo | null = null
+
+  if (shouldResolve) {
+    try {
+      const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url: href })
+      if (result && result.status === 'resolved' && result.finalHostname && result.finalHostname !== hostname) {
+        const resolvedVisitData = await fetchLinkData(`https://${result.finalHostname}`, result.finalHostname)
+        shortUrlInfo = {
+          originalUrl: href,
+          resolvedUrl: result.finalUrl,
+          resolvedDomain: result.finalHostname,
+          resolvedCount: resolvedVisitData.count,
+          resolvedIsSafe: resolvedVisitData.isSafe,
+          chain: result.chain,
+          status: 'resolved',
+          isKnownShortener,
+        }
+        // Use resolved domain's safety for intercept decision
+        if (resolvedVisitData.isSafe) {
+          navigateToUrl(href, target)
+          return false
+        }
+      }
+    }
+    catch {
+      // Resolution failed — show intercept as safe default
+    }
+  }
+  else if (shortUrlMode === 'button' && (isKnownShortener || resolveAny)) {
+    // Button mode: show idle state so user can resolve manually in the dialog
+    shortUrlInfo = {
+      originalUrl: href,
+      resolvedUrl: '',
+      resolvedDomain: '',
+      resolvedCount: 0,
+      resolvedIsSafe: false,
+      chain: [],
+      status: 'idle',
+      isKnownShortener,
+    }
+  }
+
+  // Safe site — allow navigation (only if we didn't auto-resolve, which was handled above)
+  if (!shouldResolve && visitData.isSafe) {
     navigateToUrl(href, target)
     return false
   }
@@ -370,6 +672,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
     isSafe: visitData.isSafe,
     mismatch: interceptMismatch,
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    shortUrl: shortUrlInfo,
   }
   linkInterceptVisible.value = true
 

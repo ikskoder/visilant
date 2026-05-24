@@ -1,6 +1,14 @@
 import type { Settings } from '~/logic/storage'
 import { onMessage } from 'webext-bridge/background'
 import { settings as appSettings } from '~/logic/storage'
+import { addCustomShortener, getCachedResolvedUrl, loadCustomShorteners, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
+
+// Load user-defined shortener domains on service worker start
+browser.storage.local.get('customShorteners').then((stored) => {
+  const list = (stored.customShorteners as string[]) || []
+  if (list.length > 0)
+    loadCustomShorteners(list)
+})
 
 // Available languages in the extension
 const availableLanguages = [
@@ -327,6 +335,27 @@ const messageHandlers = {
   'show-notification': (data: any) => handleShowNotification(data.warningType),
   'tampering-detected': () => handleTampering(),
   'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain),
+  'resolve-short-url': async (data: any) => {
+    const cached = getCachedResolvedUrl(data.url)
+    if (cached)
+      return cached
+    const result = await resolveUrlChain(data.url)
+    setCachedResolvedUrl(data.url, result)
+    return result
+  },
+  'add-custom-shortener': async (data: any) => {
+    const domain = data.domain?.trim().toLowerCase()
+    if (!domain)
+      return { success: false }
+    addCustomShortener(domain)
+    const stored = await browser.storage.local.get('customShorteners')
+    const list: string[] = (stored.customShorteners as string[]) || []
+    if (!list.includes(domain)) {
+      list.push(domain)
+      await browser.storage.local.set({ customShorteners: list })
+    }
+    return { success: true }
+  },
 }
 
 // Register webext-bridge handlers

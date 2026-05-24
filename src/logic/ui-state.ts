@@ -6,6 +6,19 @@ export const safetyLevel = ref<boolean | null>(null)
 export const isIgnored = ref(false)
 export const hasNotifiedOnThisPage = ref(false)
 
+// Shortened URL resolution info
+export interface ShortUrlInfo {
+  originalUrl: string
+  resolvedUrl: string
+  resolvedDomain: string
+  resolvedCount: number
+  resolvedIsSafe: boolean
+  chain: string[] // full redirect chain
+  status: 'idle' | 'loading' | 'resolved' | 'error'
+  error?: string
+  isKnownShortener: boolean // true if domain is in the shortener list
+}
+
 // Link safety tooltip state
 export interface LinkTooltipData {
   domain: string
@@ -13,6 +26,7 @@ export interface LinkTooltipData {
   isSafe: boolean
   mismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null
   punycode: string | null
+  shortUrl?: ShortUrlInfo | null
   position: { top: number, left: number }
   href: string
 }
@@ -29,6 +43,7 @@ export interface LinkInterceptData {
   isSafe: boolean
   mismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null
   punycode: string | null
+  shortUrl?: ShortUrlInfo | null
 }
 
 export const linkInterceptVisible = ref(false)

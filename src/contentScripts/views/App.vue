@@ -107,6 +107,11 @@ function handleInterceptCancel() {
   }
 }
 
+function handleResolveInterceptUrl() {
+  // Trigger resolve via the global function exposed by content script
+  ;(window as any).__visilant_resolveInterceptUrl?.()
+}
+
 onMounted(async () => {
   // Initialize settings
   if (!settings.value) {
@@ -132,6 +137,8 @@ onMounted(async () => {
     :show-go-button="settings.linkSafety?.tooltipTrigger === 'click-left'"
     :font-size="settings.popupFontSize"
     :show-visit-count="settings.linkSafety?.showVisitCount ?? 'always'"
+    :show-full-url="settings.linkSafety?.shortUrlShowFullUrl ?? false"
+    :trace-chain="settings.linkSafety?.shortUrlTraceChain ?? false"
     @hover-enter="handleTooltipHoverEnter"
     @close="handleTooltipClose"
     @go="handleTooltipGo"
@@ -142,9 +149,12 @@ onMounted(async () => {
     :visible="linkInterceptVisible"
     :data="linkInterceptData"
     :show-visit-count="settings.linkSafety?.showVisitCount || 'always'"
+    :show-full-url="settings.linkSafety?.shortUrlShowFullUrl ?? false"
+    :trace-chain="settings.linkSafety?.shortUrlTraceChain ?? false"
     @continue="handleInterceptContinue"
     @cancel="handleInterceptCancel"
     @details="handleTooltipDetails"
+    @resolve-short-url="handleResolveInterceptUrl"
   />
 </template>
 

@@ -351,6 +351,46 @@
     "message": "Ask for confirmation before navigating to unfamiliar sites",
     "description": "Description for navigation intercept"
   },
+  "linkShortUrlSection": {
+    "message": "Shortened URL detection",
+    "description": "Section header for shortened URL settings"
+  },
+  "linkShortUrlModeOff": {
+    "message": "Disabled",
+    "description": "Short URL mode: off"
+  },
+  "linkShortUrlModeButton": {
+    "message": "Resolve by button click",
+    "description": "Short URL mode: manual button"
+  },
+  "linkShortUrlModeAuto": {
+    "message": "Auto-resolve",
+    "description": "Short URL mode: automatic"
+  },
+  "linkShortUrlShowFullUrl": {
+    "message": "Show full resolved URL (not just domain)",
+    "description": "Toggle to show full URL vs domain only"
+  },
+  "linkShortUrlTraceChain": {
+    "message": "Show redirect chain trace",
+    "description": "Toggle to show full redirect hop chain"
+  },
+  "linkShortUrlResolveAny": {
+    "message": "Allow resolving any URL (not just known shorteners)",
+    "description": "Toggle to enable resolving any link"
+  },
+  "linkShortUrlResolveAnyDesc": {
+    "message": "Useful if a shortener is not in the built-in list",
+    "description": "Explanation for resolve-any option"
+  },
+  "linkShortUrlListUpdateUrl": {
+    "message": "Remote shortener list URL",
+    "description": "Label for remote list URL input"
+  },
+  "linkShortUrlListUpdateUrlDesc": {
+    "message": "Periodically fetch an updated list of shortener domains (one per line)",
+    "description": "Description for remote list URL"
+  },
   "linkScopeMode": {
     "message": "Active on",
     "description": "Label for scope mode selection"
@@ -454,5 +494,65 @@
   "linkContextMenuCheck": {
     "message": "Check link safety",
     "description": "Context menu item to check link safety"
+  },
+  "linkTooltipShortener": {
+    "message": "shortener",
+    "description": "Label indicating a URL shortener domain"
+  },
+  "linkTooltipShortenedUrl": {
+    "message": "Real destination:",
+    "description": "Label for resolved shortened URL destination"
+  },
+  "linkTooltipResolvingUrl": {
+    "message": "Resolving...",
+    "description": "Loading state while resolving shortened URL"
+  },
+  "linkTooltipResolveError": {
+    "message": "Could not resolve URL",
+    "description": "Error state when URL resolution fails"
+  },
+  "linkTooltipResolveButton": {
+    "message": "Resolve real destination",
+    "description": "Button to manually resolve a shortened URL"
+  },
+  "linkShortUrlSectionWarning": {
+    "message": "To resolve a shortened URL, a request is made to follow the redirect chain. The shortener will see this request. If the link looks suspicious, it may be safer not to resolve it at all.",
+    "description": "Warning in settings about risks of URL resolution"
+  },
+  "linkTooltipRetryResolve": {
+    "message": "Retry",
+    "description": "Button to retry URL resolution after error"
+  },
+  "linkTooltipShortUrlWarning": {
+    "message": "This link uses a URL shortener — the real destination is hidden",
+    "description": "Warning about shortened URL hiding destination"
+  },
+  "linkTooltipRedirectChain": {
+    "message": "Redirect chain",
+    "description": "Label for redirect chain trace display"
+  },
+  "linkTooltipResolveDisclaimer": {
+    "message": "Most likely the final destination, but not 100% guaranteed",
+    "description": "Disclaimer that resolved URL might not be final"
+  },
+  "linkInterceptRealDestination": {
+    "message": "Real destination:",
+    "description": "Label for real destination in intercept dialog"
+  },
+  "linkShortUrlResetCustom": {
+    "message": "Custom shortener domains",
+    "description": "Button to clear user-defined shortener domains"
+  },
+  "linkShortUrlResetCustomDesc": {
+    "message": "Clear all domains you manually marked as shorteners",
+    "description": "Description for reset custom shorteners button"
+  },
+  "linkTooltipResolveOnce": {
+    "message": "Trace path",
+    "description": "Button to resolve URL once without marking domain as shortener"
+  },
+  "linkTooltipMarkAsShortener": {
+    "message": "Mark as shortener",
+    "description": "Button to mark current domain as a URL shortener"
   }
 }

@@ -38,6 +38,12 @@ export interface LinkSafetySettings {
   tooltipTrigger: 'hover' | 'click-left'
   showVisitCount: 'always' | 'never' | 'unfamiliar' | 'familiar'
   interceptEnabled: boolean
+  // Shortened URL settings
+  shortUrlMode: 'off' | 'button' | 'auto' // off=disabled, button=resolve on click, auto=resolve automatically
+  shortUrlShowFullUrl: boolean // show full resolved URL or just domain
+  shortUrlTraceChain: boolean // show full redirect chain trace
+  shortUrlResolveAny: boolean // allow resolving ANY url, not just known shorteners
+  shortUrlListUpdateUrl: string // remote URL to fetch updated shortener list
   scopeMode: 'everywhere' | 'whitelist' | 'blacklist'
   scopeDomains: string
 }
@@ -77,6 +83,11 @@ export const defaultSettings: Settings = {
     tooltipTrigger: 'hover',
     showVisitCount: 'always',
     interceptEnabled: false,
+    shortUrlMode: 'button',
+    shortUrlShowFullUrl: false,
+    shortUrlTraceChain: false,
+    shortUrlResolveAny: false,
+    shortUrlListUpdateUrl: '',
     scopeMode: 'everywhere',
     scopeDomains: '',
   },

@@ -74,6 +74,18 @@ function updateTranslations() {
     'linkShowVisitCountFamiliar',
     'linkInterceptEnabled',
     'linkInterceptEnabledDesc',
+    'linkShortUrlSection',
+    'linkShortUrlSectionWarning',
+    'linkShortUrlModeOff',
+    'linkShortUrlModeButton',
+    'linkShortUrlModeAuto',
+    'linkShortUrlShowFullUrl',
+    'linkShortUrlTraceChain',
+    'linkShortUrlResolveAny',
+    'linkShortUrlResolveAnyDesc',
+    'linkShortUrlListUpdateUrl',
+    'linkShortUrlListUpdateUrlDesc',
+    'linkShortUrlResetCustom',
     'linkScopeMode',
     'linkScopeEverywhere',
     'linkScopeWhitelist',
@@ -131,6 +143,7 @@ const showResetConfirm = ref(false)
 const resetSelections = ref({
   visits: false,
   settings: false,
+  customShorteners: false,
 })
 
 // Language settings
@@ -238,10 +251,15 @@ async function resetSelected() {
     settings.value = { ...defaultSettings }
   }
 
+  if (resetSelections.value.customShorteners) {
+    await browser.storage.local.remove('customShorteners')
+  }
+
   // Reset selections
   resetSelections.value = {
     visits: false,
     settings: false,
+    customShorteners: false,
   }
 }
 
@@ -252,7 +270,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 <template>
   <main class="px-4 py-10 text-center text-gray-700 dark:text-gray-200">
     <div v-if="!isLoaded" class="flex justify-center items-center h-screen">
-      <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-teal-500" />
+      <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
     </div>
 
     <div v-else>
@@ -273,7 +291,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <label class="text-sm font-medium mb-2">{{ translations.selectLanguage }}</label>
             <select
               v-model="currentLanguage"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               @change="(e) => changeLanguage((e.target as HTMLSelectElement).value)"
             >
               <option v-for="lang in availableLanguages" :key="lang.code" :value="lang.code">
@@ -289,7 +307,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <div class="flex items-center w-full">
                 <input
                   :value="settings.safety" type="number" min="1"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   :placeholder="translations.defaultSafetyThreshold" @input="updateSafetyThreshold(($event.target as HTMLInputElement).value)"
                 >
               </div>
@@ -317,7 +335,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <label class="relative inline-flex items-center cursor-pointer">
                 <input v-model="settings.changeIcon" type="checkbox" class="sr-only peer">
                 <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 dark:peer-focus:ring-teal-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-teal-600"
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
                 />
               </label>
             </div>
@@ -332,7 +350,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <label class="relative inline-flex items-center cursor-pointer">
                 <input v-model="settings.showBadge" type="checkbox" class="sr-only peer">
                 <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 dark:peer-focus:ring-teal-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-teal-600"
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
                 />
               </label>
             </div>
@@ -356,7 +374,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <label class="relative inline-flex items-center cursor-pointer">
               <input v-model="settings.showWarningNotification" type="checkbox" class="sr-only peer">
               <div
-                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 dark:peer-focus:ring-teal-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-teal-600"
+                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
               />
             </label>
           </div>
@@ -373,7 +391,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <input
                     type="radio" name="warningType" value="input"
                     :checked="settings.showInputWarning && !settings.showCopyWarning"
-                    class="form-radio h-4 w-4 text-teal-600" @change="() => {
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;" @change="() => {
                       settings.showInputWarning = true;
                       settings.showCopyWarning = false;
                     }"
@@ -384,7 +402,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <input
                     type="radio" name="warningType" value="copy"
                     :checked="!settings.showInputWarning && settings.showCopyWarning"
-                    class="form-radio h-4 w-4 text-teal-600" @change="() => {
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;" @change="() => {
                       settings.showInputWarning = false;
                       settings.showCopyWarning = true;
                     }"
@@ -395,7 +413,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <input
                     type="radio" name="warningType" value="both"
                     :checked="settings.showInputWarning && settings.showCopyWarning"
-                    class="form-radio h-4 w-4 text-teal-600" @change="() => {
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;" @change="() => {
                       settings.showInputWarning = true;
                       settings.showCopyWarning = true;
                     }"
@@ -415,21 +433,21 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <label class="flex items-center">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="browser"
-                      class="form-radio h-4 w-4 text-teal-600"
+                      class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                     >
                     <span class="ml-2">{{ translations.browserNotifications }}</span>
                   </label>
                   <label class="flex items-center">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="in-page"
-                      class="form-radio h-4 w-4 text-teal-600"
+                      class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                     >
                     <span class="ml-2">{{ translations.inPageNotifications }}</span>
                   </label>
                   <label class="flex items-center">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="both"
-                      class="form-radio h-4 w-4 text-teal-600"
+                      class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                     >
                     <span class="ml-2">{{ translations.bothNotifications }}</span>
                   </label>
@@ -455,7 +473,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <label class="relative inline-flex items-center cursor-pointer">
               <input v-model="settings.linkSafety.enabled" type="checkbox" class="sr-only peer">
               <div
-                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 dark:peer-focus:ring-teal-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-teal-600"
+                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
               />
             </label>
           </div>
@@ -470,14 +488,14 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <label class="flex items-center">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="hover"
-                    class="form-radio h-4 w-4 text-teal-600"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkTooltipTriggerHover }}</span>
                 </label>
                 <label class="flex items-center">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-left"
-                    class="form-radio h-4 w-4 text-teal-600"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkTooltipTriggerClickLeft }}</span>
                 </label>
@@ -493,28 +511,28 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <label class="flex items-center">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="always"
-                    class="form-radio h-4 w-4 text-teal-600"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkShowVisitCountAlways }}</span>
                 </label>
                 <label class="flex items-center">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="unfamiliar"
-                    class="form-radio h-4 w-4 text-teal-600"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkShowVisitCountUnfamiliar }}</span>
                 </label>
                 <label class="flex items-center">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="familiar"
-                    class="form-radio h-4 w-4 text-teal-600"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkShowVisitCountFamiliar }}</span>
                 </label>
                 <label class="flex items-center">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="never"
-                    class="form-radio h-4 w-4 text-teal-600"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkShowVisitCountNever }}</span>
                 </label>
@@ -533,9 +551,73 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <label class="relative inline-flex items-center cursor-pointer">
                   <input v-model="settings.linkSafety.interceptEnabled" type="checkbox" class="sr-only peer">
                   <div
-                    class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 dark:peer-focus:ring-teal-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-teal-600"
+                    class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
                   />
                 </label>
+              </div>
+            </div>
+
+            <!-- Shortened URL Settings -->
+            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h3 class="text-left text-sm font-medium mb-1">
+                {{ translations.linkShortUrlSection }}
+              </h3>
+              <p class="text-left text-xs text-gray-500 mb-3">
+                {{ translations.linkShortUrlSectionWarning }}
+              </p>
+
+              <!-- Mode: off / button / auto -->
+              <div class="text-left space-y-2 mb-3">
+                <label class="flex items-center cursor-pointer">
+                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="off" class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;">
+                  <span class="ml-2 text-sm">{{ translations.linkShortUrlModeOff }}</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="button" class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;">
+                  <span class="ml-2 text-sm">{{ translations.linkShortUrlModeButton }}</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="auto" class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;">
+                  <span class="ml-2 text-sm">{{ translations.linkShortUrlModeAuto }}</span>
+                </label>
+              </div>
+
+              <!-- Sub-options (only when not off) -->
+              <div v-if="settings.linkSafety.shortUrlMode !== 'off'" class="text-left space-y-3 ml-2 pl-3 border-l-2 border-gray-200 dark:border-gray-700">
+                <!-- Show full URL -->
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input v-model="settings.linkSafety.shortUrlShowFullUrl" type="checkbox" class="flex-shrink-0 rounded" style="width: 16px; height: 16px; min-width: 16px; min-height: 16px; accent-color: #3b82f6;">
+                  <span class="text-sm">{{ translations.linkShortUrlShowFullUrl }}</span>
+                </label>
+
+                <!-- Show redirect chain -->
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input v-model="settings.linkSafety.shortUrlTraceChain" type="checkbox" class="flex-shrink-0 rounded" style="width: 16px; height: 16px; min-width: 16px; min-height: 16px; accent-color: #3b82f6;">
+                  <span class="text-sm">{{ translations.linkShortUrlTraceChain }}</span>
+                </label>
+
+                <!-- Resolve any URL -->
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input v-model="settings.linkSafety.shortUrlResolveAny" type="checkbox" class="flex-shrink-0 rounded" style="width: 16px; height: 16px; min-width: 16px; min-height: 16px; accent-color: #3b82f6;">
+                  <span class="text-sm">{{ translations.linkShortUrlResolveAny }}</span>
+                </label>
+                <p v-if="settings.linkSafety.shortUrlResolveAny" class="text-left text-xs text-gray-500 ml-6">
+                  {{ translations.linkShortUrlResolveAnyDesc }}
+                </p>
+
+                <!-- Remote list update URL -->
+                <div class="text-left">
+                  <label class="text-sm font-medium">{{ translations.linkShortUrlListUpdateUrl }}</label>
+                  <p class="text-xs text-gray-500 mb-1">
+                    {{ translations.linkShortUrlListUpdateUrlDesc }}
+                  </p>
+                  <input
+                    v-model="settings.linkSafety.shortUrlListUpdateUrl"
+                    type="url"
+                    placeholder="https://raw.githubusercontent.com/..."
+                    class="w-full px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 text-left"
+                  >
+                </div>
               </div>
             </div>
 
@@ -548,21 +630,21 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <label class="flex items-center">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="everywhere"
-                    class="form-radio h-4 w-4 text-teal-600"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkScopeEverywhere }}</span>
                 </label>
                 <label class="flex items-center">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="whitelist"
-                    class="form-radio h-4 w-4 text-teal-600"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkScopeWhitelist }}</span>
                 </label>
                 <label class="flex items-center">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="blacklist"
-                    class="form-radio h-4 w-4 text-teal-600"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkScopeBlacklist }}</span>
                 </label>
@@ -572,7 +654,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <div v-if="settings.linkSafety.scopeMode !== 'everywhere'" class="mt-3">
                 <textarea
                   v-model="settings.linkSafety.scopeDomains"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                   rows="3"
                   :placeholder="translations.linkScopeDomains"
                 />
@@ -590,7 +672,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           <div class="space-y-4">
             <div>
               <button
-                class="w-full px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                 :disabled="isImporting" @click="importHistory"
               >
                 <template v-if="!isImporting">
@@ -602,7 +684,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               </button>
               <div v-if="isImporting" class="w-full h-1 mt-2 bg-gray-200 rounded-full overflow-hidden">
                 <div
-                  class="h-full bg-teal-600 transition-all duration-200"
+                  class="h-full bg-blue-500 transition-all duration-200"
                   :style="{ width: `${(importProgress.current / importProgress.total) * 100}%` }"
                 />
               </div>
@@ -620,16 +702,23 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <label class="flex items-center">
                     <input
                       v-model="resetSelections.visits" type="checkbox"
-                      class="form-checkbox h-4 w-4 text-teal-600 rounded"
+                      class="h-4 w-4 flex-shrink-0 rounded" style="accent-color: #3b82f6;"
                     >
                     <span class="ml-2 text-sm">{{ translations.visitsInfo }}</span>
                   </label>
                   <label class="flex items-center">
                     <input
                       v-model="resetSelections.settings" type="checkbox"
-                      class="form-checkbox h-4 w-4 text-teal-600 rounded"
+                      class="h-4 w-4 flex-shrink-0 rounded" style="accent-color: #3b82f6;"
                     >
                     <span class="ml-2 text-sm">{{ translations.allSettings }}</span>
+                  </label>
+                  <label class="flex items-center">
+                    <input
+                      v-model="resetSelections.customShorteners" type="checkbox"
+                      class="h-4 w-4 flex-shrink-0 rounded" style="accent-color: #3b82f6;"
+                    >
+                    <span class="ml-2 text-sm">{{ translations.linkShortUrlResetCustom }}</span>
                   </label>
                 </div>
               </div>
@@ -668,13 +757,16 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         <li v-if="resetSelections.settings">
           {{ translations.allSettings }}
         </li>
+        <li v-if="resetSelections.customShorteners">
+          {{ translations.linkShortUrlResetCustom }}
+        </li>
       </ul>
       <p class="text-sm text-gray-600 dark:text-gray-300 mb-6">
         {{ translations.cannotBeUndone }}!
       </p>
       <div class="flex space-x-3">
         <button
-          class="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+          class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
           @click="showResetConfirm = false"
         >
           {{ translations.cancel }}
