@@ -24,7 +24,7 @@ function isAntiTamperingExcluded(hostname: string): boolean {
   const excludedStr = settings.value.antiTamperingExcludedDomains
   if (!excludedStr)
     return false
-  const excluded = excludedStr.split(/[,\n]/).map(d => d.trim().toLowerCase()).filter(Boolean)
+  const excluded = excludedStr.split(/\n/).map(d => d.trim().toLowerCase()).filter(Boolean)
   const lowerHostname = hostname.toLowerCase()
   return excluded.some(domain => lowerHostname === domain || lowerHostname.endsWith(`.${domain}`))
 }

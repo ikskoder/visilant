@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import logo from '~/assets/logo.svg'
 import { useI18n } from '~/composables/useI18n'
 import { defaultSettings, settings } from '~/logic/storage'
@@ -95,6 +95,8 @@ function updateTranslations() {
     'antiTamperingSettingsDesc',
     'antiTamperingExcludedDomains',
     'antiTamperingExcludedDomainsDesc',
+    'linkShortUrlCustomDomains',
+    'linkShortUrlCustomDomainsDesc',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -136,6 +138,20 @@ watch(() => settings.value.notificationStyle, async (newVal) => {
       alert(t.value('notificationPermissionRequired'))
     }
   }
+})
+
+// Custom shorteners (stored in browser.storage.local as string[])
+const customShortenersText = ref('')
+
+onMounted(async () => {
+  const stored = await browser.storage.local.get('customShorteners')
+  const list = (stored.customShorteners as string[]) || []
+  customShortenersText.value = list.join('\n')
+})
+
+watch(customShortenersText, async (newVal) => {
+  const list = newVal.split(/\n/).map(d => d.trim().toLowerCase()).filter(Boolean)
+  await browser.storage.local.set({ customShorteners: list })
 })
 
 // Loading states
@@ -253,10 +269,14 @@ async function resetSelected() {
   if (resetSelections.value.settings) {
     // Reset settings to defaults
     settings.value = { ...defaultSettings }
+    // Custom shorteners are part of settings UI, reset them too
+    await browser.storage.local.remove('customShorteners')
+    customShortenersText.value = ''
   }
 
   if (resetSelections.value.customShorteners) {
     await browser.storage.local.remove('customShorteners')
+    customShortenersText.value = ''
   }
 
   // Reset selections
@@ -609,18 +629,32 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   {{ translations.linkShortUrlResolveAnyDesc }}
                 </p>
 
-                <!-- Remote list update URL -->
+                <!-- Custom shortener domains -->
+                <div class="text-left">
+                  <label class="text-sm font-medium">{{ translations.linkShortUrlCustomDomains }}</label>
+                  <p class="text-xs text-gray-500 mb-1">
+                    {{ translations.linkShortUrlCustomDomainsDesc }}
+                  </p>
+                  <textarea
+                    v-model="customShortenersText"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    rows="3"
+                    placeholder="short.link&#10;go.example.com"
+                  />
+                </div>
+
+                <!-- Remote list update URLs -->
                 <div class="text-left">
                   <label class="text-sm font-medium">{{ translations.linkShortUrlListUpdateUrl }}</label>
                   <p class="text-xs text-gray-500 mb-1">
                     {{ translations.linkShortUrlListUpdateUrlDesc }}
                   </p>
-                  <input
+                  <textarea
                     v-model="settings.linkSafety.shortUrlListUpdateUrl"
-                    type="url"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    rows="2"
                     placeholder="https://raw.githubusercontent.com/..."
-                    class="w-full px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 text-left"
-                  >
+                  />
                 </div>
               </div>
             </div>
@@ -685,7 +719,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               v-model="settings.antiTamperingExcludedDomains"
               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
               rows="3"
-              placeholder="example.com, another-site.org"
+              placeholder="example.com&#10;another-site.org"
             />
           </div>
         </div>

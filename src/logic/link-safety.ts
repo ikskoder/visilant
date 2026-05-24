@@ -107,11 +107,11 @@ export function isDomainInScope(currentDomain: string, linkSafety: LinkSafetySet
 }
 
 /**
- * Parse a comma/newline separated domain list into an array of normalized domains.
+ * Parse a newline-separated domain list into an array of normalized domains.
  */
 function parseDomainList(raw: string): string[] {
   return raw
-    .split(/[,\n\r]+/)
+    .split(/[\n\r]+/)
     .map(d => d.trim().toLowerCase().replace(/^www\./, ''))
     .filter(d => d.length > 0 && d.includes('.'))
 }

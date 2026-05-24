@@ -384,12 +384,12 @@
     "description": "Explanation for resolve-any option"
   },
   "linkShortUrlListUpdateUrl": {
-    "message": "URL удалённого списка сокращателей",
-    "description": "Label for remote list URL input"
+    "message": "Удалённые списки сокращателей",
+    "description": "Label for remote list URLs textarea"
   },
   "linkShortUrlListUpdateUrlDesc": {
-    "message": "Периодически загружать обновлённый список доменов-сокращателей (один на строку)",
-    "description": "Description for remote list URL"
+    "message": "URL-адреса для периодической загрузки списков доменов-сокращателей (один URL на строку). Каждый файл должен содержать по одному домену на строку",
+    "description": "Description for remote list URLs"
   },
   "linkScopeMode": {
     "message": "Активно на",
@@ -408,7 +408,7 @@
     "description": "Scope option: blacklist"
   },
   "linkScopeDomains": {
-    "message": "Список доменов (по одному на строку или через запятую)",
+    "message": "По одному домену на строку",
     "description": "Placeholder for scope domain list textarea"
   },
   "linkTooltipVisits": {
@@ -555,6 +555,14 @@
     "message": "Это сокращатель",
     "description": "Button to mark current domain as a URL shortener"
   },
+  "linkShortUrlCustomDomains": {
+    "message": "Собственные домены-сокращатели",
+    "description": "Label for custom shortener domains textarea"
+  },
+  "linkShortUrlCustomDomainsDesc": {
+    "message": "Домены, которые вы пометили как сокращатели, по одному на строку. Субдомены включаются автоматически. Объединяются со встроенным и удалённым списками",
+    "description": "Description for custom shortener domains textarea"
+  },
   "antiTamperingSettings": {
     "message": "Защита от вмешательства",
     "description": "Title for anti-tampering settings section"
@@ -568,7 +576,7 @@
     "description": "Label for anti-tampering excluded domains textarea"
   },
   "antiTamperingExcludedDomainsDesc": {
-    "message": "Защита от вмешательства будет отключена на этих доменах (по одному на строку или через запятую)",
+    "message": "Защита от вмешательства будет отключена на этих доменах и их субдоменах (по одному на строку)",
     "description": "Description for excluded domains setting"
   },
   "antiTamperingProtected": {

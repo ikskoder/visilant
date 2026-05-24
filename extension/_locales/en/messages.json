@@ -384,12 +384,12 @@
     "description": "Explanation for resolve-any option"
   },
   "linkShortUrlListUpdateUrl": {
-    "message": "Remote shortener list URL",
-    "description": "Label for remote list URL input"
+    "message": "Remote shortener lists",
+    "description": "Label for remote list URLs textarea"
   },
   "linkShortUrlListUpdateUrlDesc": {
-    "message": "Periodically fetch an updated list of shortener domains (one per line)",
-    "description": "Description for remote list URL"
+    "message": "URLs to periodically fetch shortener domain lists from (one URL per line). Each file should contain one domain per line",
+    "description": "Description for remote list URLs"
   },
   "linkScopeMode": {
     "message": "Active on",
@@ -408,7 +408,7 @@
     "description": "Scope option: blacklist"
   },
   "linkScopeDomains": {
-    "message": "Domain list (one per line or comma-separated)",
+    "message": "One domain per line",
     "description": "Placeholder for scope domain list textarea"
   },
   "linkTooltipVisits": {
@@ -555,6 +555,14 @@
     "message": "Mark as shortener",
     "description": "Button to mark current domain as a URL shortener"
   },
+  "linkShortUrlCustomDomains": {
+    "message": "Custom shortener domains",
+    "description": "Label for custom shortener domains textarea"
+  },
+  "linkShortUrlCustomDomainsDesc": {
+    "message": "Domains you've marked as shorteners, one per line. Subdomains are included automatically. Merged with the built-in and remote lists",
+    "description": "Description for custom shortener domains textarea"
+  },
   "antiTamperingSettings": {
     "message": "Anti-tampering protection",
     "description": "Title for anti-tampering settings section"
@@ -568,7 +576,7 @@
     "description": "Label for anti-tampering excluded domains textarea"
   },
   "antiTamperingExcludedDomainsDesc": {
-    "message": "Anti-tampering protection will be disabled on these domains (one per line or comma-separated)",
+    "message": "Anti-tampering protection will be disabled on these domains and their subdomains (one per line)",
     "description": "Description for excluded domains setting"
   },
   "antiTamperingProtected": {
