@@ -37,12 +37,13 @@ const { t } = useI18n()
               {{ t('securityWarning') }}
             </h3>
             <button
-              class="close-btn flex-shrink-0 transition-opacity hover:opacity-70 cursor-pointer"
+              class="close-x w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors"
+              :class="isDark ? 'text-gray-500 hover:text-white hover:bg-gray-700/50' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200/50'"
               @click="emit('close')"
             >
               <span class="sr-only">{{ t('dismiss') }}</span>
-              <svg class="w-5 h-5" :class="isDark ? 'text-gray-300' : 'text-gray-500'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
@@ -140,9 +141,8 @@ const { t } = useI18n()
   line-height: 22px !important;
 }
 
-.close-btn {
-  background: transparent !important;
+.close-x {
+  background-color: transparent !important;
   border: none !important;
-  padding: 0 !important;
 }
 </style>

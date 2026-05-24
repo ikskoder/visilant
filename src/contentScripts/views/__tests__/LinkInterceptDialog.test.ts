@@ -49,8 +49,8 @@ describe('linkInterceptDialog component', () => {
 
   it('emits cancel when close button is clicked', async () => {
     const wrapper = mount(LinkInterceptDialog, { props: defaultProps })
-    // Close button is the X icon with close-btn class
-    const closeBtn = wrapper.find('button.close-btn')
+    // Close button is the X icon with close-x class
+    const closeBtn = wrapper.find('button.close-x')
     await closeBtn.trigger('click')
     expect(wrapper.emitted('cancel')).toBeTruthy()
   })

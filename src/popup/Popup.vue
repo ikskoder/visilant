@@ -240,7 +240,7 @@ onMounted(async () => {
   <div :class="isStandalonePage ? 'min-h-screen flex justify-center bg-gray-50 dark:bg-gray-900 py-8' : ''">
     <main
       class="px-4 py-5 text-gray-700 dark:text-gray-200 relative"
-      :class="isStandalonePage ? 'w-full max-w-[600px] bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700' : 'w-full max-w-[600px]'"
+      :class="isStandalonePage ? 'w-full max-w-[600px] bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700' : 'w-[600px]'"
       :style="{ fontSize: `${settings.popupFontSize}%` }"
     >
       <div class="flex justify-between items-center mb-4">

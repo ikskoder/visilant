@@ -81,11 +81,12 @@ const resolvedIsSafe = computed(() => {
             {{ t('linkInterceptTitle') }}
           </h2>
           <button
-            class="close-btn flex-shrink-0 transition-opacity hover:opacity-70 cursor-pointer"
+            class="close-x w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors"
+            :class="isDark ? 'text-gray-500 hover:text-white hover:bg-gray-700/50' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200/50'"
             @click="emit('cancel')"
           >
-            <svg class="w-5 h-5" :class="isDark ? 'text-gray-300' : 'text-gray-500'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -138,7 +139,7 @@ const resolvedIsSafe = computed(() => {
             <span class="dialog-domain font-medium" :class="isDark ? 'text-white' : 'text-gray-900'">
               <SecureText :text="data.domain" :force-highlight="true" :danger-only="true" />
             </span>
-            <span v-if="data.shortUrl?.isKnownShortener" class="dialog-label px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-400">
+            <span v-if="data.shortUrl?.isKnownShortener" class="dialog-label px-1.5 py-0.5 rounded" :class="isDark ? 'bg-orange-900/40 text-orange-400' : 'bg-orange-100 text-orange-700'">
               {{ t('linkTooltipShortener').toLowerCase() }}
             </span>
           </div>
@@ -235,7 +236,7 @@ const resolvedIsSafe = computed(() => {
             <button
               v-if="!data.shortUrl.isKnownShortener"
               class="w-full mt-3 px-3 py-2 rounded-lg border transition-colors dialog-button text-center"
-              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
+              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-orange-400 border-transparent' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
               @click.stop="handleMarkAsShortener()"
             >
               {{ t('linkTooltipMarkAsShortener') }}
@@ -266,14 +267,14 @@ const resolvedIsSafe = computed(() => {
           <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">
             <button
               class="flex-1 px-3 py-2 rounded-lg border transition-colors dialog-button text-center"
-              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 border-gray-300'"
+              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white border-transparent' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 border-gray-300'"
               @click.stop="handleResolveOnce()"
             >
               {{ t('linkTooltipResolveOnce') }}
             </button>
             <button
               class="flex-1 px-3 py-2 rounded-lg border transition-colors dialog-button text-center"
-              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
+              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-orange-400 border-transparent' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
               @click.stop="handleMarkAsShortener()"
             >
               {{ t('linkTooltipMarkAsShortener') }}
@@ -317,10 +318,9 @@ button {
   outline: none !important;
 }
 
-.close-btn {
-  background: transparent !important;
+.close-x {
+  background-color: transparent !important;
   border: none !important;
-  padding: 0 !important;
 }
 
 .dialog-container {

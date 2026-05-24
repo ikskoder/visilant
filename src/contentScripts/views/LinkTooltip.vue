@@ -230,7 +230,7 @@ onBeforeUnmount(() => {
             <span class="tooltip-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">{{ t('linkTooltipDestination') }}</span>
             <!-- For known shorteners: only show orange "shortener" badge, never safe/unfamiliar -->
             <template v-if="data.shortUrl?.isKnownShortener">
-              <span class="tooltip-label px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-400">
+              <span class="tooltip-label px-1.5 py-0.5 rounded" :class="isDark ? 'bg-orange-900/40 text-orange-400' : 'bg-orange-100 text-orange-700'">
                 {{ t('linkTooltipShortener') }}
               </span>
             </template>
@@ -239,10 +239,10 @@ onBeforeUnmount(() => {
               <span
                 class="tooltip-label px-1.5 py-0.5 rounded"
                 :class="data.isSafe
-                  ? 'bg-green-900/40 text-green-400'
+                  ? (isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700')
                   : data.count === 0
-                    ? 'bg-red-900/40 text-red-400'
-                    : 'bg-yellow-900/40 text-yellow-400'"
+                    ? (isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700')
+                    : (isDark ? 'bg-yellow-900/40 text-yellow-400' : 'bg-yellow-100 text-yellow-700')"
               >
                 {{ statusLabel(data.isSafe, data.count).text.toLowerCase() }}
               </span>
@@ -323,10 +323,10 @@ onBeforeUnmount(() => {
               <span
                 class="tooltip-label px-1.5 py-0.5 rounded"
                 :class="data.shortUrl.resolvedIsSafe
-                  ? 'bg-green-900/40 text-green-400'
+                  ? (isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700')
                   : data.shortUrl.resolvedCount === 0
-                    ? 'bg-red-900/40 text-red-400'
-                    : 'bg-yellow-900/40 text-yellow-400'"
+                    ? (isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700')
+                    : (isDark ? 'bg-yellow-900/40 text-yellow-400' : 'bg-yellow-100 text-yellow-700')"
               >
                 {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedCount).text.toLowerCase() }}
               </span>
@@ -357,7 +357,7 @@ onBeforeUnmount(() => {
             <button
               v-if="!data.shortUrl.isKnownShortener"
               class="w-full mt-2 px-3 py-1 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
+              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-orange-400 border-transparent' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
               @click.stop="handleMarkAsShortener()"
             >
               {{ t('linkTooltipMarkAsShortener') }}
@@ -407,14 +407,14 @@ onBeforeUnmount(() => {
           <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-2">
             <button
               class="flex-1 px-3 py-1 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 border-gray-300'"
+              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white border-transparent' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 border-gray-300'"
               @click.stop="handleResolveOnce()"
             >
               {{ t('linkTooltipResolveOnce') }}
             </button>
             <button
               class="flex-1 px-3 py-1 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-orange-400 border-gray-500' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
+              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-orange-400 border-transparent' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
               @click.stop="handleMarkAsShortener()"
             >
               {{ t('linkTooltipMarkAsShortener') }}

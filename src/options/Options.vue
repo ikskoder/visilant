@@ -459,7 +459,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   >
                   <span class="text-left ml-2">{{ translations.showCopyWarning }}</span>
                 </label>
-                <label class="flex items-center">
+                <label class="flex items-start text-left">
                   <input
                     type="radio" name="warningType" value="both"
                     :checked="settings.showInputWarning && settings.showCopyWarning"
@@ -480,21 +480,21 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   {{ translations.notificationStyle }}
                 </h3>
                 <div class="space-y-2">
-                  <label class="flex items-center">
+                  <label class="flex items-start text-left">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="browser"
                       class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                     >
                     <span class="ml-2">{{ translations.browserNotifications }}</span>
                   </label>
-                  <label class="flex items-center">
+                  <label class="flex items-start text-left">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="in-page"
                       class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                     >
                     <span class="ml-2">{{ translations.inPageNotifications }}</span>
                   </label>
-                  <label class="flex items-center">
+                  <label class="flex items-start text-left">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="both"
                       class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
@@ -535,21 +535,21 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 {{ translations.linkScopeMode }}:
               </h3>
               <div class="space-y-2">
-                <label class="flex items-center">
+                <label class="flex items-start text-left">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="everywhere"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkScopeEverywhere }}</span>
                 </label>
-                <label class="flex items-center">
+                <label class="flex items-start text-left">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="whitelist"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkScopeWhitelist }}</span>
                 </label>
-                <label class="flex items-center">
+                <label class="flex items-start text-left">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="blacklist"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
@@ -575,27 +575,27 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 {{ translations.linkTooltipTrigger }}:
               </h3>
               <div class="space-y-2">
-                <label class="flex items-center">
+                <label class="flex items-start text-left">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="hover"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkTooltipTriggerHover }}</span>
                 </label>
-                <label class="flex items-start">
+                <label class="flex items-start text-left">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-left"
-                    class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2 text-left">
                     <span>{{ translations.linkTooltipTriggerClickLeft }}</span>
                     <p class="text-xs text-gray-500 dark:text-gray-400">{{ translations.linkTooltipTriggerClickLeftDesc }}</p>
                   </span>
                 </label>
-                <label class="flex items-start">
+                <label class="flex items-start text-left">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-right"
-                    class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;"
+                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2 text-left">
                     <span>{{ translations.linkTooltipTriggerClickRight }}</span>
@@ -611,28 +611,28 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 {{ translations.linkShowVisitCount }}:
               </h3>
               <div class="space-y-2">
-                <label class="flex items-center">
+                <label class="flex items-start text-left">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="always"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkShowVisitCountAlways }}</span>
                 </label>
-                <label class="flex items-center">
+                <label class="flex items-start text-left">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="unfamiliar"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkShowVisitCountUnfamiliar }}</span>
                 </label>
-                <label class="flex items-center">
+                <label class="flex items-start text-left">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="familiar"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">{{ translations.linkShowVisitCountFamiliar }}</span>
                 </label>
-                <label class="flex items-center">
+                <label class="flex items-start text-left">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="never"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
@@ -653,15 +653,15 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
               <!-- Mode: off / button / auto -->
               <div class="text-left space-y-2 mb-3">
-                <label class="flex items-center cursor-pointer">
+                <label class="flex items-start text-left cursor-pointer">
                   <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="off" class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;">
                   <span class="ml-2 text-sm">{{ translations.linkShortUrlModeOff }}</span>
                 </label>
-                <label class="flex items-center cursor-pointer">
+                <label class="flex items-start text-left cursor-pointer">
                   <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="button" class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;">
                   <span class="ml-2 text-sm">{{ translations.linkShortUrlModeButton }}</span>
                 </label>
-                <label class="flex items-center cursor-pointer">
+                <label class="flex items-start text-left cursor-pointer">
                   <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="auto" class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;">
                   <span class="ml-2 text-sm">{{ translations.linkShortUrlModeAuto }}</span>
                 </label>
@@ -781,21 +781,21 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   {{ translations.resetData }}
                 </h3>
                 <div class="space-y-2">
-                  <label class="flex items-center">
+                  <label class="flex items-start text-left">
                     <input
                       v-model="resetSelections.visits" type="checkbox"
                       class="h-4 w-4 flex-shrink-0 rounded" style="accent-color: #3b82f6;"
                     >
                     <span class="ml-2 text-sm">{{ translations.visitsInfo }}</span>
                   </label>
-                  <label class="flex items-center">
+                  <label class="flex items-start text-left">
                     <input
                       v-model="resetSelections.settings" type="checkbox"
                       class="h-4 w-4 flex-shrink-0 rounded" style="accent-color: #3b82f6;"
                     >
                     <span class="ml-2 text-sm">{{ translations.allSettings }}</span>
                   </label>
-                  <label class="flex items-center">
+                  <label class="flex items-start text-left">
                     <input
                       v-model="resetSelections.customShorteners" type="checkbox"
                       class="h-4 w-4 flex-shrink-0 rounded" style="accent-color: #3b82f6;"
