@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { defaultSettings, settings } from '~/logic/storage'
-import { isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
+import { isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
 import InputWarning from './InputWarning.vue'
 import LinkInterceptDialog from './LinkInterceptDialog.vue'
 import LinkTooltip from './LinkTooltip.vue'
@@ -60,8 +60,13 @@ function handleTooltipHoverEnter() {
 }
 
 function handleTooltipClose() {
-  linkTooltipVisible.value = false
-  linkTooltipData.value = null
+  if (onTooltipHoverLeave.fn) {
+    onTooltipHoverLeave.fn()
+  }
+  else {
+    linkTooltipVisible.value = false
+    linkTooltipData.value = null
+  }
 }
 
 function handleTooltipGo(href: string) {

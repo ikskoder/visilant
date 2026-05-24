@@ -27,7 +27,7 @@ export interface LinkTooltipData {
   mismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null
   punycode: string | null
   shortUrl?: ShortUrlInfo | null
-  position: { top: number, left: number }
+  anchorRect: { top: number, bottom: number, left: number, right: number }
   href: string
 }
 
@@ -55,4 +55,11 @@ const _onTooltipHoverEnter = { fn: null as (() => void) | null }
 export const onTooltipHoverEnter = _onTooltipHoverEnter
 export function setOnTooltipHoverEnter(fn: () => void) {
   _onTooltipHoverEnter.fn = fn
+}
+
+// Callback to start grace timer on tooltip mouseleave (set by content script, called by App.vue)
+const _onTooltipHoverLeave = { fn: null as (() => void) | null }
+export const onTooltipHoverLeave = _onTooltipHoverLeave
+export function setOnTooltipHoverLeave(fn: () => void) {
+  _onTooltipHoverLeave.fn = fn
 }

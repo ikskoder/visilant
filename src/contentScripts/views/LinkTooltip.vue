@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { LinkTooltipData } from '~/logic/ui-state'
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import MismatchTable from './MismatchTable.vue'
@@ -55,17 +55,133 @@ function handleMarkAsShortener() {
 function handleResolveOnce() {
   ;(window as any).__visilant_resolveOnce?.()
 }
+
+// --- Runtime positioning ---
+const tooltipEl = ref<HTMLElement | null>(null)
+const tooltipStyle = ref({ top: '-9999px', left: '-9999px' })
+const placement = ref<'below' | 'above'>('below')
+const placementLocked = ref(false)
+
+const GAP = 6
+const MARGIN = 8
+// Estimated height for expanded tooltip with resolved shortUrl + chain + disclaimer
+const EXPANDED_ESTIMATE = 280
+
+function reposition() {
+  const el = tooltipEl.value
+  if (!el || !props.data)
+    return
+
+  const content = el.querySelector('.tooltip-container') as HTMLElement
+  if (!content)
+    return
+
+  const anchor = props.data.anchorRect
+  const tooltipHeight = content.offsetHeight
+  const tooltipWidth = content.offsetWidth
+  const vh = window.innerHeight
+  const vw = window.innerWidth
+
+  // Decide placement only once per tooltip show — lock after first decision
+  if (!placementLocked.value) {
+    // If there's a shortener that may expand, use generous estimate for initial placement
+    const estimatedHeight = props.data.shortUrl ? Math.max(tooltipHeight, EXPANDED_ESTIMATE) : tooltipHeight
+    const spaceBelow = vh - anchor.bottom - GAP - MARGIN
+    const spaceAbove = anchor.top - GAP - MARGIN
+
+    if (spaceBelow >= estimatedHeight) {
+      placement.value = 'below'
+    }
+    else if (spaceAbove >= estimatedHeight) {
+      placement.value = 'above'
+    }
+    else if (spaceBelow >= spaceAbove) {
+      placement.value = 'below'
+    }
+    else {
+      placement.value = 'above'
+    }
+    placementLocked.value = true
+  }
+
+  // Calculate position based on locked placement
+  // Below: top edge is fixed at anchor.bottom + GAP, tooltip grows downward (away from cursor)
+  // Above: bottom edge is anchored at anchor.top - GAP, tooltip grows upward (away from cursor)
+  let top: number
+  if (placement.value === 'below') {
+    top = anchor.bottom + GAP
+  }
+  else {
+    top = anchor.top - GAP - tooltipHeight
+    top = Math.max(MARGIN, top)
+  }
+
+  let left = anchor.left
+  if (left + tooltipWidth > vw - MARGIN)
+    left = vw - tooltipWidth - MARGIN
+  if (left < MARGIN)
+    left = MARGIN
+
+  tooltipStyle.value = { top: `${top}px`, left: `${left}px` }
+}
+
+// Reset placement lock when showing a new link
+watch(
+  () => props.data?.href,
+  () => {
+    placementLocked.value = false
+  },
+)
+
+// Reposition whenever visibility or data changes
+watch(
+  () => [props.visible, props.data],
+  () => {
+    if (props.visible && props.data)
+      nextTick(reposition)
+  },
+  { deep: true },
+)
+
+// Use ResizeObserver to reposition when tooltip content changes size (e.g. shortener resolves)
+let resizeObserver: ResizeObserver | null = null
+
+watch(tooltipEl, (el) => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+  if (el) {
+    const content = el.querySelector('.tooltip-container')
+    if (content) {
+      resizeObserver = new ResizeObserver(() => reposition())
+      resizeObserver.observe(content)
+    }
+  }
+})
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+})
 </script>
 
 <template>
   <Transition name="tooltip-fade">
     <div
       v-if="visible && data"
+      ref="tooltipEl"
       class="fixed z-[2147483647] pointer-events-auto"
-      :style="{ top: `${data.position.top}px`, left: `${data.position.left}px` }"
+      :style="tooltipStyle"
       @mouseenter="emit('hoverEnter')"
       @mouseleave="emit('close')"
     >
+      <!-- Invisible bridge to maintain hover connection between anchor and tooltip -->
+      <div
+        class="absolute left-0 right-0"
+        :style="placement === 'below'
+          ? { top: `-${GAP}px`, height: `${GAP}px` }
+          : { bottom: `-${GAP}px`, height: `${GAP}px` }"
+      />
       <div class="tooltip-container bg-gray-900 bg-opacity-95 rounded-lg shadow-2xl border border-gray-700/50 p-3" :class="{ 'tooltip-wide': data.mismatch || (data.shortUrl?.status === 'resolved' && traceChain && data.shortUrl.chain.length > 2) }" :style="{ fontSize: `${fontScale}em` }">
         <!-- Mismatch: warning + comparison table -->
         <template v-if="data.mismatch">
@@ -341,6 +457,5 @@ button {
 .tooltip-fade-enter-from,
 .tooltip-fade-leave-to {
   opacity: 0;
-  transform: translateY(4px);
 }
 </style>

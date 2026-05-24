@@ -4,7 +4,7 @@ import { createApp } from 'vue'
 import { setupApp } from '~/logic/common-setup'
 import { checkDomainMismatch, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, setCachedVisitCount } from '~/logic/link-safety'
 import { defaultSettings, settings } from '~/logic/storage'
-import { hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, safetyLevel, setOnTooltipHoverEnter, showWarning, warningType } from '~/logic/ui-state'
+import { hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
 import { addCustomShortener, isShortenedUrl, loadCustomShorteners } from '~/logic/url-shorteners'
 import App from './views/App.vue'
 
@@ -227,6 +227,17 @@ setOnTooltipHoverEnter(() => {
   }
 })
 
+// Register callback so tooltip component can start grace timer on mouseleave
+setOnTooltipHoverLeave(() => {
+  if (tooltipGraceTimer)
+    clearTimeout(tooltipGraceTimer)
+  tooltipGraceTimer = setTimeout(() => {
+    currentHoveredAnchor = null
+    linkTooltipVisible.value = false
+    linkTooltipData.value = null
+  }, 300)
+})
+
 async function fetchLinkData(href: string, hostname: string) {
   // Check cache first
   const cached = getCachedVisitCount(hostname)
@@ -244,52 +255,9 @@ async function fetchLinkData(href: string, hostname: string) {
   return data
 }
 
-function calculateTooltipPosition(anchor: HTMLAnchorElement): { top: number, left: number } {
+function getAnchorRect(anchor: HTMLAnchorElement) {
   const rect = anchor.getBoundingClientRect()
-  const tooltipHeight = 280 // generous estimate for expanded tooltip (shortUrl resolved + chain + disclaimer)
-  const tooltipWidth = 320
-  const gap = 6 // gap between anchor and tooltip
-  const margin = 8 // margin from viewport edges
-  const vh = window.innerHeight
-  const vw = window.innerWidth
-
-  let top: number
-  let left: number
-
-  const spaceBelow = vh - rect.bottom - gap
-  const spaceAbove = rect.top - gap
-
-  if (spaceBelow >= tooltipHeight) {
-    // Fits below the link
-    top = rect.bottom + gap
-  }
-  else if (spaceAbove >= tooltipHeight) {
-    // Fits above the link
-    top = rect.top - tooltipHeight - gap
-  }
-  else {
-    // Doesn't fit above or below — clamp to viewport but ensure link stays visible
-    // Place below if more space below, otherwise above, and clamp
-    if (spaceBelow >= spaceAbove) {
-      top = rect.bottom + gap
-      // Don't let it go below viewport
-      top = Math.min(top, vh - tooltipHeight - margin)
-    }
-    else {
-      top = rect.top - tooltipHeight - gap
-      // Don't let it go above viewport
-      top = Math.max(top, margin)
-    }
-  }
-
-  // Horizontal: try to align with link, clamp to viewport
-  left = rect.left
-  if (left + tooltipWidth > vw - margin)
-    left = vw - tooltipWidth - margin
-  if (left < margin)
-    left = margin
-
-  return { top, left }
+  return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }
 }
 
 // Show tooltip for a URL without an anchor element (used by context menu)
@@ -305,10 +273,12 @@ async function showLinkTooltipByUrl(url: string) {
   const visitData = await fetchLinkData(url, hostname)
   const punycodeResult = getPunycodeInfo(hostname)
 
-  // Position in center-top of viewport since we don't have anchor position
-  const position = {
-    top: 80,
+  // Synthetic anchor rect in center-top of viewport since we don't have anchor element
+  const anchorRect = {
+    top: 70,
+    bottom: 80,
     left: Math.max(8, (window.innerWidth - 320) / 2),
+    right: Math.min(window.innerWidth - 8, (window.innerWidth + 320) / 2),
   }
 
   const shortUrlMode = settings.value.linkSafety.shortUrlMode
@@ -326,7 +296,7 @@ async function showLinkTooltipByUrl(url: string) {
     shortUrl: shouldShowShortUrl
       ? { originalUrl: url, resolvedUrl: '', resolvedDomain: '', resolvedCount: 0, resolvedIsSafe: false, chain: [], status: shouldAutoResolve ? 'loading' : 'idle', isKnownShortener }
       : null,
-    position,
+    anchorRect,
     href: url,
   }
   linkTooltipVisible.value = true
@@ -559,7 +529,7 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
   // Check for punycode/unicode
   const punycodeResult = getPunycodeInfo(hostname)
 
-  const position = calculateTooltipPosition(anchor)
+  const anchorRect = getAnchorRect(anchor)
 
   const shortUrlMode = settings.value.linkSafety.shortUrlMode
   const isKnownShortener = isShortenedUrl(hostname)
@@ -576,7 +546,7 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
     shortUrl: shouldShowShortUrl
       ? { originalUrl: href, resolvedUrl: '', resolvedDomain: '', resolvedCount: 0, resolvedIsSafe: false, chain: [], status: shouldAutoResolve ? 'loading' : 'idle', isKnownShortener }
       : null,
-    position,
+    anchorRect,
     href,
   }
   linkTooltipVisible.value = true
