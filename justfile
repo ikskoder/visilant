@@ -34,3 +34,17 @@ build-chrome:
 build-firefox:
   pnpm build-firefox
   pnpm pack:xpi
+
+# === TESTING ===
+
+# Run unit tests
+test:
+  pnpm test run
+
+# Run unit tests in watch mode
+test-watch:
+  pnpm test
+
+# Run e2e tests
+test-e2e:
+  pnpm test:e2e
