@@ -58,18 +58,22 @@ function getBadgeColor(isSiteSafe: IsSafe): string {
 }
 
 // Function to update extension icon based on safety level
-async function updateExtensionIcon(count: number) {
+async function updateExtensionIcon(count: number, tabId?: number) {
   if (!appSettings.value.changeIcon) {
     // Set default icon when colors are disabled
     await browser.action.setIcon({
       path: getIconPaths('icon-default'),
+      ...(tabId != null && { tabId }),
     })
     return
   }
 
   const isSiteSafe = await checkIfSiteIsSafe(count)
   const iconType = isSiteSafe ? 'icon-default' : 'site-danger'
-  await browser.action.setIcon({ path: getIconPaths(iconType) })
+  await browser.action.setIcon({
+    path: getIconPaths(iconType),
+    ...(tabId != null && { tabId }),
+  })
 }
 
 // only on dev mode
@@ -101,7 +105,7 @@ function isInternalPage(hostname: string): boolean {
 }
 
 // Function to update visit count for a URL
-async function updateVisitCount(url: string) {
+async function updateVisitCount(url: string, tabId?: number) {
   const hostname = getHostname(url)
   const result = await browser.storage.local.get(hostname)
   const now = Date.now()
@@ -130,16 +134,17 @@ async function updateVisitCount(url: string) {
   })
 
   // Update badge
-  await updateBadge(hostname)
+  await updateBadge(hostname, tabId)
 }
 
 // Function to update badge for current URL
-async function updateBadge(hostname: string) {
+async function updateBadge(hostname: string, tabId?: number) {
   if (isInternalPage(hostname)) {
     await browser.action.setIcon({
       path: getIconPaths('icon-default'),
+      ...(tabId != null && { tabId }),
     })
-    await browser.action.setBadgeText({ text: '' })
+    await browser.action.setBadgeText({ text: '', ...(tabId != null && { tabId }) })
     return
   }
 
@@ -148,16 +153,19 @@ async function updateBadge(hostname: string) {
   const count = siteData?.count || 0
 
   if (appSettings.value.showBadge) {
-    await browser.action.setBadgeText({ text: count >= 1000 ? '>1K' : count.toString() })
+    await browser.action.setBadgeText({
+      text: count >= 1000 ? '>1K' : count.toString(),
+      ...(tabId != null && { tabId }),
+    })
     const isSiteSafe = await checkIfSiteIsSafe(count)
     const color = getBadgeColor(isSiteSafe)
-    await browser.action.setBadgeBackgroundColor({ color })
+    await browser.action.setBadgeBackgroundColor({ color, ...(tabId != null && { tabId }) })
   }
   else {
-    await browser.action.setBadgeText({ text: '' })
+    await browser.action.setBadgeText({ text: '', ...(tabId != null && { tabId }) })
   }
 
-  await updateExtensionIcon(count)
+  await updateExtensionIcon(count, tabId)
 }
 
 browser.runtime.onInstalled.addListener(async (details): Promise<void> => {
@@ -184,15 +192,16 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     // Skip internal pages
     if (isInternalPage(hostname)) {
       // Reset badge for internal pages
-      await browser.action.setBadgeText({ text: '' })
+      await browser.action.setBadgeText({ text: '', tabId })
       // Set default icon for internal pages
       await browser.action.setIcon({
         path: getIconPaths('icon-default'),
+        tabId,
       })
       return
     }
 
-    await updateVisitCount(tab.url)
+    await updateVisitCount(tab.url, tabId)
   }
 })
 
@@ -205,15 +214,16 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
     // Skip internal pages
     if (isInternalPage(hostname)) {
       // Reset badge for internal pages
-      await browser.action.setBadgeText({ text: '' })
+      await browser.action.setBadgeText({ text: '', tabId })
       // Set default icon for internal pages
       await browser.action.setIcon({
         path: getIconPaths('icon-default'),
+        tabId,
       })
       return
     }
 
-    await updateBadge(hostname)
+    await updateBadge(hostname, tabId)
   }
 })
 
@@ -299,7 +309,7 @@ async function handleShowNotification(warningType: 'input' | 'copy') {
 }
 
 // Handle tampering detection
-async function handleTampering() {
+async function handleTampering(tabId?: number) {
   const title = await loadTranslation('securityWarning')
   const message = await loadTranslation('tamperingMessage')
 
@@ -312,10 +322,10 @@ async function handleTampering() {
     priority: 2,
   })
 
-  // Update badge to show error state
-  await browser.action.setBadgeText({ text: '!!!' })
-  await browser.action.setBadgeBackgroundColor({ color: '#FF0000' })
-  await browser.action.setIcon({ path: getIconPaths('site-danger') })
+  // Update badge to show error state (per-tab if available)
+  await browser.action.setBadgeText({ text: '!!!', ...(tabId != null && { tabId }) })
+  await browser.action.setBadgeBackgroundColor({ color: '#FF0000', ...(tabId != null && { tabId }) })
+  await browser.action.setIcon({ path: getIconPaths('site-danger'), ...(tabId != null && { tabId }) })
 
   return 'Tampering handled'
 }
@@ -333,7 +343,7 @@ const messageHandlers = {
   'ignore-site': (data: any) => handleIgnoreSite(data.hostname),
   'get-settings': () => getSettingsLogic(),
   'show-notification': (data: any) => handleShowNotification(data.warningType),
-  'tampering-detected': () => handleTampering(),
+  'tampering-detected': (_data: any, ctx?: { tabId?: number }) => handleTampering(ctx?.tabId),
   'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain),
   'resolve-short-url': async (data: any) => {
     const cached = getCachedResolvedUrl(data.url)
@@ -360,7 +370,7 @@ const messageHandlers = {
 
 // Register webext-bridge handlers
 Object.entries(messageHandlers).forEach(([type, handler]) => {
-  onMessage(type, async ({ data }) => handler(data))
+  onMessage(type, async ({ data, sender }: any) => handler(data, { tabId: sender?.tabId }))
 })
 
 // Add native runtime.onMessage listener for fallback (bfcache support)
@@ -371,7 +381,7 @@ browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
 
   const handler = messageHandlers[message.type as keyof typeof messageHandlers]
   if (handler) {
-    handler(message.data).then(sendResponse)
+    handler(message.data, { tabId: sender.tab?.id }).then(sendResponse)
     return true
   }
 })
@@ -449,9 +459,9 @@ browser.storage.onChanged.addListener(async (changes) => {
     // Update all tabs
     const tabs = await browser.tabs.query({})
     for (const tab of tabs) {
-      if (tab.url) {
+      if (tab.url && tab.id != null) {
         const hostname = getHostname(tab.url)
-        await updateBadge(hostname)
+        await updateBadge(hostname, tab.id)
       }
     }
   }
