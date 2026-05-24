@@ -28,7 +28,7 @@
     "start:firefox:wait": "node -e \"const fs=require('fs'); const sleep=ms=>new Promise(r=>setTimeout(r,ms)); (async()=>{while(!fs.existsSync('extension/manifest.json'))await sleep(200);})()\" && npm run start:firefox",
     "clear": "rimraf --glob extension/dist extension/manifest.json extension.*",
     "lint": "eslint --cache .",
-    "test": "vitest test",
+    "test": "NODE_OPTIONS='--disable-warning=MODULE_TYPELESS_PACKAGE_JSON' vitest test",
     "test:e2e": "playwright test",
     "postinstall": "simple-git-hooks",
     "typecheck": "tsc --noEmit"

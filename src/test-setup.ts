@@ -1,5 +1,24 @@
 import { vi } from 'vitest'
 
+// Polyfill ResizeObserver for jsdom (not available natively)
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as any
+}
+
+// Stub fetch for chrome-extension:// URLs (useI18n tries to load translations)
+const _origFetch = globalThis.fetch
+globalThis.fetch = (async (input: any, init?: any) => {
+  const url = typeof input === 'string' ? input : input?.url ?? ''
+  if (url.startsWith('chrome-extension://')) {
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  return _origFetch(input, init)
+}) as typeof fetch
+
 // Mock webextension-polyfill for unit tests running outside browser extension context
 vi.mock('webextension-polyfill', () => {
   const mock = {
