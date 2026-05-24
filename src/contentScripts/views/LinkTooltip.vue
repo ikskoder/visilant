@@ -64,10 +64,24 @@ const tooltipStyle = ref({ top: '-9999px', left: '-9999px' })
 const placement = ref<'below' | 'above'>('below')
 const placementLocked = ref(false)
 
-const GAP = 6
+const GAP = 12
 const MARGIN = 8
 // Estimated height for expanded tooltip with resolved shortUrl + chain + disclaimer
 const EXPANDED_ESTIMATE = 280
+// Fallback height used to decide placement before the tooltip is mounted
+const INITIAL_HEIGHT_ESTIMATE = 160
+
+function decidePlacement(anchor: { top: number, bottom: number }, estimatedHeight: number) {
+  const vh = window.innerHeight
+  const spaceBelow = vh - anchor.bottom - GAP - MARGIN
+  const spaceAbove = anchor.top - GAP - MARGIN
+
+  if (spaceBelow >= estimatedHeight)
+    return 'below'
+  if (spaceAbove >= estimatedHeight)
+    return 'above'
+  return spaceBelow >= spaceAbove ? 'below' : 'above'
+}
 
 function reposition() {
   const el = tooltipEl.value
@@ -81,28 +95,13 @@ function reposition() {
   const anchor = props.data.anchorRect
   const tooltipHeight = content.offsetHeight
   const tooltipWidth = content.offsetWidth
-  const vh = window.innerHeight
   const vw = window.innerWidth
 
   // Decide placement only once per tooltip show — lock after first decision
   if (!placementLocked.value) {
     // If there's a shortener that may expand, use generous estimate for initial placement
     const estimatedHeight = props.data.shortUrl ? Math.max(tooltipHeight, EXPANDED_ESTIMATE) : tooltipHeight
-    const spaceBelow = vh - anchor.bottom - GAP - MARGIN
-    const spaceAbove = anchor.top - GAP - MARGIN
-
-    if (spaceBelow >= estimatedHeight) {
-      placement.value = 'below'
-    }
-    else if (spaceAbove >= estimatedHeight) {
-      placement.value = 'above'
-    }
-    else if (spaceBelow >= spaceAbove) {
-      placement.value = 'below'
-    }
-    else {
-      placement.value = 'above'
-    }
+    placement.value = decidePlacement(anchor, estimatedHeight)
     placementLocked.value = true
   }
 
@@ -127,12 +126,19 @@ function reposition() {
   tooltipStyle.value = { top: `${top}px`, left: `${left}px` }
 }
 
-// Reset placement lock when showing a new link
+// Decide placement synchronously when a new tooltip is shown so the enter
+// animation slides in from the correct side. Reposition will refine later
+// once the actual tooltip height is known.
 watch(
   () => props.data?.href,
   () => {
     placementLocked.value = false
+    if (props.data) {
+      const estimate = props.data.shortUrl ? EXPANDED_ESTIMATE : INITIAL_HEIGHT_ESTIMATE
+      placement.value = decidePlacement(props.data.anchorRect, estimate)
+    }
   },
+  { immediate: true },
 )
 
 // Reposition whenever visibility or data changes
@@ -173,17 +179,11 @@ onBeforeUnmount(() => {
       v-if="visible && data"
       ref="tooltipEl"
       class="fixed z-[2147483647] pointer-events-auto"
+      :class="`tooltip-placement-${placement}`"
       :style="tooltipStyle"
       @mouseenter="emit('hoverEnter')"
       @mouseleave="emit('close')"
     >
-      <!-- Invisible bridge to maintain hover connection between anchor and tooltip -->
-      <div
-        class="absolute left-0 right-0"
-        :style="placement === 'below'
-          ? { top: `-${GAP}px`, height: `${GAP}px` }
-          : { bottom: `-${GAP}px`, height: `${GAP}px` }"
-      />
       <div class="tooltip-container rounded-lg shadow-2xl p-3" :class="[isDark ? 'bg-gray-900 bg-opacity-95 border border-gray-700/50' : 'bg-white border border-gray-200', { 'tooltip-wide': data.mismatch || (data.shortUrl?.status === 'resolved' && traceChain && data.shortUrl.chain.length > 2) }]" :style="{ fontSize: `${fontScale}em` }">
         <!-- Mismatch: warning + comparison table -->
         <template v-if="data.mismatch">
@@ -459,15 +459,25 @@ button {
 }
 
 .tooltip-fade-enter-active {
-  transition: all 0.15s ease-out;
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
 }
 
 .tooltip-fade-leave-active {
-  transition: all 0.1s ease-in;
+  transition: opacity 0.1s ease-in, transform 0.1s ease-in;
 }
 
 .tooltip-fade-enter-from,
 .tooltip-fade-leave-to {
   opacity: 0;
+}
+
+.tooltip-placement-below.tooltip-fade-enter-from,
+.tooltip-placement-below.tooltip-fade-leave-to {
+  transform: translateY(8px);
+}
+
+.tooltip-placement-above.tooltip-fade-enter-from,
+.tooltip-placement-above.tooltip-fade-leave-to {
+  transform: translateY(-8px);
 }
 </style>
