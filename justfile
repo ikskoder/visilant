@@ -45,6 +45,14 @@ test:
 test-watch:
   pnpm test
 
-# Run e2e tests
+# Run e2e tests (requires nix develop for Playwright libs)
 test-e2e:
   pnpm test:e2e
+
+# Run e2e tests with visible browser
+test-e2e-headed:
+  PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers npx playwright test --headed
+
+# Install Playwright browsers locally
+playwright-install:
+  npx playwright install chromium

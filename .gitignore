@@ -21,3 +21,5 @@ Build.md
 Build.md
 .envrc
 .direnv
+.playwright-browsers
+test-results

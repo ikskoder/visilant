@@ -10,6 +10,35 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+
+        # Shared libraries required by Playwright's bundled Chromium
+        playwrightLibs = with pkgs; [
+          glib
+          nss
+          nspr
+          atk
+          at-spi2-atk
+          cups.lib
+          dbus.lib
+          libdrm
+          expat
+          mesa
+          libgbm
+          pango
+          cairo
+          alsa-lib
+          libx11
+          libxcomposite
+          libxdamage
+          libxext
+          libxfixes
+          libxrandr
+          libxcb
+          libxshmfence
+          vulkan-loader
+          libxkbcommon
+          systemd
+        ];
       in
       {
         devShells.default = pkgs.mkShell {
@@ -19,11 +48,14 @@
             just
           ];
 
+          PLAYWRIGHT_BROWSERS_PATH = ".playwright-browsers";
+
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath playwrightLibs;
+
           shellHook = ''
             echo "Welcome to the Visilant development environment!"
             echo "Run 'pnpm install' to install dependencies."
             echo "Run 'just --list' to see all available commands."
-
           '';
         };
       }

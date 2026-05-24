@@ -1,8 +1,9 @@
+import type { BrowserContext } from '@playwright/test'
+import type { Manifest } from 'webextension-polyfill'
 import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { test as base, chromium } from '@playwright/test'
 import fs from 'fs-extra'
-import { type BrowserContext, test as base, chromium } from '@playwright/test'
-import type { Manifest } from 'webextension-polyfill'
 
 export { name } from '../package.json'
 
@@ -16,9 +17,11 @@ export const test = base.extend<{
     // workaround for the Vite server has started but contentScript is not yet.
     await sleep(1000)
     const context = await chromium.launchPersistentContext('', {
-      headless,
+      headless: false,
+      slowMo: headless ? 0 : 1000,
       args: [
         ...(headless ? ['--headless=new'] : []),
+        '--no-sandbox',
         `--disable-extensions-except=${extensionPath}`,
         `--load-extension=${extensionPath}`,
       ],
@@ -30,7 +33,7 @@ export const test = base.extend<{
     // for manifest v3:
     let [background] = context.serviceWorkers()
     if (!background)
-      background = await context.waitForEvent('serviceworker')
+      background = await context.waitForEvent('serviceworker', { timeout: 10000 })
 
     const extensionId = background.url().split('/')[2]
     await use(extensionId)
