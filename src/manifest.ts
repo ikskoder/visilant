@@ -62,7 +62,6 @@ export async function getManifest() {
           'dist/contentScripts/index.global.js',
         ],
         run_at: 'document_start',
-        all_frames: true,
       },
     ],
     web_accessible_resources: [
