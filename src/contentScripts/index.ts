@@ -1,8 +1,9 @@
 import type { Settings } from '~/logic/storage'
 import { createApp } from 'vue'
 import { setupApp } from '~/logic/common-setup'
+import { checkDomainMismatch, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, setCachedVisitCount } from '~/logic/link-safety'
 import { defaultSettings, settings } from '~/logic/storage'
-import { hasNotifiedOnThisPage, isIgnored, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
+import { hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, safetyLevel, setOnTooltipHoverEnter, showWarning, warningType } from '~/logic/ui-state'
 import App from './views/App.vue'
 
 // Helper to send message safely (fallback to runtime.sendMessage)
@@ -192,6 +193,323 @@ window.addEventListener('paste', handlePaste, true)
 window.addEventListener('copy', handleCopyCut, true)
 window.addEventListener('cut', handleCopyCut, true)
 
+// ==========================================
+// Link Safety — tooltip and intercept logic
+// ==========================================
+
+let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let tooltipGraceTimer: ReturnType<typeof setTimeout> | null = null
+let currentHoveredAnchor: HTMLAnchorElement | null = null
+let linkSafetyCleanup: (() => void) | null = null
+
+// Register callback so tooltip component can cancel the grace timer on mouseenter
+setOnTooltipHoverEnter(() => {
+  if (tooltipGraceTimer) {
+    clearTimeout(tooltipGraceTimer)
+    tooltipGraceTimer = null
+  }
+})
+
+async function fetchLinkData(href: string, hostname: string) {
+  // Check cache first
+  const cached = getCachedVisitCount(hostname)
+  if (cached)
+    return cached
+
+  // Fetch from background
+  const response = await sendMessageSafe<{ count: number, ignored: boolean }>('get-visit-count', { url: href })
+  if (!response)
+    return { count: 0, isSafe: true, ignored: false }
+
+  const isSafe = response.count >= settings.value.safety
+  const data = { count: response.count, isSafe, ignored: response.ignored }
+  setCachedVisitCount(hostname, data)
+  return data
+}
+
+function calculateTooltipPosition(anchor: HTMLAnchorElement): { top: number, left: number } {
+  const rect = anchor.getBoundingClientRect()
+  const tooltipHeight = 120 // estimated base height (expands with mismatch/punycode warnings)
+  const tooltipWidth = 320
+
+  let top = rect.bottom + 6
+  let left = rect.left
+
+  // Flip above if near bottom of viewport
+  if (top + tooltipHeight > window.innerHeight)
+    top = rect.top - tooltipHeight - 6
+
+  // Clamp horizontally
+  if (left + tooltipWidth > window.innerWidth)
+    left = window.innerWidth - tooltipWidth - 8
+
+  if (left < 8)
+    left = 8
+
+  return { top, left }
+}
+
+// Show tooltip for a URL without an anchor element (used by context menu)
+async function showLinkTooltipByUrl(url: string) {
+  const hostname = getHostnameFromHref(url)
+  if (!hostname)
+    return
+
+  const currentHostname = window.location.hostname
+  if (!isExternalLink(url, currentHostname))
+    return
+
+  const visitData = await fetchLinkData(url, hostname)
+  const punycodeResult = getPunycodeInfo(hostname)
+
+  // Position in center-top of viewport since we don't have anchor position
+  const position = {
+    top: 80,
+    left: Math.max(8, (window.innerWidth - 320) / 2),
+  }
+
+  linkTooltipData.value = {
+    domain: hostname,
+    count: visitData.count,
+    isSafe: visitData.isSafe,
+    mismatch: null, // No text to compare from context menu
+    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    position,
+    href: url,
+  }
+  linkTooltipVisible.value = true
+}
+
+async function showLinkTooltip(anchor: HTMLAnchorElement) {
+  const href = anchor.href
+  const hostname = getHostnameFromHref(href)
+  if (!hostname)
+    return
+
+  const currentHostname = window.location.hostname
+  if (!isExternalLink(href, currentHostname))
+    return
+
+  const visitData = await fetchLinkData(href, hostname)
+
+  // Check for domain mismatch (link text vs href)
+  const linkText = anchor.textContent || ''
+  const mismatchResult = checkDomainMismatch(linkText, hostname)
+
+  // Check for punycode/unicode
+  const punycodeResult = getPunycodeInfo(hostname)
+
+  const position = calculateTooltipPosition(anchor)
+
+  linkTooltipData.value = {
+    domain: hostname,
+    count: visitData.count,
+    isSafe: visitData.isSafe,
+    mismatch: mismatchResult.mismatch ? { textDomain: mismatchResult.textDomain! } : null,
+    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    position,
+    href,
+  }
+  linkTooltipVisible.value = true
+}
+
+async function handleLinkIntercept(anchor: HTMLAnchorElement, event: MouseEvent): Promise<boolean> {
+  const linkSafety = settings.value.linkSafety
+  if (!linkSafety?.interceptEnabled)
+    return false
+
+  const href = anchor.href
+  const hostname = getHostnameFromHref(href)
+  if (!hostname)
+    return false
+
+  const currentHostname = window.location.hostname
+  if (!isExternalLink(href, currentHostname))
+    return false
+
+  const visitData = await fetchLinkData(href, hostname)
+
+  // Only intercept unfamiliar sites
+  if (visitData.isSafe)
+    return false
+
+  event.preventDefault()
+  event.stopPropagation()
+
+  // Check for mismatch and punycode
+  const linkText = anchor.textContent || ''
+  const mismatchResult = checkDomainMismatch(linkText, hostname)
+  const punycodeResult = getPunycodeInfo(hostname)
+
+  linkInterceptData.value = {
+    domain: hostname,
+    url: href,
+    count: visitData.count,
+    isSafe: visitData.isSafe,
+    mismatch: mismatchResult.mismatch ? { textDomain: mismatchResult.textDomain! } : null,
+    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+  }
+  linkInterceptVisible.value = true
+
+  // Return a promise that resolves when user decides
+  return new Promise<boolean>((resolve) => {
+    linkInterceptResolve.value = resolve
+  })
+}
+
+function setupLinkSafety() {
+  const linkSafety = settings.value.linkSafety
+  if (!linkSafety?.enabled)
+    return
+
+  const currentHostname = window.location.hostname
+
+  // Check scope
+  if (!isDomainInScope(currentHostname, linkSafety))
+    return
+
+  const trigger = linkSafety.tooltipTrigger
+
+  // Hover trigger: mouseenter/mouseleave via event delegation
+  function handleMouseOver(event: MouseEvent) {
+    if (trigger !== 'hover')
+      return
+
+    const anchor = findAnchorElement(event.target)
+    if (!anchor || !anchor.href)
+      return
+
+    if (!isExternalLink(anchor.href, currentHostname))
+      return
+
+    // Clear any grace timer (user moved back to a link)
+    if (tooltipGraceTimer) {
+      clearTimeout(tooltipGraceTimer)
+      tooltipGraceTimer = null
+    }
+
+    // If hovering same anchor, keep showing
+    if (currentHoveredAnchor === anchor && linkTooltipVisible.value)
+      return
+
+    // If switching to a different link, immediately hide the old tooltip
+    if (currentHoveredAnchor && currentHoveredAnchor !== anchor && linkTooltipVisible.value) {
+      linkTooltipVisible.value = false
+      linkTooltipData.value = null
+    }
+
+    currentHoveredAnchor = anchor
+
+    // Debounce
+    if (hoverDebounceTimer)
+      clearTimeout(hoverDebounceTimer)
+
+    hoverDebounceTimer = setTimeout(() => {
+      if (currentHoveredAnchor === anchor)
+        showLinkTooltip(anchor)
+    }, 300)
+  }
+
+  function handleMouseOut(event: MouseEvent) {
+    if (trigger !== 'hover')
+      return
+
+    const anchor = findAnchorElement(event.target)
+    if (!anchor)
+      return
+
+    if (anchor === currentHoveredAnchor) {
+      // Clear debounce
+      if (hoverDebounceTimer) {
+        clearTimeout(hoverDebounceTimer)
+        hoverDebounceTimer = null
+      }
+
+      // Grace period before hiding (allows moving cursor to tooltip)
+      tooltipGraceTimer = setTimeout(() => {
+        currentHoveredAnchor = null
+        linkTooltipVisible.value = false
+        linkTooltipData.value = null
+      }, 300)
+    }
+  }
+
+  // Click handler for left-click tooltip trigger AND navigation intercept
+  function handleClick(event: MouseEvent) {
+    const anchor = findAnchorElement(event.target)
+    if (!anchor || !anchor.href)
+      return
+
+    if (!isExternalLink(anchor.href, currentHostname))
+      return
+
+    // Left click tooltip trigger
+    if (trigger === 'click-left') {
+      event.preventDefault()
+      event.stopPropagation()
+      showLinkTooltip(anchor)
+      return
+    }
+
+    // Navigation intercept (only for left clicks, not already handled by click-left trigger)
+    if (linkSafety.interceptEnabled && event.button === 0) {
+      handleLinkIntercept(anchor, event)
+    }
+  }
+
+  // Dismiss tooltip on scroll or Escape
+  function handleScroll() {
+    if (linkTooltipVisible.value) {
+      linkTooltipVisible.value = false
+      linkTooltipData.value = null
+      currentHoveredAnchor = null
+    }
+  }
+
+  function handleEscape(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      if (linkTooltipVisible.value) {
+        linkTooltipVisible.value = false
+        linkTooltipData.value = null
+        currentHoveredAnchor = null
+      }
+      if (linkInterceptVisible.value) {
+        linkInterceptVisible.value = false
+        linkInterceptData.value = null
+        if (linkInterceptResolve.value) {
+          linkInterceptResolve.value(false)
+          linkInterceptResolve.value = null
+        }
+      }
+    }
+  }
+
+  // Register all listeners
+  document.addEventListener('mouseover', handleMouseOver, true)
+  document.addEventListener('mouseout', handleMouseOut, true)
+  document.addEventListener('click', handleClick, true)
+  window.addEventListener('scroll', handleScroll, true)
+  document.addEventListener('keydown', handleEscape, true)
+
+  // Return cleanup function
+  linkSafetyCleanup = () => {
+    document.removeEventListener('mouseover', handleMouseOver, true)
+    document.removeEventListener('mouseout', handleMouseOut, true)
+    document.removeEventListener('click', handleClick, true)
+    window.removeEventListener('scroll', handleScroll, true)
+    document.removeEventListener('keydown', handleEscape, true)
+    if (hoverDebounceTimer)
+      clearTimeout(hoverDebounceTimer)
+    if (tooltipGraceTimer)
+      clearTimeout(tooltipGraceTimer)
+    currentHoveredAnchor = null
+  }
+}
+
+// ==========================================
+// Mount / Lifecycle
+// ==========================================
+
 let app: ReturnType<typeof createApp> | null = null
 let container: HTMLElement | null = null
 let observer: MutationObserver | null = null
@@ -216,13 +534,14 @@ async function mount() {
       await new Promise(resolve => requestAnimationFrame(resolve))
     }
 
-    // Only inject if notifications are enabled and site is not safe
-    // Note: settings and safety are already loaded by the init function
+    // Determine if we need to mount the UI
     const isNotificationsEnabled = settings.value.showWarningNotification
     const isSiteSafe = safetyLevel.value
+    const isLinkSafetyEnabled = settings.value.linkSafety?.enabled
 
-    // Exit if notifications are disabled or site is safe
-    if (!isNotificationsEnabled || isSiteSafe) {
+    // Mount if: (warnings needed) OR (link safety enabled)
+    const needsWarningUI = isNotificationsEnabled && !isSiteSafe
+    if (!needsWarningUI && !isLinkSafetyEnabled) {
       return
     }
 
@@ -312,12 +631,15 @@ async function mount() {
 
     internalObserver.observe(shadowDOM, {
       childList: true,
-      subtree: true, // Watch deep changes inside shadow DOM too if needed, but childList on shadowRoot is enough for direct children
+      subtree: true,
     })
 
     app = createApp(App)
     setupApp(app)
     app.mount(root)
+
+    // Setup link safety after app is mounted
+    setupLinkSafety()
   }
   catch (e) {
     console.error('Failed to mount content script:', e)
@@ -335,9 +657,22 @@ async function mount() {
   await mount()
 })()
 
+// Listen for context menu tooltip requests from background
+browser.runtime.onMessage.addListener((message: any) => {
+  if (message.type === 'show-link-tooltip-at-cursor' && message.data?.url) {
+    showLinkTooltipByUrl(message.data.url)
+  }
+})
+
 // Handle backward-forward cache
 window.addEventListener('pageshow', async (event) => {
   if (event.persisted) {
+    // Clean up link safety listeners
+    if (linkSafetyCleanup) {
+      linkSafetyCleanup()
+      linkSafetyCleanup = null
+    }
+
     // Clean up existing instance if any
     if (app) {
       app.unmount()

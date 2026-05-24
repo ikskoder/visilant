@@ -4,6 +4,7 @@ import { settings } from '~/logic/storage'
 
 const props = defineProps<{
   text: string
+  forceHighlight?: boolean
 }>()
 const RE_ALPHA = /[a-z]/i
 const RE_DIGIT = /\d/
@@ -16,14 +17,14 @@ const segments = computed(() => {
 
   // Helper to get class for a character
   function getClass(char: string): string {
-    if (!settings.value.domainHighlighting)
+    if (!props.forceHighlight && !settings.value.domainHighlighting)
       return ''
     if (RE_ALPHA.test(char))
       return 'text-green-600 dark:text-green-400 font-bold'
     if (RE_DIGIT.test(char))
       return 'text-blue-600 dark:text-blue-400 font-bold'
     if (RE_SPECIAL.test(char))
-      return 'text-gray-900 dark:text-gray-100 font-bold'
+      return props.forceHighlight ? 'text-gray-300 font-bold' : 'text-gray-900 dark:text-gray-100 font-bold'
     // Other characters (Cyrillic, etc.)
     return 'text-red-600 dark:text-red-400 font-bold bg-red-100 dark:bg-red-900/30 rounded px-0.5 mx-0.5'
   }

@@ -2,8 +2,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { defaultSettings, settings } from '~/logic/storage'
-import { isIgnored, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
+import { isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
 import InputWarning from './InputWarning.vue'
+import LinkInterceptDialog from './LinkInterceptDialog.vue'
+import LinkTooltip from './LinkTooltip.vue'
 import 'uno.css'
 
 // Helper to send message safely (fallback to runtime.sendMessage)
@@ -52,6 +54,54 @@ async function ignoreSite() {
   }
 }
 
+// Link tooltip handlers
+function handleTooltipHoverEnter() {
+  onTooltipHoverEnter.fn?.()
+}
+
+function handleTooltipClose() {
+  linkTooltipVisible.value = false
+  linkTooltipData.value = null
+}
+
+function handleTooltipGo(href: string) {
+  linkTooltipVisible.value = false
+  linkTooltipData.value = null
+  window.location.href = href
+}
+
+function handleTooltipDetails(domain: string) {
+  linkTooltipVisible.value = false
+  linkTooltipData.value = null
+  // Send message to background to open popup page with domain context
+  browser.runtime.sendMessage({
+    type: 'open-popup-tab',
+    data: { domain },
+  })
+}
+
+// Link intercept handlers
+function handleInterceptContinue() {
+  const url = linkInterceptData.value?.url
+  linkInterceptVisible.value = false
+  linkInterceptData.value = null
+  if (linkInterceptResolve.value) {
+    linkInterceptResolve.value(true)
+    linkInterceptResolve.value = null
+  }
+  if (url)
+    window.location.href = url
+}
+
+function handleInterceptCancel() {
+  linkInterceptVisible.value = false
+  linkInterceptData.value = null
+  if (linkInterceptResolve.value) {
+    linkInterceptResolve.value(false)
+    linkInterceptResolve.value = null
+  }
+}
+
 onMounted(async () => {
   // Initialize settings
   if (!settings.value) {
@@ -69,6 +119,24 @@ onMounted(async () => {
     :warning-type="warningType"
     @close="showWarning = false"
     @ignore-site="ignoreSite"
+  />
+
+  <LinkTooltip
+    :visible="linkTooltipVisible"
+    :data="linkTooltipData"
+    :show-go-button="settings.linkSafety?.tooltipTrigger === 'click-left'"
+    :font-size="settings.popupFontSize"
+    @hover-enter="handleTooltipHoverEnter"
+    @close="handleTooltipClose"
+    @go="handleTooltipGo"
+    @details="handleTooltipDetails"
+  />
+
+  <LinkInterceptDialog
+    :visible="linkInterceptVisible"
+    :data="linkInterceptData"
+    @continue="handleInterceptContinue"
+    @cancel="handleInterceptCancel"
   />
 </template>
 

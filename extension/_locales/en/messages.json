@@ -298,5 +298,125 @@
   "tamperingMessage": {
     "message": "CRITICAL: Visilant extension protection was forcibly removed by this page! This site is highly suspicious!",
     "description": "Message shown when tampering is detected"
+  },
+  "linkSafetySettings": {
+    "message": "Link safety",
+    "description": "Title for link safety settings section"
+  },
+  "linkSafetySettingsDesc": {
+    "message": "Analyze links on pages and warn about unfamiliar or suspicious destinations",
+    "description": "Description for link safety feature"
+  },
+  "linkSafetyEnabled": {
+    "message": "Enable link safety",
+    "description": "Label for link safety master toggle"
+  },
+  "linkTooltipTrigger": {
+    "message": "Tooltip trigger",
+    "description": "Label for tooltip trigger selection"
+  },
+  "linkTooltipTriggerHover": {
+    "message": "On hover",
+    "description": "Tooltip trigger option: hover"
+  },
+  "linkTooltipTriggerClickLeft": {
+    "message": "On left click",
+    "description": "Tooltip trigger option: left click"
+  },
+  "linkTooltipTriggerClickRight": {
+    "message": "On right click",
+    "description": "Tooltip trigger option: right click"
+  },
+  "linkInterceptEnabled": {
+    "message": "Navigation intercept",
+    "description": "Label for navigation intercept toggle"
+  },
+  "linkInterceptEnabledDesc": {
+    "message": "Ask for confirmation before navigating to unfamiliar sites",
+    "description": "Description for navigation intercept"
+  },
+  "linkScopeMode": {
+    "message": "Active on",
+    "description": "Label for scope mode selection"
+  },
+  "linkScopeEverywhere": {
+    "message": "All websites",
+    "description": "Scope option: everywhere"
+  },
+  "linkScopeWhitelist": {
+    "message": "Only on these domains",
+    "description": "Scope option: whitelist"
+  },
+  "linkScopeBlacklist": {
+    "message": "Everywhere except these domains",
+    "description": "Scope option: blacklist"
+  },
+  "linkScopeDomains": {
+    "message": "Domain list (one per line or comma-separated)",
+    "description": "Placeholder for scope domain list textarea"
+  },
+  "linkTooltipVisits": {
+    "message": "Visits",
+    "description": "Label for visit count in tooltip"
+  },
+  "linkTooltipFamiliar": {
+    "message": "Familiar site",
+    "description": "Label for familiar/safe site in tooltip"
+  },
+  "linkTooltipUnfamiliar": {
+    "message": "Unfamiliar site",
+    "description": "Label for unfamiliar/unsafe site in tooltip"
+  },
+  "linkTooltipNeverVisited": {
+    "message": "Never visited",
+    "description": "Label when site has 0 visits"
+  },
+  "linkTooltipMismatchWarning": {
+    "message": "Link text shows a different domain than the actual destination!",
+    "description": "Warning about mismatched link text and href"
+  },
+  "linkTooltipShowsDomain": {
+    "message": "Shows",
+    "description": "Prefix for the domain shown in link text"
+  },
+  "linkTooltipLeadsTo": {
+    "message": "Leads to",
+    "description": "Prefix for the actual destination domain"
+  },
+  "linkTooltipPunycode": {
+    "message": "ASCII",
+    "description": "Label for punycode/ASCII domain display"
+  },
+  "linkTooltipGoToLink": {
+    "message": "Go to link",
+    "description": "Button to proceed to link destination (click-left mode)"
+  },
+  "linkTooltipDetails": {
+    "message": "Details",
+    "description": "Button to open detailed domain info in a new tab"
+  },
+  "linkInterceptTitle": {
+    "message": "Unfamiliar site ahead",
+    "description": "Title for navigation intercept dialog"
+  },
+  "linkInterceptMessage": {
+    "message": "You are about to visit a site you have rarely visited before",
+    "description": "Message in navigation intercept dialog"
+  },
+  "linkInterceptContinue": {
+    "message": "Continue anyway",
+    "description": "Button to proceed with navigation"
+  },
+  "linkInterceptGoBack": {
+    "message": "Go back",
+    "description": "Button to cancel navigation"
+  },
+  "linkTooltipDestination": {
+    "message": "Destination",
+    "description": "Label for destination domain in tooltip"
+  },
+  "linkContextMenuCheck": {
+    "message": "Check link safety",
+    "description": "Context menu item to check link safety"
   }
 }

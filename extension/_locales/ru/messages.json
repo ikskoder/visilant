@@ -298,5 +298,125 @@
   "tamperingMessage": {
     "message": "ТРИВОГА: Защита расширения Visilant была принудительно удалена этой страницей! Этот сайт крайне подозрителен!",
     "description": "Message shown when tampering is detected"
+  },
+  "linkSafetySettings": {
+    "message": "Безопасность ссылок",
+    "description": "Title for link safety settings section"
+  },
+  "linkSafetySettingsDesc": {
+    "message": "Анализ ссылок на страницах и предупреждения о незнакомых или подозрительных адресах",
+    "description": "Description for link safety feature"
+  },
+  "linkSafetyEnabled": {
+    "message": "Включить безопасность ссылок",
+    "description": "Label for link safety master toggle"
+  },
+  "linkTooltipTrigger": {
+    "message": "Триггер подсказки",
+    "description": "Label for tooltip trigger selection"
+  },
+  "linkTooltipTriggerHover": {
+    "message": "При наведении",
+    "description": "Tooltip trigger option: hover"
+  },
+  "linkTooltipTriggerClickLeft": {
+    "message": "По левому клику",
+    "description": "Tooltip trigger option: left click"
+  },
+  "linkTooltipTriggerClickRight": {
+    "message": "По правому клику",
+    "description": "Tooltip trigger option: right click"
+  },
+  "linkInterceptEnabled": {
+    "message": "Перехват навигации",
+    "description": "Label for navigation intercept toggle"
+  },
+  "linkInterceptEnabledDesc": {
+    "message": "Запрашивать подтверждение перед переходом на незнакомые сайты",
+    "description": "Description for navigation intercept"
+  },
+  "linkScopeMode": {
+    "message": "Активно на",
+    "description": "Label for scope mode selection"
+  },
+  "linkScopeEverywhere": {
+    "message": "Все сайты",
+    "description": "Scope option: everywhere"
+  },
+  "linkScopeWhitelist": {
+    "message": "Только на этих доменах",
+    "description": "Scope option: whitelist"
+  },
+  "linkScopeBlacklist": {
+    "message": "Везде, кроме этих доменов",
+    "description": "Scope option: blacklist"
+  },
+  "linkScopeDomains": {
+    "message": "Список доменов (по одному на строку или через запятую)",
+    "description": "Placeholder for scope domain list textarea"
+  },
+  "linkTooltipVisits": {
+    "message": "Посещений",
+    "description": "Label for visit count in tooltip"
+  },
+  "linkTooltipFamiliar": {
+    "message": "Знакомый сайт",
+    "description": "Label for familiar/safe site in tooltip"
+  },
+  "linkTooltipUnfamiliar": {
+    "message": "Незнакомый сайт",
+    "description": "Label for unfamiliar/unsafe site in tooltip"
+  },
+  "linkTooltipNeverVisited": {
+    "message": "Не посещался",
+    "description": "Label when site has 0 visits"
+  },
+  "linkTooltipMismatchWarning": {
+    "message": "Текст ссылки показывает другой домен, чем фактический адрес!",
+    "description": "Warning about mismatched link text and href"
+  },
+  "linkTooltipShowsDomain": {
+    "message": "Показывает",
+    "description": "Prefix for the domain shown in link text"
+  },
+  "linkTooltipLeadsTo": {
+    "message": "Ведёт на",
+    "description": "Prefix for the actual destination domain"
+  },
+  "linkTooltipPunycode": {
+    "message": "ASCII",
+    "description": "Label for punycode/ASCII domain display"
+  },
+  "linkTooltipGoToLink": {
+    "message": "Перейти по ссылке",
+    "description": "Button to proceed to link destination (click-left mode)"
+  },
+  "linkTooltipDetails": {
+    "message": "Подробнее",
+    "description": "Button to open detailed domain info in a new tab"
+  },
+  "linkInterceptTitle": {
+    "message": "Незнакомый сайт впереди",
+    "description": "Title for navigation intercept dialog"
+  },
+  "linkInterceptMessage": {
+    "message": "Вы собираетесь перейти на сайт, который посещали очень редко",
+    "description": "Message in navigation intercept dialog"
+  },
+  "linkInterceptContinue": {
+    "message": "Всё равно перейти",
+    "description": "Button to proceed with navigation"
+  },
+  "linkInterceptGoBack": {
+    "message": "Назад",
+    "description": "Button to cancel navigation"
+  },
+  "linkTooltipDestination": {
+    "message": "Назначение",
+    "description": "Label for destination domain in tooltip"
+  },
+  "linkContextMenuCheck": {
+    "message": "Проверить безопасность ссылки",
+    "description": "Context menu item to check link safety"
   }
 }

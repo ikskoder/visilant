@@ -28,6 +28,17 @@ export interface Settings {
 
   // Font size (percentage, 100 = default)
   popupFontSize: number
+
+  // Link safety settings
+  linkSafety: LinkSafetySettings
+}
+
+export interface LinkSafetySettings {
+  enabled: boolean
+  tooltipTrigger: 'hover' | 'click-left' | 'click-right'
+  interceptEnabled: boolean
+  scopeMode: 'everywhere' | 'whitelist' | 'blacklist'
+  scopeDomains: string
 }
 
 export const defaultSettings: Settings = {
@@ -58,6 +69,15 @@ export const defaultSettings: Settings = {
 
   // Font size (percentage, 100 = default)
   popupFontSize: 100,
+
+  // Link safety settings
+  linkSafety: {
+    enabled: true,
+    tooltipTrigger: 'hover',
+    interceptEnabled: false,
+    scopeMode: 'everywhere',
+    scopeDomains: '',
+  },
 }
 
 export const settings = useWebExtensionStorage<Settings>(

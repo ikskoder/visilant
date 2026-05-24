@@ -61,6 +61,20 @@ function updateTranslations() {
     'warningTriggerEventsTitle',
     'bothWarningTriggers',
     'defaultSafetyThreshold',
+    'linkSafetySettings',
+    'linkSafetySettingsDesc',
+    'linkSafetyEnabled',
+    'linkTooltipTrigger',
+    'linkTooltipTriggerHover',
+    'linkTooltipTriggerClickLeft',
+    'linkTooltipTriggerClickRight',
+    'linkInterceptEnabled',
+    'linkInterceptEnabledDesc',
+    'linkScopeMode',
+    'linkScopeEverywhere',
+    'linkScopeWhitelist',
+    'linkScopeBlacklist',
+    'linkScopeDomains',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -420,6 +434,119 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             </div>
           </div>
         </div>
+        <!-- Link Safety Settings -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h2 class="text-lg font-semibold mb-2">
+            {{ translations.linkSafetySettings }}
+          </h2>
+          <p class="text-xs text-gray-500 mb-4 text-left">
+            {{ translations.linkSafetySettingsDesc }}
+          </p>
+
+          <!-- Master Toggle -->
+          <div class="flex items-start justify-between mb-4">
+            <div class="text-left">
+              <label class="text-sm font-medium">{{ translations.linkSafetyEnabled }}</label>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input v-model="settings.linkSafety.enabled" type="checkbox" class="sr-only peer">
+              <div
+                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 dark:peer-focus:ring-teal-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-teal-600"
+              />
+            </label>
+          </div>
+
+          <div v-if="settings.linkSafety.enabled">
+            <!-- Tooltip Trigger -->
+            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h3 class="text-left text-sm font-medium mb-3">
+                {{ translations.linkTooltipTrigger }}:
+              </h3>
+              <div class="space-y-2">
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.tooltipTrigger" type="radio" value="hover"
+                    class="form-radio h-4 w-4 text-teal-600"
+                  >
+                  <span class="ml-2">{{ translations.linkTooltipTriggerHover }}</span>
+                </label>
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-left"
+                    class="form-radio h-4 w-4 text-teal-600"
+                  >
+                  <span class="ml-2">{{ translations.linkTooltipTriggerClickLeft }}</span>
+                </label>
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-right"
+                    class="form-radio h-4 w-4 text-teal-600"
+                  >
+                  <span class="ml-2">{{ translations.linkTooltipTriggerClickRight }}</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Navigation Intercept -->
+            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+              <div class="flex items-start justify-between">
+                <div class="text-left">
+                  <label class="text-sm font-medium">{{ translations.linkInterceptEnabled }}</label>
+                  <p class="text-xs text-gray-500">
+                    {{ translations.linkInterceptEnabledDesc }}
+                  </p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input v-model="settings.linkSafety.interceptEnabled" type="checkbox" class="sr-only peer">
+                  <div
+                    class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 dark:peer-focus:ring-teal-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-teal-600"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <!-- Scope Mode -->
+            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h3 class="text-left text-sm font-medium mb-3">
+                {{ translations.linkScopeMode }}:
+              </h3>
+              <div class="space-y-2">
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.scopeMode" type="radio" value="everywhere"
+                    class="form-radio h-4 w-4 text-teal-600"
+                  >
+                  <span class="ml-2">{{ translations.linkScopeEverywhere }}</span>
+                </label>
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.scopeMode" type="radio" value="whitelist"
+                    class="form-radio h-4 w-4 text-teal-600"
+                  >
+                  <span class="ml-2">{{ translations.linkScopeWhitelist }}</span>
+                </label>
+                <label class="flex items-center">
+                  <input
+                    v-model="settings.linkSafety.scopeMode" type="radio" value="blacklist"
+                    class="form-radio h-4 w-4 text-teal-600"
+                  >
+                  <span class="ml-2">{{ translations.linkScopeBlacklist }}</span>
+                </label>
+              </div>
+
+              <!-- Domain List -->
+              <div v-if="settings.linkSafety.scopeMode !== 'everywhere'" class="mt-3">
+                <textarea
+                  v-model="settings.linkSafety.scopeDomains"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm"
+                  rows="3"
+                  :placeholder="translations.linkScopeDomains"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Database Management -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <h2 class="text-lg font-semibold mb-4">

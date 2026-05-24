@@ -312,6 +312,13 @@ async function handleTampering() {
   return 'Tampering handled'
 }
 
+// Open popup page in a new tab with domain context
+async function handleOpenPopupTab(domain: string) {
+  const popupUrl = browser.runtime.getURL(`dist/popup/index.html?domain=${encodeURIComponent(domain)}`)
+  await browser.tabs.create({ url: popupUrl })
+  return 'Popup tab opened'
+}
+
 // Centralized message handlers map
 const messageHandlers = {
   'get-visit-count': (data: any) => getVisitCountLogic(data.url),
@@ -319,6 +326,7 @@ const messageHandlers = {
   'get-settings': () => getSettingsLogic(),
   'show-notification': (data: any) => handleShowNotification(data.warningType),
   'tampering-detected': () => handleTampering(),
+  'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain),
 }
 
 // Register webext-bridge handlers
@@ -339,9 +347,47 @@ browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
   }
 })
 
+// ==========================================
+// Context Menu for Link Safety (right-click)
+// ==========================================
+
+const CONTEXT_MENU_ID = 'visilant-check-link'
+
+async function setupContextMenu() {
+  // Remove existing items first
+  await browser.contextMenus.removeAll()
+
+  // Always show context menu item for link safety check, regardless of settings
+  const title = await loadTranslation('linkContextMenuCheck')
+  browser.contextMenus.create({
+    id: CONTEXT_MENU_ID,
+    title,
+    contexts: ['link'],
+  })
+}
+
+// Create context menu on install
+browser.runtime.onInstalled.addListener(async () => {
+  await setupContextMenu()
+})
+
+// Handle context menu click
+browser.contextMenus.onClicked.addListener(async (info) => {
+  if (info.menuItemId !== CONTEXT_MENU_ID || !info.linkUrl)
+    return
+
+  // Open detailed popup in a new tab for the link's domain
+  const hostname = getHostname(info.linkUrl)
+  if (hostname)
+    await handleOpenPopupTab(hostname)
+})
+
 // Listen for changes in storage
 browser.storage.onChanged.addListener(async (changes) => {
   if (changes.settings) {
+    // Rebuild context menu when link safety settings change
+    await setupContextMenu()
+
     // If settings changed and icon colors are disabled, reset all icons to default first
     const newSettings = changes.settings.newValue as Settings
     if (!newSettings.changeIcon) {
