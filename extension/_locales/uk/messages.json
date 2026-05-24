@@ -1,6 +1,6 @@
 {
   "extensionDescription": {
-    "message": "Відстежуйте та контролюйте ваші відвідування веб-сайтів із попередженнями безпеки",
+    "message": "Захист від сайтів-підробок (гомограф-атаки та клон-фішинг) на основі вашої особистої статистики відвідувань",
     "description": "Description of the extension"
   },
   "securityWarning": {
@@ -8,15 +8,15 @@
     "description": "Title of the security warning popup"
   },
   "warningMessage": {
-    "message": "Ви збираєтесь ввести контент на сайті з дуже малою кількістю відвідувань. Це може бути ризиковано, якщо ви ділитесь конфіденційною інформацією",
+    "message": "Ви збираєтесь ввести вміст на сайті, який ви рідко відвідували. Це може бути ризиковано, якщо ви ділитесь конфіденційною інформацією",
     "description": "Main warning message about site safety"
   },
   "inputWarningMessage": {
-    "message": "Ви збираєтесь ввести контент на сайті з дуже малою кількістю відвідувань. Це може бути ризиковано, якщо ви ділитесь конфіденційною інформацією",
+    "message": "Ви збираєтесь ввести вміст на сайті, який ви рідко відвідували. Це може бути ризиковано, якщо ви ділитесь конфіденційною інформацією",
     "description": "Warning message for input/paste actions"
   },
   "copyWarningMessage": {
-    "message": "Ви копіюєте вміст із сайту з дуже малою кількістю відвідувань. Будьте обережні з тим, як ви використовуєте цю інформацію",
+    "message": "Ви копіюєте вміст із сайту, який ви рідко відвідували. Будьте обережні з тим, як ви використовуєте цю інформацію",
     "description": "Warning message for copy/cut actions"
   },
   "checkUrl": {
@@ -56,7 +56,7 @@
     "description": "Title for general settings section"
   },
   "safetyLevels": {
-    "message": "Порогові значення",
+    "message": "Коли вважати сайт знайомим",
     "description": "Title for safety levels section"
   },
   "visitsThreshold": {
@@ -64,7 +64,7 @@
     "description": "Label for visits threshold input"
   },
   "visitsThresholdDesc": {
-    "message": "Сайти з меншою кількістю відвідувань, ніж це значення, будуть позначені як небезпечні",
+    "message": "Сайти з меншою кількістю відвідувань, ніж це значення, будуть позначені як малознайомі",
     "description": "Description for visits threshold"
   },
   "displaySettings": {
@@ -76,15 +76,15 @@
     "description": "Label for dynamic icon toggle"
   },
   "dynamicIconDesc": {
-    "message": "Іконка стане червоною для сайтів із меншою кількістю відвідувань, ніж порогове значення",
+    "message": "Іконка стане червоною на сайтах, які ви рідко відвідували",
     "description": "Description for dynamic icon setting"
   },
   "showBadge": {
-    "message": "Лічильник",
+    "message": "Лічильник відвідувань на іконці",
     "description": "Label for badge toggle"
   },
   "showBadgeDesc": {
-    "message": "Показувати лічильник відвідувань на значку іконки",
+    "message": "Показувати лічильник відвідувань на значку розширення",
     "description": "Description for badge setting"
   },
   "notificationSettings": {
@@ -96,7 +96,7 @@
     "description": "Label for notifications toggle"
   },
   "showWarningNotificationDesc": {
-    "message": "Лише коли ініційовано подією та лише для сайтів із меншою кількістю відвідувань, ніж порогове значення",
+    "message": "Лише коли ви щось вводите або копіюєте на незнайомому сайті",
     "description": "Description for notifications setting"
   },
   "notificationStyle": {
@@ -128,7 +128,7 @@
     "description": "Text shown while importing"
   },
   "importHistoryDesc": {
-    "message": "Імпортувати історію браузера для ініціалізації лічильників відвідувань",
+    "message": "Імпортувати історію браузера, щоб заповнити лічильники відвідувань",
     "description": "Description for import history feature"
   },
   "resetData": {
@@ -160,7 +160,7 @@
     "description": "Title for reset confirmation dialog"
   },
   "confirmResetMessage": {
-    "message": "Ви впевнені, що хочете скинути наступні дані?",
+    "message": "Ви впевнені, що хочете скинути такі дані?",
     "description": "Message in reset confirmation dialog"
   },
   "cannotBeUndone": {
@@ -208,7 +208,7 @@
     "description": "Label for input warning toggle"
   },
   "showCopyWarning": {
-    "message": "При вирізанні / копіюванні вмісту",
+    "message": "При вирізанні/копіюванні вмісту",
     "description": "Label for copy warning toggle"
   },
   "bothWarningTriggers": {
@@ -216,7 +216,7 @@
     "description": "Label for both warning trigger events option"
   },
   "warningTriggerEventsTitle": {
-    "message": "Тригери сповіщень",
+    "message": "Коли показувати сповіщення",
     "description": "Title for warning trigger events section"
   },
   "currentDomain": {
@@ -296,7 +296,7 @@
     "description": "Alt text for logo"
   },
   "tamperingMessage": {
-    "message": "ТРИВОГА: Захист розширення Visilant був примусово видалений цією сторінкою! Цей сайт вкрай підозрілий!",
+    "message": "УВАГА! Захист розширення Visilant був примусово видалений цією сторінкою! Цей сайт вкрай підозрілий! У рідкісних випадках так можуть поводитися й легітимні сайти — якщо ви довіряєте цьому сайту, захист для нього можна вимкнути в налаштуваннях розширення.",
     "description": "Message shown when tampering is detected"
   },
   "linkSafetySettings": {
@@ -320,7 +320,7 @@
     "description": "Tooltip trigger option: hover"
   },
   "linkTooltipTriggerClickLeft": {
-    "message": "По кліку (перехоплення)",
+    "message": "По кліку (з підтвердженням)",
     "description": "Tooltip trigger option: left click shows intercept modal"
   },
   "linkTooltipTriggerClickLeftDesc": {
@@ -356,7 +356,7 @@
     "description": "Show visit count only for familiar sites"
   },
   "linkInterceptEnabled": {
-    "message": "Перехоплення навігації",
+    "message": "Підтвердження перед переходом",
     "description": "Label for navigation intercept toggle"
   },
   "linkInterceptEnabledDesc": {
@@ -364,7 +364,7 @@
     "description": "Description for navigation intercept"
   },
   "linkShortUrlSection": {
-    "message": "Детекція скорочених посилань",
+    "message": "Виявлення скорочених посилань",
     "description": "Section header for shortened URL settings"
   },
   "linkShortUrlModeOff": {
@@ -572,7 +572,7 @@
     "description": "Description for reset custom shorteners button"
   },
   "linkTooltipResolveOnce": {
-    "message": "Розкрутити шлях",
+    "message": "Показати справжню адресу (одноразово)",
     "description": "Button to resolve URL once without marking domain as shortener"
   },
   "linkTooltipMarkAsShortener": {
@@ -592,7 +592,7 @@
     "description": "Title for anti-tampering settings section"
   },
   "antiTamperingSettingsDesc": {
-    "message": "Виявляє спроби сторінки примусово видалити інтерфейс розширення з DOM. При виявленні втручання ви отримаєте критичне попередження безпеки. Деякі легітимні сайти (особливо SPA або сайти з агресивним очищенням DOM) можуть викликати хибні спрацьовування — додайте їх до списку виключень нижче",
+    "message": "Виявляє спроби сайту примусово сховати або прибрати попередження розширення зі сторінки (тобто видалити інтерфейс розширення з DOM). При спрацюванні ви отримаєте критичне сповіщення. Деякі добросовісні сайти, які активно перебудовують сторінку (особливо SPA або сайти з агресивним очищенням DOM), можуть викликати хибні спрацьовування — додайте їх до списку винятків нижче",
     "description": "Description for anti-tampering settings"
   },
   "antiTamperingExcludedDomains": {

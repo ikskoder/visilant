@@ -1,6 +1,6 @@
 {
   "extensionDescription": {
-    "message": "Защита от сайтов подделок на основе личной статистики посещения сайтов",
+    "message": "Защита от сайтов-подделок (гомограф-атаки и клон-фишинг) на основе личной статистики посещения сайтов",
     "description": "Description of the extension"
   },
   "securityWarning": {
@@ -8,15 +8,15 @@
     "description": "Title of the security warning popup"
   },
   "warningMessage": {
-    "message": "Вы собираетесь ввести данные на сайте с очень малым количеством посещений. Это может быть рискованно, если вы делитесь конфиденциальной информацией",
+    "message": "Вы собираетесь ввести данные на сайте, который вы редко посещали. Это может быть рискованно, если вы делитесь конфиденциальной информацией",
     "description": "Main warning message about site safety"
   },
   "inputWarningMessage": {
-    "message": "Вы собираетесь ввести данные на сайте с очень малым количеством посещений. Это может быть рискованно, если вы делитесь конфиденциальной информацией",
+    "message": "Вы собираетесь ввести данные на сайте, который вы редко посещали. Это может быть рискованно, если вы делитесь конфиденциальной информацией",
     "description": "Warning message for input/paste actions"
   },
   "copyWarningMessage": {
-    "message": "Вы копируете содержимое с сайта с очень малым количеством посещений. Будьте предельно осторожны с тем, как вы используете эту информацию",
+    "message": "Вы копируете содержимое с сайта, который вы редко посещали. Будьте предельно осторожны с тем, как вы используете эту информацию",
     "description": "Warning message for copy/cut actions"
   },
   "checkUrl": {
@@ -36,7 +36,7 @@
     "description": "Security tip about not pasting into shell"
   },
   "verifyContent": {
-    "message": "Если же вы абсолютно уверенны что это необходимо, то перед этим хотя бы убедитесь, что в буфере обмена именно то, что вы думаете",
+    "message": "Если же вы абсолютно уверены, что это необходимо, то перед этим хотя бы убедитесь, что в буфере обмена именно то, что вы думаете",
     "description": "Security tip about verifying copied content"
   },
   "dontShowAgain": {
@@ -56,7 +56,7 @@
     "description": "Title for general settings section"
   },
   "safetyLevels": {
-    "message": "Порог",
+    "message": "Когда считать сайт знакомым",
     "description": "Title for safety levels section"
   },
   "visitsThreshold": {
@@ -64,7 +64,7 @@
     "description": "Label for visits threshold input"
   },
   "visitsThresholdDesc": {
-    "message": "Сайты с меньшим количеством посещений будут помечены как опасные",
+    "message": "Сайты с меньшим количеством посещений будут помечены как незнакомые",
     "description": "Description for visits threshold"
   },
   "displaySettings": {
@@ -76,11 +76,11 @@
     "description": "Label for dynamic icon toggle"
   },
   "dynamicIconDesc": {
-    "message": "Иконка будет изменена на красную на сайтах с малым количеством посещений",
+    "message": "Иконка станет красной на сайтах, которые вы редко посещали",
     "description": "Description for dynamic icon setting"
   },
   "showBadge": {
-    "message": "Счетчик",
+    "message": "Счётчик посещений на иконке",
     "description": "Label for badge toggle"
   },
   "showBadgeDesc": {
@@ -96,7 +96,7 @@
     "description": "Label for notifications toggle"
   },
   "showWarningNotificationDesc": {
-    "message": "Только при возникновении события и только для сайтов с количеством посещений ниже порогового значения",
+    "message": "Только когда вы что-то вводите или копируете на незнакомом сайте",
     "description": "Description for notifications setting"
   },
   "notificationStyle": {
@@ -216,7 +216,7 @@
     "description": "Label for both warning trigger events option"
   },
   "warningTriggerEventsTitle": {
-    "message": "Триггеры уведомлений",
+    "message": "Когда показывать уведомление",
     "description": "Title for warning trigger events section"
   },
   "currentDomain": {
@@ -252,7 +252,7 @@
     "description": "Tooltip for case toggle"
   },
   "toggleHighlighting": {
-    "message": "Переключить подсветку\n\nЗеленый: Латиница (a-z, A-Z)\nСиний: Цифры (0-9)\nЧерный: Символы (-_.)\nКрасный: Другое",
+    "message": "Переключить подсветку\n\nЗелёный: Латиница (a-z, A-Z)\nСиний: Цифры (0-9)\nЧёрный: Символы (-_.)\nКрасный: Другое",
     "description": "Tooltip for highlighting toggle with legend"
   },
   "togglePunycodeListMode": {
@@ -296,7 +296,7 @@
     "description": "Alt text for logo"
   },
   "tamperingMessage": {
-    "message": "ТРИВОГА: Защита расширения Visilant была принудительно удалена этой страницей! Этот сайт крайне подозрителен!",
+    "message": "ВНИМАНИЕ! Защита расширения Visilant была принудительно удалена этой страницей! Этот сайт крайне подозрителен! В редких случаях так себя могут вести и легитимные сайты — если вы доверяете этому сайту, защиту для него можно отключить в настройках расширения.",
     "description": "Message shown when tampering is detected"
   },
   "linkSafetySettings": {
@@ -304,7 +304,7 @@
     "description": "Title for link safety settings section"
   },
   "linkSafetySettingsDesc": {
-    "message": "Узнайте куда ведёт ссылка до перехода. Некоторые сайты могут навредить в момент открытия — без ввода данных и каких-либо действий",
+    "message": "Узнайте, куда ведёт ссылка до перехода. Некоторые сайты могут навредить в момент открытия — без ввода данных и каких-либо действий",
     "description": "Description for link safety feature"
   },
   "linkSafetyEnabled": {
@@ -320,7 +320,7 @@
     "description": "Tooltip trigger option: hover"
   },
   "linkTooltipTriggerClickLeft": {
-    "message": "По клику (перехват)",
+    "message": "По клику (с подтверждением)",
     "description": "Tooltip trigger option: left click shows intercept modal"
   },
   "linkTooltipTriggerClickLeftDesc": {
@@ -356,7 +356,7 @@
     "description": "Show visit count only for familiar sites"
   },
   "linkInterceptEnabled": {
-    "message": "Перехват навигации",
+    "message": "Подтверждение перед переходом",
     "description": "Label for navigation intercept toggle"
   },
   "linkInterceptEnabledDesc": {
@@ -364,7 +364,7 @@
     "description": "Description for navigation intercept"
   },
   "linkShortUrlSection": {
-    "message": "Детекция сокращённых ссылок",
+    "message": "Обнаружение сокращённых ссылок",
     "description": "Section header for shortened URL settings"
   },
   "linkShortUrlModeOff": {
@@ -392,11 +392,11 @@
     "description": "Toggle to enable resolving any link"
   },
   "linkShortUrlResolveAnyDesc": {
-    "message": "Полезно, если сокращатель отсутствует в встроенном списке",
+    "message": "Полезно, если сокращатель отсутствует во встроенном списке",
     "description": "Explanation for resolve-any option"
   },
   "linkShortUrlListUpdateUrl": {
-    "message": "Удалённые списки сокращателей",
+    "message": "Внешние списки сокращателей",
     "description": "Label for remote list URLs textarea"
   },
   "linkShortUrlListUpdateUrlDesc": {
@@ -572,7 +572,7 @@
     "description": "Description for reset custom shorteners button"
   },
   "linkTooltipResolveOnce": {
-    "message": "Раскрутить путь",
+    "message": "Показать настоящий адрес (однократно)",
     "description": "Button to resolve URL once without marking domain as shortener"
   },
   "linkTooltipMarkAsShortener": {
@@ -584,7 +584,7 @@
     "description": "Label for custom shortener domains textarea"
   },
   "linkShortUrlCustomDomainsDesc": {
-    "message": "Домены, которые вы пометили как сокращатели, по одному на строку. Субдомены включаются автоматически. Объединяются со встроенным и удалённым списками",
+    "message": "Домены, которые вы пометили как сокращатели, по одному на строку. Субдомены включаются автоматически. Объединяются со встроенным и внешним списками",
     "description": "Description for custom shortener domains textarea"
   },
   "antiTamperingSettings": {
@@ -592,7 +592,7 @@
     "description": "Title for anti-tampering settings section"
   },
   "antiTamperingSettingsDesc": {
-    "message": "Обнаруживает попытки страницы принудительно удалить интерфейс расширения из DOM. При обнаружении вмешательства вы получите критическое предупреждение безопасности. Некоторые легитимные сайты (особенно SPA или сайты с агрессивной очисткой DOM) могут вызывать ложные срабатывания — добавьте их в список исключений ниже",
+    "message": "Обнаруживает попытки сайта принудительно скрыть или убрать предупреждения расширения со страницы (т.е. удалить интерфейс расширения из DOM). При срабатывании вы получите критическое уведомление. Некоторые добросовестные сайты, активно перестраивающие страницу (особенно SPA или сайты с агрессивной очисткой DOM), могут вызывать ложные срабатывания — добавьте их в список исключений ниже",
     "description": "Description for anti-tampering settings"
   },
   "antiTamperingExcludedDomains": {

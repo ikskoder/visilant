@@ -1,6 +1,6 @@
 {
   "extensionDescription": {
-    "message": "Protection against Homograph Attack & Clone Phishing based on your site visiting statistics",
+    "message": "Protection against lookalike and impersonation sites (homograph attacks & clone phishing) based on your personal visit history",
     "description": "Description of the extension"
   },
   "securityWarning": {
@@ -8,15 +8,15 @@
     "description": "Title of the security warning popup"
   },
   "warningMessage": {
-    "message": "You are about to enter content on a site with very few visits. This could be risky if you're sharing sensitive information",
+    "message": "You are about to enter content on a site you have rarely visited. This could be risky if you're sharing sensitive information",
     "description": "Main warning message about site safety"
   },
   "inputWarningMessage": {
-    "message": "You are about to enter content on a site with very few visits. This could be risky if you're sharing sensitive information",
+    "message": "You are about to enter content on a site you have rarely visited. This could be risky if you're sharing sensitive information",
     "description": "Warning message for input/paste actions"
   },
   "copyWarningMessage": {
-    "message": "You are copying content from a site with very few visits. Be careful with how you use this information",
+    "message": "You are copying content from a site you have rarely visited. Be careful with how you use this information",
     "description": "Warning message for copy/cut actions"
   },
   "checkUrl": {
@@ -56,7 +56,7 @@
     "description": "Title for general settings section"
   },
   "safetyLevels": {
-    "message": "Safety level thresholds",
+    "message": "When to treat a site as familiar",
     "description": "Title for safety levels section"
   },
   "visitsThreshold": {
@@ -64,7 +64,7 @@
     "description": "Label for visits threshold input"
   },
   "visitsThresholdDesc": {
-    "message": "Sites with fewer visits than this will be marked as dangerous",
+    "message": "Sites with fewer visits than this will be marked as unfamiliar",
     "description": "Description for visits threshold"
   },
   "displaySettings": {
@@ -76,11 +76,11 @@
     "description": "Label for dynamic icon toggle"
   },
   "dynamicIconDesc": {
-    "message": "The icon will be changed to red for sites with less visits than the threshold",
+    "message": "The icon turns red on sites you have rarely visited",
     "description": "Description for dynamic icon setting"
   },
   "showBadge": {
-    "message": "Counter",
+    "message": "Visit counter on icon",
     "description": "Label for badge toggle"
   },
   "showBadgeDesc": {
@@ -96,7 +96,7 @@
     "description": "Label for notifications toggle"
   },
   "showWarningNotificationDesc": {
-    "message": "Only when triggered by an event and only for sites with less visits than the threshold",
+    "message": "Only when you type or paste on unfamiliar sites",
     "description": "Description for notifications setting"
   },
   "notificationStyle": {
@@ -116,7 +116,7 @@
     "description": "Option for both types of notifications"
   },
   "databaseManagement": {
-    "message": "Database management",
+    "message": "Your data",
     "description": "Title for database management section"
   },
   "importHistory": {
@@ -128,7 +128,7 @@
     "description": "Text shown while importing"
   },
   "importHistoryDesc": {
-    "message": "Import your browser history to initialize visit counts",
+    "message": "Import your browser history to populate your visit counts",
     "description": "Description for import history feature"
   },
   "resetData": {
@@ -204,11 +204,11 @@
     "description": "Name of Ukrainian language"
   },
   "showInputWarning": {
-    "message": "Keyboard input or content paste",
+    "message": "When typing or pasting",
     "description": "Label for input warning toggle"
   },
   "showCopyWarning": {
-    "message": "Content cutting or copying",
+    "message": "When cutting or copying",
     "description": "Label for copy warning toggle"
   },
   "bothWarningTriggers": {
@@ -216,7 +216,7 @@
     "description": "Label for both warning trigger events option"
   },
   "warningTriggerEventsTitle": {
-    "message": "Notification triggers",
+    "message": "When to show notifications",
     "description": "Title for warning trigger events section"
   },
   "currentDomain": {
@@ -296,7 +296,7 @@
     "description": "Alt text for logo"
   },
   "tamperingMessage": {
-    "message": "CRITICAL: Visilant extension protection was forcibly removed by this page! This site is highly suspicious!",
+    "message": "ATTENTION! Visilant extension protection was forcibly removed by this page! This site is highly suspicious! In rare cases, legitimate sites may also behave this way — if you trust this site, you can disable protection for it in the extension settings.",
     "description": "Message shown when tampering is detected"
   },
   "linkSafetySettings": {
@@ -320,7 +320,7 @@
     "description": "Tooltip trigger option: hover"
   },
   "linkTooltipTriggerClickLeft": {
-    "message": "On click (intercept)",
+    "message": "On click (with confirmation)",
     "description": "Tooltip trigger option: left click shows intercept modal"
   },
   "linkTooltipTriggerClickLeftDesc": {
@@ -356,7 +356,7 @@
     "description": "Show visit count only for familiar sites"
   },
   "linkInterceptEnabled": {
-    "message": "Navigation intercept",
+    "message": "Confirm before navigating",
     "description": "Label for navigation intercept toggle"
   },
   "linkInterceptEnabledDesc": {
@@ -572,7 +572,7 @@
     "description": "Description for reset custom shorteners button"
   },
   "linkTooltipResolveOnce": {
-    "message": "Trace path",
+    "message": "Show real destination (once)",
     "description": "Button to resolve URL once without marking domain as shortener"
   },
   "linkTooltipMarkAsShortener": {
@@ -592,7 +592,7 @@
     "description": "Title for anti-tampering settings section"
   },
   "antiTamperingSettingsDesc": {
-    "message": "Detects when a page forcibly removes the extension's UI from the DOM. If tampering is detected, you'll receive a critical security warning. Some legitimate sites (especially SPAs or sites with aggressive DOM cleanup) may trigger false positives — add them to the exclusion list below",
+    "message": "Detects when a page forcibly hides or removes the extension's warnings from this site (i.e. removes the extension's UI from the DOM). If tampering is detected, you'll receive a critical security warning. Some legitimate sites that heavily rebuild their page (especially SPAs or sites with aggressive DOM cleanup) may trigger false alarms — add them to the exclusion list below",
     "description": "Description for anti-tampering settings"
   },
   "antiTamperingExcludedDomains": {
