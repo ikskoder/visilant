@@ -30,10 +30,12 @@ dev-firefox-run:
 
 build-chrome:
   pnpm build
+  pnpm pack:zip
 
 build-firefox:
   pnpm build-firefox
   pnpm pack:xpi
+  pnpm pack:src
 
 # Pack source code for AMO submission (uses git archive — only tracked files)
 pack-src:
