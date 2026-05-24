@@ -21,6 +21,9 @@ importers:
       '@ffflorian/jszip-cli':
         specifier: ^3.8.2
         version: 3.8.2(typescript@5.7.3)
+      '@iconify-json/carbon':
+        specifier: ^1.2.20
+        version: 1.2.20
       '@iconify/json':
         specifier: ^2.2.310
         version: 2.2.310
@@ -541,6 +544,9 @@ packages:
   '@humanwhocodes/retry@0.4.2':
     resolution: {integrity: sha512-xeO57FpIu4p1Ri3Jq/EXq4ClRm86dVF2z/+kvFnyqVYRavTZmaFaUBbWCOuuTh0o/g7DSsk6kc2vrS4Vl5oPOQ==}
     engines: {node: '>=18.18'}
+
+  '@iconify-json/carbon@1.2.20':
+    resolution: {integrity: sha512-wqyxKEbIRdzGdfCAwQqn8iSfO6jx0m1toZAAQdx1NFjxd6iFl1YY4eKI1woWt7XOxs7s7phMW530kDD867JZGw==}
 
   '@iconify/json@2.2.310':
     resolution: {integrity: sha512-CPmueT0VYi5uqQpro1HabpgLr9lcft4h1qJZu9591shJS6nKLx1TO22IMdK+NhVn1npXV3sEeqAb2t/EXSLvcg==}
@@ -4923,6 +4929,10 @@ snapshots:
   '@humanwhocodes/retry@0.3.1': {}
 
   '@humanwhocodes/retry@0.4.2': {}
+
+  '@iconify-json/carbon@1.2.20':
+    dependencies:
+      '@iconify/types': 2.0.0
 
   '@iconify/json@2.2.310':
     dependencies:

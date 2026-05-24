@@ -5,7 +5,11 @@ export default defineConfig({
   presets: [
     presetUno(),
     presetAttributify(),
-    presetIcons(),
+    presetIcons({
+      collections: {
+        carbon: () => import('@iconify-json/carbon/icons.json').then(i => i.default as any),
+      },
+    }),
   ],
   transformers: [
     transformerDirectives(),
