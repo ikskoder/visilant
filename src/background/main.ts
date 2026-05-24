@@ -183,13 +183,20 @@ browser.runtime.onInstalled.addListener(async (details): Promise<void> => {
 
 // Update visit count when tab is updated
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.status !== 'complete' || !tab.url)
+  if (!tab.url)
+    return
+
+  // We act on status changes only (loading or complete). url-only updates,
+  // favicon-only updates, etc. are ignored.
+  const status = changeInfo.status
+  if (status !== 'loading' && status !== 'complete')
     return
 
   const hostname = getHostname(tab.url)
 
-  // Always count the visit, even if the tab is in the background
-  if (!isInternalPage(hostname))
+  // Only increment the visit count once per navigation, on complete.
+  // Always count the visit, even if the tab is in the background.
+  if (status === 'complete' && !isInternalPage(hostname))
     await incrementVisitCount(tab.url)
 
   // Only touch action badge/icon for the tab the user is actually looking at.
@@ -200,6 +207,11 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!tab.active)
     return
 
+  // Re-assert the badge on 'loading' too, not just 'complete'. Chrome resets
+  // per-tab action state at the start of any navigation (including F5), so
+  // without the loading-phase update the badge briefly falls back to the
+  // global default or another tab's state until 'complete' arrives. Firefox
+  // preserves per-tab state across navigations, so it doesn't need this.
   if (isInternalPage(hostname)) {
     await browser.action.setBadgeText({ text: '', tabId })
     await browser.action.setIcon({
