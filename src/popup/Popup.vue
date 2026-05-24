@@ -21,7 +21,8 @@ function updateTranslations() {
 
   const translationKeys = [
     'currentDomain',
-    'familyVisits',
+    'baseDomain',
+    'subdomains',
     'total',
     'sortBy',
     'sortByName',
@@ -61,9 +62,9 @@ watch([loadedTranslations, isLoaded], () => {
 
 const isStandalonePage = ref(false)
 const currentHostname = ref('')
-const rootDomain = ref('')
+const baseDomain = ref('')
 const visits = ref<Record<string, any>>({})
-const relatedDomains = ref<string[]>([])
+const subdomains = ref<string[]>([])
 const showPunycodeHelp = ref(false)
 
 const unicodeHostname = computed(() => {
@@ -77,7 +78,7 @@ const isPunycode = computed(() => {
 })
 
 const cumulativeCount = computed(() => {
-  return relatedDomains.value.reduce((acc, domain) => {
+  return subdomains.value.reduce((acc, domain) => {
     return acc + (visits.value[domain]?.count || 0)
   }, 0)
 })
@@ -86,8 +87,8 @@ const currentDomainCount = computed(() => {
   return visits.value[currentHostname.value]?.count || 0
 })
 
-const sortedRelatedDomains = computed(() => {
-  const domains = [...relatedDomains.value]
+const sortedSubdomains = computed(() => {
+  const domains = [...subdomains.value]
 
   const option = settings.value.sortOption || 'visits'
   const order = settings.value.sortOrder || 'desc'
@@ -180,27 +181,26 @@ function displayDomain(domain: string) {
 
 async function loadDomainData(hostname: string) {
   currentHostname.value = hostname
-  rootDomain.value = getDomain(hostname) || ''
+  baseDomain.value = getDomain(hostname) || ''
 
-  if (!rootDomain.value)
+  if (!baseDomain.value)
     return
 
   const allData = await browser.storage.local.get(null)
 
-  // Filter for related domains
-  const related: string[] = []
+  const matched: string[] = []
   for (const key of Object.keys(allData)) {
     if (key === 'settings')
       continue
 
-    if (key === rootDomain.value || key.endsWith(`.${rootDomain.value}`)) {
-      related.push(key)
+    if (key === baseDomain.value || key.endsWith(`.${baseDomain.value}`)) {
+      matched.push(key)
       visits.value[key] = allData[key]
     }
   }
 
   // Sort: current hostname first, then alphabetical
-  relatedDomains.value = related.sort((a, b) => {
+  subdomains.value = matched.sort((a, b) => {
     if (a === hostname)
       return -1
     if (b === hostname)
@@ -331,14 +331,14 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="relatedDomains.length > 0">
+        <div v-if="subdomains.length > 0">
           <div class="mb-2">
             <div class="flex justify-between items-center uppercase tracking-wider mb-1" style="font-size: 0.75em;">
-              <span class="opacity-50">{{ translations.familyVisits }}</span>
+              <span class="opacity-50">{{ translations.baseDomain }}</span>
               <span class="font-mono font-bold" :class="getCountColor(cumulativeCount)">{{ translations.total }}{{ cumulativeCount }}</span>
             </div>
             <div class="secure-domain-display font-bold break-all" style="font-size: 1.1em;">
-              <SecureText :text="rootDomain" />
+              <SecureText :text="baseDomain" />
             </div>
           </div>
 
@@ -391,13 +391,16 @@ onMounted(async () => {
             </button>
           </div>
 
+          <div class="uppercase tracking-wider mb-1 opacity-50" style="font-size: 0.75em;">
+            {{ translations.subdomains }}
+          </div>
           <div
             class="overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700 shadow-sm"
             :class="isStandalonePage ? '' : 'max-h-[265px]'"
             style="font-size: 1.1em;"
           >
             <div
-              v-for="domain in sortedRelatedDomains" :key="domain"
+              v-for="domain in sortedSubdomains" :key="domain"
               class="p-2.5 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               :class="{ 'bg-blue-50 hover:bg-blue-50 dark:bg-blue-900/30 dark:hover:bg-blue-900/30': domain === currentHostname }"
             >

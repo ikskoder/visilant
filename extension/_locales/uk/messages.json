@@ -223,9 +223,13 @@
     "message": "Поточний домен",
     "description": "Label for current domain section"
   },
-  "familyVisits": {
-    "message": "Відвідування піддоменів",
-    "description": "Label for family visits section"
+  "baseDomain": {
+    "message": "Базовий домен",
+    "description": "Label preceding the base (registrable) domain"
+  },
+  "subdomains": {
+    "message": "Піддомени",
+    "description": "Header for the list of subdomains under the base domain"
   },
   "total": {
     "message": "Всього: ",
@@ -280,7 +284,7 @@
     "description": "Label for current domain in list"
   },
   "noVisitData": {
-    "message": "Немає даних про відвідування для цього сімейства доменів.",
+    "message": "Немає даних про відвідування для цього базового домену.",
     "description": "Message when no data is found"
   },
   "visitWebsite": {

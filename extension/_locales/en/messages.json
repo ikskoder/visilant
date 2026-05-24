@@ -223,9 +223,13 @@
     "message": "Current domain",
     "description": "Label for current domain section"
   },
-  "familyVisits": {
-    "message": "Subdomain visits",
-    "description": "Label for family visits section"
+  "baseDomain": {
+    "message": "Base domain",
+    "description": "Label preceding the base (registrable) domain"
+  },
+  "subdomains": {
+    "message": "Subdomains",
+    "description": "Header for the list of subdomains under the base domain"
   },
   "total": {
     "message": "Total: ",
@@ -280,7 +284,7 @@
     "description": "Label for current domain in list"
   },
   "noVisitData": {
-    "message": "No visit data found for this domain family.",
+    "message": "No visit data found for this base domain.",
     "description": "Message when no data is found"
   },
   "visitWebsite": {
