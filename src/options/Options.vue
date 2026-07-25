@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 import logo from '~/assets/logo.svg'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
+import { fetchRemoteDomainList, STORAGE_KEY_CUSTOM_DISPOSABLE, STORAGE_KEY_CUSTOM_PUBLIC, STORAGE_KEY_REMOTE_DISPOSABLE, updateDisposableList } from '~/logic/email-providers'
 import { defaultSettings, settings } from '~/logic/storage'
 
 const { t, setLanguage, currentLanguage, isLoaded } = useI18n()
@@ -104,6 +105,17 @@ function updateTranslations() {
     'themeSystem',
     'themeLight',
     'themeDark',
+    'emailListsTitle',
+    'emailListsDesc',
+    'emailCustomPublicLabel',
+    'emailCustomPublicDesc',
+    'emailCustomDisposableLabel',
+    'emailCustomDisposableDesc',
+    'emailDisposableUpdateUrlLabel',
+    'emailDisposableUpdateUrlDesc',
+    'emailDisposableUpdateNow',
+    'emailDisposableUpdateSuccess',
+    'emailDisposableUpdateError',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -150,16 +162,57 @@ watch(() => settings.value.notificationStyle, async (newVal) => {
 // Custom shorteners (stored in browser.storage.local as string[])
 const customShortenersText = ref('')
 
+// Custom email domain lists (stored in browser.storage.local as string[])
+const customPublicProvidersText = ref('')
+const customDisposableText = ref('')
+const disposableUpdateStatus = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
+const disposableRemoteInfo = ref<{ count: number, updatedAt: number } | null>(null)
+
 onMounted(async () => {
-  const stored = await browser.storage.local.get('customShorteners')
+  const stored = await browser.storage.local.get(['customShorteners', STORAGE_KEY_CUSTOM_PUBLIC, STORAGE_KEY_CUSTOM_DISPOSABLE, STORAGE_KEY_REMOTE_DISPOSABLE])
   const list = (stored.customShorteners as string[]) || []
   customShortenersText.value = list.join('\n')
+  customPublicProvidersText.value = ((stored[STORAGE_KEY_CUSTOM_PUBLIC] as string[]) || []).join('\n')
+  customDisposableText.value = ((stored[STORAGE_KEY_CUSTOM_DISPOSABLE] as string[]) || []).join('\n')
+  const remote = stored[STORAGE_KEY_REMOTE_DISPOSABLE] as { domains?: string[], updatedAt?: number } | undefined
+  if (remote?.domains?.length)
+    disposableRemoteInfo.value = { count: remote.domains.length, updatedAt: remote.updatedAt || 0 }
 })
 
 watch(customShortenersText, async (newVal) => {
   const list = newVal.split(/\n/).map(d => d.trim().toLowerCase()).filter(Boolean)
   await browser.storage.local.set({ customShorteners: list })
 })
+
+watch(customPublicProvidersText, async (newVal) => {
+  const list = newVal.split(/\n/).map(d => d.trim().toLowerCase()).filter(Boolean)
+  await browser.storage.local.set({ [STORAGE_KEY_CUSTOM_PUBLIC]: list })
+})
+
+watch(customDisposableText, async (newVal) => {
+  const list = newVal.split(/\n/).map(d => d.trim().toLowerCase()).filter(Boolean)
+  await browser.storage.local.set({ [STORAGE_KEY_CUSTOM_DISPOSABLE]: list })
+})
+
+// Fetch the remote disposable list and persist it for all contexts
+async function updateDisposableListNow() {
+  const url = settings.value.disposableEmailListUrl?.trim()
+  if (!url || disposableUpdateStatus.value === 'loading')
+    return
+  disposableUpdateStatus.value = 'loading'
+  try {
+    const domains = await fetchRemoteDomainList(url)
+    await browser.storage.local.set({
+      [STORAGE_KEY_REMOTE_DISPOSABLE]: { domains, updatedAt: Date.now(), url },
+    })
+    updateDisposableList(domains)
+    disposableRemoteInfo.value = { count: domains.length, updatedAt: Date.now() }
+    disposableUpdateStatus.value = 'success'
+  }
+  catch {
+    disposableUpdateStatus.value = 'error'
+  }
+}
 
 // Loading states
 const isImporting = ref(false)
@@ -742,6 +795,78 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               rows="3"
               placeholder="example.com&#10;another-site.org"
             />
+          </div>
+        </div>
+
+        <!-- Email Domain Lists -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h2 class="text-lg font-semibold mb-2">
+            {{ translations.emailListsTitle }}
+          </h2>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-4 text-left">
+            {{ translations.emailListsDesc }}
+          </p>
+
+          <div class="space-y-4">
+            <!-- Custom disposable domains -->
+            <div class="text-left">
+              <label class="text-sm font-medium">{{ translations.emailCustomDisposableLabel }}</label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                {{ translations.emailCustomDisposableDesc }}
+              </p>
+              <textarea
+                v-model="customDisposableText"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                rows="3"
+                placeholder="temp-mail.example&#10;trash.example.org"
+              />
+            </div>
+
+            <!-- Custom public providers -->
+            <div class="text-left">
+              <label class="text-sm font-medium">{{ translations.emailCustomPublicLabel }}</label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                {{ translations.emailCustomPublicDesc }}
+              </p>
+              <textarea
+                v-model="customPublicProvidersText"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                rows="3"
+                placeholder="mail.example.com"
+              />
+            </div>
+
+            <!-- Remote disposable list update -->
+            <div class="text-left">
+              <label class="text-sm font-medium">{{ translations.emailDisposableUpdateUrlLabel }}</label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                {{ translations.emailDisposableUpdateUrlDesc }}
+              </p>
+              <div class="flex gap-2">
+                <input
+                  v-model="settings.disposableEmailListUrl"
+                  type="text"
+                  class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="https://raw.githubusercontent.com/.../disposable_email_blocklist.conf"
+                >
+                <button
+                  class="btn-primary whitespace-nowrap"
+                  :disabled="disposableUpdateStatus === 'loading' || !settings.disposableEmailListUrl?.trim()"
+                  @click="updateDisposableListNow"
+                >
+                  {{ translations.emailDisposableUpdateNow }}
+                </button>
+              </div>
+              <p v-if="disposableUpdateStatus === 'success' && disposableRemoteInfo" class="text-xs text-green-600 dark:text-green-400 mt-1">
+                {{ translations.emailDisposableUpdateSuccess }}: {{ disposableRemoteInfo.count }}
+              </p>
+              <p v-else-if="disposableUpdateStatus === 'error'" class="text-xs text-red-500 dark:text-red-400 mt-1">
+                {{ translations.emailDisposableUpdateError }}
+              </p>
+              <p v-else-if="disposableRemoteInfo" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ translations.emailDisposableUpdateSuccess }}: {{ disposableRemoteInfo.count }} ({{ new Date(disposableRemoteInfo.updatedAt).toLocaleDateString() }})
+              </p>
+            </div>
           </div>
         </div>
 

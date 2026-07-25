@@ -1,0 +1,115 @@
+import { describe, expect, it } from 'vitest'
+import { analyzeEmailAddress, extractEmailFromText, parseMailtoUrl } from '../email-safety'
+
+describe('analyzeEmailAddress', () => {
+  it('analyzes a plain ASCII address', () => {
+    const result = analyzeEmailAddress('john.doe@example.com')
+    expect(result).not.toBeNull()
+    expect(result!.localPart).toBe('john.doe')
+    expect(result!.domain).toBe('example.com')
+    expect(result!.local.hasUnicode).toBe(false)
+    expect(result!.local.suspiciousChars).toEqual([])
+    expect(result!.domainInfo.hasUnicode).toBe(false)
+    expect(result!.domainInfo.punycode).toBeNull()
+    expect(result!.suspiciousPattern).toBeNull()
+  })
+
+  it('lowercases the domain but keeps local part case', () => {
+    const result = analyzeEmailAddress('John@EXAMPLE.COM')
+    expect(result!.localPart).toBe('John')
+    expect(result!.domain).toBe('example.com')
+  })
+
+  it('detects Cyrillic characters in the local part', () => {
+    const result = analyzeEmailAddress('привет@gmail.com')
+    expect(result!.local.hasUnicode).toBe(true)
+    expect(result!.local.suspiciousChars.length).toBeGreaterThan(0)
+    expect(result!.domainInfo.hasUnicode).toBe(false)
+  })
+
+  it('produces punycode for a Cyrillic domain', () => {
+    const result = analyzeEmailAddress('user@почта.рф')
+    expect(result!.domainInfo.hasUnicode).toBe(true)
+    expect(result!.domainInfo.punycode).toMatch(/^xn--/)
+  })
+
+  it('detects a single homoglyph in an otherwise-Latin domain', () => {
+    // 'а' is Cyrillic
+    const result = analyzeEmailAddress('support@pаypal.com')
+    expect(result!.domainInfo.hasUnicode).toBe(true)
+    expect(result!.domainInfo.suspiciousChars).toContain('а')
+  })
+
+  it('flags an embedded TLD (paypal.com.evil.ru)', () => {
+    const result = analyzeEmailAddress('security@paypal.com.evil.ru')
+    expect(result!.suspiciousPattern).toEqual({ type: 'embedded-tld', label: 'com' })
+  })
+
+  it('does not flag legitimate ccTLD combos', () => {
+    expect(analyzeEmailAddress('news@bbc.co.uk')!.suspiciousPattern).toBeNull()
+    expect(analyzeEmailAddress('a@example.com')!.suspiciousPattern).toBeNull()
+  })
+
+  it('rejects invalid inputs', () => {
+    expect(analyzeEmailAddress('no-at-sign')).toBeNull()
+    expect(analyzeEmailAddress('a@')).toBeNull()
+    expect(analyzeEmailAddress('@b.com')).toBeNull()
+    expect(analyzeEmailAddress('a@b@c.com')).toBeNull()
+    expect(analyzeEmailAddress('a b@c.com')).toBeNull()
+    expect(analyzeEmailAddress('a@nodots')).toBeNull()
+    expect(analyzeEmailAddress('')).toBeNull()
+    expect(analyzeEmailAddress(`${'a'.repeat(320)}@b.com`)).toBeNull()
+  })
+})
+
+describe('parseMailtoUrl', () => {
+  it('parses a bare address', () => {
+    expect(parseMailtoUrl('mailto:a@b.com')).toEqual({ addresses: ['a@b.com'], params: [] })
+  })
+
+  it('parses multiple addresses', () => {
+    expect(parseMailtoUrl('mailto:a@b.com,c@d.com')!.addresses).toEqual(['a@b.com', 'c@d.com'])
+  })
+
+  it('parses and decodes query params', () => {
+    const result = parseMailtoUrl('mailto:a@b.com?cc=x@y.com&subject=Hello%20World&body=Click%20here')
+    expect(result!.addresses).toEqual(['a@b.com'])
+    expect(result!.params).toEqual([
+      { key: 'cc', value: 'x@y.com' },
+      { key: 'subject', value: 'Hello World' },
+      { key: 'body', value: 'Click here' },
+    ])
+  })
+
+  it('decodes percent-encoded addresses', () => {
+    expect(parseMailtoUrl('mailto:a%40b.com')!.addresses).toEqual(['a@b.com'])
+  })
+
+  it('accepts uppercase MAILTO:', () => {
+    expect(parseMailtoUrl('MAILTO:a@b.com')!.addresses).toEqual(['a@b.com'])
+  })
+
+  it('returns null for non-mailto input', () => {
+    expect(parseMailtoUrl('https://example.com')).toBeNull()
+    expect(parseMailtoUrl('a@b.com')).toBeNull()
+  })
+})
+
+describe('extractEmailFromText', () => {
+  it('finds an email embedded in prose', () => {
+    expect(extractEmailFromText('Contact us at help@example.com for details')).toBe('help@example.com')
+  })
+
+  it('finds a unicode-domain email', () => {
+    expect(extractEmailFromText('пишите на user@почта.рф сегодня')).toBe('user@почта.рф')
+  })
+
+  it('returns null when no email present', () => {
+    expect(extractEmailFromText('just some words')).toBeNull()
+    expect(extractEmailFromText('')).toBeNull()
+  })
+
+  it('still finds an email near the start of very long text', () => {
+    expect(extractEmailFromText(`a@b.com ${'x'.repeat(1000)}`)).toBe('a@b.com')
+  })
+})

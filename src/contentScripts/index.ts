@@ -1,10 +1,14 @@
 import type { Settings } from '~/logic/storage'
+import type { CheckPanelData, DomainFamilyInfo, LinkTooltipData, RawPayloadInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { createApp } from 'vue'
 import { setupApp } from '~/logic/common-setup'
-import { checkDomainMismatch, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, setCachedVisitCount } from '~/logic/link-safety'
+import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
+import { analyzeEmailAddress, extractEmailFromText, parseMailtoUrl } from '~/logic/email-safety'
+import { checkDomainMismatch, extractDomainFromText, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
+import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { defaultSettings, settings } from '~/logic/storage'
-import { hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
+import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
 import { addCustomShortener, isShortenedUrl, loadCustomShorteners } from '~/logic/url-shorteners'
 import App from './views/App.vue'
 
@@ -79,6 +83,8 @@ async function loadSettings() {
     const customList = (stored.customShorteners as string[]) || []
     if (customList.length > 0)
       loadCustomShorteners(customList)
+    // Load public/disposable email-domain lists for address classification
+    await loadEmailListsFromStorage()
   }
   catch (error) {
     console.error('Failed to load settings:', error)
@@ -331,26 +337,31 @@ async function showLinkInterceptByUrl(url: string) {
   })
 }
 
-// Show tooltip for a URL without an anchor element (used by context menu)
-async function showLinkTooltipByUrl(url: string) {
-  const hostname = getHostnameFromHref(url)
-  if (!hostname)
-    return
-
-  const currentHostname = window.location.hostname
-  if (!isExternalLink(url, currentHostname))
-    return
-
-  const visitData = await fetchLinkData(url, hostname)
-  const punycodeResult = getPunycodeInfo(hostname)
-
-  // Synthetic anchor rect in center-top of viewport since we don't have anchor element
-  const anchorRect = {
+// Synthetic anchor rect in center-top of viewport for tooltips without an anchor element
+function syntheticAnchorRect() {
+  return {
     top: 70,
     bottom: 80,
     left: Math.max(8, (window.innerWidth - 320) / 2),
     right: Math.min(window.innerWidth - 8, (window.innerWidth + 320) / 2),
   }
+}
+
+// Show tooltip for a URL without an anchor element (used by context menu)
+// `force` skips the external-link gate: the user explicitly asked to check this URL
+async function showLinkTooltipByUrl(url: string, opts?: { force?: boolean }) {
+  const hostname = getHostnameFromHref(url)
+  if (!hostname)
+    return
+
+  const currentHostname = window.location.hostname
+  if (!opts?.force && !isExternalLink(url, currentHostname))
+    return
+
+  const visitData = await fetchLinkData(url, hostname)
+  const punycodeResult = getPunycodeInfo(hostname)
+
+  const anchorRect = syntheticAnchorRect()
 
   const shortUrlMode = settings.value.linkSafety.shortUrlMode
   const isKnownShortener = isShortenedUrl(hostname)
@@ -374,6 +385,127 @@ async function showLinkTooltipByUrl(url: string) {
 
   if (shouldAutoResolve)
     resolveAndUpdateTooltip(url, hostname)
+}
+
+// Build tooltip data for an email address or full mailto: URL.
+// anchorText (visible link text) is compared against the real target to catch
+// the classic trick: text shows boss@company.com, mailto goes elsewhere.
+async function buildEmailTooltipData(
+  addrOrMailto: string,
+  anchorText: string | null,
+  anchorRect: { top: number, bottom: number, left: number, right: number },
+): Promise<LinkTooltipData | null> {
+  const isMailto = /^mailto:/i.test(addrOrMailto.trim())
+  const parsed = isMailto ? parseMailtoUrl(addrOrMailto) : null
+  const address = isMailto ? parsed?.addresses[0] : addrOrMailto
+  if (!address)
+    return null
+
+  const analysis = analyzeEmailAddress(address)
+  if (!analysis)
+    return null
+
+  const visitData = await fetchLinkData(`https://${analysis.domain}`, analysis.domain)
+
+  let mismatch: { textAddress: string } | null = null
+  if (anchorText) {
+    const textEmail = extractEmailFromText(anchorText)
+    if (textEmail) {
+      if (textEmail.toLowerCase() !== analysis.raw.toLowerCase())
+        mismatch = { textAddress: textEmail }
+    }
+    else {
+      const textDomain = extractDomainFromText(anchorText)
+      if (textDomain && textDomain.replace(/^www\./, '') !== analysis.domain)
+        mismatch = { textAddress: textDomain }
+    }
+  }
+
+  return {
+    kind: 'email',
+    domain: analysis.domain,
+    count: visitData.count,
+    isSafe: visitData.isSafe,
+    mismatch: null,
+    punycode: analysis.domainInfo.punycode,
+    shortUrl: null,
+    anchorRect,
+    href: isMailto ? addrOrMailto : `mailto:${address}`,
+    email: { analysis, params: parsed?.params ?? [], mismatch, providerKind: classifyEmailDomain(analysis.domain) },
+  }
+}
+
+async function showEmailTooltip(anchor: HTMLAnchorElement) {
+  const data = await buildEmailTooltipData(anchor.href, anchor.textContent, getAnchorRect(anchor))
+  if (!data)
+    return
+  linkTooltipData.value = data
+  linkTooltipVisible.value = true
+}
+
+async function showEmailTooltipByAddress(addrOrMailto: string) {
+  const data = await buildEmailTooltipData(addrOrMailto, null, syntheticAnchorRect())
+  if (!data)
+    return
+  linkTooltipData.value = data
+  linkTooltipVisible.value = true
+}
+
+// Open the in-page check panel: full domain-family dashboard (like the popup)
+// for a selection-checked domain, URL or email address
+async function showCheckPanelForTarget(target: { kind: 'email' | 'url' | 'domain', value: string }) {
+  let hostname: string
+  let email: CheckPanelData['email'] = null
+
+  if (target.kind === 'email') {
+    const analysis = analyzeEmailAddress(target.value)
+    if (!analysis)
+      return
+    hostname = analysis.domain
+    email = { analysis, providerKind: classifyEmailDomain(analysis.domain) }
+  }
+  else {
+    const url = target.kind === 'url' ? target.value : `https://${target.value}`
+    const parsedHostname = getHostnameFromHref(url)
+    if (!parsedHostname)
+      return
+    hostname = parsedHostname
+  }
+
+  const punycodeResult = getPunycodeInfo(hostname)
+  let family: DomainFamilyInfo | null = null
+  try {
+    family = await sendMessageSafe<DomainFamilyInfo>('get-domain-family', { hostname })
+  }
+  catch {
+    // background unreachable — show the panel without visit data
+  }
+
+  checkPanelData.value = {
+    kind: email ? 'email' : 'domain',
+    hostname,
+    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    email,
+    family: family || { baseDomain: hostname, entries: [], total: 0 },
+  }
+  checkPanelVisible.value = true
+}
+
+// Show a non-navigable payload (QR tel:/WIFI:/plain text) with unicode highlighting
+function showRawPayloadTooltip(payload: string, payloadKind: RawPayloadInfo['payloadKind']) {
+  linkTooltipData.value = {
+    kind: 'text',
+    domain: '',
+    count: 0,
+    isSafe: true,
+    mismatch: null,
+    punycode: null,
+    shortUrl: null,
+    anchorRect: syntheticAnchorRect(),
+    href: payload,
+    rawText: { payload, payloadKind },
+  }
+  linkTooltipVisible.value = true
 }
 
 /**
@@ -832,7 +964,8 @@ function setupLinkSafety() {
     if (!anchor || !anchor.href)
       return
 
-    if (!isExternalLink(anchor.href, currentHostname))
+    const mailto = isMailtoHref(anchor.href)
+    if (!mailto && !isExternalLink(anchor.href, currentHostname))
       return
 
     // Clear any grace timer (user moved back to a link)
@@ -858,8 +991,12 @@ function setupLinkSafety() {
       clearTimeout(hoverDebounceTimer)
 
     hoverDebounceTimer = setTimeout(() => {
-      if (currentHoveredAnchor === anchor)
-        showLinkTooltip(anchor)
+      if (currentHoveredAnchor === anchor) {
+        if (mailto)
+          showEmailTooltip(anchor)
+        else
+          showLinkTooltip(anchor)
+      }
     }, 300)
   }
 
@@ -895,6 +1032,15 @@ function setupLinkSafety() {
     const anchor = findAnchorElement(event.target)
     if (!anchor || !anchor.href)
       return
+
+    // mailto: never goes through the intercept dialog — show the email tooltip
+    // instead; its "open mail app" button performs the actual navigation
+    if (isMailtoHref(anchor.href)) {
+      event.preventDefault()
+      event.stopPropagation()
+      showEmailTooltip(anchor)
+      return
+    }
 
     if (!isExternalLink(anchor.href, currentHostname))
       return
@@ -963,15 +1109,15 @@ let observer: MutationObserver | null = null
 let internalObserver: MutationObserver | null = null
 let isMounting = false
 
-async function mount() {
-  if (isMounting)
+async function mount(force = false) {
+  if (isMounting || container)
     return
 
   isMounting = true
   try {
     // Check if current page is an internal page
     const hostname = window.location.hostname
-    if (isInternalPage(hostname)) {
+    if (!force && isInternalPage(hostname)) {
       // Exit early for internal pages
       return
     }
@@ -986,36 +1132,44 @@ async function mount() {
     const isSiteSafe = safetyLevel.value
     const isLinkSafetyEnabled = settings.value.linkSafety?.enabled
 
-    // Mount if: (warnings needed) OR (link safety enabled)
+    // Mount if: (warnings needed) OR (link safety enabled) OR explicitly requested
+    // (message-triggered tooltips need the UI even on pages that skipped mounting)
     const needsWarningUI = isNotificationsEnabled && !isSiteSafe
-    if (!needsWarningUI && !isLinkSafetyEnabled) {
+    if (!force && !needsWarningUI && !isLinkSafetyEnabled) {
       return
     }
 
     container = document.createElement('div')
     container.id = generateSecureId()
 
-    // Add robust styles to container to ensure it's on top and visible
-    Object.assign(container.style, {
-      position: 'fixed',
-      top: '0',
-      left: '0',
-      width: '0',
-      height: '0',
-      overflow: 'visible',
-      zIndex: '2147483647', // Max z-index
-      pointerEvents: 'none', // Let clicks pass through the container itself
-      display: 'block',
-      visibility: 'visible',
-      opacity: '1',
-    })
+    // Add robust styles to container to ensure it's on top and visible.
+    // Set with 'important' priority so page-level `div { ... !important }`
+    // rules cannot override the host element.
+    const hostStyles: Record<string, string> = {
+      'position': 'fixed',
+      'top': '0',
+      'left': '0',
+      'width': '0',
+      'height': '0',
+      'overflow': 'visible',
+      'z-index': '2147483647', // Max z-index
+      'pointer-events': 'none', // Let clicks pass through the container itself
+      'display': 'block',
+      'visibility': 'visible',
+      'opacity': '1',
+    }
+    for (const [prop, value] of Object.entries(hostStyles))
+      container.style.setProperty(prop, value, 'important')
 
     const root = document.createElement('div')
 
     const styleEl = document.createElement('style')
     const response = await fetch(browser.runtime.getURL('dist/contentScripts/style.css'))
     const cssText = await response.text()
-    styleEl.textContent = cssText
+    // `:host { all: initial }` stops inherited page styles (font, color,
+    // letter-spacing, text-transform...) from leaking through the shadow
+    // boundary; the inline host styles above still win for positioning.
+    styleEl.textContent = `:host { all: initial; }\n${cssText}`
 
     const shadowDOM = container.attachShadow?.({ mode: __DEV__ ? 'open' : 'closed' }) || container
     shadowDOM.appendChild(styleEl)
@@ -1110,14 +1264,48 @@ async function mount() {
   await mount()
 })()
 
+// The Vue app is only mounted when the page needs a warning or link safety is
+// on; message-triggered tooltips (context menu, QR) must force-mount it first
+async function ensureTooltipUiMounted() {
+  if (!container)
+    await mount(true)
+}
+
 // Listen for context menu requests from background
 browser.runtime.onMessage.addListener((message: any) => {
+  // Keep this listener synchronous (returning a Promise here would hijack the
+  // response channel of unrelated webext-bridge messages)
   if (message.type === 'show-link-tooltip-at-cursor' && message.data?.url) {
-    showLinkTooltipByUrl(message.data.url)
+    ensureTooltipUiMounted().then(() => showLinkTooltipByUrl(message.data.url))
     return undefined
   }
   if (message.type === 'show-link-intercept' && message.data?.url) {
-    showLinkInterceptByUrl(message.data.url)
+    ensureTooltipUiMounted().then(() => showLinkInterceptByUrl(message.data.url))
+    return undefined
+  }
+  if (message.type === 'check-selection') {
+    // Prefer the live page selection: immune to selectionText truncation
+    const text = window.getSelection()?.toString() || message.data?.selectionText || ''
+    ensureTooltipUiMounted().then(() => {
+      const target = extractCheckTarget(text)
+      if (target)
+        showCheckPanelForTarget(target)
+      else
+        showRawPayloadTooltip(text.trim().slice(0, 300), 'text')
+    })
+    return undefined
+  }
+  if (message.type === 'show-qr-result' && message.data?.payload) {
+    const payload: string = message.data.payload
+    ensureTooltipUiMounted().then(() => {
+      const { kind, value } = classifyPayload(payload)
+      if (kind === 'url')
+        showLinkTooltipByUrl(value, { force: true })
+      else if (kind === 'email')
+        showEmailTooltipByAddress(payload)
+      else
+        showRawPayloadTooltip(payload, kind)
+    })
     return undefined
   }
 })

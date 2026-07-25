@@ -37,6 +37,9 @@ export interface Settings {
 
   // Anti-tampering exclusions
   antiTamperingExcludedDomains: string
+
+  // Remote URL to fetch an updated disposable email domain list
+  disposableEmailListUrl: string
 }
 
 export interface LinkSafetySettings {
@@ -87,6 +90,9 @@ export const defaultSettings: Settings = {
 
   // Anti-tampering exclusions
   antiTamperingExcludedDomains: '',
+
+  // Remote disposable email list URL
+  disposableEmailListUrl: '',
 
   // Link safety settings
   linkSafety: {

@@ -1,3 +1,5 @@
+import type { EmailProviderKind } from './email-providers'
+import type { EmailAnalysis } from './email-safety'
 import { ref } from 'vue'
 
 export const showWarning = ref(false)
@@ -19,20 +21,57 @@ export interface ShortUrlInfo {
   isKnownShortener: boolean // true if domain is in the shortener list
 }
 
+// Tooltip content variants: absent kind = 'link' (backward compatible)
+export type TooltipKind = 'link' | 'email' | 'text'
+
+export interface EmailTooltipInfo {
+  analysis: EmailAnalysis
+  params: { key: string, value: string }[]
+  mismatch: { textAddress: string } | null
+  providerKind: EmailProviderKind
+}
+
+export interface RawPayloadInfo {
+  payload: string
+  payloadKind: 'tel' | 'wifi' | 'sms' | 'geo' | 'text'
+}
+
 // Link safety tooltip state
 export interface LinkTooltipData {
-  domain: string
+  kind?: TooltipKind
+  domain: string // email mode: the address's domain; text mode: ''
   count: number
   isSafe: boolean
   mismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null
   punycode: string | null
   shortUrl?: ShortUrlInfo | null
   anchorRect: { top: number, bottom: number, left: number, right: number }
-  href: string
+  href: string // email mode: full mailto: URL; text mode: raw payload
+  email?: EmailTooltipInfo | null
+  rawText?: RawPayloadInfo | null
 }
 
 export const linkTooltipVisible = ref(false)
 export const linkTooltipData = ref<LinkTooltipData | null>(null)
+
+// In-page check panel (context menu "check selection"): full domain-family
+// dashboard like the extension popup, rendered on the current page
+export interface DomainFamilyInfo {
+  baseDomain: string
+  entries: { hostname: string, count: number }[]
+  total: number
+}
+
+export interface CheckPanelData {
+  kind: 'domain' | 'email'
+  hostname: string
+  punycode: string | null
+  email: { analysis: EmailAnalysis, providerKind: EmailProviderKind } | null
+  family: DomainFamilyInfo
+}
+
+export const checkPanelVisible = ref(false)
+export const checkPanelData = ref<CheckPanelData | null>(null)
 
 // Link safety intercept dialog state
 export interface LinkInterceptData {

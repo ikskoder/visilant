@@ -650,5 +650,181 @@
   "themeDark": {
     "message": "Dark",
     "description": "Theme option: dark mode"
+  },
+  "emailTooltipTitle": {
+    "message": "Email address",
+    "description": "Label for the email analysis tooltip"
+  },
+  "emailTooltipMismatchWarning": {
+    "message": "The displayed address differs from the real one!",
+    "description": "Warning when visible link text shows a different email than the mailto target"
+  },
+  "emailTooltipShownAddress": {
+    "message": "Shown",
+    "description": "Label for the address displayed in the link text"
+  },
+  "emailTooltipActualAddress": {
+    "message": "Actually goes to",
+    "description": "Label for the real mailto target address"
+  },
+  "emailTooltipParams": {
+    "message": "Prefilled message fields",
+    "description": "Label for mailto query parameters (cc, subject, body)"
+  },
+  "emailSuspiciousPattern": {
+    "message": "Suspicious domain: a well-known ending appears in the middle",
+    "description": "Warning for embedded-TLD domains like paypal.com.evil.ru"
+  },
+  "emailLocalUnicodeWarning": {
+    "message": "Unusual characters in the address name part",
+    "description": "Warning for unicode characters before the @ sign"
+  },
+  "emailOpenMailApp": {
+    "message": "Open mail app",
+    "description": "Button that opens the mail client for this address"
+  },
+  "contextMenuCheckSelection": {
+    "message": "Check selected text with Visilant",
+    "description": "Context menu item on text selection"
+  },
+  "contextMenuDecodeQr": {
+    "message": "Scan QR code with Visilant",
+    "description": "Context menu item on images"
+  },
+  "qrNotFound": {
+    "message": "No QR code found in this image",
+    "description": "Error when QR decoding finds nothing"
+  },
+  "qrDecodeError": {
+    "message": "Could not load or decode the image",
+    "description": "Error when the image cannot be fetched or read"
+  },
+  "qrPayloadType": {
+    "message": "Content type",
+    "description": "Label for the decoded QR payload type"
+  },
+  "qrTypeTel": {
+    "message": "Phone number",
+    "description": "QR payload type: tel:"
+  },
+  "qrTypeWifi": {
+    "message": "Wi-Fi network",
+    "description": "QR payload type: WIFI:"
+  },
+  "qrTypeSms": {
+    "message": "SMS",
+    "description": "QR payload type: sms/SMSTO"
+  },
+  "qrTypeGeo": {
+    "message": "Location",
+    "description": "QR payload type: geo:"
+  },
+  "qrTypeText": {
+    "message": "Text",
+    "description": "QR payload type: plain text"
+  },
+  "checkFieldTitle": {
+    "message": "Check a link, email address or QR code",
+    "description": "Header of the popup check field"
+  },
+  "checkFieldPlaceholder": {
+    "message": "Paste a link, domain or email address",
+    "description": "Placeholder of the popup check input"
+  },
+  "checkFieldButton": {
+    "message": "Check",
+    "description": "Submit button of the popup check field"
+  },
+  "checkFieldPasteHint": {
+    "message": "Or paste / drop a QR code image here",
+    "description": "Hint under the popup check input"
+  },
+  "checkFieldInvalid": {
+    "message": "Nothing to check — enter a link, domain or email address",
+    "description": "Shown when the input cannot be classified"
+  },
+  "checkFieldExpand": {
+    "message": "Expand link",
+    "description": "Button that resolves a (shortened) URL"
+  },
+  "checkFieldSelectFile": {
+    "message": "Choose a QR code image",
+    "description": "Tooltip of the QR file picker button"
+  },
+  "checkExternalButton": {
+    "message": "Check a link, email or QR code",
+    "description": "Popup button opening the standalone check page"
+  },
+  "emailPublicProvider": {
+    "message": "public email service",
+    "description": "Badge: domain is a well-known freemail provider"
+  },
+  "emailPublicProviderHint": {
+    "message": "Anyone can register an address here — judge the sender by the name before @, not by the domain",
+    "description": "Hint for public provider addresses"
+  },
+  "emailDisposableDomain": {
+    "message": "disposable email",
+    "description": "Badge: domain is a temp-mail service"
+  },
+  "emailDisposableHint": {
+    "message": "Disposable/temporary mail service — messages from such addresses are almost always spam or scam",
+    "description": "Hint for disposable addresses"
+  },
+  "emailListsTitle": {
+    "message": "Email address checking",
+    "description": "Options section header for email domain lists"
+  },
+  "emailListsDesc": {
+    "message": "Built-in lists of public email services and disposable mail domains are used when checking addresses. You can add your own domains and update the disposable list from a URL.",
+    "description": "Options section description"
+  },
+  "emailCustomPublicLabel": {
+    "message": "Your public email services",
+    "description": "Label for the custom public providers textarea"
+  },
+  "emailCustomPublicDesc": {
+    "message": "One domain per line. Addresses on these domains are shown as public services (visit counts are not applied to them).",
+    "description": "Description for the custom public providers textarea"
+  },
+  "emailCustomDisposableLabel": {
+    "message": "Your disposable email domains",
+    "description": "Label for the custom disposable textarea"
+  },
+  "emailCustomDisposableDesc": {
+    "message": "One domain per line. Addresses on these domains are flagged as disposable.",
+    "description": "Description for the custom disposable textarea"
+  },
+  "emailDisposableUpdateUrlLabel": {
+    "message": "Disposable list update URL",
+    "description": "Label for the remote disposable list URL input"
+  },
+  "emailDisposableUpdateUrlDesc": {
+    "message": "URL of a plain-text list (one domain per line, # for comments). Fetched on demand and merged with the built-in list.",
+    "description": "Description for the remote list URL"
+  },
+  "emailDisposableUpdateNow": {
+    "message": "Update now",
+    "description": "Button that fetches the remote disposable list"
+  },
+  "emailDisposableUpdateSuccess": {
+    "message": "Domains loaded",
+    "description": "Status after a successful list update"
+  },
+  "emailDisposableUpdateError": {
+    "message": "Failed to load the list — check the URL",
+    "description": "Status after a failed list update"
+  },
+  "checkPanelTitle": {
+    "message": "Visilant check",
+    "description": "Header of the in-page check panel"
+  },
+  "emailAccountName": {
+    "message": "Account name",
+    "description": "Label for the email local part (before @)"
+  },
+  "emailDomainLabel": {
+    "message": "Domain",
+    "description": "Label for the email domain part (after @)"
   }
 }

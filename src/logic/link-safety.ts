@@ -32,6 +32,18 @@ export function isExternalLink(href: string, currentHostname: string): boolean {
 }
 
 /**
+ * Check if an href is a mailto: link.
+ */
+export function isMailtoHref(href: string): boolean {
+  try {
+    return new URL(href).protocol === 'mailto:'
+  }
+  catch {
+    return false
+  }
+}
+
+/**
  * Extract a domain from text that looks like a URL.
  * Handles: "google.com", "https://google.com/path", "www.google.com"
  */

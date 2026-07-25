@@ -1,5 +1,8 @@
 import type { Settings } from '~/logic/storage'
+import { getDomain } from 'tldts'
 import { onMessage } from 'webext-bridge/background'
+import { analyzeEmailAddress, parseMailtoUrl } from '~/logic/email-safety'
+import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings as appSettings } from '~/logic/storage'
 import { addCustomShortener, getCachedResolvedUrl, loadCustomShorteners, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
 
@@ -246,6 +249,26 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
   }
 })
 
+// Collect visit data for a whole domain family (base domain + subdomains),
+// the same aggregation the popup dashboard shows
+async function getDomainFamilyLogic(hostname: string) {
+  const base = getDomain(hostname) || hostname
+  const allData = await browser.storage.local.get(null)
+  const entries: { hostname: string, count: number }[] = []
+  let total = 0
+  for (const key of Object.keys(allData)) {
+    if (key !== base && !key.endsWith(`.${base}`))
+      continue
+    const count = (allData[key] as { count?: number } | undefined)?.count
+    if (typeof count === 'number') {
+      entries.push({ hostname: key, count })
+      total += count
+    }
+  }
+  entries.sort((a, b) => b.count - a.count)
+  return { baseDomain: base, entries, total }
+}
+
 // Add message handler to get visit count
 async function getVisitCountLogic(url: string) {
   const hostname = getHostname(url)
@@ -359,6 +382,7 @@ async function handleOpenPopupTab(domain: string) {
 // Centralized message handlers map
 const messageHandlers = {
   'get-visit-count': (data: any) => getVisitCountLogic(data.url),
+  'get-domain-family': (data: any) => getDomainFamilyLogic(data.hostname),
   'ignore-site': (data: any) => handleIgnoreSite(data.hostname),
   'get-settings': () => getSettingsLogic(),
   'show-notification': (data: any) => handleShowNotification(data.warningType),
@@ -411,6 +435,8 @@ browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
 
 const CONTEXT_MENU_DOMAIN_ID = 'visilant-check-domain'
 const CONTEXT_MENU_LINK_ID = 'visilant-check-link-safety'
+const CONTEXT_MENU_SELECTION_ID = 'visilant-check-selection'
+const CONTEXT_MENU_QR_IMAGE_ID = 'visilant-decode-qr-image'
 
 async function setupContextMenu() {
   // Remove existing items first
@@ -433,6 +459,71 @@ async function setupContextMenu() {
       contexts: ['link'],
     })
   }
+
+  // Check selected text (email address, URL or domain)
+  const selectionTitle = await loadTranslation('contextMenuCheckSelection')
+  browser.contextMenus.create({
+    id: CONTEXT_MENU_SELECTION_ID,
+    title: selectionTitle,
+    contexts: ['selection'],
+  })
+
+  // Decode QR code from an image
+  const qrTitle = await loadTranslation('contextMenuDecodeQr')
+  browser.contextMenus.create({
+    id: CONTEXT_MENU_QR_IMAGE_ID,
+    title: qrTitle,
+    contexts: ['image'],
+  })
+}
+
+// Send a message to a tab without throwing when no content script is present
+async function sendToTabSafe(tabId: number, message: { type: string, data: any }): Promise<boolean> {
+  try {
+    await browser.tabs.sendMessage(tabId, message)
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
+async function showQrNotification(messageKey: string, detail?: string) {
+  const title = await loadTranslation('securityWarning')
+  const message = await loadTranslation(messageKey)
+  await browser.notifications.create({
+    type: 'basic',
+    title,
+    message: detail ? `${message}\n${detail}` : message,
+    iconUrl: browser.runtime.getURL('assets/site-danger-48.png'),
+  })
+}
+
+// Fetch an image by URL, decode a QR code from it and push the payload to the tab
+async function handleQrImageCheck(srcUrl: string, tabId?: number) {
+  let payload: string | null = null
+  try {
+    const response = await fetch(srcUrl)
+    if (!response.ok)
+      throw new Error(`fetch failed: ${response.status}`)
+    const blob = await response.blob()
+    payload = await decodeQrFromImageBitmapSource(blob)
+  }
+  catch {
+    await showQrNotification('qrDecodeError')
+    return
+  }
+
+  if (!payload) {
+    await showQrNotification('qrNotFound')
+    return
+  }
+
+  const delivered = tabId != null && await sendToTabSafe(tabId, { type: 'show-qr-result', data: { payload } })
+  if (!delivered) {
+    // Content script unreachable (chrome://, PDF viewer...) — at least show the payload
+    await showQrNotification('qrPayloadType', payload.slice(0, 120))
+  }
 }
 
 // Create context menu on install
@@ -442,23 +533,38 @@ browser.runtime.onInstalled.addListener(async () => {
 
 // Handle context menu click
 browser.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (!info.linkUrl)
-    return
-
-  if (info.menuItemId === CONTEXT_MENU_DOMAIN_ID) {
+  if (info.menuItemId === CONTEXT_MENU_DOMAIN_ID && info.linkUrl) {
     // Open detailed popup in a new tab for the link's domain
-    const hostname = getHostname(info.linkUrl)
+    let hostname: string | null = null
+    if (/^mailto:/i.test(info.linkUrl)) {
+      const parsed = parseMailtoUrl(info.linkUrl)
+      const analysis = parsed?.addresses[0] ? analyzeEmailAddress(parsed.addresses[0]) : null
+      hostname = analysis?.domain ?? null
+    }
+    else {
+      hostname = getHostname(info.linkUrl)
+    }
     if (hostname)
       await handleOpenPopupTab(hostname)
   }
 
-  if (info.menuItemId === CONTEXT_MENU_LINK_ID && tab?.id) {
+  if (info.menuItemId === CONTEXT_MENU_LINK_ID && info.linkUrl && tab?.id) {
     // Send message to content script to show intercept dialog for this link
-    await browser.tabs.sendMessage(tab.id, {
+    await sendToTabSafe(tab.id, {
       type: 'show-link-intercept',
       data: { url: info.linkUrl },
     })
   }
+
+  if (info.menuItemId === CONTEXT_MENU_SELECTION_ID && tab?.id) {
+    await sendToTabSafe(tab.id, {
+      type: 'check-selection',
+      data: { selectionText: info.selectionText ?? '' },
+    })
+  }
+
+  if (info.menuItemId === CONTEXT_MENU_QR_IMAGE_ID && info.srcUrl)
+    await handleQrImageCheck(info.srcUrl, tab?.id)
 })
 
 // Listen for changes in storage

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { LinkTooltipData } from '~/logic/ui-state'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import EmailBreakdown from '~/components/EmailBreakdown.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import MismatchTable from './MismatchTable.vue'
@@ -185,8 +186,86 @@ onBeforeUnmount(() => {
       @mouseleave="emit('close')"
     >
       <div class="tooltip-container rounded-lg shadow-2xl p-3" :class="[isDark ? 'bg-gray-900 bg-opacity-95 border border-gray-700/50' : 'bg-white border border-gray-200', { 'tooltip-wide': data.mismatch || (data.shortUrl?.status === 'resolved' && traceChain && data.shortUrl.chain.length > 2) }]" :style="{ fontSize: `${fontScale}em` }">
+        <!-- Email address (mailto link, selection or QR payload) -->
+        <template v-if="data.kind === 'email' && data.email">
+          <div class="flex items-center flex-wrap gap-1.5 mb-1">
+            <span class="tooltip-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">{{ t('emailTooltipTitle') }}</span>
+            <!-- Public/disposable providers: visit-based status is meaningless -->
+            <span v-if="data.email.providerKind === 'disposable'" class="tooltip-label px-1.5 py-0.5 rounded" :class="isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700'">
+              {{ t('emailDisposableDomain') }}
+            </span>
+            <span v-else-if="data.email.providerKind === 'public'" class="tooltip-label px-1.5 py-0.5 rounded" :class="isDark ? 'bg-blue-900/40 text-blue-400' : 'bg-blue-100 text-blue-700'">
+              {{ t('emailPublicProvider') }}
+            </span>
+            <span
+              v-else
+              class="tooltip-label px-1.5 py-0.5 rounded"
+              :class="data.isSafe
+                ? (isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700')
+                : data.count === 0
+                  ? (isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700')
+                  : (isDark ? 'bg-yellow-900/40 text-yellow-400' : 'bg-yellow-100 text-yellow-700')"
+            >
+              {{ statusLabel(data.isSafe, data.count).text.toLowerCase() }}
+            </span>
+          </div>
+
+          <!-- Visible text shows a different address than the actual mailto target -->
+          <div v-if="data.email.mismatch" class="mb-2 p-2 rounded" :class="isDark ? 'bg-red-900/30' : 'bg-red-50'">
+            <div class="flex items-center gap-1 mb-1 tooltip-label font-medium" :class="isDark ? 'text-red-400' : 'text-red-600'">
+              ⚠ {{ t('emailTooltipMismatchWarning') }}
+            </div>
+            <div class="tooltip-label" :class="isDark ? 'text-gray-300' : 'text-gray-700'">
+              {{ t('emailTooltipShownAddress') }}: <SecureText :text="data.email.mismatch.textAddress" :force-highlight="true" :danger-only="true" />
+            </div>
+            <div class="tooltip-label" :class="isDark ? 'text-gray-300' : 'text-gray-700'">
+              {{ t('emailTooltipActualAddress') }}: <SecureText :text="data.email.analysis.raw" :force-highlight="true" :danger-only="true" />
+            </div>
+          </div>
+
+          <EmailBreakdown :analysis="data.email.analysis" :params="data.email.params" :provider-kind="data.email.providerKind" :is-dark="isDark" compact />
+
+          <!-- Visit count for the address's domain (regular domains only) -->
+          <div v-if="data.email.providerKind === 'regular' && shouldShowCount(data.isSafe)" class="tooltip-label mt-1 mb-2" :class="isDark ? 'text-white' : 'text-gray-800'">
+            {{ t('linkTooltipVisits') }}: {{ data.count }}
+          </div>
+
+          <!-- Action buttons -->
+          <div class="flex gap-2 mt-1">
+            <button
+              v-if="showGoButton"
+              class="flex-1 px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
+              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
+              @click="emit('go', data.href)"
+            >
+              {{ t('emailOpenMailApp') }} &rarr;
+            </button>
+            <button
+              class="flex-1 px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
+              :class="isDark ? 'bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 border-gray-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300'"
+              @click="emit('details', data.domain)"
+            >
+              {{ t('linkTooltipDetails') }}
+            </button>
+          </div>
+        </template>
+
+        <!-- Raw payload (QR tel:/WIFI:/plain text or unrecognized selection) -->
+        <template v-else-if="data.kind === 'text' && data.rawText">
+          <div class="tooltip-label mb-1" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+            {{ t('qrPayloadType') }}: {{ t(`qrType${data.rawText.payloadKind.charAt(0).toUpperCase()}${data.rawText.payloadKind.slice(1)}`) }}
+          </div>
+          <div
+            class="tooltip-label p-2 rounded break-all"
+            :class="isDark ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-800'"
+            style="word-break: break-all !important; max-height: 120px !important; overflow-y: auto !important;"
+          >
+            <SecureText :text="data.rawText.payload" :force-highlight="true" :danger-only="true" />
+          </div>
+        </template>
+
         <!-- Mismatch: warning + comparison table -->
-        <template v-if="data.mismatch">
+        <template v-else-if="data.mismatch">
           <div class="flex items-center gap-2 mb-2">
             <svg class="w-6 h-6 text-red-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />

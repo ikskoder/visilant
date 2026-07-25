@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@fontsource/atkinson-hyperlegible": "^5.2.8",
+    "jsqr": "^1.4.0",
     "punycode": "^2.3.1"
   },
   "devDependencies": {

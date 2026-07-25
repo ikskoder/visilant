@@ -7,6 +7,7 @@ import { useTheme } from '~/composables/useTheme'
 import { settings } from '~/logic/storage'
 import Logo from '../components/Logo.vue'
 import SecureText from '../components/SecureText.vue'
+import CheckField from './CheckField.vue'
 
 const { t, isLoaded, loadedTranslations } = useI18n()
 useTheme()
@@ -46,6 +47,7 @@ function updateTranslations() {
     'antiTamperingTooltipWhat',
     'antiTamperingTooltipOn',
     'antiTamperingTooltipOff',
+    'checkExternalButton',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -182,6 +184,8 @@ function displayDomain(domain: string) {
 async function loadDomainData(hostname: string) {
   currentHostname.value = hostname
   baseDomain.value = getDomain(hostname) || ''
+  visits.value = {}
+  subdomains.value = []
 
   if (!baseDomain.value)
     return
@@ -209,6 +213,10 @@ async function loadDomainData(hostname: string) {
   })
 }
 
+function openCheckPage() {
+  browser.tabs.create({ url: browser.runtime.getURL('dist/popup/index.html?check=1') })
+}
+
 onMounted(async () => {
   // Check if opened with a domain query param (from tooltip "Details" button or context menu)
   const urlParams = new URLSearchParams(window.location.search)
@@ -217,6 +225,12 @@ onMounted(async () => {
   if (domainParam) {
     isStandalonePage.value = true
     await loadDomainData(domainParam)
+    return
+  }
+
+  // Standalone "check anything" page opened from the popup button
+  if (urlParams.get('check')) {
+    isStandalonePage.value = true
     return
   }
 
@@ -273,6 +287,17 @@ onMounted(async () => {
           </button>
         </div>
       </div>
+
+      <!-- Popup: compact button opening the full check page; standalone: the field itself -->
+      <button
+        v-if="!isStandalonePage"
+        class="w-full mb-4 px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-blue-400 dark:hover:border-blue-500 transition-colors flex items-center justify-center gap-2"
+        @click="openCheckPage"
+      >
+        <div i-carbon-qr-code />
+        {{ translations.checkExternalButton }}
+      </button>
+      <CheckField v-else @checked-domain="loadDomainData" />
 
       <div v-if="currentHostname">
         <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
@@ -418,7 +443,8 @@ onMounted(async () => {
           {{ translations.noVisitData }}
         </div>
       </div>
-      <div v-else class="py-8 text-center opacity-50">
+      <!-- Hidden on the standalone check page until something is checked -->
+      <div v-else-if="!isStandalonePage" class="py-8 text-center opacity-50">
         <div class="text-4xl mb-2">
           🌍
         </div>

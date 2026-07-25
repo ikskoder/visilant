@@ -2,11 +2,18 @@
 import { computed } from 'vue'
 import { settings } from '~/logic/storage'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   text: string
   forceHighlight?: boolean
   dangerOnly?: boolean
-}>()
+  // Per-instance overrides — when set, they win over the global settings
+  highlightOverride?: boolean
+  caseOverride?: 'lower' | 'upper'
+}>(), {
+  // Absent boolean props default to false in Vue; keep undefined so the
+  // ?? fallback to global settings still works when the prop is not passed
+  highlightOverride: undefined,
+})
 const RE_ALPHA = /[a-z]/i
 const RE_DIGIT = /\d/
 const RE_SPECIAL = /[.\-_]/
@@ -18,7 +25,8 @@ const segments = computed(() => {
 
   // Helper to get class for a character
   function getClass(char: string): string {
-    if (!props.forceHighlight && !settings.value.domainHighlighting)
+    const highlightOn = props.highlightOverride ?? (props.forceHighlight || settings.value.domainHighlighting)
+    if (!highlightOn)
       return ''
     if (RE_ALPHA.test(char))
       return props.dangerOnly ? '' : 'text-green-600 dark:text-green-400 font-bold'
@@ -32,9 +40,10 @@ const segments = computed(() => {
 
   // Helper to apply case transformation
   function transform(char: string): string {
-    if (settings.value.domainCase === 'upper')
+    const mode = props.caseOverride ?? settings.value.domainCase
+    if (mode === 'upper')
       return char.toUpperCase()
-    if (settings.value.domainCase === 'lower')
+    if (mode === 'lower')
       return char.toLowerCase()
     return char
   }

@@ -650,5 +650,181 @@
   "themeDark": {
     "message": "Тёмная",
     "description": "Theme option: dark mode"
+  },
+  "emailTooltipTitle": {
+    "message": "Email-адрес",
+    "description": "Label for the email analysis tooltip"
+  },
+  "emailTooltipMismatchWarning": {
+    "message": "Показанный адрес отличается от настоящего!",
+    "description": "Warning when visible link text shows a different email than the mailto target"
+  },
+  "emailTooltipShownAddress": {
+    "message": "Показан",
+    "description": "Label for the address displayed in the link text"
+  },
+  "emailTooltipActualAddress": {
+    "message": "На самом деле",
+    "description": "Label for the real mailto target address"
+  },
+  "emailTooltipParams": {
+    "message": "Предзаполненные поля письма",
+    "description": "Label for mailto query parameters (cc, subject, body)"
+  },
+  "emailSuspiciousPattern": {
+    "message": "Подозрительный домен: известное окончание в середине адреса",
+    "description": "Warning for embedded-TLD domains like paypal.com.evil.ru"
+  },
+  "emailLocalUnicodeWarning": {
+    "message": "Необычные символы в имени адреса",
+    "description": "Warning for unicode characters before the @ sign"
+  },
+  "emailOpenMailApp": {
+    "message": "Открыть почту",
+    "description": "Button that opens the mail client for this address"
+  },
+  "contextMenuCheckSelection": {
+    "message": "Проверить выделенный текст в Visilant",
+    "description": "Context menu item on text selection"
+  },
+  "contextMenuDecodeQr": {
+    "message": "Сканировать QR-код в Visilant",
+    "description": "Context menu item on images"
+  },
+  "qrNotFound": {
+    "message": "QR-код на картинке не найден",
+    "description": "Error when QR decoding finds nothing"
+  },
+  "qrDecodeError": {
+    "message": "Не удалось загрузить или распознать картинку",
+    "description": "Error when the image cannot be fetched or read"
+  },
+  "qrPayloadType": {
+    "message": "Тип содержимого",
+    "description": "Label for the decoded QR payload type"
+  },
+  "qrTypeTel": {
+    "message": "Номер телефона",
+    "description": "QR payload type: tel:"
+  },
+  "qrTypeWifi": {
+    "message": "Сеть Wi-Fi",
+    "description": "QR payload type: WIFI:"
+  },
+  "qrTypeSms": {
+    "message": "SMS",
+    "description": "QR payload type: sms/SMSTO"
+  },
+  "qrTypeGeo": {
+    "message": "Геолокация",
+    "description": "QR payload type: geo:"
+  },
+  "qrTypeText": {
+    "message": "Текст",
+    "description": "QR payload type: plain text"
+  },
+  "checkFieldTitle": {
+    "message": "Проверить ссылку, адрес или QR-код",
+    "description": "Header of the popup check field"
+  },
+  "checkFieldPlaceholder": {
+    "message": "Вставьте ссылку, домен или email-адрес",
+    "description": "Placeholder of the popup check input"
+  },
+  "checkFieldButton": {
+    "message": "Проверить",
+    "description": "Submit button of the popup check field"
+  },
+  "checkFieldPasteHint": {
+    "message": "Или вставьте / перетащите сюда картинку с QR-кодом",
+    "description": "Hint under the popup check input"
+  },
+  "checkFieldInvalid": {
+    "message": "Нечего проверять — введите ссылку, домен или email-адрес",
+    "description": "Shown when the input cannot be classified"
+  },
+  "checkFieldExpand": {
+    "message": "Развернуть ссылку",
+    "description": "Button that resolves a (shortened) URL"
+  },
+  "checkFieldSelectFile": {
+    "message": "Выбрать картинку с QR-кодом",
+    "description": "Tooltip of the QR file picker button"
+  },
+  "checkExternalButton": {
+    "message": "Проверить ссылку, адрес или QR-код",
+    "description": "Popup button opening the standalone check page"
+  },
+  "emailPublicProvider": {
+    "message": "публичный почтовый сервис",
+    "description": "Badge: domain is a well-known freemail provider"
+  },
+  "emailPublicProviderHint": {
+    "message": "Адрес здесь может зарегистрировать кто угодно — оценивайте имя до @, а не домен",
+    "description": "Hint for public provider addresses"
+  },
+  "emailDisposableDomain": {
+    "message": "одноразовая почта",
+    "description": "Badge: domain is a temp-mail service"
+  },
+  "emailDisposableHint": {
+    "message": "Сервис одноразовой почты — письма с таких адресов почти всегда спам или скам",
+    "description": "Hint for disposable addresses"
+  },
+  "emailListsTitle": {
+    "message": "Проверка email-адресов",
+    "description": "Options section header for email domain lists"
+  },
+  "emailListsDesc": {
+    "message": "При проверке адресов используются встроенные списки публичных почтовых сервисов и одноразовых доменов. Можно добавить свои домены и обновлять список одноразовых по URL.",
+    "description": "Options section description"
+  },
+  "emailCustomPublicLabel": {
+    "message": "Свои публичные почтовые сервисы",
+    "description": "Label for the custom public providers textarea"
+  },
+  "emailCustomPublicDesc": {
+    "message": "По одному домену на строку. Адреса на этих доменах показываются как публичные сервисы (счётчик визитов к ним не применяется).",
+    "description": "Description for the custom public providers textarea"
+  },
+  "emailCustomDisposableLabel": {
+    "message": "Свои домены одноразовой почты",
+    "description": "Label for the custom disposable textarea"
+  },
+  "emailCustomDisposableDesc": {
+    "message": "По одному домену на строку. Адреса на этих доменах помечаются как одноразовые.",
+    "description": "Description for the custom disposable textarea"
+  },
+  "emailDisposableUpdateUrlLabel": {
+    "message": "URL обновления списка одноразовых",
+    "description": "Label for the remote disposable list URL input"
+  },
+  "emailDisposableUpdateUrlDesc": {
+    "message": "URL текстового списка (домен на строку, # — комментарий). Загружается по кнопке и объединяется со встроенным списком.",
+    "description": "Description for the remote list URL"
+  },
+  "emailDisposableUpdateNow": {
+    "message": "Обновить",
+    "description": "Button that fetches the remote disposable list"
+  },
+  "emailDisposableUpdateSuccess": {
+    "message": "Доменов загружено",
+    "description": "Status after a successful list update"
+  },
+  "emailDisposableUpdateError": {
+    "message": "Не удалось загрузить список — проверьте URL",
+    "description": "Status after a failed list update"
+  },
+  "checkPanelTitle": {
+    "message": "Проверка Visilant",
+    "description": "Header of the in-page check panel"
+  },
+  "emailAccountName": {
+    "message": "Имя аккаунта",
+    "description": "Label for the email local part (before @)"
+  },
+  "emailDomainLabel": {
+    "message": "Домен",
+    "description": "Label for the email domain part (after @)"
   }
 }

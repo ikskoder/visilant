@@ -2,7 +2,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { defaultSettings, settings } from '~/logic/storage'
-import { isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
+import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
+import CheckPanel from './CheckPanel.vue'
 import InputWarning from './InputWarning.vue'
 import LinkInterceptDialog from './LinkInterceptDialog.vue'
 import LinkTooltip from './LinkTooltip.vue'
@@ -157,44 +158,57 @@ onMounted(async () => {
 </script>
 
 <template>
-  <InputWarning
-    :safety-level="safetyLevel"
-    :show="showWarning"
-    :warning-type="warningType"
-    :is-dark="isDark"
-    @close="showWarning = false"
-    @ignore-site="ignoreSite"
-  />
+  <!-- The .dark class activates UnoCSS dark: variants inside the shadow DOM,
+       matching how useTheme toggles it on documentElement in popup/options -->
+  <div :class="{ dark: isDark }">
+    <InputWarning
+      :safety-level="safetyLevel"
+      :show="showWarning"
+      :warning-type="warningType"
+      :is-dark="isDark"
+      @close="showWarning = false"
+      @ignore-site="ignoreSite"
+    />
 
-  <LinkTooltip
-    :visible="linkTooltipVisible"
-    :data="linkTooltipData"
-    :show-go-button="settings.linkSafety?.tooltipTrigger === 'click-left'"
-    :font-size="settings.popupFontSize"
-    :show-visit-count="settings.linkSafety?.showVisitCount ?? 'always'"
-    :show-full-url="settings.linkSafety?.shortUrlShowFullUrl ?? false"
-    :trace-chain="settings.linkSafety?.shortUrlTraceChain ?? false"
-    :short-url-mode="settings.linkSafety?.shortUrlMode ?? 'off'"
-    :is-dark="isDark"
-    @hover-enter="handleTooltipHoverEnter"
-    @close="handleTooltipClose"
-    @go="handleTooltipGo"
-    @details="handleTooltipDetails"
-  />
+    <LinkTooltip
+      :visible="linkTooltipVisible"
+      :data="linkTooltipData"
+      :show-go-button="settings.linkSafety?.tooltipTrigger === 'click-left'"
+      :font-size="settings.popupFontSize"
+      :show-visit-count="settings.linkSafety?.showVisitCount ?? 'always'"
+      :show-full-url="settings.linkSafety?.shortUrlShowFullUrl ?? false"
+      :trace-chain="settings.linkSafety?.shortUrlTraceChain ?? false"
+      :short-url-mode="settings.linkSafety?.shortUrlMode ?? 'off'"
+      :is-dark="isDark"
+      @hover-enter="handleTooltipHoverEnter"
+      @close="handleTooltipClose"
+      @go="handleTooltipGo"
+      @details="handleTooltipDetails"
+    />
 
-  <LinkInterceptDialog
-    :visible="linkInterceptVisible"
-    :data="linkInterceptData"
-    :show-visit-count="settings.linkSafety?.showVisitCount || 'always'"
-    :show-full-url="settings.linkSafety?.shortUrlShowFullUrl ?? false"
-    :trace-chain="settings.linkSafety?.shortUrlTraceChain ?? false"
-    :short-url-mode="settings.linkSafety?.shortUrlMode ?? 'off'"
-    :is-dark="isDark"
-    @continue="handleInterceptContinue"
-    @cancel="handleInterceptCancel"
-    @details="handleTooltipDetails"
-    @resolve-short-url="handleResolveInterceptUrl"
-  />
+    <CheckPanel
+      :visible="checkPanelVisible"
+      :data="checkPanelData"
+      :font-size="settings.popupFontSize"
+      :is-dark="isDark"
+      @close="checkPanelVisible = false; checkPanelData = null"
+      @details="handleTooltipDetails"
+    />
+
+    <LinkInterceptDialog
+      :visible="linkInterceptVisible"
+      :data="linkInterceptData"
+      :show-visit-count="settings.linkSafety?.showVisitCount || 'always'"
+      :show-full-url="settings.linkSafety?.shortUrlShowFullUrl ?? false"
+      :trace-chain="settings.linkSafety?.shortUrlTraceChain ?? false"
+      :short-url-mode="settings.linkSafety?.shortUrlMode ?? 'off'"
+      :is-dark="isDark"
+      @continue="handleInterceptContinue"
+      @cancel="handleInterceptCancel"
+      @details="handleTooltipDetails"
+      @resolve-short-url="handleResolveInterceptUrl"
+    />
+  </div>
 </template>
 
 <style>
