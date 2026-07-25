@@ -2,6 +2,7 @@
 import type { LinkInterceptData } from '~/logic/ui-state'
 import { computed } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
+import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import MismatchTable from './MismatchTable.vue'
@@ -129,6 +130,7 @@ const resolvedIsSafe = computed(() => {
 
           <!-- Structural markers -->
           <DomainMarkers :hostname="data.domain" :url="data.url" class="dialog-label mt-2" />
+          <LookalikeNotice :hostname="data.domain" class="dialog-label mt-2" />
         </div>
 
         <!-- No mismatch: standard domain info -->
@@ -269,6 +271,7 @@ const resolvedIsSafe = computed(() => {
 
           <!-- Structural markers -->
           <DomainMarkers :hostname="data.domain" :url="data.url" class="dialog-label mt-2" />
+          <LookalikeNotice :hostname="data.domain" class="dialog-label mt-2" />
 
           <!-- Resolve once + Mark as shortener: shown when domain is not detected as shortener and short URL detection is enabled -->
           <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">

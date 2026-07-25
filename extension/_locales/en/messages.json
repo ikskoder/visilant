@@ -284,7 +284,7 @@
     "description": "Tooltip for case toggle"
   },
   "toggleHighlighting": {
-    "message": "Toggle highlighting\n\nGreen: Latin (a-z, A-Z)\nBlue: Numbers (0-9)\nBlack: Symbols (-_.)\nRed: Other",
+    "message": "Toggle highlighting\n\nBlue: numbers (0-9)\nBold: separators (-_.)\nRed: everything else — the characters worth a second look\n\nLatin letters are left plain: ordinary is not the same as safe.",
     "description": "Tooltip for highlighting toggle with legend"
   },
   "togglePunycodeListMode": {
@@ -510,6 +510,30 @@
   "domainMarkerMixedScripts": {
     "message": "Different alphabets in one part of the address",
     "description": "Marker: a hostname label mixes writing systems"
+  },
+  "lookalikeLooksLike": {
+    "message": "Resembles a site you know:",
+    "description": "Intro to the familiar domain a lookalike imitates"
+  },
+  "lookalikeReasonConfusable": {
+    "message": "Characters replaced with ones that look the same",
+    "description": "Lookalike reason: confusable characters"
+  },
+  "lookalikeReasonEditDistance": {
+    "message": "A letter or two apart from that name",
+    "description": "Lookalike reason: small edit distance"
+  },
+  "lookalikeReasonContains": {
+    "message": "That name with extra text attached",
+    "description": "Lookalike reason: familiar name embedded in a longer label"
+  },
+  "lookalikeReasonSubdomain": {
+    "message": "That name is only a subdomain here, not the real domain",
+    "description": "Lookalike reason: familiar name used as a subdomain"
+  },
+  "lookalikeReasonSameName": {
+    "message": "Same name, but a different domain",
+    "description": "Lookalike reason: same label under another suffix"
   },
   "linkTooltipGoToLink": {
     "message": "Go to link",

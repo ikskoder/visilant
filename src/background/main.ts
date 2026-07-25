@@ -1,7 +1,10 @@
+import type { FamiliarDomain, FamiliarIndex } from '~/logic/domain-similarity'
 import type { Settings, SiteVisitData } from '~/logic/storage'
 import { getDomain } from 'tldts'
 import { onMessage } from 'webext-bridge/background'
+import { buildFamiliarIndex, findLookalikes } from '~/logic/domain-similarity'
 import { analyzeEmailAddress, parseMailtoUrl } from '~/logic/email-safety'
+import { applyVisitToFamiliar, collectFamiliarDomains } from '~/logic/familiar-index'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings as appSettings } from '~/logic/storage'
 import { addCustomShortener, getCachedResolvedUrl, loadCustomShorteners, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
@@ -113,10 +116,10 @@ async function incrementVisitCount(url: string) {
   const hostname = getHostname(url)
   const result = await browser.storage.local.get(hostname)
   const existingData = result[hostname] as SiteVisitData | undefined
+  const updated = applyVisit(existingData, Date.now())
 
-  await browser.storage.local.set({
-    [hostname]: applyVisit(existingData, Date.now()),
-  })
+  await browser.storage.local.set({ [hostname]: updated })
+  await noteVisitForFamiliarIndex(hostname, updated)
 }
 
 // Function to update badge for current URL
@@ -259,6 +262,119 @@ async function getVisitCountLogic(url: string) {
     || { count: 0, hostname, lastSeen: 0, ignored: false }
 }
 
+// ==========================================
+// Familiar domain index (lookalike detection)
+// ==========================================
+
+const FAMILIAR_INDEX_KEY = '__visilantFamiliar'
+/** A stored list older than this is rebuilt from scratch on next use. */
+const FAMILIAR_INDEX_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+interface StoredFamiliarList {
+  domains: FamiliarDomain[]
+  threshold: number
+  builtAt: number
+}
+
+// The service worker is torn down constantly, so nothing here can live only in
+// memory; these are a cache in front of the stored list, not the source of truth
+let familiarDomains: FamiliarDomain[] | null = null
+let familiarIndex: FamiliarIndex | null = null
+let familiarIndexStale = false
+let familiarLoad: Promise<void> | null = null
+
+function invalidateFamiliarIndex() {
+  familiarDomains = null
+  familiarIndex = null
+  familiarIndexStale = false
+  familiarLoad = null
+}
+
+async function persistFamiliarDomains(domains: FamiliarDomain[]) {
+  const payload: StoredFamiliarList = {
+    domains,
+    threshold: appSettings.value.safety,
+    builtAt: Date.now(),
+  }
+  await browser.storage.local.set({ [FAMILIAR_INDEX_KEY]: payload })
+}
+
+/** Read every stored hostname and derive the familiar list from scratch. */
+async function rebuildFamiliarDomains(): Promise<FamiliarDomain[]> {
+  const records = await browser.storage.local.get(null)
+  const domains = collectFamiliarDomains(records, {
+    threshold: appSettings.value.safety,
+    toRegistrable: hostname => getDomain(hostname),
+  })
+
+  await persistFamiliarDomains(domains)
+  return domains
+}
+
+async function loadFamiliarDomains(): Promise<void> {
+  const stored = (await browser.storage.local.get(FAMILIAR_INDEX_KEY))[FAMILIAR_INDEX_KEY] as StoredFamiliarList | undefined
+
+  const isUsable = stored
+    && Array.isArray(stored.domains)
+    && stored.threshold === appSettings.value.safety
+    && Date.now() - (stored.builtAt || 0) < FAMILIAR_INDEX_MAX_AGE_MS
+
+  familiarDomains = isUsable ? stored.domains : await rebuildFamiliarDomains()
+  familiarIndex = buildFamiliarIndex(familiarDomains)
+}
+
+async function getFamiliarIndex(): Promise<FamiliarIndex> {
+  if (familiarIndex && !familiarIndexStale)
+    return familiarIndex
+
+  // Rebuilding the lookup structures costs a couple of milliseconds, so browsing
+  // only marks them stale and the next query pays for it — once, not per visit
+  if (familiarIndex && familiarIndexStale && familiarDomains) {
+    familiarIndex = buildFamiliarIndex(familiarDomains)
+    familiarIndexStale = false
+    return familiarIndex
+  }
+
+  // Concurrent callers share one load rather than each reading storage
+  familiarLoad ??= loadFamiliarDomains()
+  await familiarLoad
+
+  return familiarIndex ?? buildFamiliarIndex([])
+}
+
+/**
+ * Keep the list current as the user browses, so a full rebuild is only needed
+ * after a history import, a threshold change, or a day of use.
+ *
+ * Deliberately works from the record already read by the visit counter: reading
+ * the whole domain family would mean scanning all of storage on every single
+ * navigation.
+ */
+async function noteVisitForFamiliarIndex(hostname: string, visitData: SiteVisitData) {
+  if (!familiarDomains)
+    return
+
+  const registrable = getDomain(hostname)
+  if (!registrable)
+    return
+
+  const added = applyVisitToFamiliar(familiarDomains, registrable, visitData.count, appSettings.value.safety)
+  familiarIndexStale = true
+
+  // Only a new member is worth a write; drifting counts are corrected by the
+  // next rebuild and affect nothing but the order of equally strong matches
+  if (added)
+    await persistFamiliarDomains(familiarDomains)
+}
+
+async function findLookalikesLogic(hostname: string) {
+  if (!hostname || isInternalPage(hostname))
+    return []
+
+  const index = await getFamiliarIndex()
+  return findLookalikes(hostname, index, getDomain(hostname) || undefined)
+}
+
 // Handle ignore site requests
 async function handleIgnoreSite(hostname: string) {
   if (!hostname)
@@ -365,6 +481,14 @@ async function handleOpenPopupTab(domain: string) {
 const messageHandlers = {
   'get-visit-count': (data: any) => getVisitCountLogic(data.url),
   'get-domain-family': (data: any) => getDomainFamilyLogic(data.hostname),
+  'find-lookalikes': (data: any) => findLookalikesLogic(data.hostname),
+  // The options page calls this once a history import finishes, since an import
+  // can move thousands of domains across the familiarity threshold at once
+  'rebuild-familiar-index': async () => {
+    invalidateFamiliarIndex()
+    await getFamiliarIndex()
+    return { success: true }
+  },
   'ignore-site': (data: any) => handleIgnoreSite(data.hostname),
   'get-settings': () => getSettingsLogic(),
   'show-notification': (data: any) => handleShowNotification(data.warningType),
@@ -552,12 +676,18 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
 // Listen for changes in storage
 browser.storage.onChanged.addListener(async (changes) => {
   if (changes.settings) {
+    // The familiarity threshold decides what goes in the index, so a change to
+    // it invalidates the whole thing
+    const previous = changes.settings.oldValue as Settings | undefined
+    const current = changes.settings.newValue as Settings | undefined
+    if (previous?.safety !== current?.safety)
+      invalidateFamiliarIndex()
+
     // Rebuild context menu when link safety settings change
     await setupContextMenu()
 
     // If settings changed and icon colors are disabled, reset all icons to default first
-    const newSettings = changes.settings.newValue as Settings
-    if (!newSettings.changeIcon) {
+    if (current && !current.changeIcon) {
       await browser.action.setIcon({
         path: getIconPaths('icon-default'),
       })

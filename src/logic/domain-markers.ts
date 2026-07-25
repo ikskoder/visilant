@@ -146,6 +146,15 @@ function getSubdomainLabels(hostname: string): string[] {
   return labels.slice(0, Math.max(0, labels.length - suffixLabelCount(labels) - 1))
 }
 
+/** The registrable part of a hostname — `example.com` out of `a.b.example.com`. */
+export function getRegistrableDomain(hostname: string): string {
+  const labels = hostname.toLowerCase().replace(/\.$/, '').split('.').filter(Boolean)
+  if (labels.length < 2)
+    return labels.join('.')
+
+  return labels.slice(Math.max(0, labels.length - suffixLabelCount(labels) - 1)).join('.')
+}
+
 /**
  * A domain ending used as an ordinary label: `paypal.com.evil.net` puts a whole
  * domain where a subdomain belongs, so the eye stops reading at `paypal.com`.

@@ -350,7 +350,7 @@ onMounted(async () => {
                 <div class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-sans font-normal mb-0.5">
                   {{ translations.domainOriginal }}
                 </div>
-                <SecureText :text="unicodeHostname" />
+                <SecureText :text="unicodeHostname" mark-wraps />
                 <div class="flex items-center gap-1 mt-2 mb-0.5">
                   <div class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-sans font-normal">
                     {{ translations.domainPunycode }}
@@ -362,18 +362,19 @@ onMounted(async () => {
                     ?
                   </button>
                 </div>
-                <SecureText :text="currentHostname" />
+                <SecureText :text="currentHostname" mark-wraps />
               </template>
               <template v-else>
-                <SecureText :text="currentHostname" />
+                <SecureText :text="currentHostname" mark-wraps />
               </template>
             </div>
             <div class="font-mono font-bold" style="font-size: 1.3em;" :class="getCountColor(currentDomainCount)">
               {{ currentDomainCount }}
             </div>
           </div>
-          <!-- Structural markers -->
+          <!-- Structural markers and resemblance to a domain the user knows -->
           <DomainMarkers :hostname="currentHostname" class="mt-2" style="font-size: 0.75em;" />
+          <LookalikeNotice :hostname="currentHostname" style="font-size: 0.75em;" />
 
           <!-- Visit history facts. firstSeen/activeDays stay empty until a full
                history import supplies them — we never guess a date. -->
@@ -478,10 +479,14 @@ onMounted(async () => {
             >
               {{ settings.domainCase === 'upper' ? 'Aa' : 'AA' }}
             </button>
+            <!-- Highlighting leaves plain Latin addresses untouched, so the button
+                 has to show its own state or it reads as broken -->
             <button
               class="btn-ghost btn-sm !rounded w-6 flex items-center justify-center"
+              :class="settings.domainHighlighting ? '!bg-blue-100 !border-blue-200 dark:!bg-blue-900/40 dark:!border-blue-700' : 'grayscale opacity-60'"
               :title="translations.toggleHighlighting"
               :aria-label="translations.toggleHighlighting"
+              :aria-pressed="settings.domainHighlighting"
               @click="toggleHighlighting"
             >
               🌈

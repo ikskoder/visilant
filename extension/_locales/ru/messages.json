@@ -284,7 +284,7 @@
     "description": "Tooltip for case toggle"
   },
   "toggleHighlighting": {
-    "message": "Переключить подсветку\n\nЗелёный: Латиница (a-z, A-Z)\nСиний: Цифры (0-9)\nЧёрный: Символы (-_.)\nКрасный: Другое",
+    "message": "Переключить подсветку\n\nСиний: цифры (0-9)\nЖирный: разделители (-_.)\nКрасный: всё остальное — символы, на которые стоит взглянуть дважды\n\nЛатиница не подсвечивается: обычное — не значит безопасное.",
     "description": "Tooltip for highlighting toggle with legend"
   },
   "togglePunycodeListMode": {
@@ -510,6 +510,30 @@
   "domainMarkerMixedScripts": {
     "message": "Разные алфавиты в одной части адреса",
     "description": "Marker: a hostname label mixes writing systems"
+  },
+  "lookalikeLooksLike": {
+    "message": "Похоже на сайт, который вы знаете:",
+    "description": "Intro to the familiar domain a lookalike imitates"
+  },
+  "lookalikeReasonConfusable": {
+    "message": "Символы заменены на визуально такие же",
+    "description": "Lookalike reason: confusable characters"
+  },
+  "lookalikeReasonEditDistance": {
+    "message": "Отличается от того имени на букву-две",
+    "description": "Lookalike reason: small edit distance"
+  },
+  "lookalikeReasonContains": {
+    "message": "То же имя с приписанным текстом",
+    "description": "Lookalike reason: familiar name embedded in a longer label"
+  },
+  "lookalikeReasonSubdomain": {
+    "message": "Здесь это имя лишь поддомен, а не настоящий домен",
+    "description": "Lookalike reason: familiar name used as a subdomain"
+  },
+  "lookalikeReasonSameName": {
+    "message": "Имя то же, но домен другой",
+    "description": "Lookalike reason: same label under another suffix"
   },
   "linkTooltipGoToLink": {
     "message": "Перейти по ссылке",

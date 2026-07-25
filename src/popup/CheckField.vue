@@ -4,7 +4,9 @@ import type { EmailAnalysis } from '~/logic/email-safety'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { getDomain } from 'tldts'
 import { onMounted, ref } from 'vue'
+import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailBreakdown from '~/components/EmailBreakdown.vue'
+import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
@@ -308,12 +310,18 @@ function payloadTypeLabel(payloadKind: string) {
           {{ t('baseDomain') }}: <SecureText :text="result.baseDomain" :force-highlight="true" :danger-only="true" />
         </div>
 
-        <div v-if="result.punycode" class="text-xs text-yellow-600 dark:text-yellow-400 mb-0.5 break-all">
+        <div v-if="result.punycode && result.punycode !== result.hostname" class="text-xs text-yellow-600 dark:text-yellow-400 mb-0.5 break-all">
           {{ t('linkTooltipPunycode') }}: {{ result.punycode }}
         </div>
 
         <div v-if="!result.isShortener" class="text-xs mb-1">
           {{ t('linkTooltipVisits') }}: <span class="font-mono font-bold" :class="getCountColor(result.count)">{{ result.count }}</span>
+        </div>
+
+        <!-- Structural markers and resemblance to a domain the user knows -->
+        <div class="text-xs">
+          <DomainMarkers :hostname="result.hostname" :url="result.url" />
+          <LookalikeNotice :hostname="result.hostname" />
         </div>
 
         <!-- Expand shortened URL -->

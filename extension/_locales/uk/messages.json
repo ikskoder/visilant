@@ -284,7 +284,7 @@
     "description": "Tooltip for case toggle"
   },
   "toggleHighlighting": {
-    "message": "Перемкнути підсвічування\n\nЗелений: Латиниця (a-z, A-Z)\nСиній: Цифри (0-9)\nЧорний: Символи (-_.)\nЧервоний: Інше",
+    "message": "Перемкнути підсвічування\n\nСиній: цифри (0-9)\nЖирний: роздільники (-_.)\nЧервоний: усе інше — символи, на які варто глянути двічі\n\nЛатиниця не підсвічується: звичайне — не означає безпечне.",
     "description": "Tooltip for highlighting toggle with legend"
   },
   "togglePunycodeListMode": {
@@ -510,6 +510,30 @@
   "domainMarkerMixedScripts": {
     "message": "Різні абетки в одній частині адреси",
     "description": "Marker: a hostname label mixes writing systems"
+  },
+  "lookalikeLooksLike": {
+    "message": "Схоже на сайт, який ви знаєте:",
+    "description": "Intro to the familiar domain a lookalike imitates"
+  },
+  "lookalikeReasonConfusable": {
+    "message": "Символи замінено на візуально такі самі",
+    "description": "Lookalike reason: confusable characters"
+  },
+  "lookalikeReasonEditDistance": {
+    "message": "Відрізняється від того імені на літеру-дві",
+    "description": "Lookalike reason: small edit distance"
+  },
+  "lookalikeReasonContains": {
+    "message": "Те саме імʼя з дописаним текстом",
+    "description": "Lookalike reason: familiar name embedded in a longer label"
+  },
+  "lookalikeReasonSubdomain": {
+    "message": "Тут це імʼя лише піддомен, а не справжній домен",
+    "description": "Lookalike reason: familiar name used as a subdomain"
+  },
+  "lookalikeReasonSameName": {
+    "message": "Імʼя те саме, але домен інший",
+    "description": "Lookalike reason: same label under another suffix"
   },
   "linkTooltipGoToLink": {
     "message": "Перейти за посиланням",

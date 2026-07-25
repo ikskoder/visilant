@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { settings } from '~/logic/storage'
 
 const props = withDefaults(defineProps<{
@@ -9,6 +9,12 @@ const props = withDefaults(defineProps<{
   // Per-instance overrides — when set, they win over the global settings
   highlightOverride?: boolean
   caseOverride?: 'lower' | 'upper'
+  /**
+   * Show where a wrapped address continues onto the next line. Costs a layout
+   * measurement, so it is opt-in and belongs on the large displays that actually
+   * wrap, not on every inline mention of a domain.
+   */
+  markWraps?: boolean
 }>(), {
   // Absent boolean props default to false in Vue; keep undefined so the
   // ?? fallback to global settings still works when the prop is not passed
@@ -28,8 +34,13 @@ const segments = computed(() => {
     const highlightOn = props.highlightOverride ?? (props.forceHighlight || settings.value.domainHighlighting)
     if (!highlightOn)
       return ''
+    // Latin letters are left alone deliberately. Colouring them green reads as a
+    // verdict — "this part is fine" — when all it means is "this is the ordinary
+    // case". Highlighting exists to make the unexpected characters stand out, and
+    // painting the majority of an address in a reassuring colour works against
+    // exactly that.
     if (RE_ALPHA.test(char))
-      return props.dangerOnly ? '' : 'text-green-600 dark:text-green-400 font-bold'
+      return ''
     if (RE_DIGIT.test(char))
       return 'text-blue-600 dark:text-blue-400 font-bold'
     if (RE_SPECIAL.test(char))
@@ -94,10 +105,85 @@ const parts = computed(() => {
 
   return result
 })
+
+// Which parts a line actually ended on. Only the browser knows where the wrap
+// landed, so this is measured after layout rather than derived from the text.
+const root = ref<HTMLElement | null>(null)
+const endsLine = ref<Set<number>>(new Set())
+let observer: ResizeObserver | null = null
+
+function measureWraps() {
+  const element = root.value
+  if (!element)
+    return
+
+  const spans = [...element.querySelectorAll<HTMLElement>(':scope > span')]
+  const found = new Set<number>()
+  let previousTop: number | null = null
+
+  for (let index = 0; index < spans.length; index++) {
+    const { top } = spans[index].getBoundingClientRect()
+    // A tolerance, because subpixel layout puts same-line boxes fractions apart
+    if (previousTop !== null && top > previousTop + 1)
+      found.add(index - 1)
+    previousTop = top
+  }
+
+  // Replacing the set unconditionally would re-render on every measurement
+  if (found.size !== endsLine.value.size || [...found].some(index => !endsLine.value.has(index)))
+    endsLine.value = found
+}
+
+watch([root, () => props.markWraps], ([element, enabled]) => {
+  observer?.disconnect()
+  observer = null
+  endsLine.value = new Set()
+
+  if (!element || !enabled)
+    return
+
+  // Fires on font-size changes and container resizes alike, both of which move
+  // where the address breaks. Absent in environments without layout, where there
+  // is nothing to measure anyway.
+  if (typeof ResizeObserver !== 'undefined') {
+    observer = new ResizeObserver(() => measureWraps())
+    observer.observe(element)
+  }
+
+  nextTick(measureWraps)
+}, { immediate: true })
+
+watch(parts, () => {
+  if (props.markWraps)
+    nextTick(measureWraps)
+})
+
+onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <template>
-  <span class="secure-domain-display">
-    <template v-for="(part, index) in parts" :key="index"><span :class="part.class">{{ part.text }}</span><wbr v-if="part.breakAfter"></template>
+  <span ref="root" class="secure-domain-display">
+    <template v-for="(part, index) in parts" :key="index"><span :class="[part.class, { 'wraps-here': endsLine.has(index) }]">{{ part.text }}</span><wbr v-if="part.breakAfter"></template>
   </span>
 </template>
+
+<style scoped>
+/*
+ * The continuation marker is absolutely positioned on purpose: laid out in flow
+ * it would take up space, change where the line breaks, and move the very wrap
+ * it is marking.
+ */
+.wraps-here {
+  position: relative;
+}
+
+.wraps-here::after {
+  content: '↩';
+  position: absolute;
+  margin-left: 0.1em;
+  font-size: 0.95em;
+  line-height: 1;
+  letter-spacing: normal;
+  opacity: 0.55;
+}
+</style>

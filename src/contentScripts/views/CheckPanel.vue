@@ -3,6 +3,7 @@ import type { CheckPanelData } from '~/logic/ui-state'
 import punycode from 'punycode'
 import { ref, watch } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
+import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import { settings } from '~/logic/storage'
@@ -161,13 +162,17 @@ function statusBadge(count: number) {
 
         <!-- Structural markers -->
         <DomainMarkers :hostname="data.hostname" class="panel-label" />
+        <LookalikeNotice :hostname="data.hostname" class="panel-label" />
 
         <!-- Local display toggles -->
         <div class="flex items-center gap-1.5 mb-2">
+          <!-- A plain Latin address looks the same either way, so the button has
+               to carry its own state -->
           <button
             class="panel-toggle"
-            :class="[isDark ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100', localHighlight ? (isDark ? 'bg-blue-900/40' : 'bg-blue-100') : '']"
+            :class="[isDark ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100', localHighlight ? (isDark ? 'bg-blue-900/40' : 'bg-blue-100') : 'grayscale opacity-60']"
             :title="t('toggleHighlighting')"
+            :aria-pressed="localHighlight"
             @click="localHighlight = !localHighlight"
           >
             🌈

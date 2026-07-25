@@ -66,8 +66,30 @@ describe('secureText component', () => {
       props: { text: 'example.com', forceHighlight: true, dangerOnly: true },
     })
     const html = wrapper.html()
-    // Alpha chars should have empty class in dangerOnly mode
-    expect(html).not.toContain('text-green-600')
+    expect(html).not.toContain('font-bold')
+  })
+
+  it('leaves Latin letters unstyled even with highlighting on', () => {
+    // Colouring them would read as a verdict on the part of the address that is
+    // simply ordinary, which is the opposite of what highlighting is for
+    const wrapper = mount(SecureText, {
+      props: { text: 'paypal', forceHighlight: true },
+    })
+    const span = wrapper.find('.secure-domain-display > span')
+
+    expect(span.text()).toBe('paypal')
+    expect(span.attributes('class') || '').toBe('')
+  })
+
+  it('still marks the characters that are not ordinary', () => {
+    // pаypal with a Cyrillic а: the one character worth noticing
+    const wrapper = mount(SecureText, {
+      props: { text: 'pаypal', forceHighlight: true },
+    })
+    const html = wrapper.html()
+
+    expect(html).toContain('text-red-600')
+    expect(html).not.toContain('text-green')
   })
 
   describe('label break opportunities', () => {
@@ -94,6 +116,15 @@ describe('secureText component', () => {
       const wrapper = mount(SecureText, { props: { text: 'a.b' } })
       const spans = wrapper.findAll('.secure-domain-display > span')
       expect(spans.map(span => span.text())).toEqual(['a.', 'b'])
+    })
+
+    it('marks no continuation without a measurable wrap', () => {
+      // No layout engine here, so nothing wraps — the point is that asking for
+      // wrap markers is safe even where they cannot be computed
+      const wrapper = mount(SecureText, {
+        props: { text: 'paypal.com.a.b.secure.example.net', markWraps: true },
+      })
+      expect(wrapper.html()).not.toContain('wraps-here')
     })
 
     it('still splits by character class inside a label', () => {

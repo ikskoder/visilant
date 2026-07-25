@@ -390,6 +390,15 @@ async function importHistory(mode: 'quick' | 'full') {
       await browser.storage.local.set(payload)
       importProgress.value.current = Math.min(offset + chunk.length, hostnames.length)
     }
+
+    // An import can move thousands of domains across the familiarity threshold,
+    // so the lookalike reference set has to be rebuilt rather than nudged
+    try {
+      await browser.runtime.sendMessage({ type: 'rebuild-familiar-index', data: {} })
+    }
+    catch {
+      // Background asleep — it rebuilds on next use anyway
+    }
   }
   finally {
     isImporting.value = false

@@ -3,6 +3,7 @@ import type { LinkTooltipData } from '~/logic/ui-state'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailBreakdown from '~/components/EmailBreakdown.vue'
+import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import MismatchTable from './MismatchTable.vue'
@@ -233,6 +234,7 @@ onBeforeUnmount(() => {
 
           <!-- Structural markers of the address's domain -->
           <DomainMarkers :hostname="data.domain" class="tooltip-label" />
+          <LookalikeNotice :hostname="data.domain" class="tooltip-label" />
 
           <!-- Action buttons -->
           <div class="flex gap-2 mt-1">
@@ -298,6 +300,7 @@ onBeforeUnmount(() => {
 
           <!-- Structural markers -->
           <DomainMarkers :hostname="data.domain" :url="data.href" class="tooltip-label" />
+          <LookalikeNotice :hostname="data.domain" class="tooltip-label" />
 
           <!-- Go button -->
           <button
@@ -474,6 +477,7 @@ onBeforeUnmount(() => {
 
           <!-- Structural markers -->
           <DomainMarkers :hostname="data.domain" :url="data.href" class="tooltip-label" />
+          <LookalikeNotice :hostname="data.domain" class="tooltip-label" />
 
           <!-- Action buttons -->
           <div class="flex gap-2 mt-1">
