@@ -231,6 +231,9 @@ onBeforeUnmount(() => {
             {{ t('linkTooltipVisits') }}: {{ data.count }}
           </div>
 
+          <!-- Structural markers of the address's domain -->
+          <DomainMarkers :hostname="data.domain" class="tooltip-label" />
+
           <!-- Action buttons -->
           <div class="flex gap-2 mt-1">
             <button
