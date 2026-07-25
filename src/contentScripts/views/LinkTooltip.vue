@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { LinkTooltipData } from '~/logic/ui-state'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailBreakdown from '~/components/EmailBreakdown.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
@@ -286,10 +287,14 @@ onBeforeUnmount(() => {
             @details="emit('details', $event)"
           />
 
-          <!-- Punycode warning -->
-          <div v-if="data.punycode" class="flex items-center gap-1 mb-2 tooltip-label" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
+          <!-- Punycode warning. Skipped when it would repeat the domain verbatim,
+               which is what happens for links that already arrive in punycode form -->
+          <div v-if="data.punycode && data.punycode !== data.domain" class="flex items-center gap-1 mb-2 tooltip-label" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
             <span>{{ t('linkTooltipPunycode') }}: {{ data.punycode }}</span>
           </div>
+
+          <!-- Structural markers -->
+          <DomainMarkers :hostname="data.domain" :url="data.href" class="tooltip-label" />
 
           <!-- Go button -->
           <button
@@ -458,10 +463,14 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
-          <!-- Punycode warning -->
-          <div v-if="data.punycode" class="flex items-center gap-1 mb-2 tooltip-label" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
+          <!-- Punycode warning. Skipped when it would repeat the domain verbatim,
+               which is what happens for links that already arrive in punycode form -->
+          <div v-if="data.punycode && data.punycode !== data.domain" class="flex items-center gap-1 mb-2 tooltip-label" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
             <span>{{ t('linkTooltipPunycode') }}: {{ data.punycode }}</span>
           </div>
+
+          <!-- Structural markers -->
+          <DomainMarkers :hostname="data.domain" :url="data.href" class="tooltip-label" />
 
           <!-- Action buttons -->
           <div class="flex gap-2 mt-1">

@@ -1,4 +1,5 @@
 import type { LinkSafetySettings } from './storage'
+import punycode from 'punycode'
 
 // Cache visit counts per domain for the current page session
 const visitCountCache = new Map<string, { count: number, isSafe: boolean, ignored: boolean, timestamp: number }>()
@@ -78,26 +79,29 @@ export function checkDomainMismatch(linkText: string, hrefHostname: string): { m
 }
 
 /**
- * Detect Unicode (IDN) characters in a hostname and return punycode info.
- * Browsers auto-convert Unicode hostnames to punycode in URL parsing.
+ * Detect an internationalised (IDN) hostname and return both of its renderings.
+ *
+ * A hostname can reach us either way round: `new URL(href).hostname` has already
+ * been converted to punycode by the browser, while text typed or pasted by the
+ * user still holds the Unicode form. Checking only for non-ASCII characters would
+ * therefore miss every link on a page, which is why the `xn--` form is tested too.
  */
-export function getPunycodeInfo(hostname: string): { hasUnicode: boolean, ascii?: string } {
-  // Check if hostname has non-ASCII characters
-  const hasUnicode = Array.from(hostname).some(char => (char.codePointAt(0) ?? 0) > 0x7F)
-  if (!hasUnicode)
+export function getPunycodeInfo(hostname: string): { hasUnicode: boolean, ascii?: string, unicode?: string } {
+  const hasNonAscii = Array.from(hostname).some(char => (char.codePointAt(0) ?? 0) > 0x7F)
+  const hasPunycodeLabel = hostname.toLowerCase().split('.').some(label => label.startsWith('xn--'))
+
+  if (!hasNonAscii && !hasPunycodeLabel)
     return { hasUnicode: false }
 
   try {
-    // Browser's URL parser converts Unicode to punycode automatically
-    const ascii = new URL(`http://${hostname}`).hostname
-    if (ascii !== hostname)
-      return { hasUnicode: true, ascii }
+    // The URL parser converts Unicode to punycode; the decoder goes the other way
+    const ascii = hasNonAscii ? new URL(`http://${hostname}`).hostname : hostname
+    const unicode = hasNonAscii ? hostname : punycode.toUnicode(hostname)
+    return { hasUnicode: true, ascii, unicode }
   }
   catch {
-    // ignore
+    return { hasUnicode: true }
   }
-
-  return { hasUnicode: true }
 }
 
 /**

@@ -2,7 +2,7 @@
 import type { SiteVisitData } from '~/logic/storage'
 import punycode from 'punycode'
 import { getDomain } from 'tldts'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
 import { settings } from '~/logic/storage'
@@ -11,7 +11,10 @@ import SecureText from '../components/SecureText.vue'
 import CheckField from './CheckField.vue'
 
 const { t, isLoaded, loadedTranslations } = useI18n()
-useTheme()
+const { isDark } = useTheme()
+// Shared components read the theme through this key, because inside the
+// content script's shadow DOM the `dark` class on <html> does not reach them
+provide('isDark', isDark)
 
 // Reactive translations
 const translations = ref<Record<string, string>>({})
@@ -352,6 +355,9 @@ onMounted(async () => {
               {{ currentDomainCount }}
             </div>
           </div>
+          <!-- Structural markers -->
+          <DomainMarkers :hostname="currentHostname" class="mt-2" style="font-size: 0.75em;" />
+
           <!-- Visit history facts. firstSeen/activeDays stay empty until a full
                history import supplies them — we never guess a date. -->
           <div

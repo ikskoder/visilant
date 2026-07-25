@@ -491,6 +491,26 @@
     "message": "ASCII",
     "description": "Label for punycode/ASCII domain display"
   },
+  "domainMarkerUserinfo": {
+    "message": "The name before @ is not where this link goes",
+    "description": "Marker: URL contains userinfo before the host"
+  },
+  "domainMarkerIpHost": {
+    "message": "A numeric address is used instead of a domain name",
+    "description": "Marker: host is a raw IP address"
+  },
+  "domainMarkerEmbeddedSuffix": {
+    "message": "A domain ending is used as a subdomain, so the real domain is further right",
+    "description": "Marker: public suffix used as a subdomain label"
+  },
+  "domainMarkerDeepSubdomains": {
+    "message": "Unusually many subdomain levels",
+    "description": "Marker: subdomain nesting deeper than usual"
+  },
+  "domainMarkerMixedScripts": {
+    "message": "One part of the address mixes different alphabets",
+    "description": "Marker: a hostname label mixes writing systems"
+  },
   "linkTooltipGoToLink": {
     "message": "Go to link",
     "description": "Button to proceed to link destination (click-left mode)"

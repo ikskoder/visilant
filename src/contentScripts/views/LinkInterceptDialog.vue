@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { LinkInterceptData } from '~/logic/ui-state'
 import { computed } from 'vue'
+import DomainMarkers from '~/components/DomainMarkers.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import MismatchTable from './MismatchTable.vue'
@@ -121,10 +122,13 @@ const resolvedIsSafe = computed(() => {
             @details="emit('details', $event)"
           />
 
-          <!-- Punycode -->
-          <div v-if="data.punycode" class="dialog-label mt-2" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
+          <!-- Punycode. Skipped when it would repeat the domain verbatim -->
+          <div v-if="data.punycode && data.punycode !== data.domain" class="dialog-label mt-2" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
             {{ t('linkTooltipPunycode') }}: {{ data.punycode }}
           </div>
+
+          <!-- Structural markers -->
+          <DomainMarkers :hostname="data.domain" :url="data.url" class="dialog-label mt-2" />
         </div>
 
         <!-- No mismatch: standard domain info -->
@@ -258,10 +262,13 @@ const resolvedIsSafe = computed(() => {
             </button>
           </div>
 
-          <!-- Punycode -->
-          <div v-if="data.punycode" class="dialog-label mt-2" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
+          <!-- Punycode. Skipped when it would repeat the domain verbatim -->
+          <div v-if="data.punycode && data.punycode !== data.domain" class="dialog-label mt-2" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
             {{ t('linkTooltipPunycode') }}: {{ data.punycode }}
           </div>
+
+          <!-- Structural markers -->
+          <DomainMarkers :hostname="data.domain" :url="data.url" class="dialog-label mt-2" />
 
           <!-- Resolve once + Mark as shortener: shown when domain is not detected as shortener and short URL detection is enabled -->
           <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">

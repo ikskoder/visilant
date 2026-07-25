@@ -2,6 +2,7 @@
 import type { CheckPanelData } from '~/logic/ui-state'
 import punycode from 'punycode'
 import { ref, watch } from 'vue'
+import DomainMarkers from '~/components/DomainMarkers.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import { settings } from '~/logic/storage'
@@ -153,10 +154,13 @@ function statusBadge(count: number) {
           </div>
         </div>
 
-        <!-- Punycode -->
-        <div v-if="data.punycode" class="panel-label mb-2 break-all" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
+        <!-- Punycode. Skipped when it would repeat the hostname verbatim -->
+        <div v-if="data.punycode && data.punycode !== data.hostname" class="panel-label mb-2 break-all" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
           {{ t('linkTooltipPunycode') }}: {{ data.punycode }}
         </div>
+
+        <!-- Structural markers -->
+        <DomainMarkers :hostname="data.hostname" class="panel-label" />
 
         <!-- Local display toggles -->
         <div class="flex items-center gap-1.5 mb-2">
