@@ -119,17 +119,45 @@
     "message": "Управління базою даних",
     "description": "Title for database management section"
   },
-  "importHistory": {
-    "message": "Імпортувати історію",
-    "description": "Label for import history button"
-  },
   "importing": {
     "message": "Імпортування...",
     "description": "Text shown while importing"
   },
-  "importHistoryDesc": {
-    "message": "Імпортувати історію браузера, щоб заповнити лічильники відвідувань",
-    "description": "Description for import history feature"
+  "importHistoryFull": {
+    "message": "Повний імпорт",
+    "description": "Label for the full history import button"
+  },
+  "importHistoryFullDesc": {
+    "message": "Читає кожне записане відвідування, тому дати першого візиту та активні дні справжні. На великій історії повільніше — імпорт можна скасувати будь-коли.",
+    "description": "Description of the full history import"
+  },
+  "importHistoryQuick": {
+    "message": "Швидкий імпорт",
+    "description": "Label for the quick history import button"
+  },
+  "importHistoryQuickDesc": {
+    "message": "Використовує зведення, яке браузер уже зберігає для кожної сторінки. Швидко, але дату першого відвідування визначити неможливо.",
+    "description": "Description of the quick history import"
+  },
+  "firstSeenLabel": {
+    "message": "Перше відоме відвідування",
+    "description": "Label for the earliest recorded visit"
+  },
+  "lastSeenLabel": {
+    "message": "Останнє відвідування",
+    "description": "Label for the most recent visit"
+  },
+  "activeDaysLabel": {
+    "message": "Активних днів",
+    "description": "Label for the number of distinct days a site was visited"
+  },
+  "statsUnknown": {
+    "message": "невідомо",
+    "description": "Shown instead of a date that the extension cannot know"
+  },
+  "statsImportHint": {
+    "message": "Імпортуйте історію браузера, щоб заповнити це",
+    "description": "Hint shown when first-visit data is missing"
   },
   "resetData": {
     "message": "Скинути дані",

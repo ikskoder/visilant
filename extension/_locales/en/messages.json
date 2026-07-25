@@ -119,17 +119,45 @@
     "message": "Your data",
     "description": "Title for database management section"
   },
-  "importHistory": {
-    "message": "Import browser history",
-    "description": "Label for import history button"
-  },
   "importing": {
     "message": "Importing...",
     "description": "Text shown while importing"
   },
-  "importHistoryDesc": {
-    "message": "Import your browser history to populate your visit counts",
-    "description": "Description for import history feature"
+  "importHistoryFull": {
+    "message": "Full import",
+    "description": "Label for the full history import button"
+  },
+  "importHistoryFullDesc": {
+    "message": "Reads every recorded visit, so first-visit dates and active days are real. Slower on a large history — you can cancel at any time.",
+    "description": "Description of the full history import"
+  },
+  "importHistoryQuick": {
+    "message": "Quick import",
+    "description": "Label for the quick history import button"
+  },
+  "importHistoryQuickDesc": {
+    "message": "Uses the summary the browser already keeps for each page. Fast, but cannot tell when you first visited a site.",
+    "description": "Description of the quick history import"
+  },
+  "firstSeenLabel": {
+    "message": "First known visit",
+    "description": "Label for the earliest recorded visit"
+  },
+  "lastSeenLabel": {
+    "message": "Last visit",
+    "description": "Label for the most recent visit"
+  },
+  "activeDaysLabel": {
+    "message": "Active days",
+    "description": "Label for the number of distinct days a site was visited"
+  },
+  "statsUnknown": {
+    "message": "unknown",
+    "description": "Shown instead of a date that the extension cannot know"
+  },
+  "statsImportHint": {
+    "message": "Import your browser history to fill this in",
+    "description": "Hint shown when first-visit data is missing"
   },
   "resetData": {
     "message": "Reset data",

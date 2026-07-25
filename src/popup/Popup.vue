@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { SiteVisitData } from '~/logic/storage'
 import punycode from 'punycode'
 import { getDomain } from 'tldts'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -48,6 +49,11 @@ function updateTranslations() {
     'antiTamperingTooltipOn',
     'antiTamperingTooltipOff',
     'checkExternalButton',
+    'firstSeenLabel',
+    'lastSeenLabel',
+    'activeDaysLabel',
+    'statsUnknown',
+    'statsImportHint',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -88,6 +94,20 @@ const cumulativeCount = computed(() => {
 const currentDomainCount = computed(() => {
   return visits.value[currentHostname.value]?.count || 0
 })
+
+const currentStats = computed<SiteVisitData | undefined>(() => {
+  return visits.value[currentHostname.value]
+})
+
+function formatTimestamp(timestamp?: number) {
+  if (!timestamp)
+    return ''
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
 
 const sortedSubdomains = computed(() => {
   const domains = [...subdomains.value]
@@ -332,6 +352,43 @@ onMounted(async () => {
               {{ currentDomainCount }}
             </div>
           </div>
+          <!-- Visit history facts. firstSeen/activeDays stay empty until a full
+               history import supplies them — we never guess a date. -->
+          <div
+            v-if="currentStats"
+            class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-2 text-left"
+            style="font-size: 0.7em;"
+          >
+            <div>
+              <div class="uppercase tracking-wider opacity-50">
+                {{ translations.firstSeenLabel }}
+              </div>
+              <div v-if="currentStats.firstSeen">
+                {{ formatTimestamp(currentStats.firstSeen) }}
+              </div>
+              <div v-else class="opacity-40 italic" :title="translations.statsImportHint">
+                {{ translations.statsUnknown }}
+              </div>
+            </div>
+            <div>
+              <div class="uppercase tracking-wider opacity-50">
+                {{ translations.lastSeenLabel }}
+              </div>
+              <div>{{ formatTimestamp(currentStats.lastSeen) }}</div>
+            </div>
+            <div>
+              <div class="uppercase tracking-wider opacity-50">
+                {{ translations.activeDaysLabel }}
+              </div>
+              <div v-if="currentStats.activeDays">
+                {{ currentStats.activeDays }}
+              </div>
+              <div v-else class="opacity-40 italic" :title="translations.statsImportHint">
+                {{ translations.statsUnknown }}
+              </div>
+            </div>
+          </div>
+
           <!-- Anti-Tampering Status -->
           <div class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <div

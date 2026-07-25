@@ -1,10 +1,11 @@
-import type { Settings } from '~/logic/storage'
+import type { Settings, SiteVisitData } from '~/logic/storage'
 import { getDomain } from 'tldts'
 import { onMessage } from 'webext-bridge/background'
 import { analyzeEmailAddress, parseMailtoUrl } from '~/logic/email-safety'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings as appSettings } from '~/logic/storage'
 import { addCustomShortener, getCachedResolvedUrl, loadCustomShorteners, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
+import { applyVisit } from '~/logic/visit-stats'
 
 // Load user-defined shortener domains on service worker start
 browser.storage.local.get('customShorteners').then((stored) => {
@@ -111,29 +112,10 @@ function isInternalPage(hostname: string): boolean {
 async function incrementVisitCount(url: string) {
   const hostname = getHostname(url)
   const result = await browser.storage.local.get(hostname)
-  const now = Date.now()
-
-  // Get existing data or create default
-  const existingData = result[hostname] as {
-    count: number
-    lastSeen?: number
-    ignored?: boolean
-  } | undefined
-
-  const currentCount = existingData?.count || 0
-  const lastSeen = existingData?.lastSeen || 0
-  const ignored = existingData?.ignored || false
-
-  // Only increment count if more than 1 minute has passed since last visit
-  const oneMinuteMs = 60000
-  const shouldIncrement = !lastSeen || (now - lastSeen) > oneMinuteMs
+  const existingData = result[hostname] as SiteVisitData | undefined
 
   await browser.storage.local.set({
-    [hostname]: {
-      count: shouldIncrement ? currentCount + 1 : currentCount,
-      lastSeen: now,
-      ignored,
-    },
+    [hostname]: applyVisit(existingData, Date.now()),
   })
 }
 

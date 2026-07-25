@@ -119,17 +119,45 @@
     "message": "Управление данными",
     "description": "Title for database management section"
   },
-  "importHistory": {
-    "message": "Импорт истории браузера",
-    "description": "Label for import history button"
-  },
   "importing": {
     "message": "Импорт...",
     "description": "Text shown while importing"
   },
-  "importHistoryDesc": {
-    "message": "Импортируйте историю браузера для инициализации счетчиков посещений",
-    "description": "Description for import history feature"
+  "importHistoryFull": {
+    "message": "Полный импорт",
+    "description": "Label for the full history import button"
+  },
+  "importHistoryFullDesc": {
+    "message": "Читает каждое записанное посещение, поэтому даты первого визита и активные дни настоящие. На большой истории медленнее — импорт можно отменить в любой момент.",
+    "description": "Description of the full history import"
+  },
+  "importHistoryQuick": {
+    "message": "Быстрый импорт",
+    "description": "Label for the quick history import button"
+  },
+  "importHistoryQuickDesc": {
+    "message": "Использует сводку, которую браузер уже хранит по каждой странице. Быстро, но дату первого посещения определить нельзя.",
+    "description": "Description of the quick history import"
+  },
+  "firstSeenLabel": {
+    "message": "Первое известное посещение",
+    "description": "Label for the earliest recorded visit"
+  },
+  "lastSeenLabel": {
+    "message": "Последнее посещение",
+    "description": "Label for the most recent visit"
+  },
+  "activeDaysLabel": {
+    "message": "Активных дней",
+    "description": "Label for the number of distinct days a site was visited"
+  },
+  "statsUnknown": {
+    "message": "неизвестно",
+    "description": "Shown instead of a date that the extension cannot know"
+  },
+  "statsImportHint": {
+    "message": "Импортируйте историю браузера, чтобы заполнить это",
+    "description": "Hint shown when first-visit data is missing"
   },
   "resetData": {
     "message": "Сброс данных",

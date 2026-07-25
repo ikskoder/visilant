@@ -95,7 +95,10 @@ Visilant implements multiple layers of protection to ensure reliable operation e
      - **_Note:_** When an in-page alert is displayed, you can disable further warnings for that specific site regardless of its visit count or threshold settings.
      - You can also disable notifications completely if you prefer a non-intrusive browsing experience. However, be sure to check the visit count on the extension icon during important interactions, as otherwise, the extension's effectiveness is greatly diminished.
 
-5. Import your browser history to populate the visit counter with previously visited sites. This helps reduce false positives and unnecessary warnings for "familiar" sites.
+5. Import your browser history to populate the visit counter with previously visited sites. This helps reduce false positives and unnecessary warnings for "familiar" sites. Two modes are available:
+     - **Full import** reads every recorded visit, so the first-visit date and the number of active days are real values rather than estimates. It is slower on a large history and can be cancelled at any point.
+     - **Quick import** uses the per-page summary the browser already keeps. It finishes in one pass, but cannot determine when a site was first visited.
+     - **_Note:_** Dates are labelled "first known visit" because they can only reflect what is still in your browser history — clearing history removes visits that cannot be recovered.
 
 ### Notification Triggers
 
@@ -148,12 +151,6 @@ While Visilant enhances awareness of "unfamiliar" websites, its limitations incl
   To detect input and clipboard interactions, Visilant injects a small script into visited pages. While Visilant implements anti-tampering protection that detects removal attempts and notifies you via system notifications, it's still recommended to pin the extension icon to your toolbar as an additional safeguard.
 
 Understanding these limitations is crucial for Visilant's effective use.
-
-## Development Notes
-
-This extension is built upon the [vitesse-webext](https://github.com/antfu-collective/vitesse-webext) template, chosen for its robust foundation in cross-browser compatibility. As a result, some unnecessary inherited template files remain. These may be removed in future updates.
-
-During initial development, AI assistance accelerated prototyping. Subsequently, key code sections underwent manual review and refinement. Some code duplication may still exist due to the developer's ongoing learning in browser extension development. A thorough code review and cleanup are planned for future updates, subject to available time.
 
 ## Contributing & Feedback
 

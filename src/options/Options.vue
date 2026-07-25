@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import type { ImportedDomainStats } from '~/logic/history-import'
+import type { SiteVisitData } from '~/logic/storage'
 import { onMounted, ref, watch } from 'vue'
 import logo from '~/assets/logo.svg'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
 import { fetchRemoteDomainList, STORAGE_KEY_CUSTOM_DISPOSABLE, STORAGE_KEY_CUSTOM_PUBLIC, STORAGE_KEY_REMOTE_DISPOSABLE, updateDisposableList } from '~/logic/email-providers'
+import { addVisitTimes, hostnameFromHistoryUrl, mapWithConcurrency, mergeImportedStats } from '~/logic/history-import'
 import { defaultSettings, settings } from '~/logic/storage'
 
 const { t, setLanguage, currentLanguage, isLoaded } = useI18n()
@@ -46,9 +49,11 @@ function updateTranslations() {
     'notificationCooldown',
     'notificationCooldownDesc',
     'databaseManagement',
-    'importHistory',
+    'importHistoryFull',
+    'importHistoryFullDesc',
+    'importHistoryQuick',
+    'importHistoryQuickDesc',
     'importing',
-    'importHistoryDesc',
     'resetData',
     'visitsInfo',
     'allSettings',
@@ -217,6 +222,7 @@ async function updateDisposableListNow() {
 // Loading states
 const isImporting = ref(false)
 const importProgress = ref({ current: 0, total: 0 })
+const importCancelled = ref(false)
 const showResetConfirm = ref(false)
 
 // Reset selection states
@@ -249,7 +255,26 @@ function updateSafetyThreshold(value: string) {
 }
 
 // Database management functions
-async function importHistory() {
+
+// How many history.getVisits() calls the full import keeps in flight at once.
+const IMPORT_CONCURRENCY = 12
+// Hostnames written per storage.local.set() call.
+const IMPORT_WRITE_BATCH = 500
+
+function cancelImport() {
+  importCancelled.value = true
+}
+
+/**
+ * Import visit counts from the browser history.
+ *
+ * Quick mode uses the per-URL summary the browser already has (visit count and
+ * last visit time) — one API call in total, but it cannot tell us when the user
+ * first visited a site. Full mode additionally asks for the individual visits of
+ * every URL, which yields a real firstSeen and a real active-day count at the cost
+ * of one call per URL.
+ */
+async function importHistory(mode: 'quick' | 'full') {
   try {
     // Request history permission first
     const granted = await browser.permissions.request({
@@ -264,50 +289,111 @@ async function importHistory() {
     }
 
     isImporting.value = true
+    importCancelled.value = false
+
     const history = await browser.history.search({
       text: '',
       maxResults: 999999, // can't be 0 bcs of firefox
       startTime: 0, // from the beginning
     })
 
-    // Group visits by hostname
-    const visitsInfo = new Map<string, number>()
-    importProgress.value.total = history.length
-
+    // Only http(s) pages on dotted hostnames are tracked, the rest is dropped here
+    // so it never reaches the progress total or the per-URL visit lookups.
+    const pages: { url: string, hostname: string, lastVisitTime?: number, visitCount?: number }[] = []
     for (const item of history) {
-      importProgress.value.current++
-      if (!item.url)
-        continue
-      try {
-        const hostname = new URL(item.url).hostname
-        visitsInfo.set(hostname, (visitsInfo.get(hostname) || 0) + 1)
-      }
-      catch {
-        // Skip invalid URLs
-        continue
+      const hostname = hostnameFromHistoryUrl(item.url)
+      if (hostname && item.url) {
+        pages.push({
+          url: item.url,
+          hostname,
+          lastVisitTime: item.lastVisitTime,
+          visitCount: item.visitCount,
+        })
       }
     }
 
-    // Update storage with visit counts
-    let processed = 0
-    const totalSites = visitsInfo.size
-    importProgress.value = { current: 0, total: totalSites }
-    const now = Date.now()
+    const stats = new Map<string, ImportedDomainStats>()
+    const daysByHostname = new Map<string, Set<string>>()
+    importProgress.value = { current: 0, total: pages.length }
 
-    for (const [hostname, count] of visitsInfo) {
-      processed++
-      importProgress.value.current = processed
-      await browser.storage.local.set({
-        [hostname]: {
-          count,
-          lastSeen: now,
-          ignored: false,
+    const daysFor = (hostname: string) => {
+      let days = daysByHostname.get(hostname)
+      if (!days) {
+        days = new Set<string>()
+        daysByHostname.set(hostname, days)
+      }
+      return days
+    }
+
+    if (mode === 'full') {
+      await mapWithConcurrency(
+        pages,
+        IMPORT_CONCURRENCY,
+        async (page) => {
+          try {
+            const visits = await browser.history.getVisits({ url: page.url })
+            const times = visits
+              .map(visit => visit.visitTime)
+              .filter((time): time is number => typeof time === 'number')
+            const merged = addVisitTimes(stats.get(page.hostname), times, daysFor(page.hostname))
+            if (merged)
+              stats.set(page.hostname, merged)
+          }
+          catch {
+            // A URL can disappear between search() and getVisits() — skip it
+          }
+          importProgress.value.current++
         },
-      })
+        () => importCancelled.value,
+      )
+
+      // Active days are only known once every URL of the hostname has been read
+      for (const [hostname, entry] of stats)
+        entry.activeDays = daysByHostname.get(hostname)?.size || undefined
+    }
+    else {
+      for (const page of pages) {
+        importProgress.value.current++
+        const lastVisit = page.lastVisitTime
+        if (typeof lastVisit !== 'number' || lastVisit <= 0)
+          continue
+
+        const existing = stats.get(page.hostname)
+        const count = page.visitCount || 1
+        stats.set(page.hostname, {
+          count: (existing?.count || 0) + count,
+          lastSeen: Math.max(existing?.lastSeen || 0, lastVisit),
+        })
+      }
+    }
+
+    if (importCancelled.value)
+      return
+
+    // Merge into whatever is already stored, in batches — one write per hostname
+    // is unusably slow on a large history
+    importProgress.value = { current: 0, total: stats.size }
+    const hostnames = [...stats.keys()]
+
+    for (let offset = 0; offset < hostnames.length; offset += IMPORT_WRITE_BATCH) {
+      const chunk = hostnames.slice(offset, offset + IMPORT_WRITE_BATCH)
+      const existing = await browser.storage.local.get(chunk)
+      const payload: Record<string, SiteVisitData> = {}
+
+      for (const hostname of chunk) {
+        payload[hostname] = mergeImportedStats(
+          existing[hostname] as SiteVisitData | undefined,
+          stats.get(hostname)!,
+        )
+      }
+
+      await browser.storage.local.set(payload)
+      importProgress.value.current = Math.min(offset + chunk.length, hostnames.length)
     }
   }
   finally {
     isImporting.value = false
+    importCancelled.value = false
     importProgress.value = { current: 0, total: 0 }
   }
 }
@@ -880,23 +966,40 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <div>
               <button
                 class="btn-primary w-full"
-                :disabled="isImporting" @click="importHistory"
+                :disabled="isImporting" @click="importHistory('full')"
               >
                 <template v-if="!isImporting">
-                  {{ translations.importHistory }}
+                  {{ translations.importHistoryFull }}
                 </template>
                 <template v-else>
                   {{ translations.importing }} {{ importProgress.current }}/{{ importProgress.total }}
                 </template>
               </button>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 text-left">
+                {{ translations.importHistoryFullDesc }}
+              </p>
               <div v-if="isImporting" class="w-full h-1 mt-2 bg-gray-200 rounded-full overflow-hidden">
                 <div
                   class="h-full bg-blue-500 transition-all duration-200"
-                  :style="{ width: `${(importProgress.current / importProgress.total) * 100}%` }"
+                  :style="{ width: `${importProgress.total ? (importProgress.current / importProgress.total) * 100 : 0}%` }"
                 />
               </div>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {{ translations.importHistoryDesc }}
+              <button
+                v-if="isImporting"
+                class="btn-ghost btn-sm w-full mt-2"
+                @click="cancelImport"
+              >
+                {{ translations.cancel }}
+              </button>
+
+              <button
+                class="btn-ghost w-full mt-3"
+                :disabled="isImporting" @click="importHistory('quick')"
+              >
+                {{ translations.importHistoryQuick }}
+              </button>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 text-left">
+                {{ translations.importHistoryQuickDesc }}
               </p>
             </div>
 

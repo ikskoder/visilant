@@ -122,4 +122,8 @@ export interface SiteVisitData {
   count: number
   lastSeen: number // Unix timestamp of last visit
   ignored: boolean // Whether notifications are ignored for this site
+  // Both fields are optional on purpose: records written before they existed have
+  // no honest value for them, and only a browser-history import can supply one.
+  firstSeen?: number // Unix timestamp of the earliest known visit
+  activeDays?: number // Number of distinct local days the site was visited on
 }
