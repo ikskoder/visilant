@@ -102,6 +102,23 @@ const currentStats = computed<SiteVisitData | undefined>(() => {
   return visits.value[currentHostname.value]
 })
 
+// The domain display is deliberately wide — a hyperlegible face at 0.25em letter
+// spacing — so a long hostname cannot fit at the headline size. Stepping the size
+// down keeps it to one or two lines instead of breaking a label apart, which is
+// exactly what someone reading a suspicious address must not have to untangle.
+const currentDomainFontSize = computed(() => {
+  const length = Math.max(currentHostname.value.length, unicodeHostname.value.length)
+
+  if (length <= 24)
+    return '1.8em'
+  if (length <= 34)
+    return '1.45em'
+  if (length <= 46)
+    return '1.15em'
+
+  return '0.95em'
+})
+
 function formatTimestamp(timestamp?: number) {
   if (!timestamp)
     return ''
@@ -328,7 +345,7 @@ onMounted(async () => {
             {{ translations.currentDomain }}
           </div>
           <div class="flex justify-between items-end">
-            <div class="secure-domain-display font-bold break-all leading-tight mr-2" style="font-size: 1.8em;">
+            <div class="secure-domain-display font-bold break-words min-w-0 leading-tight mr-2" :style="{ fontSize: currentDomainFontSize }">
               <template v-if="isPunycode">
                 <div class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-sans font-normal mb-0.5">
                   {{ translations.domainOriginal }}
@@ -425,7 +442,7 @@ onMounted(async () => {
               <span class="opacity-50">{{ translations.baseDomain }}</span>
               <span class="font-mono font-bold" :class="getCountColor(cumulativeCount)">{{ translations.total }}{{ cumulativeCount }}</span>
             </div>
-            <div class="secure-domain-display font-bold break-all" style="font-size: 1.1em;">
+            <div class="secure-domain-display font-bold break-words" style="font-size: 1.1em;">
               <SecureText :text="baseDomain" />
             </div>
           </div>

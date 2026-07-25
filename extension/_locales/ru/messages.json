@@ -492,23 +492,23 @@
     "description": "Label for punycode/ASCII domain display"
   },
   "domainMarkerUserinfo": {
-    "message": "Имя перед @ — это не адрес, куда ведёт ссылка",
+    "message": "Обманка перед @, это не адрес",
     "description": "Marker: URL contains userinfo before the host"
   },
   "domainMarkerIpHost": {
-    "message": "Вместо доменного имени используется числовой адрес",
+    "message": "Числовой адрес вместо доменного имени",
     "description": "Marker: host is a raw IP address"
   },
   "domainMarkerEmbeddedSuffix": {
-    "message": "Окончание домена стоит в поддомене — настоящий домен правее",
+    "message": "Окончание домена стоит в поддомене",
     "description": "Marker: public suffix used as a subdomain label"
   },
   "domainMarkerDeepSubdomains": {
-    "message": "Необычно много уровней поддоменов",
+    "message": "Слишком много уровней поддоменов",
     "description": "Marker: subdomain nesting deeper than usual"
   },
   "domainMarkerMixedScripts": {
-    "message": "В одной части адреса смешаны разные алфавиты",
+    "message": "Разные алфавиты в одной части адреса",
     "description": "Marker: a hostname label mixes writing systems"
   },
   "linkTooltipGoToLink": {

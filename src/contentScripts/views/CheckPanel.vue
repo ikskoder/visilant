@@ -119,13 +119,13 @@ function statusBadge(count: number) {
           <div class="panel-label uppercase tracking-wider mb-0.5" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
             {{ t('emailAccountName') }}
           </div>
-          <div class="panel-address font-bold break-all">
+          <div class="panel-address font-bold">
             <SecureText :text="data.email.analysis.localPart" :highlight-override="localHighlight" :case-override="localCase" />
           </div>
           <div class="panel-label uppercase tracking-wider mt-1.5 mb-0.5" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
             {{ t('emailDomainLabel') }}
           </div>
-          <div class="panel-address font-bold break-all">
+          <div class="panel-address font-bold">
             <SecureText :text="data.email.analysis.domain" :highlight-override="localHighlight" :case-override="localCase" />
           </div>
           <div v-if="data.email.analysis.suspiciousPattern" class="panel-label mt-1" :class="isDark ? 'text-red-400' : 'text-red-600'">
@@ -149,7 +149,7 @@ function statusBadge(count: number) {
               {{ statusBadge(data.family.total).text.toLowerCase() }}
             </span>
           </div>
-          <div class="panel-address font-bold break-all">
+          <div class="panel-address font-bold">
             <SecureText :text="displayDomain(data.hostname)" :highlight-override="localHighlight" :case-override="localCase" />
           </div>
         </div>
@@ -303,7 +303,10 @@ button {
 .panel-address {
   font-size: 1.15em !important;
   line-height: 1.35em !important;
-  word-break: break-all !important;
+  /* Wrap at the label boundaries SecureText marks, and split a label only
+     when it cannot fit on a line by itself */
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
 }
 
 .panel-toggle {

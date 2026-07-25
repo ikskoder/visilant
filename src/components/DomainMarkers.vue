@@ -39,9 +39,11 @@ const markers = computed(() => {
       :class="isDark ? 'text-amber-400' : 'text-amber-700'"
     >
       <span class="flex-shrink-0" aria-hidden="true">⚠</span>
-      <span class="break-all">
+      <!-- break-words, not break-all: wrap between words, and only ever split a
+           word that cannot fit on its own. An address or an IPv4 stays intact. -->
+      <span class="break-words">
         {{ t(TRANSLATION_KEYS[marker.id]) }}<template v-if="marker.detail">:
-          <SecureText :text="marker.detail" force-highlight danger-only class="font-mono" />
+          <SecureText :text="marker.detail" force-highlight danger-only class="font-mono whitespace-nowrap" />
         </template>
       </span>
     </div>

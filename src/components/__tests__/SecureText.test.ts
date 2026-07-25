@@ -69,4 +69,41 @@ describe('secureText component', () => {
     // Alpha chars should have empty class in dangerOnly mode
     expect(html).not.toContain('text-green-600')
   })
+
+  describe('label break opportunities', () => {
+    it('offers a break after every dot so long names wrap at label boundaries', () => {
+      const wrapper = mount(SecureText, {
+        props: { text: 'paypal.com.a.b.secure.example.net' },
+      })
+      expect(wrapper.findAll('wbr')).toHaveLength(6)
+    })
+
+    it('offers none for a name without dots', () => {
+      const wrapper = mount(SecureText, { props: { text: 'localhost' } })
+      expect(wrapper.findAll('wbr')).toHaveLength(0)
+    })
+
+    it('adds no characters, so the displayed text is exactly the input', () => {
+      // <wbr> is an element with no text content — copying the domain out of the
+      // popup must not pick up an invisible separator
+      const wrapper = mount(SecureText, { props: { text: 'paypal.com.evil.net' } })
+      expect(wrapper.text()).toBe('paypal.com.evil.net')
+    })
+
+    it('keeps the dot attached to the label it follows', () => {
+      const wrapper = mount(SecureText, { props: { text: 'a.b' } })
+      const spans = wrapper.findAll('.secure-domain-display > span')
+      expect(spans.map(span => span.text())).toEqual(['a.', 'b'])
+    })
+
+    it('still splits by character class inside a label', () => {
+      const wrapper = mount(SecureText, {
+        props: { text: 'a1.b', forceHighlight: true },
+      })
+      // Highlighting already gives the dot its own span, and the break lands after it
+      const spans = wrapper.findAll('.secure-domain-display > span')
+      expect(spans.map(span => span.text())).toEqual(['a', '1', '.', 'b'])
+      expect(wrapper.findAll('wbr')).toHaveLength(1)
+    })
+  })
 })

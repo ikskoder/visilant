@@ -293,7 +293,7 @@ function payloadTypeLabel(payloadKind: string) {
             class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
             :class="result.isShortener ? 'bg-orange-500' : result.isSafe ? 'bg-green-500' : 'bg-red-500'"
           />
-          <span class="font-medium break-all secure-domain-display">
+          <span class="font-medium break-words secure-domain-display">
             <SecureText :text="result.hostname" />
           </span>
           <span v-if="result.isShortener" class="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">
@@ -342,7 +342,7 @@ function payloadTypeLabel(payloadKind: string) {
               class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
               :class="result.resolve.finalIsSafe ? 'bg-green-500' : 'bg-red-500'"
             />
-            <span class="font-medium break-all secure-domain-display">
+            <span class="font-medium break-words secure-domain-display">
               <SecureText :text="result.resolve.finalHostname || ''" />
             </span>
             <span class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.resolve.finalIsSafe || false, result.resolve.finalCount || 0).class">

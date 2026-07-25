@@ -69,14 +69,35 @@ const segments = computed(() => {
   result.push({ text: currentText, class: currentClass })
   return result
 })
+
+// A hostname contains no spaces, so a browser has nowhere to wrap it and ends up
+// splitting mid-label. Marking a break opportunity after every dot lets long
+// names wrap at label boundaries instead. <wbr> is an element rather than a
+// character, so copying the domain still yields exactly what is on screen.
+const parts = computed(() => {
+  const result: { text: string, class: string, breakAfter: boolean }[] = []
+
+  for (const segment of segments.value) {
+    let buffer = ''
+
+    for (const char of segment.text) {
+      buffer += char
+      if (char === '.') {
+        result.push({ text: buffer, class: segment.class, breakAfter: true })
+        buffer = ''
+      }
+    }
+
+    if (buffer)
+      result.push({ text: buffer, class: segment.class, breakAfter: false })
+  }
+
+  return result
+})
 </script>
 
 <template>
   <span class="secure-domain-display">
-    <span
-      v-for="(segment, index) in segments"
-      :key="index"
-      :class="segment.class"
-    >{{ segment.text }}</span>
+    <template v-for="(part, index) in parts" :key="index"><span :class="part.class">{{ part.text }}</span><wbr v-if="part.breakAfter"></template>
   </span>
 </template>
