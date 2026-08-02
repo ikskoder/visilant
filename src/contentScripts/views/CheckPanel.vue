@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CheckPanelData } from '~/logic/ui-state'
 import punycode from 'punycode'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
@@ -49,6 +49,23 @@ function onKeydown(event: KeyboardEvent) {
     emit('close')
   }
 }
+
+// Same convention as the popup row: a button shows the state it is in, and the
+// tooltip says what pressing it will do
+const highlightingTitle = computed(() => {
+  const action = localHighlight.value
+    ? t.value('highlightingTurnOff')
+    : t.value('highlightingTurnOn')
+  return `${action}\n\n${t.value('highlightingLegend')}`
+})
+
+const caseTitle = computed(() => localCase.value === 'upper'
+  ? t.value('caseToLower')
+  : t.value('caseToUpper'))
+
+const punycodeTitle = computed(() => localPunycodeMode.value === 'unicode'
+  ? t.value('punycodeShowAscii')
+  : t.value('punycodeShowUnicode'))
 
 function displayDomain(domain: string) {
   if (localPunycodeMode.value === 'ascii')
@@ -171,7 +188,8 @@ function statusBadge(count: number) {
           <button
             class="panel-toggle"
             :class="[isDark ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100', localHighlight ? (isDark ? 'bg-blue-900/40' : 'bg-blue-100') : 'grayscale opacity-60']"
-            :title="t('toggleHighlighting')"
+            :title="highlightingTitle"
+            :aria-label="highlightingTitle"
             :aria-pressed="localHighlight"
             @click="localHighlight = !localHighlight"
           >
@@ -180,18 +198,20 @@ function statusBadge(count: number) {
           <button
             class="panel-toggle font-bold"
             :class="isDark ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'"
-            :title="t('toggleCase')"
+            :title="caseTitle"
+            :aria-label="caseTitle"
             @click="localCase = localCase === 'upper' ? 'lower' : 'upper'"
           >
-            {{ localCase === 'upper' ? 'Aa' : 'AA' }}
+            {{ localCase === 'upper' ? 'AA' : 'aa' }}
           </button>
           <button
             class="panel-toggle font-bold"
             :class="isDark ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'"
-            :title="t('togglePunycodeListMode')"
+            :title="punycodeTitle"
+            :aria-label="punycodeTitle"
             @click="localPunycodeMode = localPunycodeMode === 'unicode' ? 'ascii' : 'unicode'"
           >
-            {{ localPunycodeMode === 'unicode' ? 'P' : 'O' }}
+            {{ localPunycodeMode === 'unicode' ? 'O' : 'P' }}
           </button>
         </div>
 

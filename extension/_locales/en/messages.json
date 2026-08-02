@@ -275,21 +275,41 @@
     "message": "Visits",
     "description": "Sort by visits option"
   },
-  "toggleSortOrder": {
-    "message": "Toggle sort order",
-    "description": "Tooltip for sort order toggle"
+  "sortOrderToAsc": {
+    "message": "Sort ascending — currently descending",
+    "description": "Sort button tooltip while sorting descending"
   },
-  "toggleCase": {
-    "message": "Toggle case",
-    "description": "Tooltip for case toggle"
+  "sortOrderToDesc": {
+    "message": "Sort descending — currently ascending",
+    "description": "Sort button tooltip while sorting ascending"
   },
-  "toggleHighlighting": {
-    "message": "Toggle highlighting\n\nBlue: numbers (0-9)\nBold: separators (-_.)\nRed: everything else — the characters worth a second look\n\nLatin letters are left plain: ordinary is not the same as safe.",
-    "description": "Tooltip for highlighting toggle with legend"
+  "caseToUpper": {
+    "message": "Show uppercase — currently lowercase",
+    "description": "Case button tooltip while showing lowercase"
   },
-  "togglePunycodeListMode": {
-    "message": "Toggle domain display format (Original / Punycode)",
-    "description": "Tooltip for punycode list mode toggle"
+  "caseToLower": {
+    "message": "Show lowercase — currently uppercase",
+    "description": "Case button tooltip while showing uppercase"
+  },
+  "highlightingTurnOn": {
+    "message": "Turn highlighting on — currently off",
+    "description": "Highlighting button tooltip while highlighting is off"
+  },
+  "highlightingTurnOff": {
+    "message": "Turn highlighting off — currently on",
+    "description": "Highlighting button tooltip while highlighting is on"
+  },
+  "punycodeShowAscii": {
+    "message": "Show punycode (ASCII) — currently the original",
+    "description": "Domain format button tooltip while showing the original"
+  },
+  "punycodeShowUnicode": {
+    "message": "Show the original — currently punycode (ASCII)",
+    "description": "Domain format button tooltip while showing punycode"
+  },
+  "highlightingLegend": {
+    "message": "Latin: plain\nBlue: numbers (0-9)\nBold: separators (-_.)\nRed: everything else",
+    "description": "What each highlight colour means, appended to the button tooltip"
   },
   "domainOriginal": {
     "message": "Original (Unicode)",

@@ -32,10 +32,15 @@ function updateTranslations() {
     'sortBy',
     'sortByName',
     'sortByVisits',
-    'toggleSortOrder',
-    'toggleCase',
-    'toggleHighlighting',
-    'togglePunycodeListMode',
+    'sortOrderToAsc',
+    'sortOrderToDesc',
+    'caseToUpper',
+    'caseToLower',
+    'highlightingTurnOn',
+    'highlightingTurnOff',
+    'highlightingLegend',
+    'punycodeShowAscii',
+    'punycodeShowUnicode',
     'domainOriginal',
     'domainPunycode',
     'punycodeHelpTitle',
@@ -152,6 +157,32 @@ const sortedSubdomains = computed(() => {
     }
   })
 })
+
+// One convention across the whole row: a button always shows the state it is in,
+// never the state a click would take you to. The sort arrow and the rainbow
+// already did; the case and format buttons showed the opposite, so `AA` meant
+// "currently lowercase" and read as the exact reverse of what it looked like.
+//
+// The tooltips complete it by naming the action, since a button that only shows
+// its state does not say what pressing it does.
+const sortOrderTitle = computed(() => settings.value.sortOrder === 'asc'
+  ? translations.value.sortOrderToDesc
+  : translations.value.sortOrderToAsc)
+
+const caseTitle = computed(() => settings.value.domainCase === 'upper'
+  ? translations.value.caseToLower
+  : translations.value.caseToUpper)
+
+const highlightingTitle = computed(() => {
+  const action = settings.value.domainHighlighting
+    ? translations.value.highlightingTurnOff
+    : translations.value.highlightingTurnOn
+  return `${action}\n\n${translations.value.highlightingLegend}`
+})
+
+const punycodeTitle = computed(() => settings.value.punycodeListMode === 'unicode'
+  ? translations.value.punycodeShowAscii
+  : translations.value.punycodeShowUnicode)
 
 function toggleSortOrder() {
   settings.value.sortOrder = settings.value.sortOrder === 'asc' ? 'desc' : 'asc'
@@ -467,25 +498,27 @@ onMounted(async () => {
             </button>
             <button
               class="btn-ghost btn-sm !rounded ml-auto w-6 flex items-center justify-center"
-              :title="translations.toggleSortOrder"
+              :title="sortOrderTitle"
+              :aria-label="sortOrderTitle"
               @click="toggleSortOrder"
             >
               {{ settings.sortOrder === 'asc' ? '↑' : '↓' }}
             </button>
             <button
               class="btn-ghost btn-sm !rounded w-6 flex items-center justify-center"
-              :title="translations.toggleCase"
+              :title="caseTitle"
+              :aria-label="caseTitle"
               @click="toggleDomainCase"
             >
-              {{ settings.domainCase === 'upper' ? 'Aa' : 'AA' }}
+              {{ settings.domainCase === 'upper' ? 'AA' : 'aa' }}
             </button>
             <!-- Highlighting leaves plain Latin addresses untouched, so the button
                  has to show its own state or it reads as broken -->
             <button
               class="btn-ghost btn-sm !rounded w-6 flex items-center justify-center"
               :class="settings.domainHighlighting ? '!bg-blue-100 !border-blue-200 dark:!bg-blue-900/40 dark:!border-blue-700' : 'grayscale opacity-60'"
-              :title="translations.toggleHighlighting"
-              :aria-label="translations.toggleHighlighting"
+              :title="highlightingTitle"
+              :aria-label="highlightingTitle"
               :aria-pressed="settings.domainHighlighting"
               @click="toggleHighlighting"
             >
@@ -493,11 +526,11 @@ onMounted(async () => {
             </button>
             <button
               class="btn-ghost btn-sm !rounded w-6 flex items-center justify-center font-bold"
-              :title="translations.togglePunycodeListMode"
-              :aria-label="translations.togglePunycodeListMode"
+              :title="punycodeTitle"
+              :aria-label="punycodeTitle"
               @click="togglePunycodeListMode"
             >
-              {{ settings.punycodeListMode === 'unicode' ? 'P' : 'O' }}
+              {{ settings.punycodeListMode === 'unicode' ? 'O' : 'P' }}
             </button>
           </div>
 

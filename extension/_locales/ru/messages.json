@@ -275,21 +275,41 @@
     "message": "Посещениям",
     "description": "Sort by visits option"
   },
-  "toggleSortOrder": {
-    "message": "Переключить порядок сортировки",
-    "description": "Tooltip for sort order toggle"
+  "sortOrderToAsc": {
+    "message": "Сортировать по возрастанию — сейчас по убыванию",
+    "description": "Sort button tooltip while sorting descending"
   },
-  "toggleCase": {
-    "message": "Переключить регистр",
-    "description": "Tooltip for case toggle"
+  "sortOrderToDesc": {
+    "message": "Сортировать по убыванию — сейчас по возрастанию",
+    "description": "Sort button tooltip while sorting ascending"
   },
-  "toggleHighlighting": {
-    "message": "Переключить подсветку\n\nСиний: цифры (0-9)\nЖирный: разделители (-_.)\nКрасный: всё остальное — символы, на которые стоит взглянуть дважды\n\nЛатиница не подсвечивается: обычное — не значит безопасное.",
-    "description": "Tooltip for highlighting toggle with legend"
+  "caseToUpper": {
+    "message": "Показать в верхнем регистре — сейчас нижний",
+    "description": "Case button tooltip while showing lowercase"
   },
-  "togglePunycodeListMode": {
-    "message": "Переключить формат отображения доменов (Оригинал / Punycode)",
-    "description": "Tooltip for punycode list mode toggle"
+  "caseToLower": {
+    "message": "Показать в нижнем регистре — сейчас верхний",
+    "description": "Case button tooltip while showing uppercase"
+  },
+  "highlightingTurnOn": {
+    "message": "Включить подсветку — сейчас выключена",
+    "description": "Highlighting button tooltip while highlighting is off"
+  },
+  "highlightingTurnOff": {
+    "message": "Выключить подсветку — сейчас включена",
+    "description": "Highlighting button tooltip while highlighting is on"
+  },
+  "punycodeShowAscii": {
+    "message": "Показать punycode (ASCII) — сейчас оригинал",
+    "description": "Domain format button tooltip while showing the original"
+  },
+  "punycodeShowUnicode": {
+    "message": "Показать оригинал — сейчас punycode (ASCII)",
+    "description": "Domain format button tooltip while showing punycode"
+  },
+  "highlightingLegend": {
+    "message": "Латиница: без подсветки\nСиний: цифры (0-9)\nЖирный: разделители (-_.)\nКрасный: всё остальное",
+    "description": "What each highlight colour means, appended to the button tooltip"
   },
   "domainOriginal": {
     "message": "Оригинал (Unicode)",

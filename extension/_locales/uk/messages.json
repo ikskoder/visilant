@@ -275,21 +275,41 @@
     "message": "Відвідуваннями",
     "description": "Sort by visits option"
   },
-  "toggleSortOrder": {
-    "message": "Перемкнути порядок сортування",
-    "description": "Tooltip for sort order toggle"
+  "sortOrderToAsc": {
+    "message": "Сортувати за зростанням — зараз за спаданням",
+    "description": "Sort button tooltip while sorting descending"
   },
-  "toggleCase": {
-    "message": "Перемкнути регістр",
-    "description": "Tooltip for case toggle"
+  "sortOrderToDesc": {
+    "message": "Сортувати за спаданням — зараз за зростанням",
+    "description": "Sort button tooltip while sorting ascending"
   },
-  "toggleHighlighting": {
-    "message": "Перемкнути підсвічування\n\nСиній: цифри (0-9)\nЖирний: роздільники (-_.)\nЧервоний: усе інше — символи, на які варто глянути двічі\n\nЛатиниця не підсвічується: звичайне — не означає безпечне.",
-    "description": "Tooltip for highlighting toggle with legend"
+  "caseToUpper": {
+    "message": "Показати у верхньому регістрі — зараз нижній",
+    "description": "Case button tooltip while showing lowercase"
   },
-  "togglePunycodeListMode": {
-    "message": "Перемкнути формат відображення доменів (Оригінал / Punycode)",
-    "description": "Tooltip for punycode list mode toggle"
+  "caseToLower": {
+    "message": "Показати у нижньому регістрі — зараз верхній",
+    "description": "Case button tooltip while showing uppercase"
+  },
+  "highlightingTurnOn": {
+    "message": "Увімкнути підсвічування — зараз вимкнено",
+    "description": "Highlighting button tooltip while highlighting is off"
+  },
+  "highlightingTurnOff": {
+    "message": "Вимкнути підсвічування — зараз увімкнено",
+    "description": "Highlighting button tooltip while highlighting is on"
+  },
+  "punycodeShowAscii": {
+    "message": "Показати punycode (ASCII) — зараз оригінал",
+    "description": "Domain format button tooltip while showing the original"
+  },
+  "punycodeShowUnicode": {
+    "message": "Показати оригінал — зараз punycode (ASCII)",
+    "description": "Domain format button tooltip while showing punycode"
+  },
+  "highlightingLegend": {
+    "message": "Латиниця: без підсвічування\nСиній: цифри (0-9)\nЖирний: роздільники (-_.)\nЧервоний: усе інше",
+    "description": "What each highlight colour means, appended to the button tooltip"
   },
   "domainOriginal": {
     "message": "Оригінал (Unicode)",

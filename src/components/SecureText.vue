@@ -89,6 +89,21 @@ const parts = computed(() => {
   const result: { text: string, class: string, breakAfter: boolean }[] = []
 
   for (const segment of segments.value) {
+    // Where the continuation marker is wanted, every character gets its own span
+    // so that a line break always falls between two of them. Grouping instead
+    // would hide any break landing inside a run, which is most of them — and how
+    // coarse the runs are happens to depend on whether highlighting is on, so the
+    // marker would come and go with an unrelated setting.
+    //
+    // Adjacent inline boxes introduce no wrap opportunities of their own, and
+    // ligatures are already disabled on this face, so the text lays out the same
+    // either way.
+    if (props.markWraps) {
+      for (const char of segment.text)
+        result.push({ text: char, class: segment.class, breakAfter: char === '.' })
+      continue
+    }
+
     let buffer = ''
 
     for (const char of segment.text) {

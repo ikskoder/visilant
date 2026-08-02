@@ -118,6 +118,22 @@ describe('secureText component', () => {
       expect(spans.map(span => span.text())).toEqual(['a.', 'b'])
     })
 
+    it('splits per character when markers are wanted, so no break can hide inside a span', () => {
+      const wrapper = mount(SecureText, { props: { text: 'a.bc', markWraps: true } })
+      const spans = wrapper.findAll('.secure-domain-display > span')
+
+      expect(spans.map(span => span.text())).toEqual(['a', '.', 'b', 'c'])
+      expect(wrapper.text()).toBe('a.bc')
+    })
+
+    it('splits per character regardless of highlighting, which must not change the markers', () => {
+      const off = mount(SecureText, { props: { text: 'a1.bc', markWraps: true } })
+      const on = mount(SecureText, { props: { text: 'a1.bc', markWraps: true, forceHighlight: true } })
+
+      const count = (wrapper: typeof off) => wrapper.findAll('.secure-domain-display > span').length
+      expect(count(off)).toBe(count(on))
+    })
+
     it('marks no continuation without a measurable wrap', () => {
       // No layout engine here, so nothing wraps — the point is that asking for
       // wrap markers is safe even where they cannot be computed
