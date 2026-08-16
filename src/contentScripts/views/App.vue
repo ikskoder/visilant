@@ -2,11 +2,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { defaultSettings, settings } from '~/logic/storage'
-import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
+import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
 import CheckPanel from './CheckPanel.vue'
 import InputWarning from './InputWarning.vue'
 import LinkInterceptDialog from './LinkInterceptDialog.vue'
 import LinkTooltip from './LinkTooltip.vue'
+import PasteInterceptDialog from './PasteInterceptDialog.vue'
 import 'uno.css'
 
 // Theme support for content scripts
@@ -142,6 +143,21 @@ function handleInterceptCancel() {
   }
 }
 
+// Paste intercept handlers. The promise is the paste itself waiting to happen,
+// so it always has to be settled, whichever button was pressed.
+async function resolvePasteIntercept(allowed: boolean, dontAskAgain: boolean) {
+  pasteInterceptVisible.value = false
+  pasteInterceptData.value = null
+  if (pasteInterceptResolve.value) {
+    pasteInterceptResolve.value(allowed)
+    pasteInterceptResolve.value = null
+  }
+  // The same per-site switch the warning banner offers, reached from here so the
+  // user does not have to hunt for it after being interrupted
+  if (dontAskAgain)
+    await ignoreSite()
+}
+
 function handleResolveInterceptUrl() {
   // Trigger resolve via the global function exposed by content script
   ;(window as any).__visilant_resolveInterceptUrl?.()
@@ -207,6 +223,15 @@ onMounted(async () => {
       @cancel="handleInterceptCancel"
       @details="handleTooltipDetails"
       @resolve-short-url="handleResolveInterceptUrl"
+    />
+
+    <PasteInterceptDialog
+      :visible="pasteInterceptVisible"
+      :data="pasteInterceptData"
+      :is-dark="isDark"
+      @allow="(dontAskAgain) => resolvePasteIntercept(true, dontAskAgain)"
+      @cancel="(dontAskAgain) => resolvePasteIntercept(false, dontAskAgain)"
+      @details="handleTooltipDetails"
     />
   </div>
 </template>

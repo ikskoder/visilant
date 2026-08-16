@@ -49,8 +49,9 @@ export async function getManifest() {
       'activeTab',
       'notifications',
       'contextMenus',
-    ],
-    optional_permissions: [
+      // Required rather than optional: an empty profile treats every site as
+      // unfamiliar, so without the one-off import at install the extension
+      // warns about everything and reads as broken. See the welcome page.
       'history',
     ],
     host_permissions: ['*://*/*'],

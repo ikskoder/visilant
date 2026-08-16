@@ -11,18 +11,45 @@ import { getRegistrableDomain } from './domain-markers'
  * release.
  *
  * Nothing in here is a verdict. A match means "this resembles something you
- * know" — the user still decides.
+ * know" – the user still decides.
  */
 
-/** One registrable domain the user visits often enough to be worth imitating. */
+/**
+ * Where a reference domain came from.
+ *
+ * `history` is the rule: the user's own visits, different for every profile.
+ * `provider` is the one deliberate exception, and only for email addresses –
+ * see `PROVIDER_REFERENCE_NOTE` below.
+ */
+export type FamiliarSource = 'history' | 'provider'
+
+/** One registrable domain worth imitating, and therefore worth comparing to. */
 export interface FamiliarDomain {
   /** Registrable domain, e.g. `paypal.com` */
   domain: string
   /** Its leading label, e.g. `paypal` */
   label: string
-  /** Total visits across the whole domain family */
+  /** Total visits across the whole domain family. Zero for a provider. */
   visits: number
+  /** Absent means `history`, which is what everything stored has always been. */
+  source?: FamiliarSource
 }
+
+/**
+ * Why a shipped list is allowed here, against the rule stated above.
+ *
+ * A brand is only in the history when the user loads its own domain, and the
+ * biggest mail providers redirect away from theirs – somebody who lives in Gmail
+ * has `mail.google.com` on record and never `gmail.com`, so the one name most
+ * worth protecting is the one name the history cannot supply. No mapping from
+ * the visited host back to the brand exists to be derived, either.
+ *
+ * The property given up is that an attacker cannot test a domain against the
+ * reference set in advance. For the world's largest mail providers that property
+ * was never real: nobody needs to probe anything to know Gmail is the target.
+ * It is given up nowhere else – ordinary browsing warnings stay history-only.
+ */
+export const PROVIDER_REFERENCE_NOTE = 'email addresses only'
 
 export type LookalikeReason =
   /** Identical once visually confusable characters are folded together */
@@ -33,7 +60,7 @@ export type LookalikeReason =
   | 'contains-familiar'
   /** A familiar name, or a whole familiar domain, used as a subdomain */
   | 'familiar-as-subdomain'
-  /** The same name under a different domain — `paypal.co` next to `paypal.com` */
+  /** The same name under a different domain – `paypal.co` next to `paypal.com` */
   | 'same-name'
 
 export interface LookalikeMatch {
@@ -44,12 +71,43 @@ export interface LookalikeMatch {
   /** The part of the checked address that produced the match */
   evidence: string
   severity: 'high' | 'medium'
+  /**
+   * Absent means `history`. The UI needs this: a visit count and the words "a
+   * site you know" are both untrue of a provider the user has never opened.
+   */
+  source?: FamiliarSource
 }
 
-/** Below this length, a typo is indistinguishable from a different word. */
+/**
+ * Below this length, a typo is indistinguishable from a different word.
+ *
+ * Measured against the longer of the two names being compared, not the address
+ * being checked. Dropping a letter from a five-letter name leaves four, and
+ * judging that four-letter result on its own length would dismiss the most
+ * ordinary typosquat there is – `gmal` for `gmail`.
+ */
 const MIN_EDIT_DISTANCE_LENGTH = 5
+/**
+ * A short name is only ever matched at one edit, and only when it starts the
+ * same way.
+ *
+ * Two edits between short words happen constantly between unrelated ones, and
+ * folding confusables together makes four-letter words collide more still –
+ * `mall` and `gmail` come out one edit apart once `i` and `l` are the same
+ * character. The first letter is the one nobody mistypes and no squatter drops,
+ * so it separates a typo from a different word cheaply.
+ */
+const SHORT_LABEL_MAX_DISTANCE = 1
 /** Below this length, a familiar name matches inside unrelated words by chance. */
 const MIN_CONTAINMENT_LENGTH = 5
+/**
+ * Shortest familiar name still worth recognising as a separated-out token.
+ *
+ * Hunting for `moz` inside a longer word finds `mozilla`, but `moz` standing
+ * alone in `moz-login` is the name and nothing else. Two characters is where
+ * even that stops meaning anything.
+ */
+const MIN_TOKEN_LENGTH = 3
 const MAX_EDIT_DISTANCE = 2
 /** How many matches to report; more than this is noise, not information. */
 const MAX_MATCHES = 3
@@ -116,7 +174,7 @@ const CONFUSABLE_FOLD: Record<string, string> = {
  * Fold an address down to what the eye actually sees.
  *
  * `paypa1`, `pаypal` (Cyrillic а) and `paypai` all collapse to the same string,
- * which is the whole point — an attacker picks whichever spelling is still
+ * which is the whole point – an attacker picks whichever spelling is still
  * available to register.
  */
 export function skeleton(value: string): string {
@@ -221,6 +279,11 @@ export function buildFamiliarIndex(domains: FamiliarDomain[]): FamiliarIndex {
     if (!domain.domain || !domain.label)
       continue
 
+    // First entry for a domain wins, so a caller that puts the history in front
+    // keeps the real visit count for anything that is also on the provider list
+    if (index.byDomain.has(domain.domain.toLowerCase()))
+      continue
+
     const entry: IndexedDomain = { ...domain, labelSkeleton: skeleton(domain.label) }
     index.entries.push(entry)
     index.byDomain.set(domain.domain.toLowerCase(), entry)
@@ -258,7 +321,7 @@ export function findLookalikes(
   index: FamiliarIndex,
   /**
    * The registrable domain, when the caller can determine it properly. The
-   * background can, because it already carries the public suffix list; the
+   * background can, because it already carries the public suffix list. The
    * fallback derives it from the shape of the name instead.
    */
   registrableDomain?: string,
@@ -318,7 +381,7 @@ function decodeHostname(hostname: string): string {
 }
 
 /**
- * `paypal.com.evil.net` — a complete familiar domain parked in the subdomain,
+ * `paypal.com.evil.net` – a complete familiar domain parked in the subdomain,
  * so the address reads as PayPal up to the point where anyone stops reading.
  */
 function matchFamiliarAsSubdomain(
@@ -336,6 +399,7 @@ function matchFamiliarAsSubdomain(
       offer({
         domain: entry.domain,
         visits: entry.visits,
+        source: entry.source,
         reason: 'familiar-as-subdomain',
         evidence: entry.domain,
         severity: 'high',
@@ -348,11 +412,11 @@ function matchFamiliarAsSubdomain(
  * A label that reads as a familiar name. What that means depends on where it sits
  * and how it is spelled:
  *
- * - `pаypal.com` (Cyrillic а) or `paypa1.com` — a different spelling of the name
+ * - `pаypal.com` (Cyrillic а) or `paypa1.com` – a different spelling of the name
  *   in the position of the real one. Deliberate, so it is loud.
- * - `paypal.evil.net` — the exact name, but as a subdomain of something else.
+ * - `paypal.evil.net` – the exact name, but as a subdomain of something else.
  *   Also deliberate.
- * - `paypal.co` — the exact name under a different domain. Indistinguishable in
+ * - `paypal.co` – the exact name under a different domain. Indistinguishable in
  *   structure from a brand's own country site, so it is reported as context and
  *   never allowed to interrupt.
  */
@@ -370,6 +434,7 @@ function matchSameSkeleton(
       offer({
         domain: entry.domain,
         visits: entry.visits,
+        source: entry.source,
         reason: 'familiar-as-subdomain',
         evidence: label,
         severity: 'high',
@@ -383,14 +448,16 @@ function matchSameSkeleton(
   }
 }
 
-/** `payapl`, `gogle`, `paypall` — a typo's distance from a name already known. */
+/** `payapl`, `gogle`, `paypall` – a typo's distance from a name already known. */
 function matchEditDistance(
   label: string,
   labelSkeleton: string,
   index: FamiliarIndex,
   offer: (match: LookalikeMatch) => void,
 ) {
-  if (labelSkeleton.length < MIN_EDIT_DISTANCE_LENGTH)
+  // No `return` on a short address: the familiar name it imitates may be long
+  // enough even when what is left after the typo is not
+  if (labelSkeleton.length + MAX_EDIT_DISTANCE < MIN_EDIT_DISTANCE_LENGTH)
     return
 
   for (let length = labelSkeleton.length - MAX_EDIT_DISTANCE; length <= labelSkeleton.length + MAX_EDIT_DISTANCE; length++) {
@@ -402,34 +469,91 @@ function matchEditDistance(
       if (distance > MAX_EDIT_DISTANCE)
         continue
 
+      // Once the address itself is short, only the deliberate-looking case
+      // counts, or unrelated four-letter words start matching each other
+      const addressIsShort = labelSkeleton.length < MIN_EDIT_DISTANCE_LENGTH
+      if (addressIsShort && (distance > SHORT_LABEL_MAX_DISTANCE || labelSkeleton[0] !== entry.labelSkeleton[0]))
+        continue
+
+      // Neither name has enough substance for a swapped letter to mean anything:
+      // `moz` and `mon` differ by one and name two different ministries. Only
+      // the shapes a slip of the hand actually takes are taken as one.
+      const bothShort = Math.max(labelSkeleton.length, entry.labelSkeleton.length) < MIN_EDIT_DISTANCE_LENGTH
+      if (bothShort && !isTypoShape(labelSkeleton, entry.labelSkeleton))
+        continue
+
       // One edit off a name you already use is hard to arrive at by accident.
       // Two edits happen between unrelated words often enough to stay quiet.
+      // Between two short names even one edit is only ever worth mentioning.
       offer({
         domain: entry.domain,
         visits: entry.visits,
+        source: entry.source,
         reason: 'edit-distance',
         evidence: label,
-        severity: distance === 1 ? 'high' : 'medium',
+        severity: distance === 1 && !bothShort ? 'high' : 'medium',
       })
     }
   }
 }
 
 /**
- * `googlesupport`, `paypal-secure`, `secure-sberbank` — the familiar name kept
+ * `googlesupport`, `paypal-secure`, `secure-sberbank` – the familiar name kept
  * intact and padded out. The padding is whatever the attacker likes, so this
  * matches on the structure rather than on any list of words.
  */
+/**
+ * Is a single edit between these two the shape a typo takes?
+ *
+ * A change of length is a character inserted or dropped, and a swap of two
+ * neighbours is a transposition – both are slips of the hand. A same-length
+ * change that is neither means one letter was deliberately put where another
+ * was, which between two short names is as easily a different word as a mistake.
+ */
+function isTypoShape(a: string, b: string): boolean {
+  if (a.length !== b.length)
+    return true
+
+  const differing: number[] = []
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i])
+      differing.push(i)
+  }
+
+  return differing.length === 2
+    && differing[1] === differing[0] + 1
+    && a[differing[0]] === b[differing[1]]
+    && a[differing[1]] === b[differing[0]]
+}
+
 function matchContainment(
   label: string,
   labelSkeleton: string,
   index: FamiliarIndex,
   offer: (match: LookalikeMatch) => void,
 ) {
+  const tokens = new Set(labelSkeleton.split(/[-_]+/).filter(Boolean))
+
+  // A short familiar name is too small to go hunting for inside a longer word,
+  // but standing alone between separators there is nothing accidental about it –
+  // which is the only way `moz-login` or `work-login` can be caught at all
+  for (const token of tokens) {
+    if (token === labelSkeleton || token.length < MIN_TOKEN_LENGTH)
+      continue
+    for (const entry of index.bySkeleton.get(token) ?? []) {
+      offer({
+        domain: entry.domain,
+        visits: entry.visits,
+        source: entry.source,
+        reason: 'contains-familiar',
+        evidence: label,
+        severity: 'high',
+      })
+    }
+  }
+
   if (labelSkeleton.length < MIN_CONTAINMENT_LENGTH)
     return
-
-  const tokens = new Set(labelSkeleton.split(/[-_]+/).filter(Boolean))
 
   for (let position = 0; position + 3 <= labelSkeleton.length; position++) {
     for (const entry of index.byTrigram.get(labelSkeleton.slice(position, position + 3)) ?? []) {
@@ -438,12 +562,13 @@ function matchContainment(
       if (!labelSkeleton.startsWith(entry.labelSkeleton, position))
         continue
 
-      // A familiar name standing alone between separators is deliberate;
-      // one buried inside a longer run of characters may be coincidence
+      // A familiar name standing alone between separators is deliberate,
+      // while one buried inside a longer run of characters may be coincidence
       const isWholeToken = tokens.has(entry.labelSkeleton)
       offer({
         domain: entry.domain,
         visits: entry.visits,
+        source: entry.source,
         reason: 'contains-familiar',
         evidence: label,
         severity: isWholeToken ? 'high' : 'medium',

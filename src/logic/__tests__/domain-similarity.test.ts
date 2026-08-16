@@ -1,6 +1,7 @@
 import type { FamiliarDomain } from '../domain-similarity'
 import { describe, expect, it } from 'vitest'
 import { boundedEditDistance, buildFamiliarIndex, findLookalikes, skeleton } from '../domain-similarity'
+import { getProviderReferenceDomains } from '../email-providers'
 
 /** A plausible set of domains someone visits often, used by every case below. */
 const FAMILIAR: FamiliarDomain[] = [
@@ -72,7 +73,7 @@ describe('boundedEditDistance', () => {
   })
 })
 
-describe('findLookalikes — attack shapes that must be caught', () => {
+describe('findLookalikes – attack shapes that must be caught', () => {
   it('catches digit substitution', () => {
     const [match] = check('paypa1.com')
     expect(match.domain).toBe('paypal.com')
@@ -99,6 +100,43 @@ describe('findLookalikes — attack shapes that must be caught', () => {
 
   it('catches a doubled letter', () => {
     expect(domainsMatched('githubb.com')).toContain('github.com')
+  })
+
+  // A letter dropped from a five-letter name leaves four, and the length guard
+  // used to be applied to that result rather than to the name being imitated –
+  // which dismissed the most ordinary typosquat there is
+  describe('a letter dropped from an already short name', () => {
+    const providers = buildFamiliarIndex([
+      { domain: 'gmail.com', label: 'gmail', visits: 500 },
+      { domain: 'mail.ru', label: 'mail', visits: 120 },
+    ])
+
+    it('catches the address the dropped letter leaves behind', () => {
+      const [match] = findLookalikes('gmal.com', providers)
+      expect(match.domain).toBe('gmail.com')
+      expect(match.reason).toBe('edit-distance')
+      expect(match.severity).toBe('high')
+    })
+
+    it('catches a letter dropped off the end just the same', () => {
+      expect(findLookalikes('gmai.com', providers)[0]?.domain).toBe('gmail.com')
+    })
+
+    it('stays quiet about a short address two edits away', () => {
+      // `gnal` reaches `gmail` only by substituting and then deleting, which is
+      // as easily two unrelated words as it is a typo
+      expect(findLookalikes('gnal.com', providers)).toEqual([])
+    })
+
+    it('stays quiet about a short word that merely ends the same way', () => {
+      // `mall` and `gmail` come out one edit apart once `i` and `l` fold
+      // together, so the shared first letter is what has to carry it
+      expect(findLookalikes('mall.com', providers).map(m => m.reason)).not.toContain('edit-distance')
+    })
+
+    it('still says nothing about two unrelated short names', () => {
+      expect(findLookalikes('yolo.com', providers)).toEqual([])
+    })
   })
 
   it('catches the familiar name padded with a separator', () => {
@@ -142,7 +180,7 @@ describe('findLookalikes — attack shapes that must be caught', () => {
   })
 })
 
-describe('findLookalikes — the same name under a different domain', () => {
+describe('findLookalikes – the same name under a different domain', () => {
   it('reports a TLD squat', () => {
     const [match] = check('paypal.co')
     expect(match.domain).toBe('paypal.com')
@@ -151,7 +189,7 @@ describe('findLookalikes — the same name under a different domain', () => {
 
   it('never lets it interrupt, because a brand country site looks identical', () => {
     // Nothing local can separate paypal.co from google.de. Both are shown as
-    // context; neither is allowed to raise a high-severity warning.
+    // context, and neither is allowed to raise a high-severity warning.
     expect(check('paypal.co')[0].severity).toBe('medium')
     expect(check('google.de')[0].severity).toBe('medium')
   })
@@ -162,7 +200,7 @@ describe('findLookalikes — the same name under a different domain', () => {
   })
 })
 
-describe('findLookalikes — things that must stay quiet', () => {
+describe('findLookalikes – things that must stay quiet', () => {
   it('says nothing about a familiar domain itself', () => {
     expect(check('paypal.com')).toEqual([])
     expect(check('google.com')).toEqual([])
@@ -187,8 +225,8 @@ describe('findLookalikes — things that must stay quiet', () => {
 
   it('keeps genuinely similar but unrelated names quiet rather than silent', () => {
     // gitlab.com really is two edits from github.com, and amazonas.gov.br really
-    // does contain "amazon". Both are reported — recall was chosen over precision
-    // — but neither is allowed to interrupt anyone.
+    // does contain "amazon". Both are reported – recall was chosen over precision
+    // – but neither is allowed to interrupt anyone.
     expect(check('gitlab.com').every(match => match.severity === 'medium')).toBe(true)
     expect(check('amazonas.gov.br').every(match => match.severity === 'medium')).toBe(true)
   })
@@ -203,7 +241,7 @@ describe('findLookalikes — things that must stay quiet', () => {
   })
 })
 
-describe('findLookalikes — ranking and shape of the result', () => {
+describe('findLookalikes – ranking and shape of the result', () => {
   it('puts the strongest match first', () => {
     const matches = check('paypal.com.google-secure.example.net')
     expect(matches[0].severity).toBe('high')
@@ -233,7 +271,7 @@ describe('findLookalikes — ranking and shape of the result', () => {
   })
 })
 
-describe('findLookalikes — cost', () => {
+describe('findLookalikes – cost', () => {
   it('stays fast against a large index', () => {
     const many: FamiliarDomain[] = Array.from({ length: 2000 }, (_, i) => ({
       domain: `familiar-site-${i}.com`,
@@ -250,5 +288,126 @@ describe('findLookalikes — cost', () => {
     // Budget is generous next to the sub-millisecond target, so the test fails on
     // an algorithmic regression rather than on a slow CI machine
     expect(perCall).toBeLessThan(5)
+  })
+})
+
+describe('mail providers as a second reference set', () => {
+  const providers = getProviderReferenceDomains()
+
+  it('keeps the distinctive provider names', () => {
+    const domains = providers.map(entry => entry.domain)
+    expect(domains).toContain('gmail.com')
+    expect(domains).toContain('outlook.com')
+    expect(domains).toContain('yandex.ru')
+  })
+
+  it('drops the ones named after an ordinary word', () => {
+    // `mail.com`, `free.fr` and the like would flag unrelated domains constantly
+    const domains = providers.map(entry => entry.domain)
+    expect(domains).not.toContain('mail.com')
+    expect(domains).not.toContain('web.de')
+    expect(domains).not.toContain('hey.com')
+  })
+
+  // The case the whole exception exists for: Gmail redirects to
+  // `mail.google.com`, so no amount of use ever puts `gmail.com` in the history
+  const livesInGmail = buildFamiliarIndex([
+    { domain: 'google.com', label: 'google', visits: 2206 },
+    ...providers.map(entry => ({ ...entry, visits: 0, source: 'provider' as const })),
+  ])
+
+  it('catches a typo of a provider the history cannot know about', () => {
+    const [match] = findLookalikes('gmal.com', livesInGmail)
+    expect(match.domain).toBe('gmail.com')
+    expect(match.source).toBe('provider')
+  })
+
+  it('catches a digit standing in for a letter just the same', () => {
+    const [match] = findLookalikes('gma1l.com', livesInGmail)
+    expect(match.domain).toBe('gmail.com')
+    expect(match.reason).toBe('confusable')
+  })
+
+  it('leaves history matches marked as history', () => {
+    const [match] = findLookalikes('gogle.com', livesInGmail)
+    expect(match.domain).toBe('google.com')
+    expect(match.source).toBeUndefined()
+  })
+
+  it('says nothing about the provider itself', () => {
+    expect(findLookalikes('gmail.com', livesInGmail)).toEqual([])
+  })
+
+  it('keeps the real visit count for a provider the user does visit', () => {
+    // History first, so the entry that carries a count is the one that survives
+    const alsoVisitsIt = buildFamiliarIndex([
+      { domain: 'yandex.ru', label: 'yandex', visits: 88 },
+      ...providers.map(entry => ({ ...entry, visits: 0, source: 'provider' as const })),
+    ])
+    const [match] = findLookalikes('yadnex.ru', alsoVisitsIt)
+    expect(match.domain).toBe('yandex.ru')
+    expect(match.visits).toBe(88)
+    expect(match.source).toBeUndefined()
+  })
+})
+
+// Two short names carry too little to judge by length alone, and padding them
+// with their shared suffix only looks like more evidence – `moz.gov.ua` and
+// `mon.gov.ua` differ by one character over ten and are two different ministries
+describe('two short names against each other', () => {
+  const shortNames = buildFamiliarIndex([
+    { domain: 'nszu.gov.ua', label: 'nszu', visits: 40 },
+    { domain: 'moz.gov.ua', label: 'moz', visits: 30 },
+    { domain: 'cutt.ly', label: 'cutt', visits: 20 },
+    { domain: 'work.ua', label: 'work', visits: 50 },
+    { domain: 'fex.net', label: 'fex', visits: 25 },
+  ])
+
+  function shortCheck(hostname: string) {
+    return findLookalikes(hostname, shortNames)
+  }
+
+  it('catches a dropped character', () => {
+    expect(shortCheck('nsz.gov.ua')[0]?.domain).toBe('nszu.gov.ua')
+    expect(shortCheck('cut.ly')[0]?.domain).toBe('cutt.ly')
+    expect(shortCheck('wor.ua')[0]?.domain).toBe('work.ua')
+  })
+
+  it('catches a doubled character', () => {
+    expect(shortCheck('mozz.gov.ua')[0]?.domain).toBe('moz.gov.ua')
+    expect(shortCheck('fexx.net')[0]?.domain).toBe('fex.net')
+  })
+
+  it('catches a transposition', () => {
+    expect(shortCheck('nzsu.gov.ua')[0]?.domain).toBe('nszu.gov.ua')
+    expect(shortCheck('wrok.ua')[0]?.domain).toBe('work.ua')
+  })
+
+  it('never raises these above a mention', () => {
+    // A short name has no room to be sure with, so the colour must not say it is
+    expect(shortCheck('nsz.gov.ua')[0]?.severity).toBe('medium')
+    expect(shortCheck('cut.ly')[0]?.severity).toBe('medium')
+  })
+
+  it('stays silent when one letter simply stands where another did', () => {
+    // Real neighbours of moz.gov.ua, each a ministry of its own
+    expect(shortCheck('mon.gov.ua')).toEqual([])
+    expect(shortCheck('mvs.gov.ua')).toEqual([])
+    expect(shortCheck('word.ua')).toEqual([])
+    expect(shortCheck('fox.net')).toEqual([])
+  })
+
+  it('recognises a short name standing alone as a token', () => {
+    const [match] = shortCheck('moz-login.gov.ua')
+    expect(match.domain).toBe('moz.gov.ua')
+    expect(match.reason).toBe('contains-familiar')
+    expect(match.severity).toBe('high')
+    expect(shortCheck('nszu-login.gov.ua')[0]?.domain).toBe('nszu.gov.ua')
+  })
+
+  it('does not go hunting for a short name inside a longer word', () => {
+    // `moz` is in `mozilla`, and that means nothing at all
+    expect(shortCheck('mozilla.org')).toEqual([])
+    expect(shortCheck('workspace.ua')).toEqual([])
   })
 })

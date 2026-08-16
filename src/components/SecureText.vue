@@ -6,7 +6,7 @@ const props = withDefaults(defineProps<{
   text: string
   forceHighlight?: boolean
   dangerOnly?: boolean
-  // Per-instance overrides — when set, they win over the global settings
+  // Per-instance overrides – when set, they win over the global settings
   highlightOverride?: boolean
   caseOverride?: 'lower' | 'upper'
   /**
@@ -16,8 +16,8 @@ const props = withDefaults(defineProps<{
    */
   markWraps?: boolean
 }>(), {
-  // Absent boolean props default to false in Vue; keep undefined so the
-  // ?? fallback to global settings still works when the prop is not passed
+  // Absent boolean props default to false in Vue. Keeping undefined lets the
+  // ?? fallback to global settings still work when the prop is not passed
   highlightOverride: undefined,
 })
 const RE_ALPHA = /[a-z]/i
@@ -35,7 +35,7 @@ const segments = computed(() => {
     if (!highlightOn)
       return ''
     // Latin letters are left alone deliberately. Colouring them green reads as a
-    // verdict — "this part is fine" — when all it means is "this is the ordinary
+    // verdict – "this part is fine" – when all it means is "this is the ordinary
     // case". Highlighting exists to make the unexpected characters stand out, and
     // painting the majority of an address in a reassuring colour works against
     // exactly that.
@@ -91,7 +91,7 @@ const parts = computed(() => {
   for (const segment of segments.value) {
     // Where the continuation marker is wanted, every character gets its own span
     // so that a line break always falls between two of them. Grouping instead
-    // would hide any break landing inside a run, which is most of them — and how
+    // would hide any break landing inside a run, which is most of them – and how
     // coarse the runs are happens to depend on whether highlighting is on, so the
     // marker would come and go with an unrelated setting.
     //

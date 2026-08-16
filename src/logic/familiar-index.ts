@@ -12,7 +12,7 @@ import type { SiteVisitData } from './storage'
 /**
  * Hard ceiling on index size. Someone with a very long history has a long tail of
  * domains they have visited often enough to pass the threshold but would not
- * recognise on sight; keeping the most-visited ones is both cheaper and closer to
+ * recognise on sight. Keeping the most-visited ones is both cheaper and closer to
  * what "familiar" actually means.
  */
 export const FAMILIAR_INDEX_LIMIT = 2000
@@ -78,12 +78,12 @@ export function collectFamiliarDomains(
  * `hostVisits` is the count for the visited hostname alone, deliberately: it is
  * already in hand, whereas the family total would cost a scan of all storage. It
  * is a lower bound on the family total, so a domain can only ever join the list
- * later than it strictly qualifies, never earlier. The next full rebuild — after
- * a history import, a threshold change, or a day of use — corrects both the
+ * later than it strictly qualifies, never earlier. The next full rebuild – after
+ * a history import, a threshold change, or a day of use – corrects both the
  * membership and the counts.
  *
  * Returns true when the membership changed, which is the only case worth
- * persisting; a count that drifts low until the next rebuild affects nothing but
+ * persisting. A count that drifts low until the next rebuild affects nothing but
  * the order of two equally strong matches.
  */
 export function applyVisitToFamiliar(

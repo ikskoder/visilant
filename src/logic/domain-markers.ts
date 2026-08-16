@@ -7,7 +7,7 @@ import punycode from 'punycode'
  * of known-bad strings: an attacker cannot drop the marker without giving up the
  * trick it enables, and nothing in this file goes stale between releases.
  *
- * None of them is a verdict on its own — they are shown as facts about the
+ * None of them is a verdict on its own – they are shown as facts about the
  * address, next to the visit history.
  */
 export type DomainMarkerId =
@@ -66,7 +66,7 @@ function safeDecode(value: string): string {
 
 /**
  * Credentials in the authority: `https://paypal.com@evil.net` reads as PayPal but
- * loads evil.net. The password is never echoed back — only the fact that one exists.
+ * loads evil.net. The password is never echoed back – only the fact that one exists.
  */
 export function getUrlUserinfo(url: string): string | null {
   try {
@@ -106,7 +106,7 @@ export function isIpHost(hostname: string): boolean {
 }
 
 /**
- * The seven original generic top-level domains — the strings a reader treats as
+ * The seven original generic top-level domains – the strings a reader treats as
  * "the domain ends here". Frozen since the 1980s, so this is a fact about DNS
  * rather than a reputation list that needs maintaining.
  *
@@ -114,7 +114,7 @@ export function isIpHost(hostname: string): boolean {
  * thousands of ordinary words and brand names into valid suffixes, so `.shop`,
  * `.app` and even `.hsbc` would flag legitimate hostnames like
  * `shop.example.com.br` and `www.bbc.co.uk`. Two-letter country codes are left
- * out for the same reason — `de.wikipedia.org` is a language subdomain, not a
+ * out for the same reason – `de.wikipedia.org` is a language subdomain, not a
  * deception. Country-code variants of this trick are caught in the lookalike
  * pass instead, where the label has to match a domain the user actually knows.
  */
@@ -124,8 +124,8 @@ const DOMAIN_ENDING_LABELS = new Set(['com', 'net', 'org', 'edu', 'gov', 'mil', 
  * How many trailing labels make up the suffix.
  *
  * Compound country-code suffixes (`co.uk`, `com.br`, `ac.jp`) take two labels,
- * everything else one. Recognising them by shape — a two-letter final label after
- * a short one — rather than by consulting the public suffix list keeps this module
+ * everything else one. Recognising them by shape – a two-letter final label after
+ * a short one – rather than by consulting the public suffix list keeps this module
  * free of the 100 kB list, which matters because it runs inside a content script
  * injected on every page. The approximation errs towards a shorter subdomain, so
  * it can only ever under-report depth, never invent it.
@@ -146,7 +146,7 @@ function getSubdomainLabels(hostname: string): string[] {
   return labels.slice(0, Math.max(0, labels.length - suffixLabelCount(labels) - 1))
 }
 
-/** The registrable part of a hostname — `example.com` out of `a.b.example.com`. */
+/** The registrable part of a hostname – `example.com` out of `a.b.example.com`. */
 export function getRegistrableDomain(hostname: string): string {
   const labels = hostname.toLowerCase().replace(/\.$/, '').split('.').filter(Boolean)
   if (labels.length < 2)
@@ -169,7 +169,7 @@ export function getSubdomainDepth(hostname: string): number {
 }
 
 /**
- * A single label written in two writing systems at once — `pаypal` with a
+ * A single label written in two writing systems at once – `pаypal` with a
  * Cyrillic а. Legitimate internationalised domains stay within one system.
  */
 export function findMixedScriptLabel(hostname: string): string | null {

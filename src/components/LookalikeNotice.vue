@@ -10,6 +10,12 @@ import { useI18n } from '~/composables/useI18n'
 // on every hover, navigation and panel open.
 const props = defineProps<{
   hostname: string
+  /**
+   * Set when the hostname came out of an email address. Widens the comparison to
+   * the mail providers, which the history cannot supply: somebody who lives in
+   * Gmail has only `mail.google.com` on record.
+   */
+  context?: 'email'
 }>()
 
 const isDark = inject('isDark', ref(false))
@@ -29,15 +35,18 @@ const cache = new Map<string, { matches: LookalikeMatch[], at: number }>()
 
 const matches = ref<LookalikeMatch[]>([])
 
-async function lookup(hostname: string): Promise<LookalikeMatch[]> {
-  const cached = cache.get(hostname)
+async function lookup(hostname: string, context?: 'email'): Promise<LookalikeMatch[]> {
+  // Keyed by context too: the same address is compared against a wider set when
+  // it came out of an email, so one answer must not be served for the other
+  const key = `${context ?? 'page'}:${hostname}`
+  const cached = cache.get(key)
   if (cached && Date.now() - cached.at < CACHE_TTL_MS)
     return cached.matches
 
   try {
     const result = await browser.runtime.sendMessage({
       type: 'find-lookalikes',
-      data: { hostname },
+      data: { hostname, context },
     }) as LookalikeMatch[] | undefined
 
     const found = Array.isArray(result) ? result : []
@@ -46,12 +55,12 @@ async function lookup(hostname: string): Promise<LookalikeMatch[]> {
     // with thousands of distinct links, not against a hot-set eviction problem
     if (cache.size >= CACHE_LIMIT)
       cache.delete(cache.keys().next().value!)
-    cache.set(hostname, { matches: found, at: Date.now() })
+    cache.set(key, { matches: found, at: Date.now() })
 
     return found
   }
   catch {
-    // Background asleep or unreachable — say nothing rather than guess
+    // Background asleep or unreachable – say nothing rather than guess
     return []
   }
 }
@@ -61,7 +70,7 @@ watch(() => props.hostname, async (hostname) => {
   if (!hostname)
     return
 
-  const found = await lookup(hostname)
+  const found = await lookup(hostname, props.context)
   // The hostname may have changed while the message was in flight
   if (hostname === props.hostname)
     matches.value = found
@@ -78,11 +87,16 @@ watch(() => props.hostname, async (hostname) => {
       >⚠</span>
       <span class="break-words">
         <span :class="match.severity === 'high' ? (isDark ? 'text-red-400' : 'text-red-600') : (isDark ? 'text-amber-400' : 'text-amber-700')">
-          {{ t('lookalikeLooksLike') }}
+          {{ match.source === 'provider' ? t('lookalikeLooksLikeProvider') : t('lookalikeLooksLike') }}
           <SecureText :text="match.domain" force-highlight danger-only class="font-mono" />
         </span>
         <span class="opacity-70">
-          · {{ t('linkTooltipVisits') }}: {{ match.visits }}<br>
+          <!-- A provider off the list was never visited, so a count of zero
+               would read as a finding about the user rather than about it -->
+          <template v-if="match.source !== 'provider'">
+            · {{ t('linkTooltipVisits') }}: {{ match.visits }}
+          </template>
+          <br>
           {{ t(REASON_KEYS[match.reason]) }}
         </span>
       </span>

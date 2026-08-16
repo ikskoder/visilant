@@ -56,7 +56,7 @@ const hasTraceData = computed(() => {
   return props.traceChain && props.data?.shortUrl?.status === 'resolved' && (props.data.shortUrl.chain.length > 2)
 })
 
-// After tracing, if the resolved destination is safe — soften the warning
+// After tracing, if the resolved destination is safe – soften the warning
 const resolvedIsSafe = computed(() => {
   return props.data?.shortUrl?.status === 'resolved' && props.data.shortUrl.resolvedIsSafe
 })
@@ -69,8 +69,9 @@ const resolvedIsSafe = computed(() => {
       class="fixed inset-0 z-[2147483647] flex items-center justify-center pointer-events-auto"
       @click.self="emit('cancel')"
     >
-      <!-- Backdrop -->
-      <div class="absolute inset-0 bg-black/60" />
+      <!-- Backdrop. Transparent to clicks, or it would sit between the user and
+           the overlay behind it and swallow every click-outside -->
+      <div class="absolute inset-0 bg-black/60 pointer-events-none" />
 
       <!-- Dialog card -->
       <div class="relative dialog-container rounded-xl shadow-2xl px-5 pb-3 pt-0" :class="[isDark ? 'bg-gray-900 border border-gray-700/50' : 'bg-white border border-gray-200', { 'dialog-wide': data?.mismatch, 'dialog-full': hasTraceData }]">
@@ -160,7 +161,7 @@ const resolvedIsSafe = computed(() => {
             </span>
           </div>
 
-          <!-- Short URL: idle — resolve button -->
+          <!-- Short URL: idle – resolve button -->
           <div v-if="data.shortUrl?.status === 'idle'" class="mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">
             <div v-if="data.shortUrl.isKnownShortener" class="dialog-label mb-2" :class="isDark ? 'text-orange-400/80' : 'text-orange-600'">
               {{ t('linkTooltipShortUrlWarning') }}

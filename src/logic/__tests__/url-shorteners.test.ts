@@ -1,5 +1,5 @@
 import type { ResolvedUrlResult } from '../url-shorteners'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   addCustomShortener,
   getCachedResolvedUrl,
@@ -9,6 +9,7 @@ import {
   loadCustomShorteners,
   parseDomainList,
   setCachedResolvedUrl,
+  updateShortenerList,
 } from '../url-shorteners'
 
 describe('parseDomainList', () => {
@@ -144,5 +145,42 @@ describe('resolved URL cache', () => {
     expect(getCachedResolvedUrl('https://bit.ly/expired')).toBeNull()
 
     vi.useRealTimers()
+  })
+})
+
+describe('remote shortener list', () => {
+  afterEach(() => {
+    updateShortenerList([])
+    loadCustomShorteners([])
+  })
+
+  it('adds remotely fetched domains to the runtime set', () => {
+    expect(isShortenedUrl('remote-only.test')).toBe(false)
+    updateShortenerList(['remote-only.test'])
+    expect(isShortenedUrl('remote-only.test')).toBe(true)
+  })
+
+  it('keeps the built-in list alongside the remote one', () => {
+    updateShortenerList(['remote-only.test'])
+    expect(isShortenedUrl('bit.ly')).toBe(true)
+  })
+
+  it('survives a custom domain being added afterwards', () => {
+    // The set used to be rebuilt from built-in + custom only, so adding one
+    // custom domain silently discarded everything that had been fetched
+    updateShortenerList(['remote-only.test'])
+    addCustomShortener('mine.test')
+
+    expect(isShortenedUrl('remote-only.test')).toBe(true)
+    expect(isShortenedUrl('mine.test')).toBe(true)
+    expect(isShortenedUrl('bit.ly')).toBe(true)
+  })
+
+  it('replaces the previous remote list rather than accumulating', () => {
+    updateShortenerList(['first.test'])
+    updateShortenerList(['second.test'])
+
+    expect(isShortenedUrl('first.test')).toBe(false)
+    expect(isShortenedUrl('second.test')).toBe(true)
   })
 })

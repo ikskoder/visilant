@@ -50,7 +50,7 @@ describe('getHostname', () => {
   })
 
   it('returns raw string for unparseable URLs', () => {
-    // about:blank has an empty hostname when parsed; getHostname falls back
+    // about:blank has an empty hostname when parsed, so getHostname falls back
     expect(getHostname('not-a-url')).toBe('not-a-url')
   })
 })

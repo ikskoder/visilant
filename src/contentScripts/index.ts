@@ -1,15 +1,19 @@
 import type { Settings } from '~/logic/storage'
+import type { TamperWatch } from '~/logic/tamper-watch'
 import type { CheckPanelData, DomainFamilyInfo, LinkTooltipData, RawPayloadInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
-import { createApp } from 'vue'
+import { createApp, watchEffect } from 'vue'
 import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, extractEmailFromText, parseMailtoUrl } from '~/logic/email-safety'
 import { checkDomainMismatch, extractDomainFromText, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
+import { describePastePayload, isEditableTarget, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { defaultSettings, settings } from '~/logic/storage'
-import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
-import { addCustomShortener, isShortenedUrl, loadCustomShorteners } from '~/logic/url-shorteners'
+import { applyHostStyles, createTamperWatch } from '~/logic/tamper-watch'
+import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
+import { addCustomShortener, isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
+import { isTrackableHostname } from '~/logic/visit-stats'
 import App from './views/App.vue'
 
 // Helper to send message safely (fallback to runtime.sendMessage)
@@ -20,7 +24,7 @@ async function sendMessageSafe<T = any>(id: string, data: any): Promise<T> {
 
 // Function to check if a hostname is an internal page (no dots in hostname)
 function isInternalPage(hostname: string): boolean {
-  return !hostname.includes('.')
+  return !isTrackableHostname(hostname)
 }
 
 // Check if a domain is excluded from anti-tampering protection
@@ -49,6 +53,22 @@ function generateSecureId() {
 
 // Check if site is safe based on visit count
 async function checkSiteSafety(url: string): Promise<boolean> {
+  // Dotless hostnames (localhost, intranet names) are deliberately never counted,
+  // so their visit count is permanently 0. Reading that as "unfamiliar" would
+  // warn about them forever with no way for the user to teach it otherwise, which
+  // is the opposite of what not tracking them was supposed to mean.
+  let hostname = ''
+  try {
+    hostname = new URL(url).hostname
+  }
+  catch {
+    // Unparseable URL: nothing to judge, so judge nothing
+  }
+  if (!hostname || isInternalPage(hostname)) {
+    safetyLevel.value = true
+    return true
+  }
+
   const response = await sendMessageSafe<{ count: number, ignored: boolean }>('get-visit-count', { url })
   if (!response) {
     safetyLevel.value = true
@@ -78,11 +98,8 @@ async function loadSettings() {
       // Update settings with values from storage
       settings.value = settingsData
     }
-    // Load user-defined shortener domains into content script's runtime set
-    const stored = await browser.storage.local.get('customShorteners')
-    const customList = (stored.customShorteners as string[]) || []
-    if (customList.length > 0)
-      loadCustomShorteners(customList)
+    // Load user-defined and remotely fetched shortener domains
+    await loadShortenersFromStorage()
     // Load public/disposable email-domain lists for address classification
     await loadEmailListsFromStorage()
   }
@@ -105,6 +122,12 @@ async function showNotifications(type: 'input' | 'copy') {
 
   // Check if this site is ignored
   if (isIgnored.value) {
+    return
+  }
+
+  // Confirming a paste answers the same question this warning asks, so asking it
+  // again straight afterwards is the noise the confirmation was meant to end
+  if (pasteAllowedOnThisPage.value) {
     return
   }
 
@@ -198,9 +221,63 @@ async function handleKeydown(event: KeyboardEvent) {
   }
 }
 
+/**
+ * Stop the paste, ask, and then get out of the way.
+ *
+ * Deliberately never inserts the text itself. Re-inserting would mean plain text
+ * only, a rebuilt undo stack and the page's own paste handling skipped, which is
+ * a lot of ways to break a page in exchange for saving one keystroke. Allowing
+ * simply stops the blocking, and the user's next paste is an ordinary paste that
+ * the extension does not touch at all.
+ */
+async function interceptPaste(target: HTMLElement, text: string) {
+  const hostname = window.location.hostname
+  const visits = await sendMessageSafe<{ count: number }>('get-visit-count', { url: window.location.href })
+  const punycodeResult = getPunycodeInfo(hostname)
+
+  await ensureTooltipUiMounted()
+  pasteInterceptData.value = {
+    domain: hostname,
+    count: visits?.count || 0,
+    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    payload: describePastePayload(text),
+  }
+
+  const allowed = await new Promise<boolean>((resolve) => {
+    pasteInterceptResolve.value = resolve
+    pasteInterceptVisible.value = true
+  })
+
+  if (allowed)
+    pasteAllowedOnThisPage.value = true
+
+  // Either way the user is done with the dialog and wants to be back in the field
+  target.focus({ preventScroll: true })
+}
+
 // Handle paste event
-async function handlePaste() {
-  if (safetyLevel.value === false && settings.value?.showWarningNotification)
+async function handlePaste(event: ClipboardEvent) {
+  const current = settings.value || defaultSettings
+  const text = event.clipboardData?.getData('text/plain') || ''
+
+  if (shouldInterceptPaste({
+    enabled: Boolean(current.blockPasteOnUnfamiliar),
+    siteIsSafe: safetyLevel.value,
+    ignored: isIgnored.value,
+    hasText: text.length > 0,
+    targetIsEditable: isEditableTarget(event.target),
+    alreadyAllowed: pasteAllowedOnThisPage.value,
+  })) {
+    // Stopping propagation as well as the default is the point: a page with its
+    // own paste handler reads the clipboard itself and inserts the text, so
+    // cancelling only the default would be theatre rather than protection
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    await interceptPaste(event.target as HTMLElement, text)
+    return
+  }
+
+  if (safetyLevel.value === false && current.showWarningNotification)
     await showNotifications('input')
 }
 
@@ -217,7 +294,7 @@ window.addEventListener('copy', handleCopyCut, true)
 window.addEventListener('cut', handleCopyCut, true)
 
 // ==========================================
-// Link Safety — tooltip and intercept logic
+// Link Safety – tooltip and intercept logic
 // ==========================================
 
 let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -304,7 +381,7 @@ async function showLinkInterceptByUrl(url: string) {
       }
     }
     catch {
-      // Resolution failed — show intercept anyway
+      // Resolution failed – show intercept anyway
     }
   }
   else if (shortUrlMode === 'button' && (isKnownShortener || resolveAny)) {
@@ -478,7 +555,7 @@ async function showCheckPanelForTarget(target: { kind: 'email' | 'url' | 'domain
     family = await sendMessageSafe<DomainFamilyInfo>('get-domain-family', { hostname })
   }
   catch {
-    // background unreachable — show the panel without visit data
+    // background unreachable – show the panel without visit data
   }
 
   checkPanelData.value = {
@@ -528,7 +605,7 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
 
     const isKnownShortener = linkTooltipData.value.shortUrl?.isKnownShortener ?? false
 
-    // If final hostname is still the same as original — resolution failed to uncover real destination
+    // If final hostname is still the same as original – resolution failed to uncover real destination
     const didResolve = result && result.status === 'resolved' && result.finalHostname && result.finalHostname !== originalHostname
 
     if (didResolve) {
@@ -889,7 +966,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
       }
     }
     catch {
-      // Resolution failed — show intercept as safe default
+      // Resolution failed – show intercept as safe default
     }
   }
   else if (shortUrlMode === 'button' && (isKnownShortener || resolveAny)) {
@@ -906,7 +983,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
     }
   }
 
-  // Safe site — allow navigation (only if we didn't auto-resolve, which was handled above)
+  // Safe site – allow navigation (only if we didn't auto-resolve, which was handled above)
   if (!shouldResolve && visitData.isSafe) {
     navigateToUrl(href, target)
     return false
@@ -954,6 +1031,8 @@ function setupLinkSafety() {
     return
 
   const trigger = linkSafety.tooltipTrigger
+  // Read once alongside the trigger, so both come from the same settings snapshot
+  const hoverDelay = Math.max(0, Number(linkSafety.hoverDelay ?? defaultSettings.linkSafety.hoverDelay))
 
   // Hover trigger: mouseenter/mouseleave via event delegation
   function handleMouseOver(event: MouseEvent) {
@@ -997,7 +1076,7 @@ function setupLinkSafety() {
         else
           showLinkTooltip(anchor)
       }
-    }, 300)
+    }, hoverDelay)
   }
 
   function handleMouseOut(event: MouseEvent) {
@@ -1033,8 +1112,8 @@ function setupLinkSafety() {
     if (!anchor || !anchor.href)
       return
 
-    // mailto: never goes through the intercept dialog — show the email tooltip
-    // instead; its "open mail app" button performs the actual navigation
+    // mailto: never goes through the intercept dialog – show the email tooltip
+    // instead. Its "open mail app" button performs the actual navigation
     if (isMailtoHref(anchor.href)) {
       event.preventDefault()
       event.stopPropagation()
@@ -1105,9 +1184,14 @@ function setupLinkSafety() {
 
 let app: ReturnType<typeof createApp> | null = null
 let container: HTMLElement | null = null
-let observer: MutationObserver | null = null
-let internalObserver: MutationObserver | null = null
+let tamperWatch: TamperWatch | null = null
+let stopUiVisibilityWatch: (() => void) | null = null
 let isMounting = false
+// Set while we take our own UI down, so our removal is not read as the page's.
+// This has to be an explicit flag rather than "has the app mounted yet": a page
+// that rips the container out in the moments before Vue finishes mounting is
+// exactly the page worth catching.
+let isSelfRemoving = false
 
 async function mount(force = false) {
   if (isMounting || container)
@@ -1142,24 +1226,10 @@ async function mount(force = false) {
     container = document.createElement('div')
     container.id = generateSecureId()
 
-    // Add robust styles to container to ensure it's on top and visible.
-    // Set with 'important' priority so page-level `div { ... !important }`
-    // rules cannot override the host element.
-    const hostStyles: Record<string, string> = {
-      'position': 'fixed',
-      'top': '0',
-      'left': '0',
-      'width': '0',
-      'height': '0',
-      'overflow': 'visible',
-      'z-index': '2147483647', // Max z-index
-      'pointer-events': 'none', // Let clicks pass through the container itself
-      'display': 'block',
-      'visibility': 'visible',
-      'opacity': '1',
-    }
-    for (const [prop, value] of Object.entries(hostStyles))
-      container.style.setProperty(prop, value, 'important')
+    // Robust styles keeping the host on top and visible, set with 'important'
+    // priority so page-level `div { ... !important }` rules cannot override it.
+    // The same declarations are what the tamper watch checks against.
+    applyHostStyles(container)
 
     const root = document.createElement('div')
 
@@ -1168,7 +1238,7 @@ async function mount(force = false) {
     const cssText = await response.text()
     // `:host { all: initial }` stops inherited page styles (font, color,
     // letter-spacing, text-transform...) from leaking through the shadow
-    // boundary; the inline host styles above still win for positioning.
+    // boundary. The inline host styles above still win for positioning.
     styleEl.textContent = `:host { all: initial; }\n${cssText}`
 
     const shadowDOM = container.attachShadow?.({ mode: __DEV__ ? 'open' : 'closed' }) || container
@@ -1178,72 +1248,44 @@ async function mount(force = false) {
     const tamperingEnabled = !isAntiTamperingExcluded(hostname)
 
     if (tamperingEnabled) {
-      // Watch for tampering (removal of our container)
-      // Start observing BEFORE appending to catch immediate removals
-      observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-          mutation.removedNodes.forEach((node) => {
-            if (node === container) {
-              // Our container was removed!
-              // Check if it was intentional (e.g. during unmount)
-              if (app) { // If app still exists, it means we didn't initiate the unmount
-                sendMessageSafe('tampering-detected', {})
-                // Disconnect observer to avoid loops
-                observer?.disconnect()
-                observer = null
-                internalObserver?.disconnect()
-                internalObserver = null
-              }
-            }
-          })
-        }
-      })
-
-      observer.observe(document.body, {
-        childList: true,
-        subtree: false, // We only care if our direct container is removed from body
+      // Start watching BEFORE appending, so a page that rips the container out
+      // the instant it appears is caught along with the patient ones
+      tamperWatch = createTamperWatch({
+        container,
+        shadow: shadowDOM,
+        guardedNodes: [root, styleEl],
+        isSelfRemoving: () => isSelfRemoving,
+        onTamper: (reason) => {
+          sendMessageSafe('tampering-detected', { reason })
+        },
       })
     }
 
     document.body.appendChild(container)
 
     if (tamperingEnabled) {
-      // Immediate verification
-      if (!document.body.contains(container)) {
-        if (app) {
-          sendMessageSafe('tampering-detected', {})
-          observer?.disconnect()
-          observer = null
-        }
-      }
-
-      // Watch for internal tampering (removal of shadow DOM content)
-      internalObserver = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-          mutation.removedNodes.forEach((node) => {
-            // If the root div or style element is removed from shadow DOM
-            if (node === root || node === styleEl) {
-              if (app) {
-                sendMessageSafe('tampering-detected', {})
-                internalObserver?.disconnect()
-                internalObserver = null
-                observer?.disconnect()
-                observer = null
-              }
-            }
-          })
-        }
-      })
-
-      internalObserver.observe(shadowDOM, {
-        childList: true,
-        subtree: true,
-      })
+      // Immediate verification, in case the append itself was undone
+      const problem = tamperWatch?.verify()
+      if (problem)
+        sendMessageSafe('tampering-detected', { reason: problem })
     }
 
     app = createApp(App)
     setupApp(app)
     app.mount(root)
+
+    // The hit test for an element laid over our panel only makes sense while a
+    // panel is on screen, and that is also the only time being covered matters
+    if (tamperingEnabled) {
+      stopUiVisibilityWatch = watchEffect(() => {
+        const anythingShowing = showWarning.value
+          || linkTooltipVisible.value
+          || checkPanelVisible.value
+          || linkInterceptVisible.value
+          || pasteInterceptVisible.value
+        tamperWatch?.setUiVisible(anythingShowing)
+      })
+    }
 
     // Setup link safety after app is mounted
     setupLinkSafety()
@@ -1265,7 +1307,7 @@ async function mount(force = false) {
 })()
 
 // The Vue app is only mounted when the page needs a warning or link safety is
-// on; message-triggered tooltips (context menu, QR) must force-mount it first
+// on, so message-triggered tooltips (context menu, QR) must force-mount it first
 async function ensureTooltipUiMounted() {
   if (!container)
     await mount(true)
@@ -1319,23 +1361,27 @@ window.addEventListener('pageshow', async (event) => {
       linkSafetyCleanup = null
     }
 
-    // Clean up existing instance if any
+    // Clean up existing instance if any. The flag has to be raised before the
+    // first teardown step and lowered after the last, or our own removal comes
+    // back as a tampering report.
+    isSelfRemoving = true
+    if (stopUiVisibilityWatch) {
+      stopUiVisibilityWatch()
+      stopUiVisibilityWatch = null
+    }
+    if (tamperWatch) {
+      tamperWatch.stop()
+      tamperWatch = null
+    }
     if (app) {
       app.unmount()
       app = null
-    }
-    if (observer) {
-      observer.disconnect()
-      observer = null
-    }
-    if (internalObserver) {
-      internalObserver.disconnect()
-      internalObserver = null
     }
     if (container) {
       container.remove()
       container = null
     }
+    isSelfRemoving = false
 
     // Re-mount
     await mount()

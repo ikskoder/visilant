@@ -7,6 +7,7 @@ import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import { settings } from '~/logic/storage'
+import { isTrackableHostname } from '~/logic/visit-stats'
 
 const props = defineProps<{
   visible: boolean
@@ -22,7 +23,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-// Local display toggles — start from the global settings but only affect this panel
+// Local display toggles – start from the global settings but only affect this panel
 const localHighlight = ref(settings.value.domainHighlighting)
 const localCase = ref<'lower' | 'upper'>(settings.value.domainCase)
 const localPunycodeMode = ref<'unicode' | 'ascii'>(settings.value.punycodeListMode)
@@ -84,7 +85,17 @@ function countColor(count: number) {
     : (props.isDark ? 'text-red-400' : 'text-red-500')
 }
 
-function statusBadge(count: number) {
+// Hostnames without a dot are never counted, so there is no visit verdict to
+// give. Same reasoning as the popup: a zero that can never change is not an
+// answer, and colouring it red says something about the address that is untrue.
+const isUntrackedHost = computed(() => {
+  const hostname = props.data?.hostname
+  return Boolean(hostname) && !isTrackableHostname(hostname!)
+})
+
+function statusBadge(count: number, hostname: string) {
+  if (!isTrackableHostname(hostname))
+    return { text: t.value('untrackedHostBadge'), class: props.isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600' }
   if (count >= settings.value.safety)
     return { text: t.value('linkTooltipFamiliar'), class: props.isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700' }
   if (count === 0)
@@ -130,8 +141,8 @@ function statusBadge(count: number) {
             <span v-else-if="data.email.providerKind === 'public'" class="panel-label px-1.5 py-0.5 rounded" :class="isDark ? 'bg-blue-900/40 text-blue-400' : 'bg-blue-100 text-blue-700'">
               {{ t('emailPublicProvider') }}
             </span>
-            <span v-else class="panel-label px-1.5 py-0.5 rounded" :class="statusBadge(data.family.total).class">
-              {{ statusBadge(data.family.total).text.toLowerCase() }}
+            <span v-else class="panel-label px-1.5 py-0.5 rounded" :class="statusBadge(data.family.total, data.hostname).class">
+              {{ statusBadge(data.family.total, data.hostname).text.toLowerCase() }}
             </span>
           </div>
           <div class="panel-label uppercase tracking-wider mb-0.5" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
@@ -163,8 +174,8 @@ function statusBadge(count: number) {
         <!-- Domain: checked hostname -->
         <div v-else class="mb-2">
           <div class="flex items-center flex-wrap gap-1.5 mb-1">
-            <span class="panel-label px-1.5 py-0.5 rounded" :class="statusBadge(data.family.total).class">
-              {{ statusBadge(data.family.total).text.toLowerCase() }}
+            <span class="panel-label px-1.5 py-0.5 rounded" :class="statusBadge(data.family.total, data.hostname).class">
+              {{ statusBadge(data.family.total, data.hostname).text.toLowerCase() }}
             </span>
           </div>
           <div class="panel-address font-bold">
@@ -177,9 +188,23 @@ function statusBadge(count: number) {
           {{ t('linkTooltipPunycode') }}: {{ data.punycode }}
         </div>
 
+        <!-- Why there are no numbers below, said before they are missed -->
+        <div
+          v-if="isUntrackedHost"
+          class="mb-2 p-2 rounded-lg"
+          :class="isDark ? 'bg-blue-900/20 border border-blue-800/50 text-blue-200' : 'bg-blue-50 border border-blue-100 text-blue-900'"
+        >
+          <div class="panel-label font-bold" :class="isDark ? 'text-blue-300' : 'text-blue-800'">
+            {{ t('untrackedHostTitle') }}
+          </div>
+          <div class="panel-label mt-0.5">
+            {{ t('untrackedHostText') }}
+          </div>
+        </div>
+
         <!-- Structural markers -->
         <DomainMarkers :hostname="data.hostname" class="panel-label" />
-        <LookalikeNotice :hostname="data.hostname" class="panel-label" />
+        <LookalikeNotice :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" class="panel-label" />
 
         <!-- Local display toggles -->
         <div class="flex items-center gap-1.5 mb-2">
@@ -215,8 +240,10 @@ function statusBadge(count: number) {
           </button>
         </div>
 
-        <!-- Domain family, same info as the extension popup -->
-        <div class="pt-2" :class="isDark ? 'border-t border-gray-700/50' : 'border-t border-gray-200'">
+        <!-- Domain family, same info as the extension popup. Dropped entirely for
+             an untracked host: the family is the address itself, and every number
+             in it would be a zero that can never move. -->
+        <div v-if="!isUntrackedHost" class="pt-2" :class="isDark ? 'border-t border-gray-700/50' : 'border-t border-gray-200'">
           <div class="flex justify-between items-center mb-1">
             <span class="panel-label uppercase tracking-wider" :class="isDark ? 'text-gray-500' : 'text-gray-400'">{{ t('baseDomain') }}</span>
             <span class="panel-label font-mono font-bold" :class="countColor(data.family.total)">{{ t('total') }}{{ data.family.total }}</span>
@@ -265,7 +292,7 @@ function statusBadge(count: number) {
 
 /* Same domain rendering as the popup (main.css is not bundled into the
    content script, so replicate it): distinct glyphs, no ligatures, spacing.
-   Atkinson Hyperlegible is unavailable on arbitrary pages — monospace fallback. */
+   Atkinson Hyperlegible is unavailable on arbitrary pages – monospace fallback. */
 .secure-domain-display {
   font-family: 'Atkinson Hyperlegible', ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Menlo, Consolas, monospace !important;
   font-variant-ligatures: none !important;

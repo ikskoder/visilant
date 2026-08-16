@@ -1,5 +1,6 @@
 import type { EmailProviderKind } from './email-providers'
 import type { EmailAnalysis } from './email-safety'
+import type { PastePayloadInfo } from './paste-guard'
 import { ref } from 'vue'
 
 export const showWarning = ref(false)
@@ -88,6 +89,29 @@ export interface LinkInterceptData {
 export const linkInterceptVisible = ref(false)
 export const linkInterceptData = ref<LinkInterceptData | null>(null)
 export const linkInterceptResolve = ref<((proceed: boolean) => void) | null>(null)
+
+// Paste intercept dialog state. Same await-the-user shape as the link intercept:
+// the paste event is already cancelled by the time this is shown, and answering
+// yes only lifts the block, leaving the user to paste again themselves.
+export interface PasteInterceptData {
+  domain: string
+  count: number
+  punycode: string | null
+  payload: PastePayloadInfo
+}
+
+export const pasteInterceptVisible = ref(false)
+export const pasteInterceptData = ref<PasteInterceptData | null>(null)
+export const pasteInterceptResolve = ref<((proceed: boolean) => void) | null>(null)
+
+/**
+ * Set once the user has confirmed a paste here, and reset by the next page load.
+ *
+ * Silences the paste block and the warnings together: they have just looked at
+ * the address and said yes, and telling them about the same address again is the
+ * interruption the confirmation was supposed to buy off.
+ */
+export const pasteAllowedOnThisPage = ref(false)
 
 // Callback to cancel tooltip grace timer (set by content script, called by tooltip component)
 const _onTooltipHoverEnter = { fn: null as (() => void) | null }

@@ -11,7 +11,7 @@ export function decodeQrFromImageData(img: ImageData): string | null {
 
 /**
  * Decode a QR code from any ImageBitmapSource (Blob, File, ImageBitmap...).
- * Works in both the service worker and popup — OffscreenCanvas is native in
+ * Works in both the service worker and popup – OffscreenCanvas is native in
  * both contexts (Chrome, Firefox ≥105), no DOM canvas needed.
  */
 export async function decodeQrFromImageBitmapSource(src: ImageBitmapSource): Promise<string | null> {

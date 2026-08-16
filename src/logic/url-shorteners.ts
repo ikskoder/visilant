@@ -1,3 +1,5 @@
+import { parseShortenerDomains, STORAGE_KEY_REMOTE_SHORTENERS } from './shortener-lists'
+
 // Built-in list of known URL shortener domains (one per line, raw text)
 // Source: https://github.com/PeterDaveHello/url-shorteners (active + inactive, merged)
 const BUILTIN_RAW_LIST = `
@@ -2584,27 +2586,30 @@ zzu.info
 /**
  * Parse a raw domain list (one domain per line) into an array.
  * Handles comments (#), empty lines, whitespace.
+ *
+ * Lives in `shortener-lists.ts` so the settings page can parse and fetch lists
+ * without pulling in the built-in list below.
  */
-export function parseDomainList(raw: string): string[] {
-  return raw.split('\n')
-    .map(line => line.trim().toLowerCase())
-    .filter(line => line.length > 0 && !line.startsWith('#') && line.includes('.'))
-}
+export { parseShortenerDomains as parseDomainList }
 
-// Runtime set — initialized from built-in, can be updated with remote data
+// Runtime set – initialized from built-in, can be updated with remote data
 let customDomains: string[] = []
-let shortenerDomains = new Set<string>(parseDomainList(BUILTIN_RAW_LIST))
+let remoteDomains: string[] = []
+let shortenerDomains = new Set<string>(parseShortenerDomains(BUILTIN_RAW_LIST))
 
 function rebuildSet() {
-  shortenerDomains = new Set<string>([...parseDomainList(BUILTIN_RAW_LIST), ...customDomains])
+  shortenerDomains = new Set<string>([...parseShortenerDomains(BUILTIN_RAW_LIST), ...customDomains, ...remoteDomains])
 }
 
 /**
- * Replace the runtime shortener list with a fresh one (from remote fetch).
- * Merges with built-in list so built-in entries are never lost.
+ * Replace the remotely fetched part of the list.
+ *
+ * Held as its own slice rather than folded into the set, so that adding a custom
+ * domain later does not discard it – everything is merged in `rebuildSet`.
  */
-export function updateShortenerList(remoteDomains: string[]): void {
-  shortenerDomains = new Set<string>([...parseDomainList(BUILTIN_RAW_LIST), ...customDomains, ...remoteDomains])
+export function updateShortenerList(domains: string[]): void {
+  remoteDomains = domains.map(domain => domain.trim().toLowerCase()).filter(Boolean)
+  rebuildSet()
 }
 
 /**
@@ -2673,7 +2678,7 @@ const RESOLVE_TIMEOUT_MS = 10000
  * Follow redirect chain to resolve a URL to its final destination.
  *
  * Strategy:
- * 1. Primary: fetch with redirect:'follow' — browser follows all HTTP redirects,
+ * 1. Primary: fetch with redirect:'follow' – browser follows all HTTP redirects,
  *    response.url gives the final URL. Works reliably in MV3 service workers.
  * 2. If the final URL is still on a known shortener (JS redirect), fetch HTML
  *    and parse meta-refresh / window.location patterns.
@@ -2688,7 +2693,7 @@ export async function resolveUrlChain(url: string): Promise<ResolvedUrlResult> {
 
   try {
     for (let i = 0; i < MAX_REDIRECTS; i++) {
-      // Use redirect:'follow' — browser handles all HTTP 3xx automatically
+      // Use redirect:'follow' – browser handles all HTTP 3xx automatically
       // response.url contains the final URL after all redirects
       const response = await fetch(currentUrl, {
         method: 'GET',
@@ -2718,7 +2723,7 @@ export async function resolveUrlChain(url: string): Promise<ResolvedUrlResult> {
         }
       }
 
-      // Done — landed on a non-shortener or no more redirects found
+      // Done – landed on a non-shortener or no more redirects found
       break
     }
 
@@ -2839,15 +2844,17 @@ export function setCachedResolvedUrl(url: string, result: ResolvedUrlResult): vo
 }
 
 /**
- * Fetch a remote shortener list (one domain per line, same format as built-in)
- * and merge it with the built-in list. Returns count of remote domains loaded.
+ * Load both the user's own shortener domains and the last fetched remote list.
+ * Call once on startup in every context that resolves shortened links.
  */
-export async function fetchRemoteShortenerList(url: string): Promise<number> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(15000) })
-  if (!response.ok)
-    throw new Error(`HTTP ${response.status}`)
-  const text = await response.text()
-  const domains = parseDomainList(text)
-  updateShortenerList(domains)
-  return domains.length
+export async function loadShortenersFromStorage(): Promise<void> {
+  const stored = await browser.storage.local.get(['customShorteners', STORAGE_KEY_REMOTE_SHORTENERS])
+
+  const custom = (stored.customShorteners as string[]) || []
+  if (custom.length)
+    loadCustomShorteners(custom)
+
+  const remote = stored[STORAGE_KEY_REMOTE_SHORTENERS] as { domains?: string[] } | undefined
+  if (remote?.domains?.length)
+    updateShortenerList(remote.domains)
 }

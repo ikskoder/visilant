@@ -5,7 +5,9 @@ import { getDomain } from 'tldts'
 import { computed, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
+import { isolatePageZoom } from '~/logic/page-zoom'
 import { settings } from '~/logic/storage'
+import { isTrackableHostname } from '~/logic/visit-stats'
 import Logo from '../components/Logo.vue'
 import SecureText from '../components/SecureText.vue'
 import CheckField from './CheckField.vue'
@@ -26,6 +28,7 @@ function updateTranslations() {
 
   const translationKeys = [
     'currentDomain',
+    'checkedDomain',
     'baseDomain',
     'subdomains',
     'total',
@@ -62,6 +65,11 @@ function updateTranslations() {
     'activeDaysLabel',
     'statsUnknown',
     'statsImportHint',
+    'statsFamilyWide',
+    'externalLookupsTitle',
+    'externalLookupsCaveat',
+    'untrackedHostTitle',
+    'untrackedHostText',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -77,6 +85,15 @@ watch([loadedTranslations, isLoaded], () => {
 }, { immediate: true })
 
 const isStandalonePage = ref(false)
+// The same document serves as the browser's own popup and, opened by URL, as an
+// ordinary tab. In a tab it should behave like a page: use the whole window and
+// scroll. tabs.getCurrent() is what tells the two apart, resolving to undefined
+// inside a popup, and it must not become a width guess: the popup window sizes
+// itself to the document, so a full-width column there would collapse it.
+const isTabView = ref(false)
+// Layout follows the container, wording follows the query string, so the two
+// are kept apart on purpose
+const isPageView = computed(() => isStandalonePage.value || isTabView.value)
 const currentHostname = ref('')
 const baseDomain = ref('')
 const visits = ref<Record<string, any>>({})
@@ -103,12 +120,48 @@ const currentDomainCount = computed(() => {
   return visits.value[currentHostname.value]?.count || 0
 })
 
-const currentStats = computed<SiteVisitData | undefined>(() => {
-  return visits.value[currentHostname.value]
+// Hostnames without a dot (localhost, a machine name on the local network) are
+// never counted, so their zero is not a fact about the user. Showing it as a red
+// 0 would accuse a machine on their own desk of being unfamiliar, and no amount
+// of visiting could ever clear it. Say plainly that nothing is counted instead.
+const isUntrackedHost = computed(() => {
+  return Boolean(currentHostname.value) && !isTrackableHostname(currentHostname.value)
 })
 
-// The domain display is deliberately wide — a hyperlegible face at 0.25em letter
-// spacing — so a long hostname cannot fit at the headline size. Stepping the size
+// The details page is usually opened for a link or an email domain, which often
+// has no record of its own even when the rest of the family does – visits are
+// counted per hostname, so `example.com` and `www.example.com` are separate.
+// Falling back to the family keeps the facts from vanishing. They are marked as
+// family-wide, because facts about a family are not facts about this address.
+const statsAreFamilyWide = computed(() => {
+  return Boolean(currentHostname.value) && !visits.value[currentHostname.value] && subdomains.value.length > 0
+})
+
+const currentStats = computed<SiteVisitData | undefined>(() => {
+  const own = visits.value[currentHostname.value]
+  if (own)
+    return own
+
+  const records = subdomains.value.map(domain => visits.value[domain]).filter(Boolean)
+  if (!records.length)
+    return undefined
+
+  const firstSeen = records.map(r => r.firstSeen).filter((value): value is number => typeof value === 'number')
+  // Active days overlap between subdomains, so the largest is a lower bound –
+  // summing them would count the same day several times
+  const activeDays = records.map(r => r.activeDays).filter((value): value is number => typeof value === 'number')
+
+  return {
+    count: records.reduce((total, r) => total + r.count, 0),
+    lastSeen: Math.max(...records.map(r => r.lastSeen)),
+    firstSeen: firstSeen.length ? Math.min(...firstSeen) : undefined,
+    activeDays: activeDays.length ? Math.max(...activeDays) : undefined,
+    ignored: false,
+  }
+})
+
+// The domain display is deliberately wide – a hyperlegible face at 0.25em letter
+// spacing – so a long hostname cannot fit at the headline size. Stepping the size
 // down keeps it to one or two lines instead of breaking a label apart, which is
 // exactly what someone reading a suspicious address must not have to untangle.
 const currentDomainFontSize = computed(() => {
@@ -160,7 +213,7 @@ const sortedSubdomains = computed(() => {
 
 // One convention across the whole row: a button always shows the state it is in,
 // never the state a click would take you to. The sort arrow and the rainbow
-// already did; the case and format buttons showed the opposite, so `AA` meant
+// already did, but the case and format buttons showed the opposite, so `AA` meant
 // "currently lowercase" and read as the exact reverse of what it looked like.
 //
 // The tooltips complete it by naming the action, since a button that only shows
@@ -288,7 +341,28 @@ function openCheckPage() {
   browser.tabs.create({ url: browser.runtime.getURL('dist/popup/index.html?check=1') })
 }
 
+// The browser popup sizes itself to its content and must not scroll. The same
+// document opened as a tab is an ordinary page, so it has to – a long list of
+// subdomains would otherwise be cut off with no way to reach the rest.
+watch(isPageView, (pageView) => {
+  document.documentElement.classList.toggle('standalone-page', pageView)
+}, { immediate: true })
+
 onMounted(async () => {
+  // Settled before anything can return early, since the whole layout hangs on
+  // it. Guarded because this decides a margin, and nothing about a margin is
+  // worth losing the dashboard over: without an answer, stay the popup.
+  try {
+    isTabView.value = Boolean(await browser.tabs.getCurrent())
+  }
+  catch {
+    isTabView.value = false
+  }
+
+  // Only does anything in a tab, and keeps a zoom set here from reaching the
+  // popup, where a fixed-width column in a resized window just looks broken
+  isolatePageZoom()
+
   // Check if opened with a domain query param (from tooltip "Details" button or context menu)
   const urlParams = new URLSearchParams(window.location.search)
   const domainParam = urlParams.get('domain')
@@ -325,7 +399,9 @@ onMounted(async () => {
   <div :class="isStandalonePage ? 'min-h-screen flex justify-center bg-gray-50 dark:bg-gray-900 py-8' : ''">
     <main
       class="px-4 py-5 text-gray-700 dark:text-gray-200 relative"
-      :class="isStandalonePage ? 'w-full max-w-[600px] bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700' : 'w-[600px]'"
+      :class="isStandalonePage
+        ? 'w-full max-w-[600px] bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700'
+        : (isTabView ? 'w-full' : 'w-[600px]')"
       :style="{ fontSize: `${settings.popupFontSize}%` }"
     >
       <div class="flex justify-between items-center mb-4">
@@ -372,8 +448,8 @@ onMounted(async () => {
 
       <div v-if="currentHostname">
         <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
-          <div class="text-xs uppercase tracking-wider opacity-50 mb-1">
-            {{ translations.currentDomain }}
+          <div class="uppercase tracking-wider opacity-60 mb-1" style="font-size: 0.75em;">
+            {{ isStandalonePage ? translations.checkedDomain : translations.currentDomain }}
           </div>
           <div class="flex justify-between items-end">
             <div class="secure-domain-display font-bold break-words min-w-0 leading-tight mr-2" :style="{ fontSize: currentDomainFontSize }">
@@ -399,20 +475,44 @@ onMounted(async () => {
                 <SecureText :text="currentHostname" mark-wraps />
               </template>
             </div>
-            <div class="font-mono font-bold" style="font-size: 1.3em;" :class="getCountColor(currentDomainCount)">
+            <!-- A dash, not a 0: there is no count here, which is a different
+                 thing from a count of zero -->
+            <div
+              v-if="isUntrackedHost"
+              class="font-mono font-bold opacity-40" style="font-size: 1.3em;"
+              :title="translations.untrackedHostTitle"
+            >
+              –
+            </div>
+            <div v-else class="font-mono font-bold" style="font-size: 1.3em;" :class="getCountColor(currentDomainCount)">
               {{ currentDomainCount }}
             </div>
           </div>
+
+          <!-- Said before the numbers, because it explains why there are none -->
+          <div
+            v-if="isUntrackedHost"
+            class="mt-2 p-2 rounded-lg text-left bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50"
+          >
+            <div class="font-medium text-blue-800 dark:text-blue-300" style="font-size: 0.85em;">
+              {{ translations.untrackedHostTitle }}
+            </div>
+            <p class="mt-0.5 leading-snug text-blue-900/70 dark:text-blue-200/80" style="font-size: 0.8em;">
+              {{ translations.untrackedHostText }}
+            </p>
+          </div>
+
           <!-- Structural markers and resemblance to a domain the user knows -->
-          <DomainMarkers :hostname="currentHostname" class="mt-2" style="font-size: 0.75em;" />
-          <LookalikeNotice :hostname="currentHostname" style="font-size: 0.75em;" />
+          <DomainMarkers :hostname="currentHostname" class="mt-2" style="font-size: 0.85em;" />
+          <LookalikeNotice :hostname="currentHostname" style="font-size: 0.85em;" />
+          <ExternalLookups :hostname="currentHostname" style="font-size: 0.85em;" />
 
           <!-- Visit history facts. firstSeen/activeDays stay empty until a full
-               history import supplies them — we never guess a date. -->
+               history import supplies them – we never guess a date. -->
           <div
             v-if="currentStats"
             class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-2 text-left"
-            style="font-size: 0.7em;"
+            style="font-size: 0.85em;"
           >
             <div>
               <div class="uppercase tracking-wider opacity-50">
@@ -443,6 +543,9 @@ onMounted(async () => {
               </div>
             </div>
           </div>
+          <p v-if="currentStats && statsAreFamilyWide" class="mt-1 opacity-60 text-left" style="font-size: 0.75em;">
+            {{ translations.statsFamilyWide }}
+          </p>
 
           <!-- Anti-Tampering Status -->
           <div class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -454,12 +557,12 @@ onMounted(async () => {
                 class="w-2 h-2 rounded-full flex-shrink-0"
                 :class="isAntiTamperingExcluded ? 'bg-amber-400' : 'bg-green-500'"
               />
-              <span class="text-[11px]" :class="isAntiTamperingExcluded ? 'text-amber-600' : 'text-gray-400'">
+              <span style="font-size: 0.8em;" :class="isAntiTamperingExcluded ? 'text-amber-600' : 'text-gray-400'">
                 {{ isAntiTamperingExcluded ? translations.antiTamperingNotProtected : translations.antiTamperingProtected }}
               </span>
             </div>
             <button
-              class="text-[11px] text-blue-500 hover:text-blue-700 hover:underline transition-colors"
+              class="text-blue-500 hover:text-blue-700 hover:underline transition-colors" style="font-size: 0.8em;"
               :title="isAntiTamperingExcluded ? translations.antiTamperingTooltipOn : translations.antiTamperingTooltipOff"
               @click="toggleAntiTampering"
             >
@@ -539,7 +642,7 @@ onMounted(async () => {
           </div>
           <div
             class="overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700 shadow-sm"
-            :class="isStandalonePage ? '' : 'max-h-[265px]'"
+            :class="isPageView ? '' : 'max-h-[265px]'"
             style="font-size: 1.1em;"
           >
             <div
@@ -557,7 +660,9 @@ onMounted(async () => {
             </div>
           </div>
         </div>
-        <div v-else class="mt-4 text-sm opacity-50 text-center py-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+        <!-- Skipped for untracked hosts: "no visit data" reads as a gap waiting
+             to be filled, and the notice above has already said why it never will be -->
+        <div v-else-if="!isUntrackedHost" class="mt-4 text-sm opacity-50 text-center py-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
           {{ translations.noVisitData }}
         </div>
       </div>
@@ -588,18 +693,20 @@ onMounted(async () => {
 </template>
 
 <style>
-/* Prevent popup-level scrollbar */
-html, body {
+/* Prevent popup-level scrollbar – but not on the standalone page, which is a
+   normal tab and scrolls like one (see the class toggle in the script) */
+html:not(.standalone-page),
+html:not(.standalone-page) body {
   overflow: hidden;
 }
 
-/* Hide scrollbar for Chrome, Safari and Opera */
-.overflow-y-auto::-webkit-scrollbar {
+/* Inner lists hide their scrollbar in the popup, where space is tight. On the
+   standalone page they have no height cap, so there is nothing to hide. */
+html:not(.standalone-page) .overflow-y-auto::-webkit-scrollbar {
   display: none;
 }
 
-/* Hide scrollbar for IE, Edge and Firefox */
-.overflow-y-auto {
+html:not(.standalone-page) .overflow-y-auto {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }

@@ -1,6 +1,6 @@
 import type { Settings, SiteVisitData } from '../storage'
 import { describe, expect, it } from 'vitest'
-import { defaultSettings } from '../storage'
+import { defaultSettings, parseStoredSettings } from '../storage'
 
 describe('defaultSettings', () => {
   it('has correct safety threshold', () => {
@@ -120,5 +120,36 @@ describe('siteVisitData type', () => {
     expect(data.count).toBe(42)
     expect(data.ignored).toBe(false)
     expect(data.lastSeen).toBeGreaterThan(0)
+  })
+})
+
+describe('parseStoredSettings', () => {
+  it('reads the serialized string storage actually holds', () => {
+    const parsed = parseStoredSettings(JSON.stringify({ ...defaultSettings, safety: 42 }))
+    expect(parsed?.safety).toBe(42)
+  })
+
+  // Reaching for a field on the raw string yields `undefined` for every one of
+  // them, so two different settings objects compare equal and a boolean check
+  // reads as false – both silently, which is what makes this worth a test
+  it('tells two thresholds apart where a bare cast cannot', () => {
+    const before = parseStoredSettings(JSON.stringify({ ...defaultSettings, safety: 10 }))
+    const after = parseStoredSettings(JSON.stringify({ ...defaultSettings, safety: 25 }))
+    expect(before?.safety).not.toBe(after?.safety)
+  })
+
+  it('keeps a false setting false rather than losing it to undefined', () => {
+    const parsed = parseStoredSettings(JSON.stringify({ ...defaultSettings, changeIcon: false }))
+    expect(parsed?.changeIcon).toBe(false)
+  })
+
+  it('accepts an object unchanged', () => {
+    expect(parseStoredSettings({ ...defaultSettings, safety: 7 })?.safety).toBe(7)
+  })
+
+  it('gives up quietly on anything unreadable', () => {
+    expect(parseStoredSettings('not json')).toBeUndefined()
+    expect(parseStoredSettings(undefined)).toBeUndefined()
+    expect(parseStoredSettings(null)).toBeUndefined()
   })
 })

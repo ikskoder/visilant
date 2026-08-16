@@ -94,7 +94,7 @@ export function getPunycodeInfo(hostname: string): { hasUnicode: boolean, ascii?
     return { hasUnicode: false }
 
   try {
-    // The URL parser converts Unicode to punycode; the decoder goes the other way
+    // The URL parser converts Unicode to punycode, and the decoder goes the other way
     const ascii = hasNonAscii ? new URL(`http://${hostname}`).hostname : hostname
     const unicode = hasNonAscii ? hostname : punycode.toUnicode(hostname)
     return { hasUnicode: true, ascii, unicode }

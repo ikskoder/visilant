@@ -1,6 +1,6 @@
 import type { ImportedDomainStats } from '../history-import'
 import { describe, expect, it } from 'vitest'
-import { addVisitTimes, hostnameFromHistoryUrl, mapWithConcurrency, mergeImportedStats } from '../history-import'
+import { addVisitTimes, describeImportHealth, hasVisitRecords, hostnameFromHistoryUrl, mapWithConcurrency, mergeImportedStats, needsDetailPass, shouldAutoImport } from '../history-import'
 
 function at(year: number, month: number, day: number, hour = 12) {
   return new Date(year, month - 1, day, hour).getTime()
@@ -81,7 +81,7 @@ describe('mergeImportedStats', () => {
     })
   })
 
-  it('is idempotent — importing twice does not inflate anything', () => {
+  it('is idempotent – importing twice does not inflate anything', () => {
     const imported = { count: 184, firstSeen: at(2022, 3, 14), lastSeen: at(2026, 3, 7), activeDays: 37 }
     const once = mergeImportedStats(undefined, imported)
 
@@ -89,7 +89,7 @@ describe('mergeImportedStats', () => {
   })
 
   it('keeps the extension-side count when it is higher than the history', () => {
-    // History can be cleared; our own counter must not be lowered by an import
+    // History can be cleared, so our own counter must not be lowered by an import
     const existing = { count: 300, lastSeen: at(2026, 3, 7), ignored: false }
     const imported = { count: 12, firstSeen: at(2026, 3, 1), lastSeen: at(2026, 3, 5), activeDays: 2 }
 
@@ -159,5 +159,123 @@ describe('mapWithConcurrency', () => {
 
   it('handles an empty list', async () => {
     await expect(mapWithConcurrency([], 4, async () => {})).resolves.toBeUndefined()
+  })
+})
+
+describe('hasVisitRecords', () => {
+  it('recognises a stored visit record', () => {
+    expect(hasVisitRecords({ 'example.com': { count: 3, lastSeen: 1, ignored: false } })).toBe(true)
+  })
+
+  it('ignores the internal keys that share storage.local with visit data', () => {
+    expect(hasVisitRecords({
+      textDefaultsSeeded: true,
+      customShorteners: ['bit.ly'],
+      __visilantFamiliar: { domains: [], threshold: 10, builtAt: 1 },
+      __visilantHistoryImport: { status: 'done', current: 0, total: 0 },
+    })).toBe(false)
+  })
+
+  it('is false for an empty profile', () => {
+    expect(hasVisitRecords({})).toBe(false)
+  })
+})
+
+describe('shouldAutoImport', () => {
+  const used = { 'example.com': { count: 3, lastSeen: 1, ignored: false } }
+
+  it('imports on a fresh install', () => {
+    expect(shouldAutoImport({ reason: 'install', alreadyDecided: false, records: {} })).toBe(true)
+  })
+
+  it('leaves an existing user of the extension alone on update', () => {
+    expect(shouldAutoImport({ reason: 'update', alreadyDecided: false, records: used })).toBe(false)
+  })
+
+  it('imports on update when the profile has no visits yet', () => {
+    expect(shouldAutoImport({ reason: 'update', alreadyDecided: false, records: {} })).toBe(true)
+  })
+
+  it('never runs twice', () => {
+    expect(shouldAutoImport({ reason: 'install', alreadyDecided: true, records: {} })).toBe(false)
+    expect(shouldAutoImport({ reason: 'update', alreadyDecided: true, records: {} })).toBe(false)
+  })
+
+  it('ignores browser and shared-module updates', () => {
+    expect(shouldAutoImport({ reason: 'chrome_update', alreadyDecided: false, records: {} })).toBe(false)
+    expect(shouldAutoImport({ reason: 'shared_module_update', alreadyDecided: false, records: {} })).toBe(false)
+  })
+})
+
+describe('needsDetailPass', () => {
+  it('wants the slow pass for a record only the quick import wrote', () => {
+    expect(needsDetailPass({ count: 12, lastSeen: 1, ignored: false })).toBe(true)
+  })
+
+  it('wants it for a hostname that has never been seen', () => {
+    expect(needsDetailPass(undefined)).toBe(true)
+  })
+
+  it('skips a hostname a checkpoint already finished', () => {
+    expect(needsDetailPass({ count: 12, lastSeen: 1, ignored: false, activeDays: 4 })).toBe(false)
+  })
+
+  it('counts zero active days as finished, not as missing', () => {
+    expect(needsDetailPass({ count: 1, lastSeen: 1, ignored: false, activeDays: 0 })).toBe(false)
+  })
+})
+
+describe('describeImportHealth', () => {
+  const NOW = at(2026, 3, 7)
+  const base = {
+    mode: 'full' as const,
+    phase: 'scanning' as const,
+    current: 0,
+    total: 0,
+    domains: 0,
+    visits: 0,
+    finishedAt: 0,
+    auto: true,
+    updatedAt: NOW,
+    attempts: 0,
+    fullDoneAt: 0,
+  }
+
+  it('asks for an import when none has ever run', () => {
+    expect(describeImportHealth(null, NOW)).toBe('never')
+  })
+
+  it('reports a live import as running', () => {
+    expect(describeImportHealth({ ...base, status: 'running' }, NOW)).toBe('running')
+  })
+
+  it('reports a page-driven import as running even before any state is published', () => {
+    expect(describeImportHealth(null, NOW, true)).toBe('running')
+  })
+
+  it('tells a killed import apart from a live one by its heartbeat', () => {
+    const stale = { ...base, status: 'running' as const, updatedAt: NOW - 10 * 60 * 1000 }
+    expect(describeImportHealth(stale, NOW)).toBe('interrupted')
+  })
+
+  it('calls a quick-only import partial, since the dates are still missing', () => {
+    const quick = { ...base, status: 'done' as const, mode: 'quick' as const, finishedAt: NOW }
+    expect(describeImportHealth(quick, NOW)).toBe('partial')
+  })
+
+  it('stays complete when a later quick refresh follows a finished full pass', () => {
+    // The refresh is the newest state, but the dates it cannot supply are already stored
+    const refresh = { ...base, status: 'done' as const, mode: 'quick' as const, finishedAt: NOW, fullDoneAt: NOW - 1000 }
+    expect(describeImportHealth(refresh, NOW)).toBe('complete')
+  })
+
+  it('reports a failure as a failure', () => {
+    expect(describeImportHealth({ ...base, status: 'failed', finishedAt: NOW }, NOW)).toBe('failed')
+  })
+
+  it('does not nag about a cancelled run once a full pass has ever finished', () => {
+    const cancelled = { ...base, status: 'cancelled' as const, finishedAt: NOW, fullDoneAt: NOW - 1000 }
+    expect(describeImportHealth(cancelled, NOW)).toBe('complete')
+    expect(describeImportHealth({ ...base, status: 'cancelled', finishedAt: NOW }, NOW)).toBe('cancelled')
   })
 })

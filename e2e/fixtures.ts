@@ -30,10 +30,28 @@ export const test = base.extend<{
     await context.close()
   },
   extensionId: async ({ context }, use) => {
-    // for manifest v3:
+    // For manifest v3 the id comes off the service worker's own URL. Waiting for
+    // the registration event is not enough on its own: the worker is torn down
+    // whenever it looks idle, and a restart does not always arrive as a fresh
+    // event – so the list is polled alongside it.
     let [background] = context.serviceWorkers()
+    if (!background) {
+      background = await Promise.race([
+        context.waitForEvent('serviceworker', { timeout: 20000 }).catch(() => undefined),
+        (async () => {
+          for (let attempt = 0; attempt < 80; attempt++) {
+            const [worker] = context.serviceWorkers()
+            if (worker)
+              return worker
+            await sleep(250)
+          }
+          return undefined
+        })(),
+      ]) as typeof background
+    }
+
     if (!background)
-      background = await context.waitForEvent('serviceworker', { timeout: 10000 })
+      throw new Error('the extension service worker never turned up')
 
     const extensionId = background.url().split('/')[2]
     await use(extensionId)

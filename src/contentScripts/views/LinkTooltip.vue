@@ -100,7 +100,7 @@ function reposition() {
   const tooltipWidth = content.offsetWidth
   const vw = window.innerWidth
 
-  // Decide placement only once per tooltip show — lock after first decision
+  // Decide placement only once per tooltip show – lock after first decision
   if (!placementLocked.value) {
     // If there's a shortener that may expand, use generous estimate for initial placement
     const estimatedHeight = props.data.shortUrl ? Math.max(tooltipHeight, EXPANDED_ESTIMATE) : tooltipHeight
@@ -234,7 +234,7 @@ onBeforeUnmount(() => {
 
           <!-- Structural markers of the address's domain -->
           <DomainMarkers :hostname="data.domain" class="tooltip-label" />
-          <LookalikeNotice :hostname="data.domain" class="tooltip-label" />
+          <LookalikeNotice :hostname="data.domain" context="email" class="tooltip-label" />
 
           <!-- Action buttons -->
           <div class="flex gap-2 mt-1">
@@ -357,7 +357,7 @@ onBeforeUnmount(() => {
             {{ t('linkTooltipVisits') }}: {{ data.count }}
           </div>
 
-          <!-- Short URL: idle state — resolve button -->
+          <!-- Short URL: idle state – resolve button -->
           <div v-if="data.shortUrl?.status === 'idle'" class="mt-2 mb-1">
             <div v-if="data.shortUrl.isKnownShortener" class="tooltip-label text-orange-400/80 mb-2">
               {{ t('linkTooltipShortUrlWarning') }}

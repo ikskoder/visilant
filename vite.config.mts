@@ -100,6 +100,7 @@ export default defineConfig(({ command }) => ({
       input: {
         options: r('src/options/index.html'),
         popup: r('src/popup/index.html'),
+        welcome: r('src/welcome/index.html'),
       },
     },
   },

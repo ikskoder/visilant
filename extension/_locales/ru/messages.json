@@ -1,4 +1,8 @@
 {
+  "extensionName": {
+    "message": "Visilant",
+    "description": "Name of the extension, used as the logo alt text"
+  },
   "extensionDescription": {
     "message": "Защита от сайтов-подделок (гомограф-атаки и клон-фишинг) на основе личной статистики посещения сайтов",
     "description": "Description of the extension"
@@ -8,15 +12,15 @@
     "description": "Title of the security warning popup"
   },
   "warningMessage": {
-    "message": "Вы собираетесь ввести данные на сайте, который вы редко посещали. Это может быть рискованно, если вы делитесь конфиденциальной информацией",
+    "message": "Вы собираетесь ввести данные на незнакомом сайте. Это может быть рискованно, если вы делитесь конфиденциальной информацией",
     "description": "Main warning message about site safety"
   },
   "inputWarningMessage": {
-    "message": "Вы собираетесь ввести данные на сайте, который вы редко посещали. Это может быть рискованно, если вы делитесь конфиденциальной информацией",
+    "message": "Вы собираетесь ввести данные на незнакомом сайте. Это может быть рискованно, если вы делитесь конфиденциальной информацией",
     "description": "Warning message for input/paste actions"
   },
   "copyWarningMessage": {
-    "message": "Вы копируете содержимое с сайта, который вы редко посещали. Будьте предельно осторожны с тем, как вы используете эту информацию",
+    "message": "Вы копируете содержимое с незнакомого сайта. Будьте осторожны с тем, как используете эти данные",
     "description": "Warning message for copy/cut actions"
   },
   "checkUrl": {
@@ -51,6 +55,10 @@
     "message": "Настройки",
     "description": "Title for the settings page"
   },
+  "onThisPage": {
+    "message": "На этой странице",
+    "description": "Heading of the settings page table of contents"
+  },
   "generalSettings": {
     "message": "Общие настройки",
     "description": "Title for general settings section"
@@ -64,19 +72,23 @@
     "description": "Label for visits threshold input"
   },
   "visitsThresholdDesc": {
-    "message": "Сайты с меньшим количеством посещений будут помечены как незнакомые",
+    "message": "Сайт, на котором вы были меньше раз, чем указано здесь, считается незнакомым, и расширение может о нём предупредить. Чем больше число, тем больше предупреждений и осторожности, чем меньше – тем меньше отвлечений. Визиты, импортированные из истории браузера, тоже учитываются, поэтому сайты, которыми вы пользуетесь давно, обычно сразу считаются знакомыми.",
     "description": "Description for visits threshold"
   },
   "displaySettings": {
     "message": "Настройки отображения иконки",
     "description": "Title for display settings section"
   },
+  "displaySettingsPinNote": {
+    "message": "Обе настройки имеют смысл, только если иконка расширения закреплена на панели браузера, и закрепить её очень стоит. Почему именно – в настройках уведомлений чуть ниже.",
+    "description": "Note explaining that the icon settings require the extension icon to be pinned"
+  },
   "dynamicIcon": {
     "message": "Динамическая иконка",
     "description": "Label for dynamic icon toggle"
   },
   "dynamicIconDesc": {
-    "message": "Иконка станет красной на сайтах, которые вы редко посещали",
+    "message": "Иконка становится красной на незнакомых сайтах",
     "description": "Description for dynamic icon setting"
   },
   "showBadge": {
@@ -84,7 +96,7 @@
     "description": "Label for badge toggle"
   },
   "showBadgeDesc": {
-    "message": "Показывать количество посещений на значке расширения",
+    "message": "Показывает счётчик визитов текущего сайта на иконке расширения. Самый быстрый способ увидеть, насколько хорошо Visilant знает сайт, на котором вы находитесь, ничего для этого не открывая.",
     "description": "Description for badge setting"
   },
   "notificationSettings": {
@@ -96,7 +108,7 @@
     "description": "Label for notifications toggle"
   },
   "showWarningNotificationDesc": {
-    "message": "Только когда вы что-то вводите или копируете на незнакомом сайте",
+    "message": "Предупреждения появляются только на незнакомых сайтах и только при тех действиях, которые выбраны ниже. Пока вы просто читаете страницу, ничего не показывается.",
     "description": "Description for notifications setting"
   },
   "notificationStyle": {
@@ -107,13 +119,25 @@
     "message": "Уведомления браузера",
     "description": "Option for browser notifications"
   },
+  "browserNotificationsDesc": {
+    "message": "Системные уведомления, показываются вне страницы. Со стороны страницы до них не дотянуться, зато их может заглушить операционная система, например в режиме «не беспокоить», и их легко пропустить, если вы смотрите в другое окно.",
+    "description": "Trade-off of system notifications"
+  },
   "inPageNotifications": {
     "message": "Уведомления на странице",
     "description": "Option for in-page notifications"
   },
+  "inPageNotificationsDesc": {
+    "message": "Панель, нарисованная прямо на странице. Система её не заглушит, и не заметить её трудно, но живёт она внутри страницы, поэтому враждебный сайт может попытаться её убрать. Ровно для этого ниже есть защита от подмены.",
+    "description": "Trade-off of in-page notifications"
+  },
   "bothNotifications": {
     "message": "Оба варианта",
     "description": "Option for both types of notifications"
+  },
+  "notificationStylePinNote": {
+    "message": "Как видите, у каждого варианта есть свой изъян. Именно поэтому стоит закрепить иконку расширения на панели. Иконка живёт в самом браузере, вне любой страницы, поэтому сайт не может ни заглушить её, ни убрать, ни нарисовать поверх убедительную подделку. Что бы ни случилось с уведомлением, иконка всё равно показывает, насколько знаком сайт.",
+    "description": "Note below the notification style options, recommending the pinned icon as the indicator a site cannot fake"
   },
   "databaseManagement": {
     "message": "Управление данными",
@@ -123,21 +147,65 @@
     "message": "Импорт...",
     "description": "Text shown while importing"
   },
+  "importHistoryIntro": {
+    "message": "История браузера была импортирована автоматически при установке Visilant, вместе с датами. Кнопки ниже просто повторяют этот импорт.",
+    "description": "Note above the manual import buttons, explaining the automatic import already ran"
+  },
+  "importStatusNever": {
+    "message": "Пока ничего не импортировано, поэтому все сайты считаются незнакомыми. Запустите полный импорт ниже.",
+    "description": "Import status: nothing has ever been imported"
+  },
+  "importStatusRunning": {
+    "message": "Импорт идёт прямо сейчас.",
+    "description": "Import status: an import is in flight right now"
+  },
+  "importStatusComplete": {
+    "message": "Импортировано полностью, вместе с датами. Здесь ничего делать не нужно.",
+    "description": "Import status: everything imported, dates included"
+  },
+  "importStatusPartial": {
+    "message": "Счётчики визитов на месте, предупреждения работают верно, но полный проход ни разу не завершился, поэтому даты первого захода и активные дни пустуют. Запустите полный импорт, чтобы их заполнить.",
+    "description": "Import status: counts imported but no full pass ever finished"
+  },
+  "importStatusInterrupted": {
+    "message": "Импорт прервался и с тех пор не возобновлялся. Запустите полный импорт, чтобы его доделать, он продолжит с того места, где остановился.",
+    "description": "Import status: an import was cut short and never resumed"
+  },
+  "importStatusCancelled": {
+    "message": "Импорт остановили до завершения. Счётчики визитов могут быть неполными, так что запустите его заново.",
+    "description": "Import status: the user stopped the import"
+  },
+  "importStatusFailed": {
+    "message": "Последний импорт завершился ошибкой. Запустите полный импорт, чтобы попробовать ещё раз.",
+    "description": "Import status: the import ended in an error"
+  },
+  "importKeepPageOpen": {
+    "message": "Этот импорт выполняется прямо на этой странице, так что не закрывайте её до конца. Автоматическому импорту страница не нужна, он идёт в фоне.",
+    "description": "Hint shown while a manual import runs in the settings page"
+  },
+  "importLastRun": {
+    "message": "Последний импорт",
+    "description": "Label for the date of the last history import"
+  },
+  "importSitesStored": {
+    "message": "сайтов",
+    "description": "Unit after the number of sites stored by the last import"
+  },
   "importHistoryFull": {
     "message": "Полный импорт",
     "description": "Label for the full history import button"
   },
   "importHistoryFullDesc": {
-    "message": "Читает каждое записанное посещение, поэтому даты первого визита и активные дни настоящие. На большой истории медленнее — импорт можно отменить в любой момент.",
+    "message": "Читает каждый записанный визит, поэтому дата первого захода и число активных дней становятся настоящими числами, а не прочерками. Имеет смысл запустить, если автоматический импорт не доработал. Дольше на большой истории – можно отменить в любой момент.",
     "description": "Description of the full history import"
   },
   "importHistoryQuick": {
-    "message": "Быстрый импорт",
-    "description": "Label for the quick history import button"
+    "message": "Обновить из истории",
+    "description": "Label for the quick history re-import button"
   },
   "importHistoryQuickDesc": {
-    "message": "Использует сводку, которую браузер уже хранит по каждой странице. Быстро, но дату первого посещения определить нельзя.",
-    "description": "Description of the quick history import"
+    "message": "Заново читает сводку, которую браузер хранит по каждой странице. Пригодится, если история синхронизировалась с другого устройства или профиль был пуст в момент установки. Повторять безопасно – счётчики сверяются, а не складываются.",
+    "description": "Description of the quick history re-import"
   },
   "firstSeenLabel": {
     "message": "Первое известное посещение",
@@ -158,6 +226,22 @@
   "statsImportHint": {
     "message": "Импортируйте историю браузера, чтобы заполнить это",
     "description": "Hint shown when first-visit data is missing"
+  },
+  "statsFamilyWide": {
+    "message": "У самого адреса посещений нет – это данные по домену целиком.",
+    "description": "Shown when the visit facts come from the domain family rather than the exact address"
+  },
+  "untrackedHostBadge": {
+    "message": "не считается",
+    "description": "Badge shown instead of a familiar/unfamiliar verdict for an address that is never counted"
+  },
+  "untrackedHostTitle": {
+    "message": "Посещения здесь не считаются",
+    "description": "Heading of the notice shown for hostnames without a dot"
+  },
+  "untrackedHostText": {
+    "message": "В этом имени нет точки, поэтому это не публичный адрес, который кто-то может зарегистрировать, и подделкой под чужой сайт он быть не может. Именно такое сходство Visilant и ловит, поэтому по именам вроде localhost он не ведёт счёт и никогда о них не предупреждает. Это не оценка самой машины, а только того, что можно понять по одному адресу.",
+    "description": "Explains why a dotless hostname has no visit count and never triggers a warning"
   },
   "resetData": {
     "message": "Сброс данных",
@@ -195,10 +279,6 @@
     "message": "Это действие нельзя отменить",
     "description": "Warning about irreversible action"
   },
-  "historyPermissionRequired": {
-    "message": "Для импорта истории браузера требуется разрешение на доступ к истории. Пожалуйста, предоставьте разрешение для продолжения",
-    "description": "Message shown when history permission is denied"
-  },
   "notificationPermissionRequired": {
     "message": "Для уведомлений браузера требуется разрешение на отправку уведомлений. Стиль уведомлений был изменен на уведомления на странице",
     "description": "Message shown when notification permission is denied"
@@ -235,13 +315,81 @@
     "message": "При вводе с клавиатуры или вставке содержимого",
     "description": "Label for input warning toggle"
   },
+  "showInputWarningDesc": {
+    "message": "Ввод и вставка – это момент, когда ваши данные по-настоящему уходят из ваших рук. Поддельная страница входа ничего не получит, пока вы её не заполните, так что это последняя точка, где предупреждение ещё может помешать паролю, номеру карты или одноразовому коду уйти не туда.",
+    "description": "Why the typing/pasting trigger matters"
+  },
   "showCopyWarning": {
     "message": "При вырезании/копировании содержимого",
     "description": "Label for copy warning toggle"
   },
+  "showCopyWarningDesc": {
+    "message": "Копирование – обратное направление, тут уже страница что-то передаёт вам. Частый приём: сайт просит скопировать строчку и вставить её в терминал или в окно «Выполнить», а в буфер на деле попал вредоносный код, а не та безобидная строчка, которую вы видели на экране. Предупреждение здесь даёт повод посмотреть на скопированное ещё раз перед вставкой.",
+    "description": "Why the copying/cutting trigger matters"
+  },
   "bothWarningTriggers": {
     "message": "В обоих случаях",
     "description": "Label for both warning trigger events option"
+  },
+  "blockPasteOnUnfamiliar": {
+    "message": "Придерживать вставку на незнакомых сайтах",
+    "description": "Label of the setting that holds a paste until confirmed"
+  },
+  "blockPasteOnUnfamiliarDesc": {
+    "message": "Первая вставка на незнакомом сайте не просто сопровождается предупреждением, а останавливается: в поле ничего не попадает, пока вы не посмотрите на адрес. Само разрешение ничего не вставляет – вы нажимаете вставку ещё раз, и она проходит как обычная, с форматированием, картинками, отменой и собственной обработкой страницы. Дальше на этой странице вопросов не будет.",
+    "description": "What the paste hold does and what it cannot do"
+  },
+  "pasteInterceptTitle": {
+    "message": "Вставка задержана",
+    "description": "Title of the paste confirmation dialog"
+  },
+  "pasteInterceptMessage": {
+    "message": "Вы собираетесь вставить текст на незнакомом сайте. Посмотрите на адрес, прежде чем разрешить.",
+    "description": "Body of the paste confirmation dialog"
+  },
+  "pasteInterceptRepeatHint": {
+    "message": "Сам диалог ничего не вставляет. Разрешите, затем нажмите вставку ещё раз, и она пройдёт ровно так, как обычно. На этой странице больше спрашивать не будем.",
+    "description": "Explains that allowing does not paste, the user pastes again themselves"
+  },
+  "pasteInterceptDontAskAgain": {
+    "message": "Больше не предупреждать про этот сайт",
+    "description": "Checkbox that turns the warnings off for this site for good"
+  },
+  "pasteInterceptAllow": {
+    "message": "Разрешить вставку",
+    "description": "Button that lets the paste through"
+  },
+  "pasteInterceptCancel": {
+    "message": "Не вставлять",
+    "description": "Button that drops the paste"
+  },
+  "pasteInterceptReveal": {
+    "message": "Показать содержимое",
+    "description": "Button that shows the clipboard contents"
+  },
+  "pasteInterceptHide": {
+    "message": "Скрыть содержимое",
+    "description": "Button that hides the clipboard contents again"
+  },
+  "pasteInterceptChars": {
+    "message": "символов",
+    "description": "Unit after the number of characters on the clipboard"
+  },
+  "pasteInterceptKindText": {
+    "message": "Текст",
+    "description": "Clipboard contents look like ordinary text"
+  },
+  "pasteInterceptKindUrl": {
+    "message": "Веб-адрес",
+    "description": "Clipboard contents look like a web address"
+  },
+  "pasteInterceptKindEmail": {
+    "message": "Адрес почты",
+    "description": "Clipboard contents look like an email address"
+  },
+  "pasteInterceptKindDigits": {
+    "message": "Цифры, например номер карты или код",
+    "description": "Clipboard contents look like a number, card or code"
   },
   "warningTriggerEventsTitle": {
     "message": "Когда показывать уведомление",
@@ -250,6 +398,10 @@
   "currentDomain": {
     "message": "Текущий домен",
     "description": "Label for current domain section"
+  },
+  "checkedDomain": {
+    "message": "Проверяемый домен",
+    "description": "Heading of the domain card when the popup is opened as its own tab, where there is no current domain"
   },
   "baseDomain": {
     "message": "Базовый домен",
@@ -276,35 +428,35 @@
     "description": "Sort by visits option"
   },
   "sortOrderToAsc": {
-    "message": "Сортировать по возрастанию — сейчас по убыванию",
+    "message": "Сортировать по возрастанию – сейчас по убыванию",
     "description": "Sort button tooltip while sorting descending"
   },
   "sortOrderToDesc": {
-    "message": "Сортировать по убыванию — сейчас по возрастанию",
+    "message": "Сортировать по убыванию – сейчас по возрастанию",
     "description": "Sort button tooltip while sorting ascending"
   },
   "caseToUpper": {
-    "message": "Показать в верхнем регистре — сейчас нижний",
+    "message": "Показать в верхнем регистре – сейчас нижний",
     "description": "Case button tooltip while showing lowercase"
   },
   "caseToLower": {
-    "message": "Показать в нижнем регистре — сейчас верхний",
+    "message": "Показать в нижнем регистре – сейчас верхний",
     "description": "Case button tooltip while showing uppercase"
   },
   "highlightingTurnOn": {
-    "message": "Включить подсветку — сейчас выключена",
+    "message": "Включить подсветку – сейчас выключена",
     "description": "Highlighting button tooltip while highlighting is off"
   },
   "highlightingTurnOff": {
-    "message": "Выключить подсветку — сейчас включена",
+    "message": "Выключить подсветку – сейчас включена",
     "description": "Highlighting button tooltip while highlighting is on"
   },
   "punycodeShowAscii": {
-    "message": "Показать punycode (ASCII) — сейчас оригинал",
+    "message": "Показать punycode (ASCII) – сейчас оригинал",
     "description": "Domain format button tooltip while showing the original"
   },
   "punycodeShowUnicode": {
-    "message": "Показать оригинал — сейчас punycode (ASCII)",
+    "message": "Показать оригинал – сейчас punycode (ASCII)",
     "description": "Domain format button tooltip while showing punycode"
   },
   "highlightingLegend": {
@@ -324,7 +476,7 @@
     "description": "Title for punycode help"
   },
   "punycodeHelpContent": {
-    "message": "Punycode — это технический формат для доменов со спецсимволами. Начинается с 'xn--'.\n\nВозможный риск:\nОпасность возникает, когда домен выглядит так, будто состоит только из обычных английских букв, но на самом деле это Punycode. Это часто означает использование скрытых символов-двойников из других языков для подделки доверенного сайта.\n\nЕсли символы домена на том же языке, что и контент сайта, то использование Punycode ожидаемо и, скорее всего, безопасно.",
+    "message": "Punycode – это технический формат для доменов со спецсимволами. Начинается с 'xn--'.\n\nВозможный риск:\nОпасность возникает, когда домен выглядит так, будто состоит только из обычных английских букв, но на самом деле это Punycode. Это часто означает использование скрытых символов-двойников из других языков для подделки доверенного сайта.\n\nЕсли символы домена на том же языке, что и контент сайта, то использование Punycode ожидаемо и, скорее всего, безопасно.",
     "description": "Explanation of punycode and homograph attacks"
   },
   "current": {
@@ -348,7 +500,7 @@
     "description": "Alt text for logo"
   },
   "tamperingMessage": {
-    "message": "ВНИМАНИЕ! Защита расширения Visilant была принудительно удалена этой страницей! Этот сайт крайне подозрителен! В редких случаях так себя могут вести и легитимные сайты — если вы доверяете этому сайту, защиту для него можно отключить в настройках расширения.",
+    "message": "ВНИМАНИЕ! Эта страница принудительно удалила защиту расширения Visilant! Сайт крайне подозрителен! В редких случаях так себя ведут и добросовестные сайты – если вы доверяете этому сайту, защиту для него можно отключить в настройках расширения.",
     "description": "Message shown when tampering is detected"
   },
   "linkSafetySettings": {
@@ -356,7 +508,7 @@
     "description": "Title for link safety settings section"
   },
   "linkSafetySettingsDesc": {
-    "message": "Узнайте, куда ведёт ссылка до перехода. Некоторые сайты могут навредить в момент открытия — без ввода данных и каких-либо действий",
+    "message": "Узнайте, куда ведёт ссылка, ещё до перехода. Некоторые сайты могут навредить в момент открытия – без ввода данных и каких-либо действий. Всё, что выше, это последний рубеж: он срабатывает, когда вы уже на сайте. Здесь защита работает на шаг раньше, пока идти туда или нет – ещё ваш выбор, а страница, которую вы не открыли, не может сделать вам вообще ничего.",
     "description": "Description for link safety feature"
   },
   "linkSafetyEnabled": {
@@ -370,6 +522,26 @@
   "linkTooltipTriggerHover": {
     "message": "При наведении",
     "description": "Tooltip trigger option: hover"
+  },
+  "linkTooltipTriggerHoverDesc": {
+    "message": "Подсказка появляется, как только курсор задержался на ссылке. Ничего не нажимается и никуда не отправляется, вы просто видите, куда она ведёт.",
+    "description": "What the hover trigger does"
+  },
+  "linkHoverDelay": {
+    "message": "Задержка перед появлением подсказки",
+    "description": "Label of the hover delay slider"
+  },
+  "linkHoverDelayDesc": {
+    "message": "Сколько курсор должен постоять на ссылке. Больше – подсказка не лезет под руку, пока вы просто ведёте мышь по странице, меньше – она быстрее отвечает, когда вы остановились на ссылке намеренно.",
+    "description": "What the hover delay changes and how to pick it"
+  },
+  "linkHoverDelaySeconds": {
+    "message": "с",
+    "description": "Unit shown next to the hover delay value"
+  },
+  "linkHoverDelayInstant": {
+    "message": "сразу",
+    "description": "Value shown when the hover delay is zero"
   },
   "linkTooltipTriggerClickLeft": {
     "message": "По клику (с подтверждением)",
@@ -390,6 +562,10 @@
   "linkShowVisitCount": {
     "message": "Показывать кол-во посещений при проверке ссылок",
     "description": "Setting label for visit count display mode"
+  },
+  "linkShowVisitCountDesc": {
+    "message": "Показывать ли в подсказке, сколько раз вы были на сайте из ссылки. Если ограничить незнакомыми, подсказка не будет шуметь на повседневных ссылках.",
+    "description": "What the visit-count option controls"
   },
   "linkShowVisitCountAlways": {
     "message": "Всегда",
@@ -427,9 +603,17 @@
     "message": "Разворачивать по нажатию кнопки",
     "description": "Short URL mode: manual button"
   },
+  "linkShortUrlModeButtonDesc": {
+    "message": "Пока вы не нажмёте кнопку в подсказке, никуда ничего не запрашивается, и вы решаете по каждой ссылке отдельно.",
+    "description": "What resolving on button click means"
+  },
   "linkShortUrlModeAuto": {
     "message": "Авторазворот",
     "description": "Short URL mode: automatic"
+  },
+  "linkShortUrlModeAutoDesc": {
+    "message": "Каждая короткая ссылка, на которую вы смотрите, разворачивается сразу. Удобно, но сервис сокращения узнаёт, что вы её видели, даже если вы по ней не перешли.",
+    "description": "What auto-resolving costs in privacy"
   },
   "linkShortUrlShowFullUrl": {
     "message": "Показывать полную ссылку (не только домен)",
@@ -452,12 +636,16 @@
     "description": "Label for remote list URLs textarea"
   },
   "linkShortUrlListUpdateUrlDesc": {
-    "message": "URL-адреса для периодической загрузки списков доменов-сокращателей (один URL на строку). Каждый файл должен содержать по одному домену на строку",
+    "message": "По одному URL в строке. Каждый должен вести на текстовый список доменов-сокращателей (один домен в строке, # для комментариев). Загружаются по запросу, объединяются между собой и со встроенным списком. Источник, который не ответил, пропускается – это не ошибка.",
     "description": "Description for remote list URLs"
   },
   "linkScopeMode": {
     "message": "Активно на",
     "description": "Label for scope mode selection"
+  },
+  "linkScopeModeDesc": {
+    "message": "Где работает проверка ссылок. Рекомендуется оставить на всех сайтах, ведь неожиданная ссылка может попасться где угодно. Если где-то она всё же мешает, выберите «Везде, кроме этих доменов» и перечислите такие сайты в появившемся поле, по одному на строку.",
+    "description": "What the scope option is for"
   },
   "linkScopeEverywhere": {
     "message": "Все сайты",
@@ -474,6 +662,10 @@
   "linkScopeDomains": {
     "message": "По одному домену на строку",
     "description": "Placeholder for scope domain list textarea"
+  },
+  "linkScopeDomainsNote": {
+    "message": "Поддомены попадают под правило автоматически. Строка example.com покрывает и app.example.com, и любое другое имя под ним, перечислять их отдельно не нужно.",
+    "description": "Note that the scope domain list matches subdomains too"
   },
   "linkTooltipVisits": {
     "message": "Посещений",
@@ -496,7 +688,7 @@
     "description": "Warning about mismatched link text and href"
   },
   "linkInterceptMismatchWarning": {
-    "message": "Более того — ссылка ведёт совсем не туда, куда написано!",
+    "message": "Более того – ссылка ведёт совсем не туда, куда написано!",
     "description": "Mismatch warning in intercept dialog (adds to existing unfamiliar site warning)"
   },
   "linkTooltipShowsDomain": {
@@ -535,6 +727,10 @@
     "message": "Похоже на сайт, который вы знаете:",
     "description": "Intro to the familiar domain a lookalike imitates"
   },
+  "lookalikeLooksLikeProvider": {
+    "message": "Похоже на известного почтового провайдера:",
+    "description": "Intro to the mail provider a lookalike address imitates"
+  },
   "lookalikeReasonConfusable": {
     "message": "Символы заменены на визуально такие же",
     "description": "Lookalike reason: confusable characters"
@@ -572,11 +768,11 @@
     "description": "Title for navigation intercept dialog"
   },
   "linkInterceptMessage": {
-    "message": "Вы собираетесь перейти на малознакомый сайт",
+    "message": "Вы собираетесь перейти на незнакомый сайт",
     "description": "Message in navigation intercept dialog"
   },
   "linkInterceptPhishingHint": {
-    "message": "Если вы считаете, что этот сайт должен быть отмечен как знакомый — возможно, он выдаёт себя за другой сайт",
+    "message": "Если вы считаете, что этот сайт должен быть отмечен как знакомый – возможно, он выдаёт себя за другой сайт",
     "description": "Phishing warning hint in intercept dialog"
   },
   "linkInterceptDomainInfo": {
@@ -628,7 +824,7 @@
     "description": "Error state when URL resolution fails"
   },
   "linkTooltipResolveSameDomain": {
-    "message": "Домен назначения совпадает с доменом ссылки — либо это не сокращатель, либо на сайте жёсткая защита от ботов, которая не дала пройти по редиректу",
+    "message": "Домен назначения совпадает с доменом ссылки – либо это не сокращатель, либо на сайте жёсткая защита от ботов, которая не дала пройти по редиректу",
     "description": "Error state when resolved URL has same domain as original"
   },
   "linkTooltipResolveButton": {
@@ -636,7 +832,7 @@
     "description": "Button to manually resolve a shortened URL"
   },
   "linkShortUrlSectionWarning": {
-    "message": "Для раскрытия сокращённой ссылки выполняется запрос по цепочке перенаправлений. Сокращатель увидит этот запрос. Если ссылка выглядит подозрительно — безопаснее вообще её не раскрывать.",
+    "message": "Раскрытие короткой ссылки – это настоящий запрос с проходом по всем звеньям цепочки до конца. Этот запрос видит каждый хост по пути, включая конечный адрес, а значит узнаёт ваш адрес и то, что по ссылке кто-то пошёл. Это всё же куда меньше, чем открыть страницу: ничего не отрисовывается и ни один её скрипт не выполняется. Но и не пустяк: переход могут засчитать, одноразовую ссылку – потратить, а сам запрос может что-то запустить на сервере. Если ссылка выглядит подозрительно, безопаснее вообще её не раскрывать.",
     "description": "Warning in settings about risks of URL resolution"
   },
   "linkTooltipRetryResolve": {
@@ -644,7 +840,7 @@
     "description": "Button to retry URL resolution after error"
   },
   "linkTooltipShortUrlWarning": {
-    "message": "Эта ссылка использует сокращатель — реальный адрес скрыт",
+    "message": "Эта ссылка использует сокращатель – реальный адрес скрыт",
     "description": "Warning about shortened URL hiding destination"
   },
   "linkTooltipRedirectChain": {
@@ -688,7 +884,7 @@
     "description": "Title for anti-tampering settings section"
   },
   "antiTamperingSettingsDesc": {
-    "message": "Обнаруживает попытки сайта принудительно скрыть или убрать предупреждения расширения со страницы (т.е. удалить интерфейс расширения из DOM). При срабатывании вы получите критическое уведомление. Некоторые добросовестные сайты, активно перестраивающие страницу (особенно SPA или сайты с агрессивной очисткой DOM), могут вызывать ложные срабатывания — добавьте их в список исключений ниже",
+    "message": "Обнаруживает попытки сайта принудительно скрыть или убрать предупреждения расширения со страницы (т.е. удалить интерфейс расширения из DOM). При срабатывании вы получите критическое уведомление. Некоторые добросовестные сайты, активно перестраивающие страницу (особенно SPA или сайты с агрессивной очисткой DOM), могут вызывать ложные срабатывания – добавьте их в список исключений ниже. Прежде чем что-то добавлять, внимательно проверьте адрес. Для всего в этом списке защита выключена: исключённый сайт может убрать панель Visilant со страницы, и сообщить об этом будет уже некому. Подделка, попавшая в список, именно так и поступит.",
     "description": "Description for anti-tampering settings"
   },
   "antiTamperingExcludedDomains": {
@@ -832,7 +1028,7 @@
     "description": "Hint under the popup check input"
   },
   "checkFieldInvalid": {
-    "message": "Нечего проверять — введите ссылку, домен или email-адрес",
+    "message": "Нечего проверять – введите ссылку, домен или email-адрес",
     "description": "Shown when the input cannot be classified"
   },
   "checkFieldExpand": {
@@ -852,7 +1048,7 @@
     "description": "Badge: domain is a well-known freemail provider"
   },
   "emailPublicProviderHint": {
-    "message": "Адрес здесь может зарегистрировать кто угодно — оценивайте имя до @, а не домен",
+    "message": "Адрес здесь может зарегистрировать кто угодно – оценивайте имя до @, а не домен",
     "description": "Hint for public provider addresses"
   },
   "emailDisposableDomain": {
@@ -860,7 +1056,7 @@
     "description": "Badge: domain is a temp-mail service"
   },
   "emailDisposableHint": {
-    "message": "Сервис одноразовой почты — письма с таких адресов почти всегда спам или скам",
+    "message": "Сервис одноразовой почты – письма с таких адресов почти всегда спам или мошенничество",
     "description": "Hint for disposable addresses"
   },
   "emailListsTitle": {
@@ -868,23 +1064,23 @@
     "description": "Options section header for email domain lists"
   },
   "emailListsDesc": {
-    "message": "При проверке адресов используются встроенные списки публичных почтовых сервисов и одноразовых доменов. Можно добавить свои домены и обновлять список одноразовых по URL.",
+    "message": "При проверке адресов используются встроенные списки публичных почтовых сервисов и одноразовых доменов. Можно добавить свои домены в любой из них и пополнять оба по URL.",
     "description": "Options section description"
   },
   "emailCustomPublicLabel": {
-    "message": "Свои публичные почтовые сервисы",
+    "message": "Добавить публичные почтовые сервисы",
     "description": "Label for the custom public providers textarea"
   },
   "emailCustomPublicDesc": {
-    "message": "По одному домену на строку. Адреса на этих доменах показываются как публичные сервисы (счётчик визитов к ним не применяется).",
+    "message": "Домены, которых нет во встроенном списке, по одному на строку. Адреса на них показываются как публичные сервисы (счётчик визитов к ним не применяется).",
     "description": "Description for the custom public providers textarea"
   },
   "emailCustomDisposableLabel": {
-    "message": "Свои домены одноразовой почты",
+    "message": "Добавить домены одноразовой почты",
     "description": "Label for the custom disposable textarea"
   },
   "emailCustomDisposableDesc": {
-    "message": "По одному домену на строку. Адреса на этих доменах помечаются как одноразовые.",
+    "message": "Домены, которых нет во встроенном списке, по одному на строку. Адреса на них помечаются как одноразовые.",
     "description": "Description for the custom disposable textarea"
   },
   "emailDisposableUpdateUrlLabel": {
@@ -892,8 +1088,16 @@
     "description": "Label for the remote disposable list URL input"
   },
   "emailDisposableUpdateUrlDesc": {
-    "message": "URL текстового списка (домен на строку, # — комментарий). Загружается по кнопке и объединяется со встроенным списком.",
-    "description": "Description for the remote list URL"
+    "message": "По одному URL в строке. Каждый должен вести на текстовый список (один домен в строке, # для комментариев). Загружаются по запросу, объединяются между собой и со встроенным списком. Источник, который не ответил, пропускается – это не ошибка.",
+    "description": "Description of the disposable list source field"
+  },
+  "emailPublicUpdateUrlLabel": {
+    "message": "Источники списка публичных сервисов",
+    "description": "Label for the remote public provider list URL input"
+  },
+  "emailPublicUpdateUrlDesc": {
+    "message": "По одному URL в строке. Каждый должен вести на текстовый список (один домен в строке, # для комментариев). Загружаются по запросу, объединяются между собой и со встроенным списком. Источник, который не ответил, пропускается – это не ошибка.",
+    "description": "Description of the public provider list source field"
   },
   "emailDisposableUpdateNow": {
     "message": "Обновить",
@@ -904,7 +1108,7 @@
     "description": "Status after a successful list update"
   },
   "emailDisposableUpdateError": {
-    "message": "Не удалось загрузить список — проверьте URL",
+    "message": "Не удалось загрузить список – проверьте URL",
     "description": "Status after a failed list update"
   },
   "checkPanelTitle": {
@@ -918,5 +1122,161 @@
   "emailDomainLabel": {
     "message": "Домен",
     "description": "Label for the email domain part (after @)"
+  },
+  "externalLookupsTitle": {
+    "message": "Проверить домен в других сервисах",
+    "description": "Label of the collapsible third-party lookup links"
+  },
+  "externalLookupsCaveat": {
+    "message": "Каждая ссылка открывает сторонний сайт в фоновой вкладке, так что можно нажать несколько. Visilant ничего не отправляет – но тот сайт, который вы откроете, увидит домен и ваш IP-адрес.",
+    "description": "Caveat under the third-party lookup links"
+  },
+  "lookupServicesLabel": {
+    "message": "Ссылки для проверки",
+    "description": "Options label for the editable service list"
+  },
+  "lookupServicesDesc": {
+    "message": "По одной в строке, в виде Название | https://example.com/check/{domain}. Вместо {domain} подставляется проверяемый домен. Ненужные строки можно удалить, а если очистить поле, ссылки не будут показываться вовсе. Принимаются только https-ссылки, в которых есть эта подстановка.",
+    "description": "Options description for the editable service list"
+  },
+  "lookupServicesNote": {
+    "message": "Это именно ссылки, а не интеграции: пока вы не нажмёте, ничего не запрашивается. Поэтому не нужны API-ключи, и ни один сервис ничего не узнает, пока вы сами к нему не пойдёте.",
+    "description": "Explains why links rather than API calls"
+  },
+  "lookupServicesReset": {
+    "message": "Вернуть встроенный список",
+    "description": "Button that puts the shipped lookup links back"
+  },
+  "emailDisposableSources": {
+    "message": "источников",
+    "description": "Count of lists that answered"
+  },
+  "emailDisposableSourcesFailed": {
+    "message": "не ответили",
+    "description": "Count of lists that did not answer"
+  },
+  "welcomeTitle": {
+    "message": "Visilant готов",
+    "description": "Title of the welcome page shown right after install"
+  },
+  "welcomeSubtitle": {
+    "message": "Одну вещь мы настроили за вас.",
+    "description": "Subtitle of the welcome page"
+  },
+  "welcomeWhyTitle": {
+    "message": "Зачем мы прочитали вашу историю",
+    "description": "Heading of the section explaining why the history was imported"
+  },
+  "welcomeWhyBody": {
+    "message": "Visilant решает, о чём предупреждать, сравнивая сайт с теми, которыми вы уже пользуетесь. Если сравнивать не с чем, то и отличить ваш банк от его копии нечем: на пустом профиле расширение либо молчит там, где молчать не должно, либо помечает подряд всё. Предупреждение, которое появляется на каждом сайте, перестаёшь читать, и когда попадётся по-настоящему опасное, оно будет выглядеть ровно так же, как безобидные до него. Однократное чтение истории в самом начале и делает разницу между ними осмысленной.",
+    "description": "Explanation of why the history import happens automatically"
+  },
+  "welcomeStatusReading": {
+    "message": "Читаем историю браузера…",
+    "description": "Shown while the browser history is being read"
+  },
+  "welcomeStatusSaving": {
+    "message": "Сохраняем найденное…",
+    "description": "Shown while the imported sites are being saved"
+  },
+  "welcomeStatusDone": {
+    "message": "Эти сайты теперь знакомы Visilant, и о них он предупреждать не будет. Обо всех остальных – будет.",
+    "description": "Shown under the import result numbers"
+  },
+  "welcomeStatusFailed": {
+    "message": "Импорт не завершился, поэтому пока все сайты для Visilant новые. Его можно запустить ещё раз.",
+    "description": "Shown when the automatic import failed"
+  },
+  "welcomeStatusCancelled": {
+    "message": "Импорт остановили до завершения. Его можно запустить ещё раз.",
+    "description": "Shown when the import was stopped before finishing"
+  },
+  "welcomeDetailsRunning": {
+    "message": "Ваши сайты уже посчитаны, и предупреждения их уже знают. Сейчас дозаполняются даты первого захода и число активных дней.",
+    "description": "Shown while the slower detail pass of the import is still running"
+  },
+  "welcomeKeepOpen": {
+    "message": "Браузером можно спокойно пользоваться дальше, и эту страницу можно закрыть – импорт идёт в фоне. Только сам браузер лучше не закрывать, пока он не закончит. А если закроете, ничего страшного: импорт запоминает, где остановился, и продолжится с того же места при следующем запуске браузера.",
+    "description": "Hint shown while the import runs, about keeping the browser open"
+  },
+  "welcomeTabDone": {
+    "message": "Импорт завершён",
+    "description": "Tab title flashed when the import finishes while the user is on another tab"
+  },
+  "welcomeDetailsFailed": {
+    "message": "Дополнительный проход, который заполняет даты первого захода, не завершился. Сайты при этом посчитаны, предупреждения работают – не хватает только этих дат.",
+    "description": "Shown when the detail pass failed but the counting pass succeeded"
+  },
+  "welcomeRetry": {
+    "message": "Импортировать заново",
+    "description": "Label of the button that runs the import again"
+  },
+  "welcomeStatSites": {
+    "message": "сайтов",
+    "description": "Unit under the number of imported sites"
+  },
+  "welcomeStatVisits": {
+    "message": "визитов",
+    "description": "Unit under the number of imported visits"
+  },
+  "welcomeSavedTitle": {
+    "message": "Что сохранено",
+    "description": "Heading of the list of what the import stored"
+  },
+  "welcomeSavedHostname": {
+    "message": "имя хоста сайта, например example.com",
+    "description": "First item of what the import stored"
+  },
+  "welcomeSavedCount": {
+    "message": "сколько раз вы там были",
+    "description": "Second item of what the import stored"
+  },
+  "welcomeSavedFirstSeen": {
+    "message": "дата самого раннего известного визита",
+    "description": "Item of what the import stored: the first visit date"
+  },
+  "welcomeSavedLastSeen": {
+    "message": "когда были в последний раз",
+    "description": "Third item of what the import stored"
+  },
+  "welcomeSavedActiveDays": {
+    "message": "сколько разных дней вы туда заходили",
+    "description": "Item of what the import stored: the number of active days"
+  },
+  "welcomeSavedRetention": {
+    "message": "Эти числа уходят в прошлое ровно настолько, насколько уходит история самого браузера. Браузеры со временем сами удаляют старые записи, поэтому у сайта, которым вы пользуетесь годами, визитов может оказаться заметно меньше, а первый визит – заметно позже, чем вы помните. Это настройка хранения в браузере, а не ошибка в подсчёте. Заодно это объясняет, почему сайт, знакомый вам давно, но посещаемый редко, может не дотянуть до порога и вызвать предупреждение. Дальше Visilant ведёт свой счёт сам и не пропускает ни одного вашего визита. Заглянуть в прошлое он не может, поэтому такой разрыв касается только первого времени и закрывается по мере того, как вы пользуетесь браузером.",
+    "description": "Note that the imported numbers only reach as far back as the browser keeps history"
+  },
+  "welcomeNotSavedTitle": {
+    "message": "Что не сохранено",
+    "description": "Heading of the paragraph listing what is not stored"
+  },
+  "welcomeNotSaved": {
+    "message": "Адреса страниц, их заголовки, поисковые запросы и всё, что вы вводили, не сохраняются. Только пять пунктов выше, по одному набору на имя хоста.",
+    "description": "What the import deliberately does not store"
+  },
+  "welcomeStorageTitle": {
+    "message": "Где это лежит",
+    "description": "Heading of the section about where the data lives"
+  },
+  "welcomeStorageBody": {
+    "message": "В хранилище самого браузера, на этом устройстве. У Visilant нет ни сервера, ни аккаунта, и никуда эти данные не отправляются. Стереть всё можно в любой момент в настройках.",
+    "description": "Statement that the data stays on the device"
+  },
+  "welcomeOpenSettings": {
+    "message": "Открыть настройки",
+    "description": "Label of the welcome page button opening the settings"
+  },
+  "welcomeDone": {
+    "message": "Готово",
+    "description": "Label of the welcome page button closing the tab"
+  },
+  "welcomeDefaultsTitle": {
+    "message": "Стоит заглянуть: настройки",
+    "description": "Heading of the section suggesting a look at the settings"
+  },
+  "welcomeDefaultsBody": {
+    "message": "Настройки по умолчанию задуманы так, чтобы подходить большинству, но выбирал их один человек и во многом под то, как он сам ходит по сети. Телеметрии Visilant не собирает – узнать, как настройки стоят у кого-то ещё, неоткуда, а значит, и понять, какие значения были бы лучше, тоже неоткуда. Потратьте пару минут на настройки: что предупреждает, когда и насколько громко – всё это меняется, а заодно это самый быстрый способ понять, как расширение вообще работает.",
+    "description": "Why the defaults are a guess and worth reviewing"
   }
 }

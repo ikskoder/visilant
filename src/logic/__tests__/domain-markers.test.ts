@@ -125,7 +125,7 @@ describe('getSubdomainDepth', () => {
 
   it('under-reports rather than over-reports when the suffix shape is ambiguous', () => {
     // `abc.de` reads like a compound country suffix, so `www` is absorbed into
-    // it. Losing a level only costs a flag; inventing one would cost trust.
+    // it. Losing a level only costs a flag, while inventing one would cost trust.
     expect(getSubdomainDepth('www.abc.de')).toBe(0)
   })
 })
@@ -173,7 +173,7 @@ describe('findHostnameMarkers', () => {
     expect(findHostnameMarkers('mail.google.com')).toEqual([])
   })
 
-  it('stops after the IP marker — the rest assume a name', () => {
+  it('stops after the IP marker – the rest assume a name', () => {
     expect(findHostnameMarkers('192.168.1.1')).toEqual([
       { id: 'ip-host', detail: '192.168.1.1' },
     ])

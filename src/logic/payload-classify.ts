@@ -78,7 +78,7 @@ export function extractCheckTarget(text: string): { kind: 'email' | 'url' | 'dom
   if (domain)
     return { kind: 'domain', value: domain }
 
-  // extractDomainFromText requires an ASCII TLD; catch fully-unicode domains
+  // extractDomainFromText requires an ASCII TLD, so catch fully-unicode domains
   // (почта.рф) separately since those are prime spoofing material.
   const unicodeMatch = trimmed.match(UNICODE_DOMAIN_PATTERN)
   if (unicodeMatch)

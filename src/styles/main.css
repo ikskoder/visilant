@@ -43,6 +43,52 @@ html.dark body {
   font-size: 0.9em;
 }
 
+/* Scrollbars in the extension's own palette instead of the platform default.
+   Applied to everything that scrolls here – page, panels, textareas. Components
+   that deliberately hide their scrollbar override this with a more specific
+   selector. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.5); /* slate-400 */
+  border-radius: 9999px;
+  /* Transparent border + content-box clip keeps the thumb clear of the track */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(100, 116, 139, 0.8); /* slate-500 */
+}
+
+/* `*` above sets the colour on every element, so it has to be re-set the same
+   way for dark – a rule on `html` alone would never reach the descendants */
+html.dark,
+html.dark * {
+  scrollbar-color: rgba(100, 116, 139, 0.6) transparent;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.6);
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.85);
+}
+
 .secure-domain-display {
   font-family: 'Atkinson Hyperlegible', monospace;
   

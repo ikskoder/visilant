@@ -1,4 +1,8 @@
 {
+  "extensionName": {
+    "message": "Visilant",
+    "description": "Name of the extension, used as the logo alt text"
+  },
   "extensionDescription": {
     "message": "Protection against lookalike and impersonation sites (homograph attacks & clone phishing) based on your personal visit history",
     "description": "Description of the extension"
@@ -8,15 +12,15 @@
     "description": "Title of the security warning popup"
   },
   "warningMessage": {
-    "message": "You are about to enter content on a site you have rarely visited. This could be risky if you're sharing sensitive information",
+    "message": "You are about to enter content on an unfamiliar site. This could be risky if you're sharing sensitive information",
     "description": "Main warning message about site safety"
   },
   "inputWarningMessage": {
-    "message": "You are about to enter content on a site you have rarely visited. This could be risky if you're sharing sensitive information",
+    "message": "You are about to enter content on an unfamiliar site. This could be risky if you're sharing sensitive information",
     "description": "Warning message for input/paste actions"
   },
   "copyWarningMessage": {
-    "message": "You are copying content from a site you have rarely visited. Be careful with how you use this information",
+    "message": "You are copying content from an unfamiliar site. Be careful with how you use this information",
     "description": "Warning message for copy/cut actions"
   },
   "checkUrl": {
@@ -51,6 +55,10 @@
     "message": "Settings",
     "description": "Title for the settings page"
   },
+  "onThisPage": {
+    "message": "On this page",
+    "description": "Heading of the settings page table of contents"
+  },
   "generalSettings": {
     "message": "General settings",
     "description": "Title for general settings section"
@@ -64,19 +72,23 @@
     "description": "Label for visits threshold input"
   },
   "visitsThresholdDesc": {
-    "message": "Sites with fewer visits than this will be marked as unfamiliar",
+    "message": "A site you have visited fewer times than this counts as unfamiliar and can be warned about. A higher number means more warnings and more caution, a lower one means fewer interruptions. Visits imported from your browser history count towards this, so sites you have used for a long time usually start out familiar.",
     "description": "Description for visits threshold"
   },
   "displaySettings": {
     "message": "Icon display settings",
     "description": "Title for display settings section"
   },
+  "displaySettingsPinNote": {
+    "message": "Both settings here only matter if the extension icon is pinned to your browser toolbar, and pinning it is well worth doing. The reason is in the notification settings just below.",
+    "description": "Note explaining that the icon settings require the extension icon to be pinned"
+  },
   "dynamicIcon": {
     "message": "Dynamic icon",
     "description": "Label for dynamic icon toggle"
   },
   "dynamicIconDesc": {
-    "message": "The icon turns red on sites you have rarely visited",
+    "message": "The icon turns red on unfamiliar sites",
     "description": "Description for dynamic icon setting"
   },
   "showBadge": {
@@ -84,7 +96,7 @@
     "description": "Label for badge toggle"
   },
   "showBadgeDesc": {
-    "message": "Display visit count in the extension icon badge",
+    "message": "Shows the visit count for the current site on the extension icon. The quickest way to see how well Visilant knows where you are, without opening anything.",
     "description": "Description for badge setting"
   },
   "notificationSettings": {
@@ -96,7 +108,7 @@
     "description": "Label for notifications toggle"
   },
   "showWarningNotificationDesc": {
-    "message": "Only when you type or paste on unfamiliar sites",
+    "message": "Warnings appear only on unfamiliar sites, and only during the interactions chosen below. Nothing is shown while you are simply reading a page.",
     "description": "Description for notifications setting"
   },
   "notificationStyle": {
@@ -107,13 +119,25 @@
     "message": "Browser notifications",
     "description": "Option for browser notifications"
   },
+  "browserNotificationsDesc": {
+    "message": "System notifications, shown outside the page. Nothing on the page can touch them, but your operating system can silence them, for example in do-not-disturb mode, and they are easy to miss while you are looking at another window.",
+    "description": "Trade-off of system notifications"
+  },
   "inPageNotifications": {
     "message": "In-page notifications",
     "description": "Option for in-page notifications"
   },
+  "inPageNotificationsDesc": {
+    "message": "A panel drawn on the page itself. Your system cannot silence it and it is hard to miss, but it lives inside the page, so a hostile site can try to remove it. Catching that is what the tamper protection below is for.",
+    "description": "Trade-off of in-page notifications"
+  },
   "bothNotifications": {
     "message": "Both",
     "description": "Option for both types of notifications"
+  },
+  "notificationStylePinNote": {
+    "message": "As you can see, every style has a caveat of its own. That is why pinning the extension icon to the toolbar is worth doing. The icon sits in the browser's own frame, outside every page, so a site can neither silence it, nor remove it, nor draw a convincing fake over it. Whatever happens to a notification, the icon still tells you how well the site is known.",
+    "description": "Note below the notification style options, recommending the pinned icon as the indicator a site cannot fake"
   },
   "databaseManagement": {
     "message": "Your data",
@@ -123,21 +147,65 @@
     "message": "Importing...",
     "description": "Text shown while importing"
   },
+  "importHistoryIntro": {
+    "message": "Your browser history was imported automatically when Visilant was installed, dates and all. The buttons below only re-run that.",
+    "description": "Note above the manual import buttons, explaining the automatic import already ran"
+  },
+  "importStatusNever": {
+    "message": "Nothing imported yet, so every site counts as unfamiliar. Run the full import below.",
+    "description": "Import status: nothing has ever been imported"
+  },
+  "importStatusRunning": {
+    "message": "An import is running right now.",
+    "description": "Import status: an import is in flight right now"
+  },
+  "importStatusComplete": {
+    "message": "Imported in full, dates included. There is nothing you need to do here.",
+    "description": "Import status: everything imported, dates included"
+  },
+  "importStatusPartial": {
+    "message": "Visit counts are in, so warnings work correctly, but no full pass has finished, so first-visit dates and active days are still blank. Run the full import to fill them in.",
+    "description": "Import status: counts imported but no full pass ever finished"
+  },
+  "importStatusInterrupted": {
+    "message": "An import was cut short and has not been picked up again. Run the full import to finish it, it continues from where it stopped.",
+    "description": "Import status: an import was cut short and never resumed"
+  },
+  "importStatusCancelled": {
+    "message": "The import was stopped before it finished. Visit counts may be incomplete, so run it again.",
+    "description": "Import status: the user stopped the import"
+  },
+  "importStatusFailed": {
+    "message": "The last import ended with an error. Run the full import to try again.",
+    "description": "Import status: the import ended in an error"
+  },
+  "importKeepPageOpen": {
+    "message": "This import runs in this page, so leave it open until it finishes. The automatic one runs in the background and does not need it.",
+    "description": "Hint shown while a manual import runs in the settings page"
+  },
+  "importLastRun": {
+    "message": "Last import",
+    "description": "Label for the date of the last history import"
+  },
+  "importSitesStored": {
+    "message": "sites",
+    "description": "Unit after the number of sites stored by the last import"
+  },
   "importHistoryFull": {
     "message": "Full import",
     "description": "Label for the full history import button"
   },
   "importHistoryFullDesc": {
-    "message": "Reads every recorded visit, so first-visit dates and active days are real. Slower on a large history — you can cancel at any time.",
+    "message": "Reads every recorded visit, so first-visit dates and active days become real numbers instead of blanks. Worth running if the automatic import did not finish. Slower on a large history – you can cancel at any time.",
     "description": "Description of the full history import"
   },
   "importHistoryQuick": {
-    "message": "Quick import",
-    "description": "Label for the quick history import button"
+    "message": "Refresh from history",
+    "description": "Label for the quick history re-import button"
   },
   "importHistoryQuickDesc": {
-    "message": "Uses the summary the browser already keeps for each page. Fast, but cannot tell when you first visited a site.",
-    "description": "Description of the quick history import"
+    "message": "Re-reads the summary the browser keeps for each page. Use it if history synced in from another device, or if this profile was empty when Visilant was installed. Safe to repeat – counts are matched, not added up.",
+    "description": "Description of the quick history re-import"
   },
   "firstSeenLabel": {
     "message": "First known visit",
@@ -158,6 +226,22 @@
   "statsImportHint": {
     "message": "Import your browser history to fill this in",
     "description": "Hint shown when first-visit data is missing"
+  },
+  "statsFamilyWide": {
+    "message": "This address has no visits of its own – these are for the domain as a whole.",
+    "description": "Shown when the visit facts come from the domain family rather than the exact address"
+  },
+  "untrackedHostBadge": {
+    "message": "not counted",
+    "description": "Badge shown instead of a familiar/unfamiliar verdict for an address that is never counted"
+  },
+  "untrackedHostTitle": {
+    "message": "Visits here are not counted",
+    "description": "Heading of the notice shown for hostnames without a dot"
+  },
+  "untrackedHostText": {
+    "message": "This name has no dot in it, so it is not a public address anyone could register, and it cannot be a lookalike of somebody else's site. That resemblance is what Visilant is here to catch, so it keeps no count for names like localhost and never warns about them. None of this is a verdict on the machine itself, only on what an address alone can tell you.",
+    "description": "Explains why a dotless hostname has no visit count and never triggers a warning"
   },
   "resetData": {
     "message": "Reset data",
@@ -195,10 +279,6 @@
     "message": "This action cannot be undone",
     "description": "Warning about irreversible action"
   },
-  "historyPermissionRequired": {
-    "message": "History permission is required to import browser history. Please grant the permission to continue",
-    "description": "Message shown when history permission is denied"
-  },
   "notificationPermissionRequired": {
     "message": "Notification permission is required for browser notifications. The notification style has been set to in-page notifications instead",
     "description": "Message shown when notification permission is denied"
@@ -235,13 +315,81 @@
     "message": "When typing or pasting",
     "description": "Label for input warning toggle"
   },
+  "showInputWarningDesc": {
+    "message": "Typing and pasting is the moment your data actually leaves your hands. A fake login page cannot take anything until you fill it in, so this is the last point at which a warning can still stop a password, a card number or a one-time code from going to the wrong site.",
+    "description": "Why the typing/pasting trigger matters"
+  },
   "showCopyWarning": {
     "message": "When cutting or copying",
     "description": "Label for copy warning toggle"
   },
+  "showCopyWarningDesc": {
+    "message": "Copying is the opposite direction, where the page hands something to you. The common trick is a site that asks you to copy a line and paste it into a terminal or a run box, and what actually landed in the clipboard is malicious code rather than the harmless line you saw on screen. A warning here gives you a reason to look at it once more before pasting.",
+    "description": "Why the copying/cutting trigger matters"
+  },
   "bothWarningTriggers": {
     "message": "In both cases",
     "description": "Label for both warning trigger events option"
+  },
+  "blockPasteOnUnfamiliar": {
+    "message": "Hold pastes on unfamiliar sites",
+    "description": "Label of the setting that holds a paste until confirmed"
+  },
+  "blockPasteOnUnfamiliarDesc": {
+    "message": "Instead of only warning you, the first paste on an unfamiliar site is stopped and nothing is inserted until you have looked at the address. Allowing it does not paste anything by itself: you press paste again and it goes through as an ordinary paste, with formatting, images, undo and the page’s own handling all behaving normally. After that the page stops asking.",
+    "description": "What the paste hold does and what it cannot do"
+  },
+  "pasteInterceptTitle": {
+    "message": "Paste held back",
+    "description": "Title of the paste confirmation dialog"
+  },
+  "pasteInterceptMessage": {
+    "message": "You are about to paste into an unfamiliar site. Check the address before you let it through.",
+    "description": "Body of the paste confirmation dialog"
+  },
+  "pasteInterceptRepeatHint": {
+    "message": "This dialog pastes nothing by itself. Allow it, then press paste again and it goes through exactly as it normally would. You will not be asked again on this page.",
+    "description": "Explains that allowing does not paste, the user pastes again themselves"
+  },
+  "pasteInterceptDontAskAgain": {
+    "message": "Do not warn me about this site again",
+    "description": "Checkbox that turns the warnings off for this site for good"
+  },
+  "pasteInterceptAllow": {
+    "message": "Allow pasting",
+    "description": "Button that lets the paste through"
+  },
+  "pasteInterceptCancel": {
+    "message": "Do not paste",
+    "description": "Button that drops the paste"
+  },
+  "pasteInterceptReveal": {
+    "message": "Show contents",
+    "description": "Button that shows the clipboard contents"
+  },
+  "pasteInterceptHide": {
+    "message": "Hide contents",
+    "description": "Button that hides the clipboard contents again"
+  },
+  "pasteInterceptChars": {
+    "message": "characters",
+    "description": "Unit after the number of characters on the clipboard"
+  },
+  "pasteInterceptKindText": {
+    "message": "Text",
+    "description": "Clipboard contents look like ordinary text"
+  },
+  "pasteInterceptKindUrl": {
+    "message": "Web address",
+    "description": "Clipboard contents look like a web address"
+  },
+  "pasteInterceptKindEmail": {
+    "message": "Email address",
+    "description": "Clipboard contents look like an email address"
+  },
+  "pasteInterceptKindDigits": {
+    "message": "Digits, such as a card number or a code",
+    "description": "Clipboard contents look like a number, card or code"
   },
   "warningTriggerEventsTitle": {
     "message": "When to show notifications",
@@ -250,6 +398,10 @@
   "currentDomain": {
     "message": "Current domain",
     "description": "Label for current domain section"
+  },
+  "checkedDomain": {
+    "message": "Checked domain",
+    "description": "Heading of the domain card when the popup is opened as its own tab, where there is no current domain"
   },
   "baseDomain": {
     "message": "Base domain",
@@ -276,35 +428,35 @@
     "description": "Sort by visits option"
   },
   "sortOrderToAsc": {
-    "message": "Sort ascending — currently descending",
+    "message": "Sort ascending – currently descending",
     "description": "Sort button tooltip while sorting descending"
   },
   "sortOrderToDesc": {
-    "message": "Sort descending — currently ascending",
+    "message": "Sort descending – currently ascending",
     "description": "Sort button tooltip while sorting ascending"
   },
   "caseToUpper": {
-    "message": "Show uppercase — currently lowercase",
+    "message": "Show uppercase – currently lowercase",
     "description": "Case button tooltip while showing lowercase"
   },
   "caseToLower": {
-    "message": "Show lowercase — currently uppercase",
+    "message": "Show lowercase – currently uppercase",
     "description": "Case button tooltip while showing uppercase"
   },
   "highlightingTurnOn": {
-    "message": "Turn highlighting on — currently off",
+    "message": "Turn highlighting on – currently off",
     "description": "Highlighting button tooltip while highlighting is off"
   },
   "highlightingTurnOff": {
-    "message": "Turn highlighting off — currently on",
+    "message": "Turn highlighting off – currently on",
     "description": "Highlighting button tooltip while highlighting is on"
   },
   "punycodeShowAscii": {
-    "message": "Show punycode (ASCII) — currently the original",
+    "message": "Show punycode (ASCII) – currently the original",
     "description": "Domain format button tooltip while showing the original"
   },
   "punycodeShowUnicode": {
-    "message": "Show the original — currently punycode (ASCII)",
+    "message": "Show the original – currently punycode (ASCII)",
     "description": "Domain format button tooltip while showing punycode"
   },
   "highlightingLegend": {
@@ -348,7 +500,7 @@
     "description": "Alt text for logo"
   },
   "tamperingMessage": {
-    "message": "ATTENTION! Visilant extension protection was forcibly removed by this page! This site is highly suspicious! In rare cases, legitimate sites may also behave this way — if you trust this site, you can disable protection for it in the extension settings.",
+    "message": "ATTENTION! Visilant extension protection was forcibly removed by this page! This site is highly suspicious! In rare cases, legitimate sites may also behave this way – if you trust this site, you can disable protection for it in the extension settings.",
     "description": "Message shown when tampering is detected"
   },
   "linkSafetySettings": {
@@ -356,7 +508,7 @@
     "description": "Title for link safety settings section"
   },
   "linkSafetySettingsDesc": {
-    "message": "Know where a link leads before you click. Some sites can cause harm the moment you open them — no login or interaction required",
+    "message": "Know where a link leads before you click. Some sites can cause harm the moment you open them – no login or interaction required. Everything above is the last line of defence, it reacts once you are already on the site. This works a step earlier, while going or not going is still your choice, and a page you never open cannot do anything to you at all.",
     "description": "Description for link safety feature"
   },
   "linkSafetyEnabled": {
@@ -370,6 +522,26 @@
   "linkTooltipTriggerHover": {
     "message": "On hover",
     "description": "Tooltip trigger option: hover"
+  },
+  "linkTooltipTriggerHoverDesc": {
+    "message": "The tooltip appears as soon as the pointer rests on a link. Nothing is clicked and nothing is requested, you only see where it leads.",
+    "description": "What the hover trigger does"
+  },
+  "linkHoverDelay": {
+    "message": "Delay before the tooltip appears",
+    "description": "Label of the hover delay slider"
+  },
+  "linkHoverDelayDesc": {
+    "message": "How long the pointer has to rest on a link. Longer keeps the tooltip out of the way while you are just moving the mouse across the page, shorter makes it answer faster when you stop on a link on purpose.",
+    "description": "What the hover delay changes and how to pick it"
+  },
+  "linkHoverDelaySeconds": {
+    "message": "s",
+    "description": "Unit shown next to the hover delay value"
+  },
+  "linkHoverDelayInstant": {
+    "message": "instantly",
+    "description": "Value shown when the hover delay is zero"
   },
   "linkTooltipTriggerClickLeft": {
     "message": "On click (with confirmation)",
@@ -390,6 +562,10 @@
   "linkShowVisitCount": {
     "message": "Show visit count when checking links",
     "description": "Setting label for visit count display mode"
+  },
+  "linkShowVisitCountDesc": {
+    "message": "Whether the tooltip also says how many times you have been to the link’s site. Limiting it to unfamiliar sites keeps the tooltip quiet on everyday links.",
+    "description": "What the visit-count option controls"
   },
   "linkShowVisitCountAlways": {
     "message": "Always",
@@ -427,9 +603,17 @@
     "message": "Resolve by button click",
     "description": "Short URL mode: manual button"
   },
+  "linkShortUrlModeButtonDesc": {
+    "message": "Nothing is requested until you press the button in the tooltip, so you decide link by link.",
+    "description": "What resolving on button click means"
+  },
   "linkShortUrlModeAuto": {
     "message": "Auto-resolve",
     "description": "Short URL mode: automatic"
+  },
+  "linkShortUrlModeAutoDesc": {
+    "message": "Every shortened link you look at is resolved immediately. Convenient, but the shortener learns that you saw the link even if you never click it.",
+    "description": "What auto-resolving costs in privacy"
   },
   "linkShortUrlShowFullUrl": {
     "message": "Show full resolved URL (not just domain)",
@@ -452,12 +636,16 @@
     "description": "Label for remote list URLs textarea"
   },
   "linkShortUrlListUpdateUrlDesc": {
-    "message": "URLs to periodically fetch shortener domain lists from (one URL per line). Each file should contain one domain per line",
+    "message": "One URL per line. Each should be a plain-text list of shortener domains (one per line, # for comments). Fetched on demand, merged together and with the built-in list. A source that fails is skipped, not fatal.",
     "description": "Description for remote list URLs"
   },
   "linkScopeMode": {
     "message": "Active on",
     "description": "Label for scope mode selection"
+  },
+  "linkScopeModeDesc": {
+    "message": "Where link checking is active. Leaving it on for all websites is the recommended setting, since a link you were not expecting can turn up anywhere. If it does get in the way somewhere, choose \"Everywhere except these domains\" and list those sites in the box that appears, one per line.",
+    "description": "What the scope option is for"
   },
   "linkScopeEverywhere": {
     "message": "All websites",
@@ -474,6 +662,10 @@
   "linkScopeDomains": {
     "message": "One domain per line",
     "description": "Placeholder for scope domain list textarea"
+  },
+  "linkScopeDomainsNote": {
+    "message": "Subdomains are covered automatically. A line saying example.com also covers app.example.com and every other name under it, so there is no need to list them separately.",
+    "description": "Note that the scope domain list matches subdomains too"
   },
   "linkTooltipVisits": {
     "message": "Visits",
@@ -535,6 +727,10 @@
     "message": "Resembles a site you know:",
     "description": "Intro to the familiar domain a lookalike imitates"
   },
+  "lookalikeLooksLikeProvider": {
+    "message": "Resembles a well-known mail provider:",
+    "description": "Intro to the mail provider a lookalike address imitates. Shown instead of lookalikeLooksLike when the reference is the built-in provider list rather than the user’s own history."
+  },
   "lookalikeReasonConfusable": {
     "message": "Characters replaced with ones that look the same",
     "description": "Lookalike reason: confusable characters"
@@ -572,7 +768,7 @@
     "description": "Title for navigation intercept dialog"
   },
   "linkInterceptMessage": {
-    "message": "You are about to visit a site you have rarely visited before",
+    "message": "You are about to visit an unfamiliar site",
     "description": "Message in navigation intercept dialog"
   },
   "linkInterceptPhishingHint": {
@@ -628,7 +824,7 @@
     "description": "Error state when URL resolution fails"
   },
   "linkTooltipResolveSameDomain": {
-    "message": "The destination domain is the same as the link — either this is not a shortener, or the site has strong bot protection that prevented following the redirect",
+    "message": "The destination domain is the same as the link – either this is not a shortener, or the site has strong bot protection that prevented following the redirect",
     "description": "Error state when resolved URL has same domain as original"
   },
   "linkTooltipResolveButton": {
@@ -636,7 +832,7 @@
     "description": "Button to manually resolve a shortened URL"
   },
   "linkShortUrlSectionWarning": {
-    "message": "To resolve a shortened URL, a request is made to follow the redirect chain. The shortener will see this request. If the link looks suspicious, it may be safer not to resolve it at all.",
+    "message": "Resolving a short link means actually requesting it and following every hop to the end. Each host along the way sees that request, the final destination included, so it learns your address and that someone followed the link. It is still far less exposure than opening the page, because nothing is rendered and no script on it ever runs, but it is not nothing: a click can be counted, a one-time link can be spent, and a server can act on the request. If a link looks suspicious, not resolving it at all is the safer choice.",
     "description": "Warning in settings about risks of URL resolution"
   },
   "linkTooltipRetryResolve": {
@@ -644,7 +840,7 @@
     "description": "Button to retry URL resolution after error"
   },
   "linkTooltipShortUrlWarning": {
-    "message": "This link uses a URL shortener — the real destination is hidden",
+    "message": "This link uses a URL shortener – the real destination is hidden",
     "description": "Warning about shortened URL hiding destination"
   },
   "linkTooltipRedirectChain": {
@@ -688,7 +884,7 @@
     "description": "Title for anti-tampering settings section"
   },
   "antiTamperingSettingsDesc": {
-    "message": "Detects when a page forcibly hides or removes the extension's warnings from this site (i.e. removes the extension's UI from the DOM). If tampering is detected, you'll receive a critical security warning. Some legitimate sites that heavily rebuild their page (especially SPAs or sites with aggressive DOM cleanup) may trigger false alarms — add them to the exclusion list below",
+    "message": "Detects when a page forcibly hides or removes the extension's warnings from this site (i.e. removes the extension's UI from the DOM). If tampering is detected, you'll receive a critical security warning. Some legitimate sites that heavily rebuild their page (especially SPAs or sites with aggressive DOM cleanup) may trigger false alarms – add them to the exclusion list below. Check the address carefully before you add anything. Protection is off for everything on that list, so an excluded site can take Visilant's panel off the page with nothing left to report it. A fake that ends up on the list is exactly the page that would do that.",
     "description": "Description for anti-tampering settings"
   },
   "antiTamperingExcludedDomains": {
@@ -832,7 +1028,7 @@
     "description": "Hint under the popup check input"
   },
   "checkFieldInvalid": {
-    "message": "Nothing to check — enter a link, domain or email address",
+    "message": "Nothing to check – enter a link, domain or email address",
     "description": "Shown when the input cannot be classified"
   },
   "checkFieldExpand": {
@@ -852,7 +1048,7 @@
     "description": "Badge: domain is a well-known freemail provider"
   },
   "emailPublicProviderHint": {
-    "message": "Anyone can register an address here — judge the sender by the name before @, not by the domain",
+    "message": "Anyone can register an address here – judge the sender by the name before @, not by the domain",
     "description": "Hint for public provider addresses"
   },
   "emailDisposableDomain": {
@@ -860,7 +1056,7 @@
     "description": "Badge: domain is a temp-mail service"
   },
   "emailDisposableHint": {
-    "message": "Disposable/temporary mail service — messages from such addresses are almost always spam or scam",
+    "message": "Disposable/temporary mail service – messages from such addresses are almost always spam or scam",
     "description": "Hint for disposable addresses"
   },
   "emailListsTitle": {
@@ -868,23 +1064,23 @@
     "description": "Options section header for email domain lists"
   },
   "emailListsDesc": {
-    "message": "Built-in lists of public email services and disposable mail domains are used when checking addresses. You can add your own domains and update the disposable list from a URL.",
+    "message": "Built-in lists of public email services and disposable mail domains are used when checking addresses. You can add your own domains to either list, and keep both topped up from a URL.",
     "description": "Options section description"
   },
   "emailCustomPublicLabel": {
-    "message": "Your public email services",
+    "message": "Add public email services",
     "description": "Label for the custom public providers textarea"
   },
   "emailCustomPublicDesc": {
-    "message": "One domain per line. Addresses on these domains are shown as public services (visit counts are not applied to them).",
+    "message": "Domains the built-in list misses, one per line. Addresses on them are shown as public services (visit counts are not applied to them).",
     "description": "Description for the custom public providers textarea"
   },
   "emailCustomDisposableLabel": {
-    "message": "Your disposable email domains",
+    "message": "Add disposable mail domains",
     "description": "Label for the custom disposable textarea"
   },
   "emailCustomDisposableDesc": {
-    "message": "One domain per line. Addresses on these domains are flagged as disposable.",
+    "message": "Domains the built-in list misses, one per line. Addresses on them are flagged as disposable.",
     "description": "Description for the custom disposable textarea"
   },
   "emailDisposableUpdateUrlLabel": {
@@ -892,8 +1088,16 @@
     "description": "Label for the remote disposable list URL input"
   },
   "emailDisposableUpdateUrlDesc": {
-    "message": "URL of a plain-text list (one domain per line, # for comments). Fetched on demand and merged with the built-in list.",
-    "description": "Description for the remote list URL"
+    "message": "One URL per line. Each should be a plain-text list (one domain per line, # for comments). Fetched on demand, merged together and with the built-in list. A source that fails is skipped, not fatal.",
+    "description": "Description of the disposable list source field"
+  },
+  "emailPublicUpdateUrlLabel": {
+    "message": "Public services list sources",
+    "description": "Label for the remote public provider list URL input"
+  },
+  "emailPublicUpdateUrlDesc": {
+    "message": "One URL per line. Each should be a plain-text list (one domain per line, # for comments). Fetched on demand, merged together and with the built-in list. A source that fails is skipped, not fatal.",
+    "description": "Description of the public provider list source field"
   },
   "emailDisposableUpdateNow": {
     "message": "Update now",
@@ -904,7 +1108,7 @@
     "description": "Status after a successful list update"
   },
   "emailDisposableUpdateError": {
-    "message": "Failed to load the list — check the URL",
+    "message": "Failed to load the list – check the URL",
     "description": "Status after a failed list update"
   },
   "checkPanelTitle": {
@@ -918,5 +1122,161 @@
   "emailDomainLabel": {
     "message": "Domain",
     "description": "Label for the email domain part (after @)"
+  },
+  "externalLookupsTitle": {
+    "message": "Check this domain elsewhere",
+    "description": "Label of the collapsible third-party lookup links"
+  },
+  "externalLookupsCaveat": {
+    "message": "Each of these opens a third-party site in a background tab, so you can pick several. Visilant sends nothing – but whichever site you open will see the domain and your IP address.",
+    "description": "Caveat under the third-party lookup links"
+  },
+  "lookupServicesLabel": {
+    "message": "Lookup links",
+    "description": "Options label for the editable service list"
+  },
+  "lookupServicesDesc": {
+    "message": "One per line, as Name | https://example.com/check/{domain}. The {domain} placeholder is replaced with the domain being checked. Delete any line you do not want, or clear the field to show no links at all. Only https links containing the placeholder are accepted.",
+    "description": "Options description for the editable service list"
+  },
+  "lookupServicesNote": {
+    "message": "These are links, not integrations: nothing is requested until you click one, so no API keys are involved and no service sees anything unless you choose to visit it.",
+    "description": "Explains why links rather than API calls"
+  },
+  "lookupServicesReset": {
+    "message": "Restore built-in list",
+    "description": "Button that puts the shipped lookup links back"
+  },
+  "emailDisposableSources": {
+    "message": "sources",
+    "description": "Count of lists that answered"
+  },
+  "emailDisposableSourcesFailed": {
+    "message": "failed",
+    "description": "Count of lists that did not answer"
+  },
+  "welcomeTitle": {
+    "message": "Visilant is ready",
+    "description": "Title of the welcome page shown right after install"
+  },
+  "welcomeSubtitle": {
+    "message": "One thing was set up for you.",
+    "description": "Subtitle of the welcome page"
+  },
+  "welcomeWhyTitle": {
+    "message": "Why your history was read",
+    "description": "Heading of the section explaining why the history was imported"
+  },
+  "welcomeWhyBody": {
+    "message": "Visilant decides what to warn about by comparing a site against the ones you already use. With nothing to compare against it cannot tell your bank from a copy of it, so on an empty profile it either stays quiet when it should not, or flags everything in sight. A warning that appears on every site is a warning you stop reading – and by the time a genuinely dangerous one turns up, it looks exactly like the harmless ones before it. Reading your history once, up front, is what makes the difference between the two mean something.",
+    "description": "Explanation of why the history import happens automatically"
+  },
+  "welcomeStatusReading": {
+    "message": "Reading your browser history…",
+    "description": "Shown while the browser history is being read"
+  },
+  "welcomeStatusSaving": {
+    "message": "Saving what it found…",
+    "description": "Shown while the imported sites are being saved"
+  },
+  "welcomeStatusDone": {
+    "message": "These sites are now familiar to Visilant and will not be warned about. Everything else still will be.",
+    "description": "Shown under the import result numbers"
+  },
+  "welcomeStatusFailed": {
+    "message": "The import did not finish, so Visilant still treats every site as new. You can run it again.",
+    "description": "Shown when the automatic import failed"
+  },
+  "welcomeStatusCancelled": {
+    "message": "The import was stopped before it finished. You can run it again.",
+    "description": "Shown when the import was stopped before finishing"
+  },
+  "welcomeDetailsRunning": {
+    "message": "Your sites are already counted, and warnings already know them. Filling in first-visit dates and active-day counts now.",
+    "description": "Shown while the slower detail pass of the import is still running"
+  },
+  "welcomeKeepOpen": {
+    "message": "Carry on browsing as usual and feel free to close this page – the import runs in the background. Just try not to close the browser itself until it is done. If you do, it saves its place as it goes and picks up where it left off next time you start the browser.",
+    "description": "Hint shown while the import runs, about keeping the browser open"
+  },
+  "welcomeTabDone": {
+    "message": "Import finished",
+    "description": "Tab title flashed when the import finishes while the user is on another tab"
+  },
+  "welcomeDetailsFailed": {
+    "message": "The extra pass that fills in first-visit dates did not finish. Your sites are counted either way, so warnings already work. Only those dates are missing.",
+    "description": "Shown when the detail pass failed but the counting pass succeeded"
+  },
+  "welcomeRetry": {
+    "message": "Import again",
+    "description": "Label of the button that runs the import again"
+  },
+  "welcomeStatSites": {
+    "message": "sites",
+    "description": "Unit under the number of imported sites"
+  },
+  "welcomeStatVisits": {
+    "message": "visits",
+    "description": "Unit under the number of imported visits"
+  },
+  "welcomeSavedTitle": {
+    "message": "What was saved",
+    "description": "Heading of the list of what the import stored"
+  },
+  "welcomeSavedHostname": {
+    "message": "the host name of the site, such as example.com",
+    "description": "First item of what the import stored"
+  },
+  "welcomeSavedCount": {
+    "message": "how many times you have been there",
+    "description": "Second item of what the import stored"
+  },
+  "welcomeSavedFirstSeen": {
+    "message": "the date of your earliest recorded visit",
+    "description": "Item of what the import stored: the first visit date"
+  },
+  "welcomeSavedLastSeen": {
+    "message": "when you were there last",
+    "description": "Third item of what the import stored"
+  },
+  "welcomeSavedActiveDays": {
+    "message": "how many separate days you visited it on",
+    "description": "Item of what the import stored: the number of active days"
+  },
+  "welcomeSavedRetention": {
+    "message": "These numbers only reach as far back as the browser’s own history does. Browsers drop old entries after a while on their own, so a site you have used for years can show far fewer visits and a much later first visit than you would expect. That is the browser’s retention setting rather than a miscount. It also explains why a site you have known for years, but visit rarely, can fall short of the familiarity threshold and trigger a warning. From here on Visilant keeps its own count and misses none of your visits. It simply cannot look backwards, so a gap like that belongs to the early days and closes as you browse.",
+    "description": "Note that the imported numbers only reach as far back as the browser keeps history"
+  },
+  "welcomeNotSavedTitle": {
+    "message": "What was not saved",
+    "description": "Heading of the paragraph listing what is not stored"
+  },
+  "welcomeNotSaved": {
+    "message": "Page addresses, page titles, search queries and anything you have typed are not stored. Only the five things above, per host name.",
+    "description": "What the import deliberately does not store"
+  },
+  "welcomeStorageTitle": {
+    "message": "Where it is kept",
+    "description": "Heading of the section about where the data lives"
+  },
+  "welcomeStorageBody": {
+    "message": "In this browser’s own storage, on this device. Visilant has no server and no account, and none of it is ever sent anywhere. You can erase all of it at any time in the settings.",
+    "description": "Statement that the data stays on the device"
+  },
+  "welcomeOpenSettings": {
+    "message": "Open settings",
+    "description": "Label of the welcome page button opening the settings"
+  },
+  "welcomeDone": {
+    "message": "Done",
+    "description": "Label of the welcome page button closing the tab"
+  },
+  "welcomeDefaultsTitle": {
+    "message": "Worth a look: the settings",
+    "description": "Heading of the section suggesting a look at the settings"
+  },
+  "welcomeDefaultsBody": {
+    "message": "The defaults are meant to suit most people, but they were picked by one person, largely around how that person browses. Visilant collects no telemetry – there is no way to see how anyone else has things set, and so no way to know what a better default would even be. Spend a couple of minutes in the settings: what warns you, when, and how loudly is all adjustable, and reading through it is also the fastest way to understand how the extension works.",
+    "description": "Why the defaults are a guess and worth reviewing"
   }
 }

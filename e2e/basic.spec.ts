@@ -1,7 +1,16 @@
 import { expect, test } from './fixtures'
+import { blankPage, seedVisits, serveSite } from './helpers'
+
+// Made-up hostnames served by the test itself. Nothing here touches the network:
+// a real site can go down, change its markup or – worse – quietly become a site
+// the profile has visited, which is the one thing several of these tests need to
+// stay in control of.
+const SITE_URL = 'https://tracked-site.test/'
+const SITE_HOST = 'tracked-site.test'
+const SUBDOMAIN_URL = 'https://shop.tracked-site.test/'
 
 // ==========================================
-// Popup — basic loading
+// Popup – basic loading
 // ==========================================
 
 test('popup page loads and shows logo', async ({ page, extensionId }) => {
@@ -20,7 +29,7 @@ test('popup has settings button', async ({ page, extensionId }) => {
 })
 
 // ==========================================
-// Popup — domain display
+// Popup – domain display
 // ==========================================
 
 test('popup shows domain in standalone mode', async ({ page, extensionId }) => {
@@ -29,16 +38,13 @@ test('popup shows domain in standalone mode', async ({ page, extensionId }) => {
   await expect(page.locator('text=google.com').first()).toBeVisible({ timeout: 5000 })
 })
 
-test('popup shows visit count for domain', async ({ page, extensionId }) => {
-  // First visit a page so it gets tracked
-  await page.goto('https://example.com')
-  await page.waitForLoadState('load')
-  await page.waitForTimeout(2000)
+test('popup shows visit count for domain', async ({ page, extensionId, context }) => {
+  await seedVisits(context, SITE_HOST, 3)
 
-  // Open popup for that domain
-  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)
-  await expect(page.locator('text=example.com').first()).toBeVisible({ timeout: 5000 })
+  await expect(page.locator(`text=${SITE_HOST}`).first()).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('.font-mono').filter({ hasText: /^3$/ }).first()).toBeAttached({ timeout: 5000 })
 })
 
 test('popup shows "no visit data" for unvisited domain', async ({ page, extensionId }) => {
@@ -50,11 +56,11 @@ test('popup shows "no visit data" for unvisited domain', async ({ page, extensio
 })
 
 // ==========================================
-// Popup — font size controls
+// Popup – font size controls
 // ==========================================
 
 test('popup font size increase/decrease buttons work', async ({ page, extensionId }) => {
-  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)
 
   // Find font size display
@@ -71,16 +77,13 @@ test('popup font size increase/decrease buttons work', async ({ page, extensionI
 })
 
 // ==========================================
-// Popup — sort controls
+// Popup – sort controls
 // ==========================================
 
-test('popup sort controls are visible for domain with data', async ({ page, extensionId }) => {
-  // Visit a page first to generate data
-  await page.goto('https://example.com')
-  await page.waitForLoadState('load')
-  await page.waitForTimeout(2000)
+test('popup sort controls are visible for domain with data', async ({ page, extensionId, context }) => {
+  await seedVisits(context, SITE_HOST, 2)
 
-  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)
 
   // Sort order toggle button (↑ or ↓)
@@ -92,7 +95,7 @@ test('popup sort controls are visible for domain with data', async ({ page, exte
 })
 
 // ==========================================
-// Options page — loading & sections
+// Options page – loading & sections
 // ==========================================
 
 test('options page loads with logo and settings title', async ({ page, extensionId }) => {
@@ -118,15 +121,16 @@ test('options page has language selector', async ({ page, extensionId }) => {
 })
 
 // ==========================================
-// Options page — toggle switches
+// Options page – toggle switches
 // ==========================================
 
 test('options page has display setting toggles', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
-  // Dynamic icon and show badge toggles
+  // Dynamic icon and show badge toggles. Counted by polling rather than once:
+  // a bare count races the page's own render and reads zero when it wins
   const checkboxes = page.locator('input[type="checkbox"]')
   // At least dynamic icon + show badge + warning notification + link safety
-  expect(await checkboxes.count()).toBeGreaterThanOrEqual(4)
+  await expect.poll(() => checkboxes.count(), { timeout: 5000 }).toBeGreaterThanOrEqual(4)
 })
 
 test('safety threshold can be changed', async ({ page, extensionId }) => {
@@ -137,14 +141,14 @@ test('safety threshold can be changed', async ({ page, extensionId }) => {
 })
 
 // ==========================================
-// Options page — notification settings
+// Options page – notification settings
 // ==========================================
 
 test('notification settings expand when toggle is on', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
   await page.waitForTimeout(1000)
 
-  // Warning notification toggle — find the one that controls showWarningNotification
+  // Warning notification toggle – find the one that controls showWarningNotification
   // Radio buttons for warning type should be visible when notifications are enabled
   const radioButtons = page.locator('input[type="radio"][name="warningType"]')
 
@@ -155,15 +159,18 @@ test('notification settings expand when toggle is on', async ({ page, extensionI
 })
 
 // ==========================================
-// Options page — link safety settings
+// Options page – link safety settings
 // ==========================================
 
 test('link safety section has master toggle', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
   await page.waitForTimeout(1000)
 
-  // Link safety toggle exists
-  const linkSafetyCheckboxes = page.locator('.bg-white.rounded-lg.shadow').nth(3).locator('input[type="checkbox"]')
+  // Found by content rather than by position: the sections have been reordered
+  // before and an index makes this assert whichever card happens to sit there
+  const linkSafetyCard = page.locator('.bg-white.rounded-lg.shadow')
+    .filter({ has: page.locator('input[type="radio"][value="hover"]') })
+  const linkSafetyCheckboxes = linkSafetyCard.locator('input[type="checkbox"]')
   expect(await linkSafetyCheckboxes.count()).toBeGreaterThanOrEqual(1)
 })
 
@@ -209,47 +216,60 @@ test('scope domain list appears when whitelist selected', async ({ page, extensi
 })
 
 // ==========================================
-// Options page — database management
+// Options page – database management
 // ==========================================
 
-test('options page has import history button', async ({ page, extensionId }) => {
+// Buttons are found by their wording rather than by a colour class: the styling
+// moved into `btn-primary` / `btn-danger` utilities once and would do so again
+
+test('options page offers both history imports and says one already ran', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
-  // Import history button (blue)
-  const importButton = page.locator('button.bg-blue-500').first()
-  await expect(importButton).toBeVisible({ timeout: 5000 })
+  await page.waitForTimeout(1000)
+
+  await expect(page.locator('button', { hasText: 'Full import' })).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('button', { hasText: 'Refresh from history' })).toBeVisible()
+  // The automatic import means these buttons are a re-run, not setup that was missed
+  await expect(page.locator('text=imported automatically when Visilant was installed')).toBeVisible()
 })
 
 test('options page has reset data section with checkboxes', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
-  // Red reset button
-  const resetButton = page.locator('button.bg-red-600').first()
+  const resetButton = page.locator('button', { hasText: 'Reset selected data' })
   await expect(resetButton).toBeVisible({ timeout: 5000 })
-  // Should be disabled when no checkboxes are selected
+  // Nothing is ticked, so there is nothing to reset
   await expect(resetButton).toBeDisabled()
 })
 
-test('reset button enables when checkbox selected', async ({ page, extensionId }) => {
+test('reset asks before it wipes, and only for what was ticked', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
   await page.waitForTimeout(1000)
 
-  const resetButton = page.locator('button.bg-red-600').first()
+  const resetButton = page.locator('button', { hasText: 'Reset selected data' })
   await expect(resetButton).toBeDisabled()
 
-  // The reset checkboxes are near the bottom — find them by context
-  const visitsCheckbox = page.locator('label:has(input[type="checkbox"])').filter({ hasText: /visit/i }).locator('input[type="checkbox"]')
-  if (await visitsCheckbox.count() > 0) {
-    await visitsCheckbox.first().click()
-    await expect(resetButton).toBeEnabled()
-  }
+  await page.locator('label', { hasText: 'All information about site visits' })
+    .locator('input[type="checkbox"]')
+    .check()
+  await expect(resetButton).toBeEnabled()
+
+  // Destructive and irreversible, so it goes through a confirmation that lists
+  // exactly what was picked
+  await resetButton.click()
+  await expect(page.locator('text=Confirm reset')).toBeVisible({ timeout: 3000 })
+  await expect(page.locator('li', { hasText: 'All information about site visits' })).toBeVisible()
+  await expect(page.locator('li', { hasText: 'All settings' })).toHaveCount(0)
+
+  await page.locator('button', { hasText: 'Cancel' }).click()
+  await expect(page.locator('text=Confirm reset')).toHaveCount(0)
 })
 
 // ==========================================
-// Options page — anti-tampering
+// Options page – anti-tampering
 // ==========================================
 
 test('anti-tampering excluded domains textarea exists', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
-  // Anti-tampering textarea — its placeholder starts with "example.com"
+  // Anti-tampering textarea – its placeholder starts with "example.com"
   const textarea = page.locator('textarea[placeholder^="example.com"]')
   await expect(textarea).toBeVisible({ timeout: 5000 })
 })
@@ -267,65 +287,58 @@ test('extension registers service worker', async ({ context }) => {
 })
 
 // ==========================================
-// Content script — visit tracking
+// Content script – visit tracking
 // ==========================================
 
 test('visiting a page tracks the domain', async ({ page, extensionId, context }) => {
-  await page.goto('https://example.com')
-  await page.waitForLoadState('load')
+  // A real navigation, because the navigation is what is under test here
+  await serveSite(page, SITE_URL)
   await page.waitForTimeout(2000)
 
-  // Open popup to verify
   const popupPage = await context.newPage()
-  await popupPage.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await popupPage.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await popupPage.waitForTimeout(1000)
-  await expect(popupPage.locator('text=example.com').first()).toBeVisible({ timeout: 5000 })
+  await expect(popupPage.locator(`text=${SITE_HOST}`).first()).toBeVisible({ timeout: 5000 })
+  // Counted once, rather than merely displayed
+  await expect(popupPage.locator('.font-mono').filter({ hasText: /^1$/ }).first()).toBeAttached({ timeout: 5000 })
   await popupPage.close()
 })
 
 test('visiting multiple subdomains shows domain family', async ({ page, extensionId, context }) => {
-  // Visit example.com
-  await page.goto('https://example.com')
-  await page.waitForLoadState('load')
+  await serveSite(page, SITE_URL)
+  await page.waitForTimeout(2000)
+  // The subdomain is served too, so it is a visit rather than a hope that the
+  // real www host resolves – which is what the old `.catch(() => {})` was for
+  await serveSite(page, SUBDOMAIN_URL)
   await page.waitForTimeout(2000)
 
-  // Visit www.example.com (if it resolves)
-  await page.goto('https://www.example.com').catch(() => {})
-  await page.waitForTimeout(2000)
-
-  // Check popup shows domain family
   const popupPage = await context.newPage()
-  await popupPage.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await popupPage.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await popupPage.waitForTimeout(1000)
-  await expect(popupPage.locator('text=example.com').first()).toBeVisible({ timeout: 5000 })
+  await expect(popupPage.locator(`text=${SITE_HOST}`).first()).toBeVisible({ timeout: 5000 })
+  // Both members of the family are listed, not just the one asked for
+  await expect(popupPage.locator(`text=shop.${SITE_HOST}`).first()).toBeVisible({ timeout: 5000 })
   await popupPage.close()
 })
 
 // ==========================================
-// Content script — link safety tooltip on hover
+// Content script – link safety tooltip on hover
 // ==========================================
 
-test('link tooltip appears on hover over external link', async ({ page, _extensionId }) => {
-  // Create a page with an external link
-  await page.goto('https://example.com')
-  await page.waitForLoadState('load')
+test('link tooltip appears on hover over external link', async ({ page }) => {
+  // The link is part of the fixture rather than injected into someone else's
+  // markup, which cannot end up underneath whatever that site renders
+  await serveSite(page, SITE_URL, blankPage('links', `
+    <a id="test-external-link" href="https://some-unknown-domain-test.com"
+       style="position:fixed;top:50px;left:50px;font-size:20px;z-index:9999">External Link</a>
+  `))
   await page.waitForTimeout(2000)
-
-  // Inject an external link into the page
-  await page.evaluate(() => {
-    const link = document.createElement('a')
-    link.href = 'https://some-unknown-domain-test.com'
-    link.textContent = 'External Link'
-    link.id = 'test-external-link'
-    link.style.cssText = 'position:fixed;top:50px;left:50px;font-size:20px;z-index:9999;'
-    document.body.appendChild(link)
-  })
 
   // Hover over the link
   await page.locator('#test-external-link').hover()
   await page.waitForTimeout(500) // debounce is 300ms
 
-  // Tooltip should appear (in shadow DOM — check for the container being added)
+  // Tooltip should appear (in shadow DOM – check for the container being added)
   // The tooltip is rendered inside a shadow root, so we check the host element
   const tooltipHost = page.locator('body > div[style*="z-index"]')
   // Give extra time for the tooltip to render
@@ -334,11 +347,11 @@ test('link tooltip appears on hover over external link', async ({ page, _extensi
 })
 
 // ==========================================
-// Popup — anti-tampering status
+// Popup – anti-tampering status
 // ==========================================
 
 test('popup shows anti-tampering status for domain', async ({ page, extensionId }) => {
-  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)
 
   // Green dot (protected) or amber dot should be visible
@@ -347,7 +360,7 @@ test('popup shows anti-tampering status for domain', async ({ page, extensionId 
 })
 
 test('popup can toggle anti-tampering for domain', async ({ page, extensionId }) => {
-  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)
 
   // Should show green dot (protected by default)
@@ -368,7 +381,7 @@ test('popup can toggle anti-tampering for domain', async ({ page, extensionId })
 })
 
 // ==========================================
-// Options — settings persistence
+// Options – settings persistence
 // ==========================================
 
 test('safety threshold persists after page reload', async ({ page, extensionId }) => {
@@ -401,11 +414,12 @@ test('changing language in options switches popup to that language', async ({ pa
   await langSelect.selectOption('ru')
   await page.waitForTimeout(1000)
 
-  // Options headings should now be in Russian
-  await expect(page.locator('text=Общие настройки')).toBeVisible({ timeout: 5000 })
-  await expect(page.locator('text=Настройки уведомлений')).toBeVisible({ timeout: 3000 })
+  // Options headings should now be in Russian. Named by role, since the same
+  // words also appear as entries in the page contents.
+  await expect(page.getByRole('heading', { name: 'Общие настройки' })).toBeVisible({ timeout: 5000 })
+  await expect(page.getByRole('heading', { name: 'Настройки уведомлений' })).toBeVisible({ timeout: 3000 })
 
-  // Open popup — it should also be in Russian
+  // Open popup – it should also be in Russian
   const popup = await context.newPage()
   await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html`)
   await popup.waitForTimeout(1500)
@@ -417,16 +431,11 @@ test('changing language in options switches popup to that language', async ({ pa
   // Switch back to English
   await langSelect.selectOption('en')
   await page.waitForTimeout(1000)
-  await expect(page.locator('text=General settings')).toBeVisible({ timeout: 5000 })
+  await expect(page.getByRole('heading', { name: 'General settings' })).toBeVisible({ timeout: 5000 })
 })
 
 test('changing language in options switches popup domain view to that language', async ({ page, extensionId, context }) => {
-  // Visit a domain first
-  const tab = await context.newPage()
-  await tab.goto('https://example.com')
-  await tab.waitForLoadState('load')
-  await tab.waitForTimeout(2000)
-  await tab.close()
+  await seedVisits(context, SITE_HOST, 1)
 
   // Switch to Russian in options
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
@@ -434,13 +443,14 @@ test('changing language in options switches popup domain view to that language',
   await page.locator('select').first().selectOption('ru')
   await page.waitForTimeout(1000)
 
-  // Open popup for a domain — labels should be in Russian
+  // Open popup for a domain – labels should be in Russian
   const popup = await context.newPage()
-  await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await popup.waitForTimeout(1500)
 
-  // "Current domain" in Russian
-  await expect(popup.locator('text=Текущий домен')).toBeVisible({ timeout: 5000 })
+  // Opened with ?domain=, so this is the standalone page, where the heading is
+  // "checked domain" rather than "current domain"
+  await expect(popup.locator('text=Проверяемый домен')).toBeVisible({ timeout: 5000 })
   // Anti-tampering status in Russian
   await expect(popup.locator('text=Защита от вмешательства')).toBeAttached({ timeout: 3000 })
   await popup.close()
@@ -455,12 +465,7 @@ test('changing language in options switches popup domain view to that language',
 // ==========================================
 
 test('changing safety threshold in options affects visit count color in popup', async ({ page, extensionId, context }) => {
-  // Visit a site so it has count=1
-  const tab = await context.newPage()
-  await tab.goto('https://example.com')
-  await tab.waitForLoadState('load')
-  await tab.waitForTimeout(2000)
-  await tab.close()
+  await seedVisits(context, SITE_HOST, 1)
 
   // Set threshold to 1 in options (count 1 >= 1, so green)
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
@@ -468,9 +473,9 @@ test('changing safety threshold in options affects visit count color in popup', 
   await page.locator('input[type="number"]').first().fill('1')
   await page.waitForTimeout(500)
 
-  // Open popup — count should be green (safe)
+  // Open popup – count should be green (safe)
   let popup = await context.newPage()
-  await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await popup.waitForTimeout(1500)
   await expect(popup.locator('.text-green-600').first()).toBeAttached({ timeout: 5000 })
   await popup.close()
@@ -480,7 +485,7 @@ test('changing safety threshold in options affects visit count color in popup', 
   await page.waitForTimeout(500)
 
   popup = await context.newPage()
-  await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await popup.waitForTimeout(1500)
   await expect(popup.locator('.text-red-500').first()).toBeAttached({ timeout: 5000 })
   await popup.close()
@@ -495,9 +500,9 @@ test('changing safety threshold in options affects visit count color in popup', 
 // ==========================================
 
 test('excluding domain in popup appears in options anti-tampering textarea', async ({ page, extensionId, context }) => {
-  // Disable anti-tampering for example.com in popup
+  // Disable anti-tampering for the site in the popup
   const popup = await context.newPage()
-  await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await popup.waitForTimeout(1500)
 
   // Click disable button
@@ -507,12 +512,12 @@ test('excluding domain in popup appears in options anti-tampering textarea', asy
   await expect(popup.locator('.bg-amber-400').first()).toBeAttached({ timeout: 3000 })
   await popup.close()
 
-  // Open options — anti-tampering textarea should contain example.com
+  // Open options – the anti-tampering textarea should list it
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
   await page.waitForTimeout(1500)
 
   const tamperingTextarea = page.locator('textarea[placeholder^="example.com"]')
-  await expect(tamperingTextarea).toHaveValue(/example\.com/, { timeout: 5000 })
+  await expect(tamperingTextarea).toHaveValue(new RegExp(SITE_HOST.replace('.', '\\.')), { timeout: 5000 })
 
   // Clear it to reset
   await tamperingTextarea.fill('')
@@ -535,8 +540,7 @@ test('typing on unfamiliar site shows in-page warning', async ({ page, extension
   await page.waitForTimeout(500)
 
   // Visit an unfamiliar site (threshold is 10, first visit = count 1)
-  await page.goto('https://httpbin.org')
-  await page.waitForLoadState('load')
+  await serveSite(page, SITE_URL)
   await page.waitForTimeout(2000)
 
   // Type something on the page
@@ -558,19 +562,12 @@ test('typing on unfamiliar site shows in-page warning', async ({ page, extension
 // ==========================================
 
 test('link with mismatched text domain triggers tooltip warning', async ({ page }) => {
-  await page.goto('https://example.com')
-  await page.waitForLoadState('load')
+  // Reads as google.com, goes somewhere else entirely
+  await serveSite(page, SITE_URL, blankPage('phish', `
+    <a id="test-mismatch-link" href="https://evil-phishing-site.com/login"
+       style="position:fixed;top:150px;left:50px;font-size:20px;z-index:9999;background:white;padding:10px">https://google.com/login</a>
+  `))
   await page.waitForTimeout(2000)
-
-  // Inject a link where text looks like one domain but href goes to another
-  await page.evaluate(() => {
-    const link = document.createElement('a')
-    link.href = 'https://evil-phishing-site.com/login'
-    link.textContent = 'https://google.com/login'
-    link.id = 'test-mismatch-link'
-    link.style.cssText = 'position:fixed;top:150px;left:50px;font-size:20px;z-index:9999;background:white;padding:10px;'
-    document.body.appendChild(link)
-  })
 
   // Hover over the mismatched link
   await page.locator('#test-mismatch-link').hover()
@@ -587,7 +584,7 @@ test('link with mismatched text domain triggers tooltip warning', async ({ page 
 
 test('popup font size setting persists', async ({ page, extensionId, context }) => {
   // Open popup and change font size
-  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)
 
   // Increase font twice: 100% → 120%
@@ -597,9 +594,9 @@ test('popup font size setting persists', async ({ page, extensionId, context }) 
   await page.waitForTimeout(300)
   await expect(page.locator('text=120%').first()).toBeAttached({ timeout: 3000 })
 
-  // Open popup in new tab — should still be 120%
+  // Open popup in new tab – should still be 120%
   const popup2 = await context.newPage()
-  await popup2.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=example.com`)
+  await popup2.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await popup2.waitForTimeout(1000)
   await expect(popup2.locator('text=120%').first()).toBeAttached({ timeout: 5000 })
   await popup2.close()
@@ -608,4 +605,68 @@ test('popup font size setting persists', async ({ page, extensionId, context }) 
   await page.locator('button[title="Decrease font size"]').click()
   await page.waitForTimeout(300)
   await page.locator('button[title="Decrease font size"]').click()
+})
+
+// ==========================================
+// Options page – alignment and contents
+// ==========================================
+
+test('every explanatory text on the options page starts at the same left edge', async ({ page, extensionId }) => {
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(1500)
+
+  // The page centres two things on purpose – its own title and the heading of
+  // each section – and everything else reads down a single left edge. It used
+  // to be the other way round, with each block opting out of centring, which is
+  // how three descriptions ended up centred without anyone meaning it.
+  const centred = await page.evaluate(() => {
+    const out: string[] = []
+    document.querySelectorAll('p, label, li, h3, span').forEach((el) => {
+      const own = Array.from(el.childNodes)
+        .filter(node => node.nodeType === 3 && (node.textContent || '').trim())
+        .map(node => (node.textContent || '').trim())
+        .join(' ')
+      if (own.length < 4)
+        return
+      if (getComputedStyle(el).textAlign === 'center')
+        out.push(own.slice(0, 40))
+    })
+    return out
+  })
+
+  expect(centred).toEqual([])
+})
+
+test('the options page has contents that scroll to a section', async ({ page, extensionId }) => {
+  await page.setViewportSize({ width: 1500, height: 900 })
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(1500)
+
+  const nav = page.locator('nav').last()
+  await expect(nav.locator('a')).toHaveCount(8)
+  await expect(nav.locator('a').first()).toHaveText('General settings')
+
+  // Clicking is handled in script rather than by the link: fragment navigation
+  // does nothing at all on an extension page
+  await nav.locator('a[href="#section-data"]').click()
+  await page.waitForTimeout(1200)
+
+  const heading = page.locator('#section-data h2')
+  await expect(heading).toBeInViewport()
+  // ...and the contents keep up with where the reader is
+  await expect(nav.locator('a[aria-current]')).toHaveText('Your data')
+})
+
+test('the contents belong to the settings page and nowhere else', async ({ page, extensionId, context }) => {
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(1500)
+  await expect(page.locator('text=On this page').first()).toBeAttached()
+
+  for (const url of ['dist/popup/index.html', 'dist/welcome/index.html']) {
+    const other = await context.newPage()
+    await other.goto(`chrome-extension://${extensionId}/${url}`)
+    await other.waitForTimeout(1500)
+    await expect(other.locator('text=On this page')).toHaveCount(0)
+    await other.close()
+  }
 })

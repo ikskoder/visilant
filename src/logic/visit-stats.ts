@@ -8,7 +8,7 @@ export const VISIT_DEBOUNCE_MS = 60_000
 
 /**
  * Local-time day key (YYYY-MM-DD). Active days are counted in the user's own
- * timezone — "I was there on 3 different days" is a human statement, not a UTC one.
+ * timezone – "I was there on 3 different days" is a human statement, not a UTC one.
  */
 export function dayKey(timestamp: number): string {
   const date = new Date(timestamp)

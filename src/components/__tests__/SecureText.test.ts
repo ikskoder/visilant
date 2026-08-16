@@ -61,7 +61,7 @@ describe('secureText component', () => {
     expect(spans.length).toBe(2)
   })
 
-  it('respects dangerOnly — no highlighting for normal alpha/special chars', () => {
+  it('respects dangerOnly – no highlighting for normal alpha/special chars', () => {
     const wrapper = mount(SecureText, {
       props: { text: 'example.com', forceHighlight: true, dangerOnly: true },
     })
@@ -106,7 +106,7 @@ describe('secureText component', () => {
     })
 
     it('adds no characters, so the displayed text is exactly the input', () => {
-      // <wbr> is an element with no text content — copying the domain out of the
+      // <wbr> is an element with no text content – copying the domain out of the
       // popup must not pick up an invisible separator
       const wrapper = mount(SecureText, { props: { text: 'paypal.com.evil.net' } })
       expect(wrapper.text()).toBe('paypal.com.evil.net')
@@ -135,7 +135,7 @@ describe('secureText component', () => {
     })
 
     it('marks no continuation without a measurable wrap', () => {
-      // No layout engine here, so nothing wraps — the point is that asking for
+      // No layout engine here, so nothing wraps – the point is that asking for
       // wrap markers is safe even where they cannot be computed
       const wrapper = mount(SecureText, {
         props: { text: 'paypal.com.a.b.secure.example.net', markWraps: true },

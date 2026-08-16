@@ -5,7 +5,7 @@ import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import { findDomainMarkers } from '~/logic/domain-markers'
 
-// Structural facts about an address — never a verdict, so this renders as a
+// Structural facts about an address – never a verdict, so this renders as a
 // short list of observations rather than as a safe/unsafe badge.
 const props = defineProps<{
   hostname: string

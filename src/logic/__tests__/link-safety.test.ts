@@ -130,6 +130,7 @@ describe('isDomainInScope', () => {
   const baseLinkSafety: LinkSafetySettings = {
     enabled: true,
     tooltipTrigger: 'hover',
+    hoverDelay: 300,
     showVisitCount: 'always',
     shortUrlMode: 'off',
     shortUrlShowFullUrl: false,

@@ -9,6 +9,20 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   } as any
 }
 
+// jsdom has no matchMedia, and useTheme asks it for the system colour scheme
+if (typeof window !== 'undefined' && !window.matchMedia) {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent: () => false,
+  })) as any
+}
+
 // Stub fetch for chrome-extension:// URLs (useI18n tries to load translations)
 const _origFetch = globalThis.fetch
 globalThis.fetch = (async (input: any, init?: any) => {

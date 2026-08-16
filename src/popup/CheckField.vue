@@ -6,6 +6,7 @@ import { getDomain } from 'tldts'
 import { onMounted, ref } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailBreakdown from '~/components/EmailBreakdown.vue'
+import ExternalLookups from '~/components/ExternalLookups.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
@@ -17,6 +18,7 @@ import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings } from '~/logic/storage'
 import { isShortenedUrl } from '~/logic/url-shorteners'
+import { isTrackableHostname } from '~/logic/visit-stats'
 
 const emit = defineEmits<{
   (e: 'checkedDomain', hostname: string): void
@@ -162,7 +164,7 @@ async function expandUrl() {
         finalCount: visitData.count,
         finalIsSafe: visitData.isSafe,
       }
-      // The real destination is what matters — switch the dashboard to it
+      // The real destination is what matters – switch the dashboard to it
       emit('checkedDomain', resolved.finalHostname)
     }
     else {
@@ -206,7 +208,7 @@ function onPaste(event: ClipboardEvent) {
       }
     }
   }
-  // No image — let the text paste proceed normally
+  // No image – let the text paste proceed normally
 }
 
 function onDrop(event: DragEvent) {
@@ -227,7 +229,12 @@ function getCountColor(count: number) {
   return count >= settings.value.safety ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
 }
 
-function statusText(isSafe: boolean, count: number) {
+// Hostnames without a dot (localhost and the like) are never counted, so their
+// zero says "there is no question here", not "you have never been". A red
+// "never visited" would be a verdict on the user's own machine.
+function statusText(isSafe: boolean, count: number, hostname: string) {
+  if (!isTrackableHostname(hostname))
+    return { text: t.value('untrackedHostBadge'), class: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' }
   if (isSafe)
     return { text: t.value('linkTooltipFamiliar'), class: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' }
   if (count === 0)
@@ -301,8 +308,8 @@ function payloadTypeLabel(payloadKind: string) {
           <span v-if="result.isShortener" class="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">
             {{ t('linkTooltipShortener') }}
           </span>
-          <span v-else class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.count).class">
-            {{ statusText(result.isSafe, result.count).text.toLowerCase() }}
+          <span v-else class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.count, result.hostname).class">
+            {{ statusText(result.isSafe, result.count, result.hostname).text.toLowerCase() }}
           </span>
         </div>
 
@@ -314,7 +321,9 @@ function payloadTypeLabel(payloadKind: string) {
           {{ t('linkTooltipPunycode') }}: {{ result.punycode }}
         </div>
 
-        <div v-if="!result.isShortener" class="text-xs mb-1">
+        <!-- No count line for an address that is never counted. The dashboard
+             right below this field says why, so it is not repeated here. -->
+        <div v-if="!result.isShortener && isTrackableHostname(result.hostname)" class="text-xs mb-1">
           {{ t('linkTooltipVisits') }}: <span class="font-mono font-bold" :class="getCountColor(result.count)">{{ result.count }}</span>
         </div>
 
@@ -322,6 +331,7 @@ function payloadTypeLabel(payloadKind: string) {
         <div class="text-xs">
           <DomainMarkers :hostname="result.hostname" :url="result.url" />
           <LookalikeNotice :hostname="result.hostname" />
+          <ExternalLookups :hostname="result.hostname" />
         </div>
 
         <!-- Expand shortened URL -->
@@ -353,8 +363,8 @@ function payloadTypeLabel(payloadKind: string) {
             <span class="font-medium break-words secure-domain-display">
               <SecureText :text="result.resolve.finalHostname || ''" />
             </span>
-            <span class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.resolve.finalIsSafe || false, result.resolve.finalCount || 0).class">
-              {{ statusText(result.resolve.finalIsSafe || false, result.resolve.finalCount || 0).text.toLowerCase() }}
+            <span class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.resolve.finalIsSafe || false, result.resolve.finalCount || 0, result.resolve.finalHostname || '').class">
+              {{ statusText(result.resolve.finalIsSafe || false, result.resolve.finalCount || 0, result.resolve.finalHostname || '').text.toLowerCase() }}
             </span>
           </div>
           <div class="text-xs opacity-60 break-all mb-1">
@@ -381,13 +391,20 @@ function payloadTypeLabel(payloadKind: string) {
           <span v-else-if="result.providerKind === 'public'" class="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
             {{ t('emailPublicProvider') }}
           </span>
-          <span v-else class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.count).class">
-            {{ statusText(result.isSafe, result.count).text.toLowerCase() }}
+          <span v-else class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.count, result.analysis.domain).class">
+            {{ statusText(result.isSafe, result.count, result.analysis.domain).text.toLowerCase() }}
           </span>
         </div>
         <EmailBreakdown :analysis="result.analysis" :params="result.params" :provider-kind="result.providerKind" :is-dark="isDark" />
         <div v-if="result.providerKind === 'regular'" class="text-xs mt-1">
           {{ t('linkTooltipVisits') }}: <span class="font-mono font-bold" :class="getCountColor(result.count)">{{ result.count }}</span>
+        </div>
+
+        <!-- The part after the @ is a domain like any other, and an address one
+             letter off a provider the user knows is the whole point of checking -->
+        <div class="text-xs mt-1">
+          <DomainMarkers :hostname="result.analysis.domain" />
+          <LookalikeNotice :hostname="result.analysis.domain" context="email" />
         </div>
       </template>
 
