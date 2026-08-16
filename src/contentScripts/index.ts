@@ -9,6 +9,7 @@ import { analyzeEmailAddress, extractEmailFromText, parseMailtoUrl } from '~/log
 import { checkDomainMismatch, extractDomainFromText, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
 import { describePastePayload, isEditableTarget, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
+import { resolveTooltipTrigger } from '~/logic/platform'
 import { defaultSettings, settings } from '~/logic/storage'
 import { applyHostStyles, createTamperWatch } from '~/logic/tamper-watch'
 import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
@@ -1030,7 +1031,9 @@ function setupLinkSafety() {
   if (!isDomainInScope(currentHostname, linkSafety))
     return
 
-  const trigger = linkSafety.tooltipTrigger
+  // What the user picked, corrected for what this device can do: on a
+  // touchscreen the hover and right-click triggers can never fire
+  const trigger = resolveTooltipTrigger(linkSafety.tooltipTrigger)
   // Read once alongside the trigger, so both come from the same settings snapshot
   const hoverDelay = Math.max(0, Number(linkSafety.hoverDelay ?? defaultSettings.linkSafety.hoverDelay))
 

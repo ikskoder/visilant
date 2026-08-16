@@ -228,6 +228,15 @@ function close() {
           </p>
         </div>
 
+        <!-- No history to read in this browser, which is Firefox for Android.
+             Nothing failed, so there is nothing to retry – the profile fills up
+             as the user browses instead -->
+        <template v-else-if="status === 'unsupported'">
+          <p class="text-sm text-amber-600 dark:text-amber-400">
+            {{ t('welcomeStatusUnsupported') }}
+          </p>
+        </template>
+
         <!-- Nothing was imported at all: the extension really is blind until this is fixed -->
         <template v-else-if="!doneStats">
           <p class="text-sm">

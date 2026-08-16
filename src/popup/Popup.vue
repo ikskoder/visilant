@@ -245,8 +245,23 @@ function setSortOption(option: 'name' | 'visits') {
   settings.value.sortOption = option
 }
 
-function openOptionsPage() {
-  browser.runtime.openOptionsPage()
+/**
+ * Get out of the way once the user has been sent somewhere else.
+ *
+ * A desktop popup closes itself the moment focus leaves it, so this is a no-op
+ * there. The Android popup is a panel rather than a window: it stays on top of
+ * the tab it just opened, and the destination is invisible until it is
+ * dismissed by hand. Skipped in the page view, where this document is the tab
+ * itself and closing it would take the user's own tab down.
+ */
+function leaveForOpenedTab() {
+  if (!isPageView.value)
+    window.close()
+}
+
+async function openOptionsPage() {
+  await browser.runtime.openOptionsPage()
+  leaveForOpenedTab()
 }
 
 const isAntiTamperingExcluded = computed(() => {
@@ -337,8 +352,9 @@ async function loadDomainData(hostname: string) {
   })
 }
 
-function openCheckPage() {
-  browser.tabs.create({ url: browser.runtime.getURL('dist/popup/index.html?check=1') })
+async function openCheckPage() {
+  await browser.tabs.create({ url: browser.runtime.getURL('dist/popup/index.html?check=1') })
+  leaveForOpenedTab()
 }
 
 // The browser popup sizes itself to its content and must not scroll. The same
@@ -397,11 +413,15 @@ onMounted(async () => {
 
 <template>
   <div :class="isStandalonePage ? 'min-h-screen flex justify-center bg-gray-50 dark:bg-gray-900 py-8' : ''">
+    <!-- The 600px column is the desktop popup, whose window sizes itself to the
+         document. Firefox for Android has no such window – the popup is a panel
+         the width of the screen, so the column has to be capped at the viewport
+         or the whole dashboard hangs off the right edge -->
     <main
       class="px-4 py-5 text-gray-700 dark:text-gray-200 relative"
       :class="isStandalonePage
         ? 'w-full max-w-[600px] bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700'
-        : (isTabView ? 'w-full' : 'w-[600px]')"
+        : (isTabView ? 'w-full' : 'w-[600px] max-w-[100vw]')"
       :style="{ fontSize: `${settings.popupFontSize}%` }"
     >
       <div class="flex justify-between items-center mb-4">

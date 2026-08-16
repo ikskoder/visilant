@@ -179,6 +179,10 @@
     "message": "The last import ended with an error. Run the full import to try again.",
     "description": "Import status: the import ended in an error"
   },
+  "importStatusUnsupported": {
+    "message": "This browser does not let extensions read its history, so there is nothing to import. Sites become familiar as you visit them.",
+    "description": "Import status: the browser has no history API, as on Firefox for Android"
+  },
   "importKeepPageOpen": {
     "message": "This import runs in this page, so leave it open until it finishes. The automatic one runs in the background and does not need it.",
     "description": "Hint shown while a manual import runs in the settings page"
@@ -558,6 +562,18 @@
   "linkTooltipTriggerClickRightDesc": {
     "message": "Right-clicking a link will show a \"Check link safety\" option in the context menu",
     "description": "Description for right click trigger option"
+  },
+  "linkTooltipTriggerHoverUnavailable": {
+    "message": "Unavailable on a phone: there is no pointer to rest on a link.",
+    "description": "Shown under the hover trigger on touch devices, where it can never fire"
+  },
+  "linkTooltipTriggerClickRightUnavailable": {
+    "message": "Unavailable in Firefox for Android: it does not let extensions add items to the long-press menu.",
+    "description": "Shown under the right-click trigger on Firefox for Android, which has no menus API"
+  },
+  "linkTooltipTriggerTouchNote": {
+    "message": "This device has no pointer to hover with and no right click, so links are checked when you tap them, whichever option is selected below.",
+    "description": "Shown above the trigger options on touch devices, where only the tap trigger can fire"
   },
   "linkShowVisitCount": {
     "message": "Show visit count when checking links",
@@ -1190,6 +1206,10 @@
   "welcomeStatusCancelled": {
     "message": "The import was stopped before it finished. You can run it again.",
     "description": "Shown when the import was stopped before finishing"
+  },
+  "welcomeStatusUnsupported": {
+    "message": "This browser keeps its history to itself, so there was nothing to import. Visilant learns your sites as you visit them, and until it has seen a site it will call it unfamiliar.",
+    "description": "Shown when the browser has no history API, as on Firefox for Android"
   },
   "welcomeDetailsRunning": {
     "message": "Your sites are already counted, and warnings already know them. Filling in first-visit dates and active-day counts now.",

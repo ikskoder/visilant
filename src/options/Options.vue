@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
-import type { HistoryImportState } from '~/logic/history-import'
+import type { HistoryImportState, ImportHealth } from '~/logic/history-import'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import logo from '~/assets/logo.svg'
 import { useI18n } from '~/composables/useI18n'
@@ -9,6 +9,7 @@ import { fetchRemoteDomainLists, parseListUrls, STORAGE_KEY_CUSTOM_DISPOSABLE, S
 import { describeImportHealth, HISTORY_AUTO_IMPORT_KEY, readHistoryImportState, runHistoryImport } from '~/logic/history-import'
 import { DEFAULT_LOOKUP_SERVICES, serializeLookupServices } from '~/logic/lookup-services'
 import { isolatePageZoom } from '~/logic/page-zoom'
+import { hasHistoryApi, supportsHover } from '~/logic/platform'
 import { fetchRemoteShortenerLists, STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
 import { defaultSettings, settings } from '~/logic/storage'
 import SectionNav from './SectionNav.vue'
@@ -68,6 +69,7 @@ function updateTranslations() {
     'importStatusInterrupted',
     'importStatusCancelled',
     'importStatusFailed',
+    'importStatusUnsupported',
     'importKeepPageOpen',
     'importLastRun',
     'importSitesStored',
@@ -112,6 +114,9 @@ function updateTranslations() {
     'linkTooltipTriggerClickRight',
     'linkTooltipTriggerClickLeftDesc',
     'linkTooltipTriggerClickRightDesc',
+    'linkTooltipTriggerTouchNote',
+    'linkTooltipTriggerHoverUnavailable',
+    'linkTooltipTriggerClickRightUnavailable',
     'linkShowVisitCount',
     'linkShowVisitCountDesc',
     'linkShowVisitCountAlways',
@@ -368,7 +373,16 @@ const showResetConfirm = ref(false)
 
 // Said out loud rather than left to be inferred from a date, because the whole
 // point of this line is that nobody has to guess whether the import worked
-const importHealth = computed(() => describeImportHealth(lastImport.value, Date.now(), isImporting.value))
+// Firefox for Android has no history API, so there is nothing to import and no
+// state to report – the browser is the answer, before any stored state is read
+const canImportHistory = hasHistoryApi()
+
+// A phone has no hovering and no right click, which decides what the link-check
+// trigger below can actually do
+const pointerCanHover = supportsHover()
+const importHealth = computed<ImportHealth>(() => canImportHistory
+  ? describeImportHealth(lastImport.value, Date.now(), isImporting.value)
+  : 'unsupported')
 const importStatusText = computed(() => translations.value[`importStatus${
   importHealth.value.charAt(0).toUpperCase()}${importHealth.value.slice(1)}`])
 const importStatusColor = computed(() => ({
@@ -379,6 +393,9 @@ const importStatusColor = computed(() => ({
   interrupted: 'bg-amber-500',
   cancelled: 'bg-amber-500',
   failed: 'bg-red-500',
+  // Not a failure, but not a shrug either: nothing will ever be imported here,
+  // and that is worth seeing rather than reading past
+  unsupported: 'bg-amber-500',
 }[importHealth.value]))
 
 // Reset selection states
@@ -942,15 +959,31 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <h3 class="text-sm font-medium mb-3">
                 {{ translations.linkTooltipTrigger }}:
               </h3>
+              <!-- Said before the choice, not after it: on a touchscreen two of
+                   the three options below cannot fire at all -->
+              <p v-if="!pointerCanHover" class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                {{ translations.linkTooltipTriggerTouchNote }}
+              </p>
               <div class="space-y-2">
+                <!-- Hovering and right-clicking are disabled rather than hidden
+                     on a touchscreen: a choice that silently does nothing is
+                     worse than one the device visibly cannot offer, and hiding
+                     them would leave a profile whose stored trigger is one of
+                     the two with nothing on screen to explain itself. -->
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="hover"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                    :disabled="!pointerCanHover"
+                    class="h-4 w-4 flex-shrink-0" :class="{ 'opacity-50': !pointerCanHover }" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">
-                    <span>{{ translations.linkTooltipTriggerHover }}</span>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ translations.linkTooltipTriggerHoverDesc }}</p>
+                    <span :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerHover }}</span>
+                    <p class="text-xs text-gray-500 dark:text-gray-400" :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerHoverDesc }}</p>
+                    <!-- Full strength while the option it belongs to is dimmed: the
+                         reason is the one thing here still worth reading -->
+                    <p v-if="!pointerCanHover" class="text-xs text-amber-600 dark:text-amber-400">
+                      {{ translations.linkTooltipTriggerHoverUnavailable }}
+                    </p>
                   </span>
                 </label>
                 <label class="flex items-start">
@@ -966,19 +999,24 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-right"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                    :disabled="!pointerCanHover"
+                    class="h-4 w-4 flex-shrink-0" :class="{ 'opacity-50': !pointerCanHover }" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2">
-                    <span>{{ translations.linkTooltipTriggerClickRight }}</span>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
+                    <span :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerClickRight }}</span>
+                    <p class="text-xs text-gray-500 dark:text-gray-400" :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
+                    <p v-if="!pointerCanHover" class="text-xs text-amber-600 dark:text-amber-400">
+                      {{ translations.linkTooltipTriggerClickRightUnavailable }}
+                    </p>
                   </span>
                 </label>
               </div>
 
               <!-- Below the options rather than nested inside one: a control that
                    outweighed the choice it belongs to read as the more important
-                   of the two. Only the hover trigger has a delay to set. -->
-              <div v-if="settings.linkSafety.tooltipTrigger === 'hover'" class="mt-4">
+                   of the two. Only the hover trigger has a delay to set, and only
+                   where hovering happens at all. -->
+              <div v-if="settings.linkSafety.tooltipTrigger === 'hover' && pointerCanHover" class="mt-4">
                 <div class="flex items-center justify-between gap-3 mb-1">
                   <label class="text-sm font-medium">{{ translations.linkHoverDelay }}</label>
                   <span class="text-sm font-mono flex-shrink-0">{{ hoverDelayLabel }}</span>
@@ -1309,14 +1347,21 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
           <div class="space-y-4">
             <div>
-              <!-- The import already ran on install; say so, or the two buttons
-                   read as setup the user forgot to do -->
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              <!-- The import already ran on install, say so, or the two buttons
+                   read as setup the user forgot to do. On a browser without a
+                   history API there was no such run, and the status line below
+                   is the whole story -->
+              <p v-if="canImportHistory" class="text-xs text-gray-500 dark:text-gray-400 mb-2">
                 {{ translations.importHistoryIntro }}
               </p>
               <div class="flex items-start gap-2 mb-3">
                 <span class="mt-1.5 h-2 w-2 rounded-full flex-shrink-0" :class="importStatusColor" />
-                <p class="text-xs text-gray-600 dark:text-gray-300">
+                <p
+                  class="text-xs"
+                  :class="importHealth === 'unsupported'
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-gray-600 dark:text-gray-300'"
+                >
                   {{ importStatusText }}
                   <template v-if="lastImportLabel">
                     <br>
@@ -1328,7 +1373,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               </div>
               <button
                 class="btn-primary w-full"
-                :disabled="isImporting" @click="importHistory('full')"
+                :disabled="isImporting || !canImportHistory" @click="importHistory('full')"
               >
                 <template v-if="!isImporting">
                   {{ translations.importHistoryFull }}
@@ -1360,7 +1405,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
               <button
                 class="btn-ghost w-full mt-3"
-                :disabled="isImporting" @click="importHistory('quick')"
+                :disabled="isImporting || !canImportHistory" @click="importHistory('quick')"
               >
                 {{ translations.importHistoryQuick }}
               </button>

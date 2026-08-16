@@ -179,6 +179,10 @@
     "message": "Останній імпорт завершився помилкою. Запустіть повний імпорт, щоб спробувати ще раз.",
     "description": "Import status: the import ended in an error"
   },
+  "importStatusUnsupported": {
+    "message": "Цей браузер не дає розширенням читати свою історію, тож імпортувати нічого. Сайти ставатимуть знайомими в міру того, як ви на них заходитимете.",
+    "description": "Import status: the browser has no history API, as on Firefox for Android"
+  },
   "importKeepPageOpen": {
     "message": "Цей імпорт виконується просто на цій сторінці, тож не закривайте її до завершення. Автоматичному імпорту сторінка не потрібна, він іде у фоні.",
     "description": "Hint shown while a manual import runs in the settings page"
@@ -558,6 +562,18 @@
   "linkTooltipTriggerClickRightDesc": {
     "message": "При правому кліку на посилання в контекстному меню з’явиться опція «Перевірити безпеку посилання»",
     "description": "Description for right click trigger option"
+  },
+  "linkTooltipTriggerHoverUnavailable": {
+    "message": "Недоступно на телефоні: тут нічим затриматися на посиланні.",
+    "description": "Shown under the hover trigger on touch devices, where it can never fire"
+  },
+  "linkTooltipTriggerClickRightUnavailable": {
+    "message": "Недоступно у Firefox для Android: він не дає розширенням додавати пункти до меню довгого натискання.",
+    "description": "Shown under the right-click trigger on Firefox for Android, which has no menus API"
+  },
+  "linkTooltipTriggerTouchNote": {
+    "message": "На цьому пристрої немає наведення курсора та правого кліку, тож посилання перевіряються при натисканні, хоч би який варіант було вибрано нижче.",
+    "description": "Shown above the trigger options on touch devices, where only the tap trigger can fire"
   },
   "linkShowVisitCount": {
     "message": "Показувати кількість відвідувань при перевірці посилань",
@@ -1190,6 +1206,10 @@
   "welcomeStatusCancelled": {
     "message": "Імпорт зупинили до завершення. Його можна запустити ще раз.",
     "description": "Shown when the import was stopped before finishing"
+  },
+  "welcomeStatusUnsupported": {
+    "message": "Цей браузер не віддає свою історію розширенням, тож імпортувати не було чого. Visilant запам'ятовуватиме ваші сайти в міру відвідування, а незнайомим він вважає все, чого ще не бачив.",
+    "description": "Shown when the browser has no history API, as on Firefox for Android"
   },
   "welcomeDetailsRunning": {
     "message": "Ваші сайти вже пораховано, і попередження їх уже знають. Зараз дозаповнюються дати першого відвідування та кількість активних днів.",

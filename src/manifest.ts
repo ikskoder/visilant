@@ -21,6 +21,14 @@ export async function getManifest() {
           required: ['none'],
         },
       },
+      // Without this key AMO assumes the extension is not compatible with
+      // Android and does not list it as available there. It does not gate
+      // installing – a direct link works either way – it decides whether anyone
+      // browsing AMO on a phone is ever shown it. The floor is 140 because
+      // `data_collection_permissions` above is only understood from 140 on.
+      gecko_android: {
+        strict_min_version: '140.0',
+      },
     },
     action: {
       default_icon: 'assets/icon-default.png',
@@ -30,10 +38,14 @@ export async function getManifest() {
       page: 'dist/options/index.html',
       open_in_tab: true,
     },
+    // Deliberately no `type: 'module'` on the Firefox side. The background is
+    // bundled as an IIFE, so it never needed module semantics, and Firefox for
+    // Android silently refuses to run a module background: the script never
+    // executes, every message from a content script comes back as "Receiving
+    // end does not exist", and the extension looks alive while doing nothing.
     background: isFirefox
       ? {
           scripts: ['dist/background/index.mjs'],
-          type: 'module',
         }
       : {
           service_worker: 'dist/background/index.mjs',

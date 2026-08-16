@@ -53,9 +53,12 @@ export interface Settings {
   lookupServices: string
 }
 
+/** What makes the link check show itself. */
+export type TooltipTrigger = 'hover' | 'click-left' | 'click-right'
+
 export interface LinkSafetySettings {
   enabled: boolean
-  tooltipTrigger: 'hover' | 'click-left' | 'click-right'
+  tooltipTrigger: TooltipTrigger
   // How long the pointer has to rest on a link before the tooltip appears, in
   // milliseconds. Only the hover trigger uses it.
   hoverDelay: number

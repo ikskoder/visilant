@@ -46,6 +46,9 @@
             nodejs_22
             pnpm
             just
+            # adb, for running the extension on a USB-connected Android phone
+            # via `web-ext run -t firefox-android`
+            android-tools
           ];
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath playwrightLibs;

@@ -7,6 +7,7 @@ import { getProviderReferenceDomains } from '~/logic/email-providers'
 import { analyzeEmailAddress, parseMailtoUrl } from '~/logic/email-safety'
 import { applyVisitToFamiliar, collectFamiliarDomains } from '~/logic/familiar-index'
 import { HISTORY_AUTO_IMPORT_KEY, HISTORY_IMPORT_STATE_KEY, isImportAlive, readHistoryImportState, runHistoryImport, shouldAutoImport } from '~/logic/history-import'
+import { hasContextMenus } from '~/logic/platform'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings as appSettings, parseStoredSettings, seedTextDefaultsOnce } from '~/logic/storage'
 import { addCustomShortener, getCachedResolvedUrl, loadShortenersFromStorage, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
@@ -741,6 +742,9 @@ const CONTEXT_MENU_SELECTION_ID = 'visilant-check-selection'
 const CONTEXT_MENU_QR_IMAGE_ID = 'visilant-decode-qr-image'
 
 async function setupContextMenu() {
+  if (!hasContextMenus())
+    return
+
   // Remove existing items first
   await browser.contextMenus.removeAll()
 
@@ -833,41 +837,45 @@ browser.runtime.onInstalled.addListener(async () => {
   await setupContextMenu()
 })
 
-// Handle context menu click
-browser.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId === CONTEXT_MENU_DOMAIN_ID && info.linkUrl) {
-    // Open detailed popup in a new tab for the link's domain
-    let hostname: string | null = null
-    if (/^mailto:/i.test(info.linkUrl)) {
-      const parsed = parseMailtoUrl(info.linkUrl)
-      const analysis = parsed?.addresses[0] ? analyzeEmailAddress(parsed.addresses[0]) : null
-      hostname = analysis?.domain ?? null
+// Handle context menu click. Asked rather than assumed, because on a browser
+// without the menus API touching the namespace throws, and a throw at this level
+// would take every listener below it with it – including the settings watcher.
+if (hasContextMenus()) {
+  browser.contextMenus.onClicked.addListener(async (info, tab) => {
+    if (info.menuItemId === CONTEXT_MENU_DOMAIN_ID && info.linkUrl) {
+      // Open detailed popup in a new tab for the link's domain
+      let hostname: string | null = null
+      if (/^mailto:/i.test(info.linkUrl)) {
+        const parsed = parseMailtoUrl(info.linkUrl)
+        const analysis = parsed?.addresses[0] ? analyzeEmailAddress(parsed.addresses[0]) : null
+        hostname = analysis?.domain ?? null
+      }
+      else {
+        hostname = getHostname(info.linkUrl)
+      }
+      if (hostname)
+        await handleOpenPopupTab(hostname)
     }
-    else {
-      hostname = getHostname(info.linkUrl)
+
+    if (info.menuItemId === CONTEXT_MENU_LINK_ID && info.linkUrl && tab?.id) {
+      // Send message to content script to show intercept dialog for this link
+      await sendToTabSafe(tab.id, {
+        type: 'show-link-intercept',
+        data: { url: info.linkUrl },
+      })
     }
-    if (hostname)
-      await handleOpenPopupTab(hostname)
-  }
 
-  if (info.menuItemId === CONTEXT_MENU_LINK_ID && info.linkUrl && tab?.id) {
-    // Send message to content script to show intercept dialog for this link
-    await sendToTabSafe(tab.id, {
-      type: 'show-link-intercept',
-      data: { url: info.linkUrl },
-    })
-  }
+    if (info.menuItemId === CONTEXT_MENU_SELECTION_ID && tab?.id) {
+      await sendToTabSafe(tab.id, {
+        type: 'check-selection',
+        data: { selectionText: info.selectionText ?? '' },
+      })
+    }
 
-  if (info.menuItemId === CONTEXT_MENU_SELECTION_ID && tab?.id) {
-    await sendToTabSafe(tab.id, {
-      type: 'check-selection',
-      data: { selectionText: info.selectionText ?? '' },
-    })
-  }
-
-  if (info.menuItemId === CONTEXT_MENU_QR_IMAGE_ID && info.srcUrl)
-    await handleQrImageCheck(info.srcUrl, tab?.id)
-})
+    if (info.menuItemId === CONTEXT_MENU_QR_IMAGE_ID && info.srcUrl)
+      await handleQrImageCheck(info.srcUrl, tab?.id)
+  })
+}
 
 // Listen for changes in storage
 browser.storage.onChanged.addListener(async (changes) => {

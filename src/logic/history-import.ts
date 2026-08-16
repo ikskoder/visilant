@@ -1,4 +1,5 @@
 import type { SiteVisitData } from './storage'
+import { hasHistoryApi } from './platform'
 import { dayKey, isTrackableHostname } from './visit-stats'
 
 export interface ImportedDomainStats {
@@ -144,7 +145,12 @@ export function shouldAutoImport(options: {
 // Running an import
 // ==========================================
 
-export type HistoryImportStatus = 'running' | 'done' | 'cancelled' | 'failed'
+/**
+ * `unsupported` is the browser saying there is no history to read: Firefox for
+ * Android has no history API at all. It is not a failure and retrying cannot
+ * help, so it is worth its own state rather than being folded into `failed`.
+ */
+export type HistoryImportStatus = 'running' | 'done' | 'cancelled' | 'failed' | 'unsupported'
 
 /**
  * `reading` is the single `history.search()` call and has no progress to report.
@@ -195,9 +201,11 @@ export function isImportAlive(state: HistoryImportState | null, now: number): bo
  * `partial` is the case worth spelling out: visit counts are in, so warnings
  * behave correctly, but no full pass ever finished, so the dates are blank and
  * running one by hand is worth it. `interrupted` looks the same as running from
- * the state alone and is told apart by the heartbeat.
+ * the state alone and is told apart by the heartbeat. `unsupported` is read off
+ * a published state, so a browser with no history API that has never been asked
+ * to import still reads as `never` – the caller knows which one it is.
  */
-export type ImportHealth = 'never' | 'running' | 'complete' | 'partial' | 'interrupted' | 'cancelled' | 'failed'
+export type ImportHealth = 'never' | 'running' | 'complete' | 'partial' | 'interrupted' | 'cancelled' | 'failed' | 'unsupported'
 
 export function describeImportHealth(
   state: HistoryImportState | null,
@@ -208,6 +216,8 @@ export function describeImportHealth(
     return 'running'
   if (!state)
     return 'never'
+  if (state.status === 'unsupported')
+    return 'unsupported'
   if (state.status === 'running')
     return 'interrupted'
   if (state.status === 'failed')
@@ -306,6 +316,12 @@ export async function runHistoryImport(options: {
     await publish()
     return { ...state }
   }
+
+  // Published as a state rather than thrown, so every caller – the welcome page,
+  // the options page, the automatic chain – reads it the same way it reads any
+  // other outcome
+  if (!hasHistoryApi())
+    return finish('unsupported')
 
   /** Fold a batch of finished hostnames into what is already stored. */
   const writeHostnames = async (

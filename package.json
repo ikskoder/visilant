@@ -26,6 +26,7 @@
     "pack:src": "rimraf source.zip && git archive --format=zip --output=source.zip HEAD",
     "start:chromium": "web-ext run --source-dir ./extension --target=chromium",
     "start:firefox": "LD_LIBRARY_PATH= web-ext run --source-dir ./extension --target=firefox-desktop",
+    "start:firefox-android": "LD_LIBRARY_PATH= web-ext run --source-dir ./extension --target=firefox-android",
     "start:firefox:wait": "node -e \"const fs=require('fs'); const sleep=ms=>new Promise(r=>setTimeout(r,ms)); (async()=>{while(fs.existsSync('extension/manifest.json'))await sleep(200);while(!fs.existsSync('extension/manifest.json'))await sleep(200);})()\" && npm run start:firefox",
     "clear": "rimraf --glob extension/dist extension/manifest.json extension.*",
     "lint": "eslint --cache .",
