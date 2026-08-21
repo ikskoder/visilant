@@ -47,6 +47,12 @@ async function loadTranslations(lang: string): Promise<Messages | null> {
   }
   catch (error) {
     console.error(`Error loading translations for ${lang}:`, error)
+    // A profile can name a locale this build does not ship – one dropped since
+    // it was chosen, or one synced from a build that had more. English is the
+    // only locale guaranteed to be there, and raw message keys on screen are a
+    // far worse outcome than the wrong language.
+    if (lang !== 'en')
+      return loadTranslations('en')
     return null
   }
 }
