@@ -26,7 +26,7 @@ This is a significant step up over the original reactive-only approach: instead 
 - **Punycode / Unicode Detection**: Domains containing non-Latin characters that visually resemble Latin ones (homograph attacks) are flagged, with the ASCII (punycode) representation displayed.
 - **Shortened URL Detection**: Shortened links (bit.ly, t.co, etc.) hide the real destination – a classic trick in clone phishing. Visilant can resolve them to reveal where they actually lead. Three modes: off, on-demand (button in tooltip), or automatic. You can also display the full redirect chain, resolve arbitrary URLs (not just known shorteners), maintain your own list of shortener domains (marking any domain as a shortener on the fly), or configure remote shortener lists to augment the built-in list.
 - **Navigation Intercept** (opt-in): When enabled, clicking a link to an unfamiliar site triggers a full-screen confirmation dialog before navigation proceeds. The dialog shows the destination domain, your visit history with it, any mismatch or punycode warnings, and the resolved real destination if the link uses a shortener. You can go back or continue at your discretion.
-- **Context Menu Integration**: Right-clicking any link provides a "Check link safety" option that opens the extension's detailed popup view for that domain in a new tab – available regardless of whether Link Safety is enabled in settings.
+- **Context Menu Integration**: Right-clicking a link offers "Check domain safety", which opens the dashboard for that domain in a new tab, and "Check link safety", which shows the full dialog on the spot when the right-click trigger is the one you chose. Selected text has "Check selected text with Visilant", and an image has "Scan QR code with Visilant". The domain check is there whether or not Link Safety is enabled in settings.
 - **Scope Control**: Link Safety can be active on all websites, only on specific domains (e.g. your email client), or everywhere except certain domains (e.g. your intranet).
 
 ### Address Analysis
@@ -34,7 +34,14 @@ Wherever an address is shown – the link tooltip, the intercept dialog, the pop
 
 - **Structural markers**: credentials hidden in the authority (`https://paypal.com@evil.net`), a bare IP address in place of a name, a domain ending used as a subdomain (`paypal.com.evil.net`), unusually deep subdomain nesting, and a single label written in two alphabets at once. Each rests on how URLs and DNS work, so an attacker cannot avoid one without giving up the trick it enables.
 - **Resemblance to sites you know**: an address that looks like a domain from *your own* visit history is called out – a swapped character (`pаypal.com` with a Cyrillic а), a digit standing in for a letter (`paypa1.com`), a typo (`payapl.com`), the familiar name padded out (`paypal-secure.com`, `googlesupport.com`), or a whole familiar domain parked in the subdomains. Because the comparison uses your history rather than a shipped list of brands, it differs for every user and an attacker cannot test a domain against it in advance. Strong matches are shown prominently, while weaker resemblances stay quiet so they never train you to dismiss the warning.
-- **Check this domain elsewhere**: a collapsed list of links to third-party services – VirusTotal, urlscan.io, Google Safe Browsing, the Wayback Machine, ICANN Lookup, Sucuri SiteCheck. These are links, not integrations: no API keys, no rate limits, and nothing is requested until you click one. The list is editable in settings, so you can point it at whatever you actually use.
+- **External lookups**: a collapsed list of links to third-party services – VirusTotal, urlscan.io and Google Safe Browsing out of the box. These are links, not integrations: no API keys, no rate limits, and nothing is requested until you click one. The list is editable in settings, one `Name = https://example.com/check/{domain}` per line, so you can point it at whatever you actually use.
+
+### Email Addresses
+The part after the @ is a domain like any other, so everything above applies to it – plus what is particular to mail:
+
+- **Public services and disposable mail**: an address at a service anyone can register with is marked as one, so you judge the name before the @ rather than the domain, and a temp-mail domain is called out as itself. Both lists ship built in, take additions of your own, and can be topped up from a URL.
+- **Where the mail is actually read**: nobody ever opens `gmail.com` – Gmail is read on `mail.google.com` – so an address domain collects no visits of its own, and its counter is a zero that can never move. Visilant maps the well-known providers to the mailbox their mail is read on and reports the visits from there. You can map anything the built-in table misses yourself.
+- **Resemblance to a provider**: for addresses only, the well-known mail providers join your own history as something an address can be one letter away from. Ordinary browsing warnings keep comparing against your history and nothing else.
 
 ### Advanced Homograph Protection
 Visilant employs several techniques to help you spot spoofed domains:
@@ -48,6 +55,7 @@ Clicking the extension icon reveals a dashboard where you can:
 - **Sort Sites**: Organize the list by visit count or name to better understand your history with a domain family.
 - **Customize Display**: Toggle domain highlighting, change text case (uppercase/lowercase), switch Punycode modes, and adjust font size on the fly.
 - **Per-Site Anti-Tampering Toggle**: See whether tamper detection is active for the current site and quickly disable or re-enable it without leaving the popup.
+- **Check Anything by Hand**: A field opened from the popup takes a link, a bare domain, an email address or a QR code image – pasted, dropped or picked from disk – and reports the same facts as everything above. The same check is a right-click away on any selected text, and opens in the page you are already on.
 
 ### Theming & Responsive UI
 
@@ -78,33 +86,41 @@ Visilant implements multiple layers of protection to ensure reliable operation e
 
 4. Click the Settings icon (gear) in the popup to open the full configuration page. Configure the extension according to your preferences:
 
-   - **Safety Threshold**: Specify how many visits classify a site as "familiar" (default is 10).
-   - **Icon Settings**:
+   - **Familiarity rules**: Decide what makes a site "familiar", in a section of its own. Three checks are on offer, each with its own threshold: the number of **visits** (on by default, at 10), the number of **active days** – separate days you were there, which a single afternoon of clicking cannot fake – and how long the site has been **known**, counted in days since your first recorded visit. Switch on the ones you want and choose how many have to pass: all of them, any one of them, or a set number, such as two of three. Everything else the extension does follows from this one verdict.
+     - **_Note:_** Active days and first-visit dates only exist for sites recorded since those fields were added, and a site without them cannot pass those checks. A history import fills them in for every site the browser still remembers – for anything older than that, or removed by a clearing of history, there is nothing left to read, and the settings page says which case you are in.
+   - **Toolbar icon**:
 
-     - Choose to display the visit counter on the extension icon.
+     - Choose whether the icon carries a counter, and what that counter shows: any one of the checks you have switched on, or how many of them the site passes. With a single check in use there is nothing to choose between, so the question is not asked.
      - Enable/disable icon color change to red for "unfamiliar" sites.
 
-   - **Link Safety Settings**:
+   - **Link safety**:
 
      - Link Safety is enabled by default. It analyzes external links on pages and shows a tooltip with the destination domain's familiarity status.
-     - Choose the tooltip trigger: hover (default), left-click (safest – prevents navigation until you review), or right-click (adds a "Check link safety" item to the context menu).
+     - Choose the tooltip trigger: right-click (the default – nothing appears until you ask for it), left-click (safest – prevents navigation until you review), or hover, which waits out a delay of your choosing before it opens.
      - Configure visit count visibility in tooltips: always, never, only for unfamiliar sites, or only for familiar sites.
      - Optionally enable navigation intercept to require confirmation before visiting unfamiliar sites.
      - Configure shortened URL detection: off, on-demand button, or automatic. Optionally show the full resolved URL (not just the domain), display the redirect chain, resolve arbitrary URLs (not just known shorteners), or maintain your own list of custom shortener domains. You can also point the extension at remote shortener lists to keep the built-in list up to date.
      - Set the scope: all websites, only specific domains, or everywhere except certain domains.
 
-   - **Appearance**: Choose a light, dark, or system-matching theme.
+   - **General**: Choose a light, dark, or system-matching theme, and decide whether the settings page explains itself. The explanations are on by default and worth keeping unless you know the settings by heart – switching them off only makes the page shorter.
 
-   - **Notification Settings**:
+   - **Email addresses**: Add to the built-in lists of public email services and disposable mail domains, keep either topped up from a URL, and map an address domain to the site its mail is read on.
+
+   - **External lookups**: Edit the third-party services offered under a checked domain, one `Name = https://example.com/check/{domain}` per line. Clear the field for none at all.
+
+   - **Anti-tampering**: List the sites where the tamper check should stay out of the way – ones that rebuild their page constantly and set it off for no reason.
+
+   - **Notifications**:
 
      - Select notification triggers: typing, copying, or both (see [Notification Triggers](#notification-triggers) for details).
      - Select notification styles: browser notifications, in-page warnings, or both.
-     - **_Note:_** When an in-page alert is displayed, you can disable further warnings for that specific site regardless of its visit count or threshold settings.
+     - **Hold pastes on unfamiliar sites** (opt-in): instead of only warning you, the first paste on an unfamiliar site is stopped and nothing is inserted until you have looked at the address. Allowing it pastes nothing by itself – you press paste again and it goes through as an ordinary paste, and the page stops asking.
+     - **_Note:_** When an in-page alert is displayed, you can disable further warnings for that specific site, whatever the familiarity rules say about it.
      - You can also disable notifications completely if you prefer a non-intrusive browsing experience. However, be sure to check the visit count on the extension icon during important interactions, as otherwise, the extension's effectiveness is greatly diminished.
 
-5. Import your browser history to populate the visit counter with previously visited sites. This helps reduce false positives and unnecessary warnings for "familiar" sites. Two modes are available:
-     - **Full import** reads every recorded visit, so the first-visit date and the number of active days are real values rather than estimates. It is slower on a large history and can be cancelled at any point.
-     - **Quick import** uses the per-page summary the browser already keeps. It finishes in one pass, but cannot determine when a site was first visited.
+   Every section carries a reset in its corner, which puts that section back to how it ships and leaves the rest of the page alone.
+
+5. Your browser history is imported when Visilant is installed, so the counter starts with the sites you already know instead of treating every one of them as new. It reads every recorded visit, down to the date you first opened each site and the number of separate days you have been there. The import is read on the device and stays there – nothing is uploaded, and no site is contacted. It can be cancelled while it runs, resumes where it stopped, and the button in **Your data** re-runs it whenever you want.
      - **_Note:_** Dates are labelled "first known visit" because they can only reflect what is still in your browser history – clearing history removes visits that cannot be recovered.
 
 ### Notification Triggers
@@ -123,9 +139,9 @@ Visilant is open-source and operates locally within your browser:
 
 - **All data remains on your computer.** Your visit counts, your history, and every check Visilant performs stay on your device. There is no server behind the extension, no account, and no telemetry. Every analysis described above – visit counts, structural markers, resemblance to sites you know – runs locally against data you already have.
 - **Nothing is requested on your behalf without you asking.** Two features can cause a network request, and neither happens on its own:
-  - **"Check this domain elsewhere"** offers links to third-party services. They are ordinary links, not integrations – Visilant sends nothing, and no service learns anything unless you choose to open it. Whichever one you open will, like any site you visit, see the domain you asked about and your IP address.
+  - **External lookups** offer links to third-party services. They are ordinary links, not integrations – Visilant sends nothing, and no service learns anything unless you choose to open it. Whichever one you open will, like any site you visit, see the domain you asked about and your IP address.
   - **Shortened link resolution** requests the shortened link itself to find out where it leads. On its default setting this happens only when you press the button in the tooltip, and you can disable it entirely or let it resolve automatically.
-- **Lists you configure yourself** (disposable-email domains, URL shorteners) are fetched from the URL you enter, and only when you ask for an update. No such URL is set out of the box.
+- **Remote lists** (URL shorteners, public email services, disposable mail domains) come with a maintained source filled in, and each is fetched only when you press Update in the settings. Clearing a field turns that source off, and any URL of your own can go in its place. Nothing is fetched on a schedule or in the background.
 - The extension requests only the permissions necessary for proper operation:
 
   **Required permissions:**
@@ -156,7 +172,7 @@ While Visilant enhances awareness of "unfamiliar" websites, its limitations incl
   If attackers gain control of a legitimate domain you've previously visited, Visilant won't detect it as suspicious since your visit history marks it as "familiar." However, at that point, you're likely facing a much larger security breach – such as a domain hijack or server compromise – where Visilant's lack of protection is the least of your concerns.
 
 - **Partial Cross-Device Sync**:
-  While your configuration settings are synced across devices (if you're logged into your browser), your visit history is stored locally to accommodate its size. This means a site marked as "familiar" on one computer will still be treated as "unfamiliar" on another until you visit it enough times there. You can mitigate this by using the "Import History" feature on each new device to quickly populate the visit counter.
+  While your configuration settings are synced across devices (if you're logged into your browser), your visit history is stored locally to accommodate its size. This means a site marked as "familiar" on one computer will still be treated as "unfamiliar" on another until you visit it enough times there. Installing Visilant on that machine imports its history for you, which is what closes most of the gap.
 
 - **Script Injection Limitations**:
   To detect input and clipboard interactions, Visilant injects a small script into visited pages. While Visilant implements anti-tampering protection that detects removal attempts and notifies you via system notifications, it's still recommended to pin the extension icon to your toolbar as an additional safeguard.
