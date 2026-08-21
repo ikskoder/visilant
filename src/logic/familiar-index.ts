@@ -1,5 +1,7 @@
 import type { FamiliarDomain } from './domain-similarity'
+import type { FamiliaritySettings, FamiliarityStats } from './familiarity'
 import type { SiteVisitData } from './storage'
+import { aggregateFamiliarityStats, isFamiliar } from './familiarity'
 
 /**
  * The set of domains worth imitating, derived from the user's own visit history.
@@ -18,11 +20,12 @@ import type { SiteVisitData } from './storage'
 export const FAMILIAR_INDEX_LIMIT = 2000
 
 interface CollectOptions {
-  /** Visits across a domain family, at or above which it counts as familiar */
-  threshold: number
+  /** What makes a domain family familiar – the same rules the rest of the UI uses */
+  rules: FamiliaritySettings
   limit?: number
   /** Registrable domain of a hostname, or null if it has none */
   toRegistrable: (hostname: string) => string | null
+  now?: number
 }
 
 function isVisitRecord(value: unknown): value is SiteVisitData {
@@ -41,7 +44,7 @@ export function collectFamiliarDomains(
   records: Record<string, unknown>,
   options: CollectOptions,
 ): FamiliarDomain[] {
-  const totals = new Map<string, number>()
+  const byFamily = new Map<string, SiteVisitData[]>()
 
   for (const [key, value] of Object.entries(records)) {
     // Storage also holds settings and cached lists under non-hostname keys
@@ -52,17 +55,23 @@ export function collectFamiliarDomains(
     if (!registrable)
       continue
 
-    totals.set(registrable, (totals.get(registrable) || 0) + (value.count || 0))
+    const group = byFamily.get(registrable)
+    if (group)
+      group.push(value)
+    else
+      byFamily.set(registrable, [value])
   }
 
+  const now = options.now ?? Date.now()
   const familiar: FamiliarDomain[] = []
-  for (const [domain, visits] of totals) {
-    if (visits < options.threshold)
+  for (const [domain, group] of byFamily) {
+    const stats = aggregateFamiliarityStats(group)
+    if (!isFamiliar(stats, options.rules, now))
       continue
 
     const label = domain.split('.')[0]
     if (label)
-      familiar.push({ domain, label, visits })
+      familiar.push({ domain, label, visits: stats.count })
   }
 
   familiar.sort((a, b) => b.visits - a.visits || a.domain.localeCompare(b.domain))
@@ -75,11 +84,12 @@ export function collectFamiliarDomains(
  * A full rebuild reads every stored hostname, which is far too much work to do on
  * each navigation, so ordinary browsing keeps the list current this way.
  *
- * `hostVisits` is the count for the visited hostname alone, deliberately: it is
- * already in hand, whereas the family total would cost a scan of all storage. It
- * is a lower bound on the family total, so a domain can only ever join the list
+ * `stats` are the visited hostname's own, deliberately: they are already in
+ * hand, whereas the family's would cost a scan of all storage. Every one of them
+ * understates the family – fewer visits, no more active days than its busiest
+ * member, no earlier a first visit – so a domain can only ever join the list
  * later than it strictly qualifies, never earlier. The next full rebuild – after
- * a history import, a threshold change, or a day of use – corrects both the
+ * a history import, a rule change, or a day of use – corrects both the
  * membership and the counts.
  *
  * Returns true when the membership changed, which is the only case worth
@@ -89,23 +99,24 @@ export function collectFamiliarDomains(
 export function applyVisitToFamiliar(
   familiar: FamiliarDomain[],
   registrable: string,
-  hostVisits: number,
-  threshold: number,
+  stats: FamiliarityStats,
+  rules: FamiliaritySettings,
+  now: number = Date.now(),
 ): boolean {
   const existing = familiar.find(entry => entry.domain === registrable)
 
   if (existing) {
-    existing.visits = Math.max(existing.visits + 1, hostVisits)
+    existing.visits = Math.max(existing.visits + 1, stats.count)
     return false
   }
 
-  if (hostVisits < threshold)
+  if (!isFamiliar(stats, rules, now))
     return false
 
   const label = registrable.split('.')[0]
   if (!label)
     return false
 
-  familiar.push({ domain: registrable, label, visits: hostVisits })
+  familiar.push({ domain: registrable, label, visits: stats.count })
   return true
 }

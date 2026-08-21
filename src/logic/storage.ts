@@ -1,12 +1,28 @@
+import type { BadgeContent } from './badge'
+import type { FamiliaritySettings } from './familiarity'
 import { useWebExtensionStorage } from '~/composables/useWebExtensionStorage'
+import { defaultFamiliaritySettings } from './familiarity'
 import { DEFAULT_LOOKUP_SERVICES, serializeLookupServices } from './lookup-services'
 
 export interface Settings {
-  // Threshold settings
+  /**
+   * The visit threshold as it was stored before familiarity had more than one
+   * criterion. Read once, by the migration below, and kept only so that a user
+   * who had set it to 25 does not silently go back to 10 on update.
+   */
   safety: number
+
+  // What counts as a familiar site – see logic/familiarity.ts
+  familiarity: FamiliaritySettings
 
   // Display settings
   showBadge: boolean
+
+  /**
+   * Which number the badge draws – see logic/badge.ts. The colour is the whole
+   * familiarity verdict either way.
+   */
+  badgeContent: BadgeContent
   changeIcon: boolean
   showWarningNotification: boolean
   notificationStyle: 'browser' | 'in-page' | 'both'
@@ -36,6 +52,15 @@ export interface Settings {
   // Theme
   theme: 'system' | 'light' | 'dark'
 
+  /**
+   * Whether the settings page explains itself.
+   *
+   * On, every setting carries the line that says what it does. Off, those lines
+   * go and the page is a short list of controls. Nothing outside the settings
+   * page reads this – warnings, tooltips and the popup say what they say.
+   */
+  verboseOptions: boolean
+
   // Link safety settings
   linkSafety: LinkSafetySettings
 
@@ -45,6 +70,10 @@ export interface Settings {
   // Remote sources for the email lists, one URL per line
   disposableEmailListUrl: string
   publicEmailListUrl: string
+
+  // Remote sources for the mail-site mapping, one URL per line. Empty by
+  // default – there is no public list in this shape to point at.
+  mailSiteListUrl: string
 
   // Third-party lookup links, one `Name | https://…/{domain}` per line. Seeded
   // with the shipped list as plain text so any entry can be removed. Empty means
@@ -85,15 +114,34 @@ export interface LinkSafetySettings {
  * Nothing is fetched on its own – these only fill the field, and the user
  * presses Update. Either can be replaced or cleared.
  */
+/**
+ * Where the shortener list is topped up from.
+ *
+ * The same collection the built-in list was taken from, so an update refreshes
+ * what shipped rather than mixing in a second opinion. Maintained, plain text,
+ * one domain per line with `#` comments – the format the parser already expects.
+ *
+ * Knowing that a link is shortened is not a verdict about anybody, which is why
+ * a list is allowed here at all: it says the destination is hidden, and the
+ * extension then offers to resolve it.
+ */
+export const DEFAULT_SHORTENER_LIST_URL = 'https://raw.githubusercontent.com/PeterDaveHello/url-shorteners/master/list'
+
 export const DEFAULT_DISPOSABLE_LIST_URL = 'https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/main/disposable_email_blocklist.conf'
 export const DEFAULT_PUBLIC_LIST_URL = 'https://raw.githubusercontent.com/willwhite/freemail/master/data/free.txt'
 
 export const defaultSettings: Settings = {
-  // Threshold settings
+  // Legacy visit threshold, superseded by `familiarity` below
   safety: 10,
+
+  familiarity: defaultFamiliaritySettings,
 
   // Display settings
   showBadge: true,
+
+  // Visits are the count this extension has always shown, and the one criterion
+  // every record can answer
+  badgeContent: 'visits',
   changeIcon: false,
   showWarningNotification: true,
   notificationStyle: 'in-page',
@@ -123,6 +171,9 @@ export const defaultSettings: Settings = {
   // Theme
   theme: 'system',
 
+  // The settings page explains itself until somebody says they know it by heart
+  verboseOptions: true,
+
   // Anti-tampering exclusions
   antiTamperingExcludedDomains: '',
 
@@ -131,22 +182,33 @@ export const defaultSettings: Settings = {
   disposableEmailListUrl: DEFAULT_DISPOSABLE_LIST_URL,
   publicEmailListUrl: DEFAULT_PUBLIC_LIST_URL,
 
+  // Nothing to seed: the mapping of a mail domain to the site it is read on is
+  // not published anywhere, so this stays empty until somebody has a source
+  mailSiteListUrl: '',
+
   // Seeded with the shipped links, which the user may edit or clear
   lookupServices: serializeLookupServices(DEFAULT_LOOKUP_SERVICES),
 
   // Link safety settings
   linkSafety: {
     enabled: true,
-    tooltipTrigger: 'hover',
-    // Long enough that crossing a link on the way somewhere else shows nothing,
-    // short enough that stopping on one feels immediate
-    hoverDelay: 300,
+
+    // Asked for rather than volunteered: the check appears on the link the user
+    // right-clicked, and never while they are only passing over one. A pointer
+    // crossing a page would otherwise open the tooltip again and again for links
+    // nobody meant to ask about. Hovering is still there for whoever wants it.
+    tooltipTrigger: 'click-right',
+
+    // Only the hover trigger reads this. Deliberately long: hovering is the one
+    // trigger nobody asks for on purpose, so a pointer resting on a link has to
+    // look like a question rather than like crossing the page.
+    hoverDelay: 1500,
     showVisitCount: 'always',
     shortUrlMode: 'button',
     shortUrlShowFullUrl: false,
     shortUrlTraceChain: false,
     shortUrlResolveAny: false,
-    shortUrlListUpdateUrl: '',
+    shortUrlListUpdateUrl: DEFAULT_SHORTENER_LIST_URL,
     scopeMode: 'everywhere',
     scopeDomains: '',
   },
@@ -229,6 +291,100 @@ export async function seedTextDefaultsOnce(): Promise<void> {
 
     if (changed)
       await browser.storage.sync.set({ settings: JSON.stringify(parsed) })
+  }
+  catch {
+    // Unreadable settings blob – leave it alone, the storage layer will reset it
+  }
+}
+
+/** Marks that the shortener source has been offered to an existing profile once. */
+const SHORTENER_SOURCE_SEEDED_KEY = 'shortenerSourceSeeded'
+
+/**
+ * Give an existing profile the shortener source it never shipped with.
+ *
+ * Needed as its own pass rather than as another entry in `SEEDED_TEXT_FIELDS`:
+ * that flag was set long ago on any profile old enough to be missing this, and
+ * the field sits inside `linkSafety`, which the shallow default merge hands back
+ * whole – a key added to it later never reaches a profile that already stored
+ * one. Empty stays empty after this runs, the same as for the other sources: it
+ * is a deliberate "no remote list", not a value that went missing.
+ */
+export async function seedShortenerSourceOnce(): Promise<void> {
+  const flag = await browser.storage.local.get(SHORTENER_SOURCE_SEEDED_KEY)
+  if (flag[SHORTENER_SOURCE_SEEDED_KEY])
+    return
+
+  await browser.storage.local.set({ [SHORTENER_SOURCE_SEEDED_KEY]: true })
+
+  const stored = (await browser.storage.sync.get('settings')).settings
+  // Nothing stored yet: a new profile starts on the defaults anyway
+  if (typeof stored !== 'string')
+    return
+
+  try {
+    const parsed = JSON.parse(stored) as Partial<Settings>
+    if (!parsed?.linkSafety || parsed.linkSafety.shortUrlListUpdateUrl)
+      return
+
+    parsed.linkSafety = {
+      ...parsed.linkSafety,
+      shortUrlListUpdateUrl: DEFAULT_SHORTENER_LIST_URL,
+    }
+    await browser.storage.sync.set({ settings: JSON.stringify(parsed) })
+  }
+  catch {
+    // Unreadable settings blob – leave it alone, the storage layer will reset it
+  }
+}
+
+/** Marks that the old single-threshold setting has been carried over. */
+const FAMILIARITY_MIGRATED_KEY = 'familiarityMigrated'
+
+/**
+ * Carry a hand-set visit threshold into the new familiarity rules, once.
+ *
+ * Defaults are merged one level deep, so a profile stored before `familiarity`
+ * existed comes back with the shipped rules – threshold 10 – and the 25 the user
+ * had typed in is quietly gone. It cannot be read as a fallback either, since by
+ * then the merged object is a complete, valid rule set with nothing missing to
+ * fall back from. So it is copied across explicitly, before anything reads it,
+ * and the flag makes sure a later edit down to 10 is not undone next startup.
+ */
+export async function migrateFamiliarityOnce(): Promise<void> {
+  const flag = await browser.storage.local.get(FAMILIARITY_MIGRATED_KEY)
+  if (flag[FAMILIARITY_MIGRATED_KEY])
+    return
+
+  await browser.storage.local.set({ [FAMILIARITY_MIGRATED_KEY]: true })
+
+  const stored = (await browser.storage.sync.get('settings')).settings
+  // Nothing stored yet: a new profile starts on the defaults anyway
+  if (typeof stored !== 'string')
+    return
+
+  try {
+    const parsed = JSON.parse(stored) as Partial<Settings>
+    // Already on the new rules, or nothing worth carrying over
+    if (!parsed || parsed.familiarity)
+      return
+
+    const legacy = Math.floor(Number(parsed.safety))
+    parsed.familiarity = {
+      ...defaultFamiliaritySettings,
+      visits: {
+        enabled: true,
+        min: Number.isFinite(legacy) && legacy > 0 ? legacy : defaultFamiliaritySettings.visits.min,
+      },
+      // Off for a profile that is only arriving here now, whatever a new profile
+      // starts with. Its records were written before active days and first-visit
+      // dates existed, and a criterion whose fact was never recorded fails – so
+      // switching these on during an update would declare every site the user
+      // has ever known unfamiliar, all at once.
+      activeDays: { ...defaultFamiliaritySettings.activeDays, enabled: false },
+      age: { ...defaultFamiliaritySettings.age, enabled: false },
+    }
+    await browser.storage.sync.set({ settings: JSON.stringify(parsed) })
   }
   catch {
     // Unreadable settings blob – leave it alone, the storage layer will reset it

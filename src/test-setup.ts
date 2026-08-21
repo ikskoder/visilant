@@ -42,6 +42,12 @@ vi.mock('webextension-polyfill', () => {
         set: vi.fn().mockResolvedValue(undefined),
         remove: vi.fn().mockResolvedValue(undefined),
       },
+      // Visit records and the one-off migration flags live here
+      local: {
+        get: vi.fn().mockResolvedValue({}),
+        set: vi.fn().mockResolvedValue(undefined),
+        remove: vi.fn().mockResolvedValue(undefined),
+      },
       onChanged: {
         addListener: vi.fn(),
         removeListener: vi.fn(),

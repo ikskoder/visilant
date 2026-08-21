@@ -1,26 +1,35 @@
 import type { FamiliarDomain, FamiliarIndex } from '~/logic/domain-similarity'
+import type { FamiliarityStats } from '~/logic/familiarity'
 import type { SiteVisitData } from '~/logic/storage'
 import { getDomain } from 'tldts'
 import { onMessage } from 'webext-bridge/background'
+import { badgeText } from '~/logic/badge'
 import { buildFamiliarIndex, findLookalikes } from '~/logic/domain-similarity'
 import { getProviderReferenceDomains } from '~/logic/email-providers'
 import { analyzeEmailAddress, parseMailtoUrl } from '~/logic/email-safety'
 import { applyVisitToFamiliar, collectFamiliarDomains } from '~/logic/familiar-index'
+import { aggregateFamiliarityStats, familiaritySignature, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { HISTORY_AUTO_IMPORT_KEY, HISTORY_IMPORT_STATE_KEY, isImportAlive, readHistoryImportState, runHistoryImport, shouldAutoImport } from '~/logic/history-import'
+import { collectMailSiteFamilies, loadMailSitesFromRecords } from '~/logic/mail-sites'
 import { hasContextMenus } from '~/logic/platform'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
-import { settings as appSettings, parseStoredSettings, seedTextDefaultsOnce } from '~/logic/storage'
+import { settings as appSettings, migrateFamiliarityOnce, parseStoredSettings, seedShortenerSourceOnce, seedTextDefaultsOnce } from '~/logic/storage'
 import { addCustomShortener, getCachedResolvedUrl, loadShortenersFromStorage, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
 import { applyVisit, isTrackableHostname } from '~/logic/visit-stats'
 
 // Load user-defined and remotely fetched shortener domains on service worker start
 loadShortenersFromStorage()
 
-// Available languages in the extension
+// A profile updated from a version that only had a visit threshold keeps the
+// number the user set. Done on startup rather than only on install, so a browser
+// that skipped the install event still gets it before anything reads the rules.
+migrateFamiliarityOnce()
+
+// The locales this build actually ships. Russian and Ukrainian were dropped
+// rather than kept half-checked, so the picking machinery stays and the list is
+// all that has to grow to bring a language back.
 const availableLanguages = [
   'en',
-  'ru',
-  'uk',
 ]
 
 // Function to generate icon paths for different sizes
@@ -51,11 +60,15 @@ async function getBestMatchingLanguage(): Promise<string> {
 // Site safety level types
 type IsSafe = boolean // true = safe, false = dangerous
 
-// Function to determine site safety level based on visit count
-async function checkIfSiteIsSafe(count: number): Promise<IsSafe> {
-  // Ensure we have numeric values
-  const safetyThreshold = Number(appSettings.value.safety)
-  return count >= safetyThreshold
+/** The familiarity rules as they currently stand, normalized for missing fields. */
+function currentFamiliarityRules() {
+  return normalizeFamiliarity(appSettings.value.familiarity)
+}
+
+// Whether a site clears the user's familiarity rules – visits, active days and
+// age, in whatever combination they chose
+function checkIfSiteIsSafe(stats: FamiliarityStats): IsSafe {
+  return isFamiliar(stats, currentFamiliarityRules())
 }
 
 // Function to get badge color based on safety level
@@ -64,7 +77,7 @@ function getBadgeColor(isSiteSafe: IsSafe): string {
 }
 
 // Function to update extension icon based on safety level
-async function updateExtensionIcon(count: number, tabId?: number) {
+async function updateExtensionIcon(stats: FamiliarityStats, tabId?: number) {
   if (!appSettings.value.changeIcon) {
     // Set default icon when colors are disabled
     await browser.action.setIcon({
@@ -74,7 +87,7 @@ async function updateExtensionIcon(count: number, tabId?: number) {
     return
   }
 
-  const isSiteSafe = await checkIfSiteIsSafe(count)
+  const isSiteSafe = checkIfSiteIsSafe(stats)
   const iconType = isSiteSafe ? 'icon-default' : 'site-danger'
   await browser.action.setIcon({
     path: getIconPaths(iconType),
@@ -149,15 +162,22 @@ async function updateBadge(hostname: string, tabId?: number) {
   }
 
   const result = await browser.storage.local.get(hostname)
-  const siteData = result[hostname] as { count: number, lastSeen: number, ignored: boolean } | undefined
-  const count = siteData?.count || 0
+  const siteData = result[hostname] as SiteVisitData | undefined
+  const stats: FamiliarityStats = {
+    count: siteData?.count || 0,
+    activeDays: siteData?.activeDays,
+    firstSeen: siteData?.firstSeen,
+  }
 
   if (appSettings.value.showBadge) {
+    // One number is all the badge holds, and which one is the user's choice. Its
+    // colour is the full verdict either way, so a site can read as unfamiliar
+    // with a high count behind it
     await browser.action.setBadgeText({
-      text: count >= 1000 ? '>1K' : count.toString(),
+      text: badgeText(stats, currentFamiliarityRules(), appSettings.value.badgeContent),
       ...(tabId != null && { tabId }),
     })
-    const isSiteSafe = await checkIfSiteIsSafe(count)
+    const isSiteSafe = checkIfSiteIsSafe(stats)
     const color = getBadgeColor(isSiteSafe)
     await browser.action.setBadgeBackgroundColor({ color, ...(tabId != null && { tabId }) })
   }
@@ -165,7 +185,7 @@ async function updateBadge(hostname: string, tabId?: number) {
     await browser.action.setBadgeText({ text: '', ...(tabId != null && { tabId }) })
   }
 
-  await updateExtensionIcon(count, tabId)
+  await updateExtensionIcon(stats, tabId)
 }
 
 // ==========================================
@@ -279,6 +299,7 @@ browser.runtime.onInstalled.addListener(async (details): Promise<void> => {
   }
   // Fills in links and list sources for profiles whose settings predate them
   await seedTextDefaultsOnce()
+  await seedShortenerSourceOnce()
 
   const records = await browser.storage.local.get(null)
   if (!shouldAutoImport({
@@ -382,27 +403,43 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
 async function getDomainFamilyLogic(hostname: string) {
   const base = getDomain(hostname) || hostname
   const allData = await browser.storage.local.get(null)
-  const entries: { hostname: string, count: number }[] = []
-  let total = 0
+  const entries: { hostname: string, count: number, activeDays?: number, firstSeen?: number }[] = []
+  const records: SiteVisitData[] = []
   for (const key of Object.keys(allData)) {
     if (key !== base && !key.endsWith(`.${base}`))
       continue
-    const count = (allData[key] as { count?: number } | undefined)?.count
-    if (typeof count === 'number') {
-      entries.push({ hostname: key, count })
-      total += count
+    const record = allData[key] as SiteVisitData | undefined
+    if (typeof record?.count === 'number') {
+      entries.push({ hostname: key, count: record.count, activeDays: record.activeDays, firstSeen: record.firstSeen })
+      records.push(record)
     }
   }
   entries.sort((a, b) => b.count - a.count)
-  return { baseDomain: base, entries, total }
+  // The family's own facts travel with it, so the panel can reach the same
+  // verdict the badge did instead of re-deriving one from the total alone
+  const stats = aggregateFamiliarityStats(records)
+  // An address domain is not a site anyone opens, so its family is empty by
+  // nature. Where the mail is read is, and that is what the panel shows instead.
+  loadMailSitesFromRecords(allData)
+  const mailSites = collectMailSiteFamilies(allData, hostname, currentFamiliarityRules())
+  return { baseDomain: base, entries, total: stats.count, stats, mailSites }
 }
 
 // Add message handler to get visit count
 async function getVisitCountLogic(url: string) {
   const hostname = getHostname(url)
   const result = await browser.storage.local.get(hostname)
-  return (result[hostname] as { count: number, lastSeen: number, ignored: boolean, hostname: string } | undefined)
-    || { count: 0, hostname, lastSeen: 0, ignored: false }
+  const record = result[hostname] as SiteVisitData | undefined
+  // Everything a familiarity verdict needs, so the caller does not have to ask
+  // twice or judge on the visit count alone
+  return {
+    hostname,
+    count: record?.count || 0,
+    lastSeen: record?.lastSeen || 0,
+    ignored: record?.ignored || false,
+    activeDays: record?.activeDays,
+    firstSeen: record?.firstSeen,
+  }
 }
 
 // ==========================================
@@ -415,7 +452,8 @@ const FAMILIAR_INDEX_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 interface StoredFamiliarList {
   domains: FamiliarDomain[]
-  threshold: number
+  /** Rules the list was built under – see `familiaritySignature` */
+  rules: string
   builtAt: number
 }
 
@@ -436,7 +474,7 @@ function invalidateFamiliarIndex() {
 async function persistFamiliarDomains(domains: FamiliarDomain[]) {
   const payload: StoredFamiliarList = {
     domains,
-    threshold: appSettings.value.safety,
+    rules: familiaritySignature(currentFamiliarityRules()),
     builtAt: Date.now(),
   }
   await browser.storage.local.set({ [FAMILIAR_INDEX_KEY]: payload })
@@ -446,7 +484,7 @@ async function persistFamiliarDomains(domains: FamiliarDomain[]) {
 async function rebuildFamiliarDomains(): Promise<FamiliarDomain[]> {
   const records = await browser.storage.local.get(null)
   const domains = collectFamiliarDomains(records, {
-    threshold: appSettings.value.safety,
+    rules: currentFamiliarityRules(),
     toRegistrable: hostname => getDomain(hostname),
   })
 
@@ -459,7 +497,7 @@ async function loadFamiliarDomains(): Promise<void> {
 
   const isUsable = stored
     && Array.isArray(stored.domains)
-    && stored.threshold === appSettings.value.safety
+    && stored.rules === familiaritySignature(currentFamiliarityRules())
     && Date.now() - (stored.builtAt || 0) < FAMILIAR_INDEX_MAX_AGE_MS
 
   familiarDomains = isUsable ? stored.domains : await rebuildFamiliarDomains()
@@ -516,7 +554,7 @@ async function noteVisitForFamiliarIndex(hostname: string, visitData: SiteVisitD
   if (!registrable)
     return
 
-  const added = applyVisitToFamiliar(familiarDomains, registrable, visitData.count, appSettings.value.safety)
+  const added = applyVisitToFamiliar(familiarDomains, registrable, visitData, currentFamiliarityRules())
   familiarIndexStale = true
 
   // Only a new member is worth a write, and drifting counts are corrected by the
@@ -886,10 +924,12 @@ browser.storage.onChanged.addListener(async (changes) => {
     const previous = parseStoredSettings(changes.settings.oldValue)
     const current = parseStoredSettings(changes.settings.newValue)
 
-    // The familiarity threshold decides what goes in the index, so a change to
-    // it invalidates the whole thing. Left to the next reader to rebuild, which
-    // is also the point at which the new threshold is certain to have landed.
-    if (previous?.safety !== current?.safety)
+    // The familiarity rules decide what goes in the index, so a change to any of
+    // them invalidates the whole thing. Left to the next reader to rebuild, which
+    // is also the point at which the new rules are certain to have landed.
+    const previousRules = previous && familiaritySignature(normalizeFamiliarity(previous.familiarity))
+    const currentRules = current && familiaritySignature(normalizeFamiliarity(current.familiarity))
+    if (previousRules !== currentRules)
       invalidateFamiliarIndex()
 
     // Rebuild context menu when link safety settings change

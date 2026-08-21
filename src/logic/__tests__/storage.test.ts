@@ -1,9 +1,14 @@
 import type { Settings, SiteVisitData } from '../storage'
-import { describe, expect, it } from 'vitest'
-import { defaultSettings, parseStoredSettings } from '../storage'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import browser from 'webextension-polyfill'
+import { DEFAULT_SHORTENER_LIST_URL, defaultSettings, migrateFamiliarityOnce, parseStoredSettings, seedShortenerSourceOnce } from '../storage'
 
 describe('defaultSettings', () => {
-  it('has correct safety threshold', () => {
+  it('ships all three checks on, visits at ten', () => {
+    expect(defaultSettings.familiarity.visits).toEqual({ enabled: true, min: 10 })
+    expect(defaultSettings.familiarity.activeDays.enabled).toBe(true)
+    expect(defaultSettings.familiarity.age.enabled).toBe(true)
+    // Kept only so a hand-set threshold survives the update that added the rest
     expect(defaultSettings.safety).toBe(10)
   })
 
@@ -52,8 +57,8 @@ describe('defaultSettings', () => {
       expect(ls.enabled).toBe(true)
     })
 
-    it('uses hover tooltip trigger', () => {
-      expect(ls.tooltipTrigger).toBe('hover')
+    it('waits to be asked, on a right-click', () => {
+      expect(ls.tooltipTrigger).toBe('click-right')
     })
 
     it('shows visit count always', () => {
@@ -70,8 +75,8 @@ describe('defaultSettings', () => {
       expect(ls.shortUrlResolveAny).toBe(false)
     })
 
-    it('has empty short URL list update URL', () => {
-      expect(ls.shortUrlListUpdateUrl).toBe('')
+    it('ships the source the built-in shortener list came from', () => {
+      expect(ls.shortUrlListUpdateUrl).toBe(DEFAULT_SHORTENER_LIST_URL)
     })
 
     it('defaults to everywhere scope', () => {
@@ -88,6 +93,7 @@ describe('defaultSettings', () => {
     // Verify all top-level keys exist
     const expectedKeys: (keyof Settings)[] = [
       'safety',
+      'familiarity',
       'showBadge',
       'changeIcon',
       'showWarningNotification',
@@ -151,5 +157,76 @@ describe('parseStoredSettings', () => {
     expect(parseStoredSettings('not json')).toBeUndefined()
     expect(parseStoredSettings(undefined)).toBeUndefined()
     expect(parseStoredSettings(null)).toBeUndefined()
+  })
+})
+
+describe('migrateFamiliarityOnce', () => {
+  beforeEach(() => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({})
+    vi.mocked(browser.storage.sync.set).mockClear()
+  })
+
+  it('carries a hand-set threshold over and leaves the two newer checks off', async () => {
+    vi.mocked(browser.storage.sync.get).mockResolvedValue({ settings: JSON.stringify({ safety: 25 }) })
+
+    await migrateFamiliarityOnce()
+
+    const written = JSON.parse(vi.mocked(browser.storage.sync.set).mock.calls[0][0].settings as string) as Settings
+    expect(written.familiarity.visits).toEqual({ enabled: true, min: 25 })
+    // The records this profile already has cannot answer either of them, and an
+    // unanswered check fails – so an update must not switch them on
+    expect(written.familiarity.activeDays.enabled).toBe(false)
+    expect(written.familiarity.age.enabled).toBe(false)
+  })
+
+  it('does not run twice', async () => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({ familiarityMigrated: true })
+    vi.mocked(browser.storage.sync.get).mockResolvedValue({ settings: JSON.stringify({ safety: 25 }) })
+
+    await migrateFamiliarityOnce()
+
+    expect(browser.storage.sync.set).not.toHaveBeenCalled()
+  })
+})
+
+describe('seedShortenerSourceOnce', () => {
+  beforeEach(() => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({})
+    vi.mocked(browser.storage.sync.set).mockClear()
+  })
+
+  const written = () => JSON.parse(vi.mocked(browser.storage.sync.set).mock.calls[0][0].settings as string) as Settings
+
+  it('gives a profile that predates the field the shipped source', async () => {
+    vi.mocked(browser.storage.sync.get).mockResolvedValue({
+      settings: JSON.stringify({ linkSafety: { enabled: true } }),
+    })
+
+    await seedShortenerSourceOnce()
+
+    expect(written().linkSafety.shortUrlListUpdateUrl).toBe(DEFAULT_SHORTENER_LIST_URL)
+    // Nothing else in there is touched
+    expect(written().linkSafety.enabled).toBe(true)
+  })
+
+  it('leaves a source the user has already set', async () => {
+    vi.mocked(browser.storage.sync.get).mockResolvedValue({
+      settings: JSON.stringify({ linkSafety: { shortUrlListUpdateUrl: 'https://example.com/mine.txt' } }),
+    })
+
+    await seedShortenerSourceOnce()
+
+    expect(browser.storage.sync.set).not.toHaveBeenCalled()
+  })
+
+  it('does not run twice, so a cleared field stays cleared', async () => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({ shortenerSourceSeeded: true })
+    vi.mocked(browser.storage.sync.get).mockResolvedValue({
+      settings: JSON.stringify({ linkSafety: { shortUrlListUpdateUrl: '' } }),
+    })
+
+    await seedShortenerSourceOnce()
+
+    expect(browser.storage.sync.set).not.toHaveBeenCalled()
   })
 })

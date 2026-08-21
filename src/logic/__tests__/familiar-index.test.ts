@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { applyVisitToFamiliar, collectFamiliarDomains, FAMILIAR_INDEX_LIMIT } from '../familiar-index'
+import { defaultFamiliaritySettings } from '../familiarity'
 
 /** Stands in for tldts in the background; enough for the shapes used here. */
 function toRegistrable(hostname: string): string | null {
@@ -11,11 +12,24 @@ function toRegistrable(hostname: string): string | null {
   return labels.slice(-2).join('.')
 }
 
-function record(count: number) {
-  return { count, lastSeen: 0, ignored: false }
+function record(count: number, extra: { activeDays?: number, firstSeen?: number } = {}) {
+  return { count, lastSeen: 0, ignored: false, ...extra }
 }
 
-const options = { threshold: 10, toRegistrable }
+const DAY = 24 * 60 * 60 * 1000
+const NOW = 1_700_000_000_000
+
+/**
+ * Visits only, at 10. The shipped rules ask all three checks, which these cases
+ * cannot answer – their records carry a visit count and nothing else, and that
+ * is exactly the shape this index has to handle.
+ */
+const rules = {
+  ...defaultFamiliaritySettings,
+  activeDays: { ...defaultFamiliaritySettings.activeDays, enabled: false },
+  age: { ...defaultFamiliaritySettings.age, enabled: false },
+}
+const options = { rules, toRegistrable, now: NOW }
 
 describe('collectFamiliarDomains', () => {
   it('counts a domain family together, not each hostname separately', () => {
@@ -82,21 +96,67 @@ describe('collectFamiliarDomains', () => {
   it('returns nothing for empty storage', () => {
     expect(collectFamiliarDomains({}, options)).toEqual([])
   })
+
+  it('judges a family by every rule the user turned on', () => {
+    // Visits pass on both, but only paypal.com has been known long enough
+    const strict = {
+      ...options,
+      rules: {
+        ...rules,
+        age: { enabled: true, min: 30 },
+      },
+    }
+
+    const familiar = collectFamiliarDomains({
+      'paypal.com': record(40, { firstSeen: NOW - 60 * DAY }),
+      'example.com': record(40, { firstSeen: NOW - 3 * DAY }),
+    }, strict)
+
+    expect(familiar.map(entry => entry.domain)).toEqual(['paypal.com'])
+  })
+
+  it('takes the family’s earliest first visit and its busiest member’s days', () => {
+    const strict = {
+      ...options,
+      rules: {
+        ...rules,
+        visits: { enabled: true, min: 10 },
+        activeDays: { enabled: true, min: 12 },
+        age: { enabled: true, min: 30 },
+      },
+    }
+
+    const familiar = collectFamiliarDomains({
+      // Neither hostname clears the active-day bar on the count it holds, but the
+      // family is judged on its largest, and on the older of the two dates
+      'mail.google.com': record(6, { activeDays: 12, firstSeen: NOW - 10 * DAY }),
+      'accounts.google.com': record(5, { activeDays: 4, firstSeen: NOW - 200 * DAY }),
+    }, strict)
+
+    expect(familiar).toEqual([{ domain: 'google.com', label: 'google', visits: 11 }])
+  })
+
+  it('fails a criterion the records cannot answer', () => {
+    // An old record with no active-day count is not waived through
+    const strict = { ...options, rules: { ...rules, activeDays: { enabled: true, min: 3 } } }
+
+    expect(collectFamiliarDomains({ 'paypal.com': record(500) }, strict)).toEqual([])
+  })
 })
 
 describe('applyVisitToFamiliar', () => {
   it('counts one more visit for a domain already in the list', () => {
     const familiar = [{ domain: 'paypal.com', label: 'paypal', visits: 20 }]
-    const added = applyVisitToFamiliar(familiar, 'paypal.com', 8, 10)
+    const added = applyVisitToFamiliar(familiar, 'paypal.com', { count: 8 }, rules, NOW)
 
     // The family total stays ahead of the single hostname's count
     expect(familiar[0].visits).toBe(21)
     expect(added).toBe(false)
   })
 
-  it('adds a domain once the visited hostname alone crosses the threshold', () => {
+  it('adds a domain once the visited hostname alone clears the rules', () => {
     const familiar = [{ domain: 'paypal.com', label: 'paypal', visits: 20 }]
-    const added = applyVisitToFamiliar(familiar, 'example.com', 10, 10)
+    const added = applyVisitToFamiliar(familiar, 'example.com', { count: 10 }, rules, NOW)
 
     expect(familiar.map(entry => entry.domain)).toEqual(['paypal.com', 'example.com'])
     expect(added).toBe(true)
@@ -104,9 +164,17 @@ describe('applyVisitToFamiliar', () => {
 
   it('leaves a domain out while it is still below the threshold', () => {
     const familiar = [{ domain: 'paypal.com', label: 'paypal', visits: 20 }]
-    const added = applyVisitToFamiliar(familiar, 'example.com', 9, 10)
+    const added = applyVisitToFamiliar(familiar, 'example.com', { count: 9 }, rules, NOW)
 
     expect(familiar).toHaveLength(1)
     expect(added).toBe(false)
+  })
+
+  it('holds a domain back until every enabled rule is met', () => {
+    const strict = { ...rules, activeDays: { enabled: true, min: 5 } }
+    const familiar: { domain: string, label: string, visits: number }[] = []
+
+    expect(applyVisitToFamiliar(familiar, 'example.com', { count: 40, activeDays: 2 }, strict, NOW)).toBe(false)
+    expect(applyVisitToFamiliar(familiar, 'example.com', { count: 40, activeDays: 5 }, strict, NOW)).toBe(true)
   })
 })
