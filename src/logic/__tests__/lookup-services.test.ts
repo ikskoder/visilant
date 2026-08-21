@@ -18,8 +18,18 @@ describe('dEFAULT_LOOKUP_SERVICES', () => {
 
 describe('parseLookupServices', () => {
   it('reads name and url off each line', () => {
+    const parsed = parseLookupServices('Example = https://example.com/check/{domain}')
+    expect(parsed).toEqual([{ name: 'Example', url: 'https://example.com/check/{domain}' }])
+  })
+
+  it('still reads a list written with the older pipe', () => {
     const parsed = parseLookupServices('Example | https://example.com/check/{domain}')
     expect(parsed).toEqual([{ name: 'Example', url: 'https://example.com/check/{domain}' }])
+  })
+
+  it('splits on the first separator, leaving the query string alone', () => {
+    const parsed = parseLookupServices('Safe Browsing = https://example.com/search?url={domain}&hl=en')
+    expect(parsed).toEqual([{ name: 'Safe Browsing', url: 'https://example.com/search?url={domain}&hl=en' }])
   })
 
   it('ignores blank lines and comments', () => {
@@ -40,11 +50,13 @@ describe('parseLookupServices', () => {
   it('refuses a line with no name or no url', () => {
     expect(parseLookupServices('| https://example.com/{domain}')).toEqual([])
     expect(parseLookupServices('Example |')).toEqual([])
+    expect(parseLookupServices('= https://example.com/{domain}')).toEqual([])
+    expect(parseLookupServices('Example =')).toEqual([])
     expect(parseLookupServices('no separator here')).toEqual([])
   })
 
-  it('keeps a url containing its own pipe-free query string', () => {
-    const parsed = parseLookupServices('Example | https://example.com/s?q={domain}&mode=full')
+  it('keeps a url containing its own query string', () => {
+    const parsed = parseLookupServices('Example = https://example.com/s?q={domain}&mode=full')
     expect(parsed[0].url).toBe('https://example.com/s?q={domain}&mode=full')
   })
 })

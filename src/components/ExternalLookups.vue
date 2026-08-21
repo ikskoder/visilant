@@ -75,7 +75,10 @@ async function openLookup(event: MouseEvent, url: string) {
           @click="openLookup($event, link.url)"
         >{{ link.name }} ↗</a>
       </div>
-      <p class="mt-1 opacity-60 leading-snug">
+      <!-- A notch larger than the links above it: the popup already scales this
+           whole block down, and a caveat about what a third party gets to see
+           has to stay readable at the bottom of that -->
+      <p class="mt-1 opacity-60 leading-snug text-[1.1em]">
         {{ t('externalLookupsCaveat') }}
       </p>
     </div>

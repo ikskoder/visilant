@@ -37,7 +37,11 @@ export const DEFAULT_LOOKUP_SERVICES: LookupService[] = [
 export const LOOKUP_DOMAIN_PLACEHOLDER = '{domain}'
 
 /**
- * Read a user-supplied list of `Name | https://example.com/{domain}` lines.
+ * Read a user-supplied list of `Name = https://example.com/{domain}` lines.
+ *
+ * The older `|` is still read, so a list written before the separator changed
+ * keeps working, and the split is on the first separator only – every one of
+ * these URLs carries a `=` of its own in a query string.
  *
  * Anything that is not an https URL containing the placeholder is dropped: the
  * whole point is that pressing one of these buttons goes where the label says.
@@ -50,9 +54,11 @@ export function parseLookupServices(raw: string): LookupService[] {
     if (!trimmed || trimmed.startsWith('#'))
       continue
 
-    const separator = trimmed.indexOf('|')
-    if (separator < 1)
+    const candidates = [trimmed.indexOf('='), trimmed.indexOf('|')].filter(index => index > 0)
+    if (!candidates.length)
       continue
+
+    const separator = Math.min(...candidates)
 
     const name = trimmed.slice(0, separator).trim()
     const url = trimmed.slice(separator + 1).trim()
@@ -68,7 +74,7 @@ export function parseLookupServices(raw: string): LookupService[] {
 
 /** Render a list back into the editable text form. */
 export function serializeLookupServices(services: LookupService[]): string {
-  return services.map(service => `${service.name} | ${service.url}`).join('\n')
+  return services.map(service => `${service.name} = ${service.url}`).join('\n')
 }
 
 /**
