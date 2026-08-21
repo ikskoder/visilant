@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
+import type { BadgeContent } from '~/logic/badge'
+import type { FamiliarityCriterionId, FamiliaritySettings } from '~/logic/familiarity'
 import type { HistoryImportState, ImportHealth } from '~/logic/history-import'
+import type { Settings, SiteVisitData } from '~/logic/storage'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import logo from '~/assets/logo.svg'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
+import { resolveBadgeContent } from '~/logic/badge'
 import { fetchRemoteDomainLists, parseListUrls, STORAGE_KEY_CUSTOM_DISPOSABLE, STORAGE_KEY_CUSTOM_PUBLIC, STORAGE_KEY_REMOTE_DISPOSABLE, STORAGE_KEY_REMOTE_PUBLIC, updateDisposableList, updatePublicList } from '~/logic/email-providers'
+import { enabledCriteria, FAMILIARITY_CRITERIA, normalizeFamiliarity, requiredMatches } from '~/logic/familiarity'
 import { describeImportHealth, HISTORY_AUTO_IMPORT_KEY, readHistoryImportState, runHistoryImport } from '~/logic/history-import'
-import { DEFAULT_LOOKUP_SERVICES, serializeLookupServices } from '~/logic/lookup-services'
+import { fetchRemoteMailSiteLists, STORAGE_KEY_CUSTOM_MAIL_SITES, STORAGE_KEY_REMOTE_MAIL_SITES, updateRemoteMailSites } from '~/logic/mail-sites'
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { hasHistoryApi, supportsHover } from '~/logic/platform'
 import { fetchRemoteShortenerLists, STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
 import { defaultSettings, settings } from '~/logic/storage'
 import SectionNav from './SectionNav.vue'
+import SectionReset from './SectionReset.vue'
 
 const { t, setLanguage, currentLanguage, isLoaded } = useI18n()
 useTheme()
@@ -35,14 +40,42 @@ function updateTranslations() {
     'languageEnglish',
     'languageRussian',
     'languageUkrainian',
-    'safetyLevels',
-    'visitsThreshold',
-    'visitsThresholdDesc',
+    'familiaritySettings',
+    'familiarityIntro',
+    'familiarityVisits',
+    'familiarityVisitsDesc',
+    'familiarityActiveDays',
+    'familiarityActiveDaysDesc',
+    'familiarityAge',
+    'familiarityAgeDesc',
+    'familiarityAtLeastLabel',
+    'familiarityVisitsUnit',
+    'familiarityDaysUnit',
+    'familiarityModeLabel',
+    'familiarityModeAll',
+    'familiarityModeAny',
+    'familiarityModeAtLeast',
+    'familiarityModeAtLeastLabel',
+    'familiaritySummaryAll',
+    'familiaritySummaryAny',
+    'familiaritySummaryAtLeast',
+    'familiarityKeepOne',
+    'familiarityNeedsImportTitle',
+    'familiarityNoDatesTitle',
+    'familiarityNoDatesText',
+    'familiarityNeedsImportText',
+    'familiarityNeedsImportLink',
     'displaySettings',
     'displaySettingsPinNote',
     'dynamicIcon',
     'dynamicIconDesc',
     'showBadge',
+    'badgeContentLabel',
+    'badgeContentDesc',
+    'badgeContentVisits',
+    'badgeContentActiveDays',
+    'badgeContentAge',
+    'badgeContentChecks',
     'showBadgeDesc',
     'notificationSettings',
     'showWarningNotification',
@@ -73,14 +106,15 @@ function updateTranslations() {
     'importKeepPageOpen',
     'importLastRun',
     'importSitesStored',
-    'importHistoryFull',
-    'importHistoryFullDesc',
-    'importHistoryQuick',
-    'importHistoryQuickDesc',
+    'importHistoryRun',
+    'importHistoryFirstRun',
+    'importHistoryRunDesc',
     'lookupServicesLabel',
     'lookupServicesDesc',
     'lookupServicesNote',
-    'lookupServicesReset',
+    'sectionReset',
+    'optionsVerbose',
+    'optionsVerboseDesc',
     'emailDisposableSources',
     'emailDisposableSourcesFailed',
     'importing',
@@ -99,7 +133,6 @@ function updateTranslations() {
     'bothWarningTriggers',
     'blockPasteOnUnfamiliar',
     'blockPasteOnUnfamiliarDesc',
-    'defaultSafetyThreshold',
     'linkSafetySettings',
     'linkSafetySettingsDesc',
     'linkSafetyEnabled',
@@ -136,7 +169,6 @@ function updateTranslations() {
     'linkShortUrlResolveAnyDesc',
     'linkShortUrlListUpdateUrl',
     'linkShortUrlListUpdateUrlDesc',
-    'linkShortUrlResetCustom',
     'linkScopeMode',
     'linkScopeModeDesc',
     'linkScopeEverywhere',
@@ -167,6 +199,10 @@ function updateTranslations() {
     'emailDisposableUpdateNow',
     'emailDisposableUpdateSuccess',
     'emailDisposableUpdateError',
+    'emailMailSitesLabel',
+    'emailMailSitesDesc',
+    'emailMailSitesUpdateUrlLabel',
+    'emailMailSitesUpdateUrlDesc',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -210,21 +246,66 @@ watch(() => settings.value.notificationStyle, async (newVal) => {
   }
 })
 
-// The shipped list is ordinary editable text rather than a hidden default, so a
-// line the user does not want can simply be deleted – including all of them.
-// Reset puts the shipped list back for when an edit goes wrong.
-const lookupServicesDefault = serializeLookupServices(DEFAULT_LOOKUP_SERVICES)
-
-function resetLookupServices() {
-  settings.value.lookupServices = lookupServicesDefault
-}
-
 // Custom shorteners (stored in browser.storage.local as string[])
 const customShortenersText = ref('')
 
 // Custom email domain lists (stored in browser.storage.local as string[])
 const customPublicProvidersText = ref('')
 const customDisposableText = ref('')
+
+// Extra `address-domain = site` lines, on top of the built-in table
+const customMailSitesText = ref('')
+
+/**
+ * Which settings each section owns.
+ *
+ * Keyed by the section ids the table of contents already uses, so a card, its
+ * entry in the contents and its reset button all name the same thing. A reset
+ * cannot reach past the card it was pressed in, which is the whole point of
+ * having one per section rather than a single button for the page. "Your data"
+ * is absent on purpose: it holds no settings, and what it does hold – visits,
+ * lists, the wholesale reset – is already spelled out there.
+ */
+const SECTION_SETTINGS: Record<string, (keyof Settings)[]> = {
+  'general': ['theme', 'verboseOptions'],
+  'familiarity': ['familiarity'],
+  'display': ['showBadge', 'badgeContent', 'changeIcon'],
+  'notifications': ['showWarningNotification', 'notificationStyle', 'showInputWarning', 'showCopyWarning', 'blockPasteOnUnfamiliar'],
+  'tampering': ['antiTamperingExcludedDomains'],
+  'link-safety': ['linkSafety'],
+  'lookups': ['lookupServices'],
+  'email-lists': ['disposableEmailListUrl', 'publicEmailListUrl', 'mailSiteListUrl'],
+}
+
+/**
+ * The rest of what a section owns – lists kept in `storage.local` rather than in
+ * the settings, edited on this page as one domain per line. Empty is their
+ * default, and the watchers above write that through.
+ */
+const SECTION_TEXTS: Record<string, Ref<string>[]> = {
+  'link-safety': [customShortenersText],
+  'email-lists': [customPublicProvidersText, customDisposableText, customMailSitesText],
+}
+
+/** Whether a section already stands at its defaults, in which case its reset does nothing. */
+function sectionIsDefault(id: string): boolean {
+  const keys = SECTION_SETTINGS[id] || []
+  const stored = settings.value
+  return keys.every(key => JSON.stringify(stored[key]) === JSON.stringify(defaultSettings[key]))
+    && (SECTION_TEXTS[id] || []).every(text => text.value.trim() === '')
+}
+
+/** Put one section back to how it ships, and nothing outside it. */
+function resetSection(id: string) {
+  const patch: Record<string, unknown> = {}
+  for (const key of SECTION_SETTINGS[id] || [])
+    patch[key] = structuredClone(defaultSettings[key])
+
+  settings.value = { ...settings.value, ...patch }
+
+  for (const text of SECTION_TEXTS[id] || [])
+    text.value = ''
+}
 
 type UpdateStatus = 'idle' | 'loading' | 'success' | 'error'
 interface RemoteListInfo { count: number, updatedAt: number, sources?: number, failed?: number }
@@ -235,6 +316,8 @@ const disposableUpdateStatus = ref<UpdateStatus>('idle')
 const disposableRemoteInfo = ref<RemoteListInfo | null>(null)
 const shortenerUpdateStatus = ref<UpdateStatus>('idle')
 const shortenerRemoteInfo = ref<RemoteListInfo | null>(null)
+const mailSiteUpdateStatus = ref<UpdateStatus>('idle')
+const mailSiteRemoteInfo = ref<RemoteListInfo | null>(null)
 
 // Last import of any kind, including the automatic one at install
 const lastImport = ref<HistoryImportState | null>(null)
@@ -257,17 +340,21 @@ onMounted(async () => {
     STORAGE_KEY_REMOTE_PUBLIC,
     STORAGE_KEY_REMOTE_DISPOSABLE,
     STORAGE_KEY_REMOTE_SHORTENERS,
+    STORAGE_KEY_CUSTOM_MAIL_SITES,
+    STORAGE_KEY_REMOTE_MAIL_SITES,
   ])
   const list = (stored.customShorteners as string[]) || []
   customShortenersText.value = list.join('\n')
   customPublicProvidersText.value = ((stored[STORAGE_KEY_CUSTOM_PUBLIC] as string[]) || []).join('\n')
   customDisposableText.value = ((stored[STORAGE_KEY_CUSTOM_DISPOSABLE] as string[]) || []).join('\n')
+  customMailSitesText.value = ((stored[STORAGE_KEY_CUSTOM_MAIL_SITES] as string[]) || []).join('\n')
 
   // What a previous update fetched, so the page opens showing the current state
   for (const [key, info] of [
     [STORAGE_KEY_REMOTE_PUBLIC, publicRemoteInfo],
     [STORAGE_KEY_REMOTE_DISPOSABLE, disposableRemoteInfo],
     [STORAGE_KEY_REMOTE_SHORTENERS, shortenerRemoteInfo],
+    [STORAGE_KEY_REMOTE_MAIL_SITES, mailSiteRemoteInfo],
   ] as const) {
     const remote = stored[key] as { domains?: string[], updatedAt?: number } | undefined
     if (remote?.domains?.length)
@@ -275,6 +362,7 @@ onMounted(async () => {
   }
 
   lastImport.value = await readHistoryImportState()
+  await readStatsCoverage()
 })
 
 watch(customShortenersText, async (newVal) => {
@@ -292,9 +380,17 @@ watch(customDisposableText, async (newVal) => {
   await browser.storage.local.set({ [STORAGE_KEY_CUSTOM_DISPOSABLE]: list })
 })
 
+// Mapping lines are stored as typed, separator and all – the parser is the one
+// place that decides what a line means
+watch(customMailSitesText, async (newVal) => {
+  const list = newVal.split(/\n/).map(line => line.trim()).filter(Boolean)
+  await browser.storage.local.set({ [STORAGE_KEY_CUSTOM_MAIL_SITES]: list })
+})
+
 const publicListUrls = computed(() => parseListUrls(settings.value.publicEmailListUrl || ''))
 const disposableListUrls = computed(() => parseListUrls(settings.value.disposableEmailListUrl || ''))
 const shortenerListUrls = computed(() => parseListUrls(settings.value.linkSafety?.shortUrlListUpdateUrl || ''))
+const mailSiteListUrls = computed(() => parseListUrls(settings.value.mailSiteListUrl || ''))
 
 /**
  * Fetch every source for one list, merge, persist for all contexts.
@@ -353,6 +449,17 @@ function updateDisposableListNow() {
   })
 }
 
+function updateMailSiteListNow() {
+  return updateRemoteList({
+    urls: mailSiteListUrls.value,
+    status: mailSiteUpdateStatus,
+    info: mailSiteRemoteInfo,
+    storageKey: STORAGE_KEY_REMOTE_MAIL_SITES,
+    fetchLists: fetchRemoteMailSiteLists,
+    apply: updateRemoteMailSites,
+  })
+}
+
 // No `apply` here: the settings page deliberately does not import the shortener
 // module, which carries the built-in list as a ~100 kB string
 function updateShortenerListNow() {
@@ -385,6 +492,12 @@ const importHealth = computed<ImportHealth>(() => canImportHistory
   : 'unsupported')
 const importStatusText = computed(() => translations.value[`importStatus${
   importHealth.value.charAt(0).toUpperCase()}${importHealth.value.slice(1)}`])
+// Nothing has ever been imported here, so there is nothing to re-do – the same
+// button, called what it is about to do
+const importButtonLabel = computed(() => importHealth.value === 'never'
+  ? translations.value.importHistoryFirstRun
+  : translations.value.importHistoryRun)
+
 const importStatusColor = computed(() => ({
   complete: 'bg-green-500',
   running: 'bg-blue-500',
@@ -399,17 +512,17 @@ const importStatusColor = computed(() => ({
 }[importHealth.value]))
 
 // Reset selection states
+// The shortener list is not here: it belongs to Link safety, and that section's
+// own reset button clears it. This is for the two things no single section owns.
 const resetSelections = ref({
   visits: false,
   settings: false,
-  customShorteners: false,
 })
 
-// Language settings
+// Language settings. Only the locales this build ships – see the same list in
+// the background script
 const availableLanguages = [
   { code: 'en', name: 'languageEnglish' },
-  { code: 'ru', name: 'languageRussian' },
-  { code: 'uk', name: 'languageUkrainian' },
 ]
 
 // Function to change language
@@ -432,13 +545,168 @@ function updateHoverDelay(value: string) {
   }
 }
 
-// Convert string values to numbers when updating thresholds
-function updateSafetyThreshold(value: string) {
+// ==========================================
+// Familiarity rules
+// ==========================================
+
+const familiarity = computed(() => normalizeFamiliarity(settings.value.familiarity))
+
+/** How many checks a site has to pass right now, with the mode applied. */
+const familiarityRequired = computed(() => requiredMatches(familiarity.value))
+const familiarityEnabledCount = computed(() => enabledCriteria(familiarity.value).length)
+
+/**
+ * What the badge can be set to show, given the checks that are on.
+ *
+ * A check the user switched off is a number they said is not worth the icon, so
+ * it does not go in the list either. Counting the passed checks joins them once
+ * there is more than one to count – which is also the only time this list is
+ * worth showing at all.
+ */
+const badgeContentOptions = computed(() => [
+  ...enabledCriteria(familiarity.value).map(id => ({
+    value: id,
+    label: translations.value[`badgeContent${id[0].toUpperCase()}${id.slice(1)}`],
+  })),
+  { value: 'checks', label: translations.value.badgeContentChecks },
+])
+
+// The stored choice can name a check that has since been switched off. The badge
+// resolves that at drawing time, and the select shows the same answer rather
+// than an empty box.
+const shownBadgeContent = computed(() => resolveBadgeContent(settings.value.badgeContent, familiarity.value))
+
+/** One row per criterion, in the order they are shown. */
+const familiarityRows = computed(() => FAMILIARITY_CRITERIA.map(id => ({
+  id,
+  criterion: familiarity.value[id],
+  title: translations.value[`familiarity${id[0].toUpperCase()}${id.slice(1)}`],
+  description: translations.value[`familiarity${id[0].toUpperCase()}${id.slice(1)}Desc`],
+  unit: id === 'visits' ? translations.value.familiarityVisitsUnit : translations.value.familiarityDaysUnit,
+  // Only the visit count is recorded for every site from the start
+  needsImport: id !== 'visits',
+})))
+
+/** The rule in one sentence, above the checkboxes that spell it out. */
+const familiaritySummary = computed(() => {
+  if (familiarity.value.mode === 'any')
+    return translations.value.familiaritySummaryAny
+  if (familiarity.value.mode === 'atLeast')
+    return (translations.value.familiaritySummaryAtLeast || '').replace('{n}', String(familiarityRequired.value))
+  return translations.value.familiaritySummaryAll
+})
+
+function updateFamiliarity(patch: Partial<FamiliaritySettings>) {
   settings.value = {
     ...settings.value,
-    safety: Number(value),
+    familiarity: { ...familiarity.value, ...patch },
   }
 }
+
+/**
+ * Turn a check on or off, except for the last one left on.
+ *
+ * With nothing enabled there is no question left to answer, and the fallback
+ * that keeps the extension working in that case is not something to arrive at by
+ * clicking – so the last checkbox simply cannot be cleared.
+ */
+function toggleCriterion(id: FamiliarityCriterionId) {
+  const criterion = familiarity.value[id]
+  if (criterion.enabled && familiarityEnabledCount.value <= 1)
+    return
+
+  updateFamiliarity({ [id]: { ...criterion, enabled: !criterion.enabled } })
+}
+
+/**
+ * The whole card is the switch, not just the checkbox in its corner.
+ *
+ * The checkbox is a small target on a wide card, and every miss used to do
+ * nothing. Only the threshold field is left out, where a click is aiming at the
+ * number – the checkbox itself takes no pointer events, so a click on it lands
+ * here too and toggles once rather than twice.
+ */
+function onCriterionCardClick(id: FamiliarityCriterionId, event: MouseEvent) {
+  if ((event.target as HTMLElement | null)?.closest('input[type="number"]'))
+    return
+
+  toggleCriterion(id)
+}
+
+/**
+ * Take the typed threshold, and let it be half-typed.
+ *
+ * An empty box is a moment on the way to a new number, not a number of its own.
+ * Writing a 1 into the settings the instant it is cleared puts that 1 straight
+ * back under the cursor, which is what made these fields impossible to retype –
+ * the only way through was to type beside the old value and delete it after.
+ */
+function updateCriterionMin(id: FamiliarityCriterionId, value: string) {
+  if (value.trim() === '')
+    return
+
+  const min = Math.max(1, Math.floor(Number(value)) || 1)
+  updateFamiliarity({ [id]: { ...familiarity.value[id], min } })
+}
+
+/**
+ * Put the stored number back if the box is left empty.
+ *
+ * Nothing was written while it stood empty, so the setting is still whatever it
+ * was – this only makes the field say so again.
+ */
+function restoreCriterionMin(id: FamiliarityCriterionId, el: HTMLInputElement) {
+  if (el.value.trim() === '')
+    el.value = String(familiarity.value[id].min)
+}
+
+function updateFamiliarityMode(mode: string) {
+  updateFamiliarity({ mode: mode as FamiliaritySettings['mode'] })
+}
+
+function updateFamiliarityAtLeast(value: string) {
+  const wanted = Math.floor(Number(value)) || 1
+  updateFamiliarity({ atLeast: Math.min(Math.max(1, wanted), Math.max(1, familiarityEnabledCount.value)) })
+}
+
+/**
+ * How much of the stored history can answer the two newer checks.
+ *
+ * Active days and first-visit dates are only recorded for sites seen since they
+ * existed, and a record without them fails its check rather than being waived.
+ * That is a surprise worth heading off in the one place where somebody is about
+ * to switch those checks on, with the import that fixes it named on the spot.
+ */
+const statsCoverage = ref<{ total: number, missing: number } | null>(null)
+
+async function readStatsCoverage() {
+  const records = await browser.storage.local.get(null)
+  let total = 0
+  let missing = 0
+  for (const [key, value] of Object.entries(records)) {
+    const record = value as SiteVisitData | undefined
+    if (!key.includes('.') || typeof record?.count !== 'number')
+      continue
+    total++
+    if (typeof record.activeDays !== 'number' || typeof record.firstSeen !== 'number')
+      missing++
+  }
+  statsCoverage.value = { total, missing }
+}
+
+const showStatsCoverageWarning = computed(() =>
+  (familiarity.value.activeDays.enabled || familiarity.value.age.enabled)
+  && (statsCoverage.value?.missing ?? 0) > 0)
+
+/**
+ * Whether the records still without dates can ever get any.
+ *
+ * A full import reads the browser history and nothing else, so a site the
+ * history no longer holds – cleared, or simply older than the browser keeps –
+ * stays dateless however many times the import is re-run. Once the full pass has
+ * finished, pointing at it again is a promise it cannot keep.
+ */
+const statsGapIsPermanent = computed(() => importHealth.value === 'complete')
 
 // Database management functions
 
@@ -449,25 +717,45 @@ function cancelImport() {
 /**
  * Re-run an import by hand.
  *
- * The quick import already ran on its own at install, so both buttons here are
- * top-ups rather than setup: full fills in the first-visit dates and active-day
- * counts the quick pass cannot know, quick catches up a history that has moved
- * on since (another device syncing in, a profile that was empty at install).
- * Both are idempotent – mergeImportedStats folds by min/max, never by addition.
+ * The same two passes the automatic import runs at install, in the same order.
+ * The quick pass reads one summary for the whole history, so visit counts are
+ * current within a second, and the full pass then reads every recorded visit,
+ * which is the only place first-visit dates and active days can come from.
+ * Splitting the two across two buttons only asked the user to answer a question
+ * about browser APIs. Both passes are idempotent – mergeImportedStats folds by
+ * min/max, never by addition – so the counts the quick pass just wrote are not
+ * doubled by the full one behind it.
  */
-async function importHistory(mode: 'quick' | 'full') {
+async function importHistory() {
   isImporting.value = true
   importCancelled.value = false
 
   try {
-    const result = await runHistoryImport({
-      mode,
-      onProgress: (state) => {
-        importProgress.value = { current: state.current, total: state.total }
-      },
+    const progress = (state: HistoryImportState) => {
+      importProgress.value = { current: state.current, total: state.total }
+    }
+
+    const quick = await runHistoryImport({
+      mode: 'quick',
+      onProgress: progress,
       shouldStop: () => importCancelled.value,
     })
+
+    // Cancelled or unsupported: the slow pass would only fail the same way, and
+    // a cancel means the user is done waiting
+    const result = quick.status === 'done'
+      ? await runHistoryImport({
+        mode: 'full',
+        resume: true,
+        onProgress: progress,
+        shouldStop: () => importCancelled.value,
+      })
+      : quick
+
     lastImport.value = result
+    // A full pass fills in first-visit dates and active days, so the warning
+    // about missing ones has to be asked again rather than left standing
+    await readStatsCoverage()
 
     // An import can move thousands of domains across the familiarity threshold,
     // so the lookalike reference set has to be rebuilt rather than nudged
@@ -500,6 +788,13 @@ async function resetSelected() {
     )
     // Remove all visit count entries
     await browser.storage.local.remove(keysToRemove)
+
+    // The import state was one of those keys, and the paragraph above still
+    // reports the import that has just been wiped. Re-read rather than listen:
+    // this page is the one that emptied the storage, so it knows exactly when
+    // there is something new to say.
+    lastImport.value = await readHistoryImportState()
+    await readStatsCoverage()
   }
 
   if (resetSelections.value.settings) {
@@ -510,16 +805,10 @@ async function resetSelected() {
     customShortenersText.value = ''
   }
 
-  if (resetSelections.value.customShorteners) {
-    await browser.storage.local.remove('customShorteners')
-    customShortenersText.value = ''
-  }
-
   // Reset selections
   resetSelections.value = {
     visits: false,
     settings: false,
-    customShorteners: false,
   }
 }
 
@@ -530,6 +819,7 @@ async function resetSelected() {
 /** In page order, which is the only order a table of contents may be in. */
 const SECTION_IDS = [
   ['general', 'generalSettings'],
+  ['familiarity', 'familiaritySettings'],
   ['display', 'displaySettings'],
   ['notifications', 'notificationSettings'],
   ['tampering', 'antiTamperingSettings'],
@@ -543,6 +833,16 @@ const sections = computed(() =>
   SECTION_IDS.map(([id, key]) => ({ id, title: translations.value[key] || key })))
 
 const activeSection = ref<string>(SECTION_IDS[0][0])
+
+/**
+ * Scroll to a section from inside the page.
+ *
+ * Same reason as the one in the table of contents: a fragment link does nothing
+ * at all on an extension page, so the scrolling is done by hand.
+ */
+function goToSection(id: string) {
+  document.getElementById(`section-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 /**
  * Which section the reader is looking at.
@@ -598,13 +898,13 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
   <!-- Left-aligned by default. The page used to centre everything and have each
        block opt out, which meant a new description was centred until somebody
        noticed – so the two things that really are centred say so themselves. -->
-  <main class="px-4 py-10 text-left text-gray-700 dark:text-gray-200">
+  <main class="px-4 py-10 text-left text-gray-700 dark:text-gray-200" :class="{ 'hints-hidden': !settings.verboseOptions }">
     <div v-if="!isLoaded" class="flex justify-center items-center h-screen">
       <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
     </div>
 
     <div v-else>
-      <img :src="logo" style="max-width: 300px;" class="mx-auto" :alt="translations.extensionName">
+      <Logo style="max-width: 300px;" class="mx-auto" />
       <div class="text-xl font-bold mb-6 text-center">
         {{ translations.settings }}
       </div>
@@ -616,13 +916,16 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
       <div class="relative max-w-md mx-auto space-y-6">
         <!-- General Settings -->
-        <div id="section-general" class="scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-general" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('general')" @reset="resetSection('general')" />
           <h2 class="text-lg font-semibold text-center mb-4">
             {{ translations.generalSettings }}
           </h2>
 
-          <!-- Language Settings -->
-          <div class="flex flex-col items-start mb-6">
+          <!-- Language Settings. A picker with one entry is a control that
+               cannot do anything, so it stays out of the way until a second
+               language ships -->
+          <div v-if="availableLanguages.length > 1" class="flex flex-col items-start mb-6">
             <label class="text-sm font-medium mb-2">{{ translations.selectLanguage }}</label>
             <select
               v-model="currentLanguage"
@@ -654,33 +957,151 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             </select>
           </div>
 
-          <!-- Threshold Settings -->
-          <div class="space-y-4">
-            <div class="flex flex-col items-start">
-              <label class="text-sm font-medium mb-1">{{ translations.visitsThreshold }}</label>
-              <div class="flex items-center w-full">
-                <input
-                  :value="settings.safety" type="number" min="1"
-                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  :placeholder="translations.defaultSafetyThreshold" @input="updateSafetyThreshold(($event.target as HTMLInputElement).value)"
-                >
-              </div>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {{ translations.visitsThresholdDesc }}
+          <!-- Its own description is not a hint and never hides: switched off,
+               it would be the one line explaining how to get the rest back -->
+          <div class="flex items-start justify-between">
+            <div>
+              <label class="text-sm font-medium">{{ translations.optionsVerbose }}</label>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ translations.optionsVerboseDesc }}
               </p>
             </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input v-model="settings.verboseOptions" type="checkbox" class="sr-only peer">
+              <div
+                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
+              />
+            </label>
+          </div>
+        </div>
+
+        <!-- Familiarity – the one verdict everything else follows from, which is
+             why it has a section of its own rather than a number in General -->
+        <div id="section-familiarity" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('familiarity')" @reset="resetSection('familiarity')" />
+          <h2 class="text-lg font-semibold text-center mb-2">
+            {{ translations.familiaritySettings }}
+          </h2>
+          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
+            {{ translations.familiarityIntro }}
+          </p>
+
+          <!-- How many checks have to agree, said before the checks themselves,
+               because it is what they are being read against -->
+          <div class="flex flex-col items-start mb-2">
+            <label class="text-sm font-medium mb-2">{{ translations.familiarityModeLabel }}</label>
+            <select
+              :value="familiarity.mode"
+              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              @change="updateFamiliarityMode(($event.target as HTMLSelectElement).value)"
+            >
+              <option value="all">
+                {{ translations.familiarityModeAll }}
+              </option>
+              <option value="any">
+                {{ translations.familiarityModeAny }}
+              </option>
+              <option value="atLeast">
+                {{ translations.familiarityModeAtLeast }}
+              </option>
+            </select>
+
+            <!-- A list rather than a number field: there are never more than
+                 three checks to choose from, and every one of them is a valid
+                 answer, so nothing here has to be typed or corrected -->
+            <div v-if="familiarity.mode === 'atLeast'" class="flex items-center gap-2 mt-2">
+              <label class="text-sm">{{ translations.familiarityModeAtLeastLabel }}</label>
+              <select
+                :value="familiarityRequired"
+                class="px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                @change="updateFamiliarityAtLeast(($event.target as HTMLSelectElement).value)"
+              >
+                <option v-for="n in familiarityEnabledCount" :key="n" :value="n">
+                  {{ n }}
+                </option>
+              </select>
+              <span class="text-sm text-gray-500 dark:text-gray-400">/ {{ familiarityEnabledCount }}</span>
+            </div>
+          </div>
+
+          <p class="text-sm mb-4 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300">
+            {{ familiaritySummary }}
+          </p>
+
+          <div class="space-y-3">
+            <div
+              v-for="row in familiarityRows" :key="row.id"
+              class="rounded-lg border p-3 transition-colors cursor-pointer"
+              :class="row.criterion.enabled
+                ? 'border-blue-200 dark:border-blue-800/60 bg-blue-50/40 dark:bg-blue-900/10'
+                : 'border-gray-200 dark:border-gray-700'"
+              @click="onCriterionCardClick(row.id, $event)"
+            >
+              <!-- Not a label any more: the card around it is the click target,
+                   and a label would toggle a second time on its way there -->
+              <div class="flex items-start gap-2">
+                <input
+                  type="checkbox" class="mt-1 h-4 w-4 pointer-events-none"
+                  :checked="row.criterion.enabled"
+                  :disabled="row.criterion.enabled && familiarityEnabledCount <= 1"
+                  :aria-label="row.title"
+                  :title="row.criterion.enabled && familiarityEnabledCount <= 1 ? translations.familiarityKeepOne : undefined"
+                  @change="toggleCriterion(row.id)"
+                >
+                <span>
+                  <span class="text-sm font-medium">{{ row.title }}</span>
+                  <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ row.description }}</span>
+                </span>
+              </div>
+
+              <div class="flex items-center gap-2 mt-2 ml-6" :class="{ 'opacity-50': !row.criterion.enabled }">
+                <span class="text-sm">{{ translations.familiarityAtLeastLabel }}</span>
+                <input
+                  :value="row.criterion.min" type="number" min="1"
+                  :disabled="!row.criterion.enabled"
+                  class="w-14 px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-text"
+                  @input="updateCriterionMin(row.id, ($event.target as HTMLInputElement).value)"
+                  @blur="restoreCriterionMin(row.id, $event.target as HTMLInputElement)"
+                >
+                <span class="text-sm text-gray-500 dark:text-gray-400">{{ row.unit }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Only shown when it is actually about to bite: one of the two newer
+               checks is on, and there are records that cannot answer it -->
+          <div
+            v-if="showStatsCoverageWarning"
+            class="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50"
+          >
+            <div class="text-sm font-medium text-amber-800 dark:text-amber-300">
+              {{ statsGapIsPermanent ? translations.familiarityNoDatesTitle : translations.familiarityNeedsImportTitle }}
+            </div>
+            <p class="text-xs text-amber-900/80 dark:text-amber-200/80 mt-1">
+              {{ statsCoverage?.missing }} / {{ statsCoverage?.total }} – {{ statsGapIsPermanent ? translations.familiarityNoDatesText : translations.familiarityNeedsImportText }}
+            </p>
+            <!-- No link once the import has run: there is nothing there to press -->
+            <a
+              v-if="!statsGapIsPermanent"
+              href="#section-data"
+              class="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 inline-block"
+              @click.prevent="goToSection('data')"
+            >
+              {{ translations.familiarityNeedsImportLink }}
+            </a>
           </div>
         </div>
 
         <!-- Display Settings -->
-        <div id="section-display" class="scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-display" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('display')" @reset="resetSection('display')" />
           <h2 class="text-lg font-semibold text-center mb-2">
             {{ translations.displaySettings }}
           </h2>
 
           <!-- Said once for the whole section: both toggles draw on the same
                icon, and neither shows anything while it is hidden in the menu -->
-          <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
             {{ translations.displaySettingsPinNote }}
           </p>
 
@@ -688,7 +1109,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <div class="flex items-start justify-between">
               <div>
                 <label class="text-sm font-medium">{{ translations.dynamicIcon }}</label>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
+                <p class="hint text-xs text-gray-500 dark:text-gray-400">
                   {{ translations.dynamicIconDesc }}
                 </p>
               </div>
@@ -703,7 +1124,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <div class="flex items-start justify-between">
               <div>
                 <label class="text-sm font-medium">{{ translations.showBadge }}</label>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
+                <p class="hint text-xs text-gray-500 dark:text-gray-400">
                   {{ translations.showBadgeDesc }}
                 </p>
               </div>
@@ -714,11 +1135,31 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 />
               </label>
             </div>
+
+            <!-- Nothing to choose while there is no counter to choose for, and
+                 nothing to choose between while a single check is on: the badge
+                 can only be that check's number -->
+            <div v-if="settings.showBadge && familiarityEnabledCount > 1" class="flex flex-col items-start">
+              <label class="text-sm font-medium mb-1">{{ translations.badgeContentLabel }}</label>
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-2">
+                {{ translations.badgeContentDesc }}
+              </p>
+              <select
+                :value="shownBadgeContent"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                @change="settings.badgeContent = ($event.target as HTMLSelectElement).value as BadgeContent"
+              >
+                <option v-for="option in badgeContentOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
           </div>
         </div>
 
         <!-- Notification Settings -->
-        <div id="section-notifications" class="scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-notifications" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('notifications')" @reset="resetSection('notifications')" />
           <h2 class="text-lg font-semibold text-center mb-4">
             {{ translations.notificationSettings }}
           </h2>
@@ -727,7 +1168,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           <div class="flex items-start justify-between mb-4">
             <div>
               <label class="text-sm font-medium">{{ translations.showWarningNotification }}</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
+              <p class="hint text-xs text-gray-500 dark:text-gray-400">
                 {{ translations.showWarningNotificationDesc }}
               </p>
             </div>
@@ -756,9 +1197,9 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                       settings.showCopyWarning = false;
                     }"
                   >
-                  <span class="ml-2">
+                  <span class="ml-2 text-sm">
                     <span class="block">{{ translations.showInputWarning }}</span>
-                    <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {{ translations.showInputWarningDesc }}
                     </span>
                   </span>
@@ -772,9 +1213,9 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                       settings.showCopyWarning = true;
                     }"
                   >
-                  <span class="ml-2">
+                  <span class="ml-2 text-sm">
                     <span class="block">{{ translations.showCopyWarning }}</span>
-                    <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {{ translations.showCopyWarningDesc }}
                     </span>
                   </span>
@@ -788,7 +1229,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                       settings.showCopyWarning = true;
                     }"
                   >
-                  <span class="ml-2">{{ translations.bothWarningTriggers }}</span>
+                  <span class="ml-2 text-sm">{{ translations.bothWarningTriggers }}</span>
                 </label>
               </div>
 
@@ -797,7 +1238,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <div v-if="settings.showInputWarning" class="flex items-start justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <div class="pr-3">
                   <label class="text-sm font-medium">{{ translations.blockPasteOnUnfamiliar }}</label>
-                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                     {{ translations.blockPasteOnUnfamiliarDesc }}
                   </p>
                 </div>
@@ -822,9 +1263,9 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                       v-model="settings.notificationStyle" type="radio" value="browser"
                       class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;"
                     >
-                    <span class="ml-2">
+                    <span class="ml-2 text-sm">
                       <span class="block">{{ translations.browserNotifications }}</span>
-                      <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         {{ translations.browserNotificationsDesc }}
                       </span>
                     </span>
@@ -834,9 +1275,9 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                       v-model="settings.notificationStyle" type="radio" value="in-page"
                       class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;"
                     >
-                    <span class="ml-2">
+                    <span class="ml-2 text-sm">
                       <span class="block">{{ translations.inPageNotifications }}</span>
-                      <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         {{ translations.inPageNotificationsDesc }}
                       </span>
                     </span>
@@ -846,14 +1287,14 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                       v-model="settings.notificationStyle" type="radio" value="both"
                       class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                     >
-                    <span class="ml-2">{{ translations.bothNotifications }}</span>
+                    <span class="ml-2 text-sm">{{ translations.bothNotifications }}</span>
                   </label>
                 </div>
 
                 <!-- Below the options rather than beside one of them: it is a
                      remark on the choice as a whole, and the point only lands
                      once both trade-offs have been read -->
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+                <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
                   {{ translations.notificationStylePinNote }}
                 </p>
               </div>
@@ -861,17 +1302,18 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           </div>
         </div>
         <!-- Anti-Tampering Settings -->
-        <div id="section-tampering" class="scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-tampering" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('tampering')" @reset="resetSection('tampering')" />
           <h2 class="text-lg font-semibold text-center mb-2">
             {{ translations.antiTamperingSettings }}
           </h2>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
             {{ translations.antiTamperingSettingsDesc }}
           </p>
 
           <div>
             <label class="text-sm font-medium">{{ translations.antiTamperingExcludedDomains }}</label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
               {{ translations.antiTamperingExcludedDomainsDesc }}
             </p>
             <textarea
@@ -885,11 +1327,12 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         </div>
 
         <!-- Link Safety Settings -->
-        <div id="section-link-safety" class="scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-link-safety" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('link-safety')" @reset="resetSection('link-safety')" />
           <h2 class="text-lg font-semibold text-center mb-2">
             {{ translations.linkSafetySettings }}
           </h2>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
             {{ translations.linkSafetySettingsDesc }}
           </p>
 
@@ -912,7 +1355,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <h3 class="text-sm font-medium mb-1">
                 {{ translations.linkScopeMode }}:
               </h3>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-3">
                 {{ translations.linkScopeModeDesc }}
               </p>
               <div class="space-y-2">
@@ -921,21 +1364,21 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     v-model="settings.linkSafety.scopeMode" type="radio" value="everywhere"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
-                  <span class="ml-2">{{ translations.linkScopeEverywhere }}</span>
+                  <span class="ml-2 text-sm">{{ translations.linkScopeEverywhere }}</span>
                 </label>
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="whitelist"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
-                  <span class="ml-2">{{ translations.linkScopeWhitelist }}</span>
+                  <span class="ml-2 text-sm">{{ translations.linkScopeWhitelist }}</span>
                 </label>
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="blacklist"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
-                  <span class="ml-2">{{ translations.linkScopeBlacklist }}</span>
+                  <span class="ml-2 text-sm">{{ translations.linkScopeBlacklist }}</span>
                 </label>
               </div>
 
@@ -948,7 +1391,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   rows="3"
                   :placeholder="translations.linkScopeDomains"
                 />
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {{ translations.linkScopeDomainsNote }}
                 </p>
               </div>
@@ -976,9 +1419,9 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     :disabled="!pointerCanHover"
                     class="h-4 w-4 flex-shrink-0" :class="{ 'opacity-50': !pointerCanHover }" style="accent-color: #3b82f6;"
                   >
-                  <span class="ml-2">
+                  <span class="ml-2 text-sm">
                     <span :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerHover }}</span>
-                    <p class="text-xs text-gray-500 dark:text-gray-400" :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerHoverDesc }}</p>
+                    <p class="hint text-xs text-gray-500 dark:text-gray-400" :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerHoverDesc }}</p>
                     <!-- Full strength while the option it belongs to is dimmed: the
                          reason is the one thing here still worth reading -->
                     <p v-if="!pointerCanHover" class="text-xs text-amber-600 dark:text-amber-400">
@@ -991,9 +1434,9 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-left"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
-                  <span class="ml-2">
+                  <span class="ml-2 text-sm">
                     <span>{{ translations.linkTooltipTriggerClickLeft }}</span>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ translations.linkTooltipTriggerClickLeftDesc }}</p>
+                    <p class="hint text-xs text-gray-500 dark:text-gray-400">{{ translations.linkTooltipTriggerClickLeftDesc }}</p>
                   </span>
                 </label>
                 <label class="flex items-start">
@@ -1002,9 +1445,9 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     :disabled="!pointerCanHover"
                     class="h-4 w-4 flex-shrink-0" :class="{ 'opacity-50': !pointerCanHover }" style="accent-color: #3b82f6;"
                   >
-                  <span class="ml-2">
+                  <span class="ml-2 text-sm">
                     <span :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerClickRight }}</span>
-                    <p class="text-xs text-gray-500 dark:text-gray-400" :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
+                    <p class="hint text-xs text-gray-500 dark:text-gray-400" :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
                     <p v-if="!pointerCanHover" class="text-xs text-amber-600 dark:text-amber-400">
                       {{ translations.linkTooltipTriggerClickRightUnavailable }}
                     </p>
@@ -1028,7 +1471,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   style="accent-color: #3b82f6;"
                   @input="updateHoverDelay(($event.target as HTMLInputElement).value)"
                 >
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {{ translations.linkHoverDelayDesc }}
                 </p>
               </div>
@@ -1039,7 +1482,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <h3 class="text-sm font-medium mb-1">
                 {{ translations.linkShowVisitCount }}:
               </h3>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-3">
                 {{ translations.linkShowVisitCountDesc }}
               </p>
               <div class="space-y-2">
@@ -1048,28 +1491,28 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="always"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
-                  <span class="ml-2">{{ translations.linkShowVisitCountAlways }}</span>
+                  <span class="ml-2 text-sm">{{ translations.linkShowVisitCountAlways }}</span>
                 </label>
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="unfamiliar"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
-                  <span class="ml-2">{{ translations.linkShowVisitCountUnfamiliar }}</span>
+                  <span class="ml-2 text-sm">{{ translations.linkShowVisitCountUnfamiliar }}</span>
                 </label>
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="familiar"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
-                  <span class="ml-2">{{ translations.linkShowVisitCountFamiliar }}</span>
+                  <span class="ml-2 text-sm">{{ translations.linkShowVisitCountFamiliar }}</span>
                 </label>
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="never"
                     class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
                   >
-                  <span class="ml-2">{{ translations.linkShowVisitCountNever }}</span>
+                  <span class="ml-2 text-sm">{{ translations.linkShowVisitCountNever }}</span>
                 </label>
               </div>
             </div>
@@ -1079,7 +1522,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <h3 class="text-sm font-medium mb-1">
                 {{ translations.linkShortUrlSection }}
               </h3>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-3">
                 {{ translations.linkShortUrlSectionWarning }}
               </p>
 
@@ -1093,7 +1536,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="button" class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;">
                   <span class="ml-2 text-sm">
                     <span class="block">{{ translations.linkShortUrlModeButton }}</span>
-                    <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {{ translations.linkShortUrlModeButtonDesc }}
                     </span>
                   </span>
@@ -1102,7 +1545,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="auto" class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;">
                   <span class="ml-2 text-sm">
                     <span class="block">{{ translations.linkShortUrlModeAuto }}</span>
-                    <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {{ translations.linkShortUrlModeAutoDesc }}
                     </span>
                   </span>
@@ -1135,7 +1578,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <!-- Custom shortener domains -->
                 <div>
                   <label class="text-sm font-medium">{{ translations.linkShortUrlCustomDomains }}</label>
-                  <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
                     {{ translations.linkShortUrlCustomDomainsDesc }}
                   </p>
                   <textarea
@@ -1150,7 +1593,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <!-- Remote list update URLs -->
                 <div>
                   <label class="text-sm font-medium">{{ translations.linkShortUrlListUpdateUrl }}</label>
-                  <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
                     {{ translations.linkShortUrlListUpdateUrlDesc }}
                   </p>
                   <textarea
@@ -1190,20 +1633,12 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         </div>
 
         <!-- Lookup links – links the user may follow, never requests the extension makes -->
-        <div id="section-lookups" class="scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <div class="flex items-center justify-between mb-2">
-            <h2 class="text-lg font-semibold text-center">
-              {{ translations.lookupServicesLabel }}
-            </h2>
-            <button
-              class="btn-ghost btn-sm !rounded"
-              :disabled="settings.lookupServices === lookupServicesDefault"
-              @click="resetLookupServices"
-            >
-              {{ translations.lookupServicesReset }}
-            </button>
-          </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+        <div id="section-lookups" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('lookups')" @reset="resetSection('lookups')" />
+          <h2 class="text-lg font-semibold text-center mb-2">
+            {{ translations.lookupServicesLabel }}
+          </h2>
+          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
             {{ translations.lookupServicesNote }}
           </p>
 
@@ -1215,18 +1650,19 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               spellcheck="false"
               class="w-full px-2 py-1.5 text-xs font-mono rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 bg-white"
             />
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
               {{ translations.lookupServicesDesc }}
             </p>
           </div>
         </div>
 
         <!-- Email Domain Lists -->
-        <div id="section-email-lists" class="scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-email-lists" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('email-lists')" @reset="resetSection('email-lists')" />
           <h2 class="text-lg font-semibold text-center mb-2">
             {{ translations.emailListsTitle }}
           </h2>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
             {{ translations.emailListsDesc }}
           </p>
 
@@ -1234,7 +1670,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <!-- Public providers: what the user adds, then where more come from -->
             <div>
               <label class="text-sm font-medium">{{ translations.emailCustomPublicLabel }}</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
                 {{ translations.emailCustomPublicDesc }}
               </p>
               <textarea
@@ -1249,7 +1685,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <!-- Remote public provider list update -->
             <div>
               <label class="text-sm font-medium">{{ translations.emailPublicUpdateUrlLabel }}</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
                 {{ translations.emailPublicUpdateUrlDesc }}
               </p>
               <textarea
@@ -1287,7 +1723,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <!-- Disposable domains: the same pair, own list then sources -->
             <div>
               <label class="text-sm font-medium">{{ translations.emailCustomDisposableLabel }}</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
                 {{ translations.emailCustomDisposableDesc }}
               </p>
               <textarea
@@ -1302,7 +1738,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <!-- Remote disposable list update -->
             <div>
               <label class="text-sm font-medium">{{ translations.emailDisposableUpdateUrlLabel }}</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
                 {{ translations.emailDisposableUpdateUrlDesc }}
               </p>
               <textarea
@@ -1336,6 +1772,62 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 {{ translations.emailDisposableUpdateSuccess }}: {{ disposableRemoteInfo.count }} ({{ new Date(disposableRemoteInfo.updatedAt).toLocaleDateString() }})
               </p>
             </div>
+
+            <!-- Where a mail domain is read, for the brands the built-in table
+                 does not cover -->
+            <div>
+              <label class="text-sm font-medium">{{ translations.emailMailSitesLabel }}</label>
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+                {{ translations.emailMailSitesDesc }}
+              </p>
+              <textarea
+                v-model="customMailSitesText"
+                wrap="off"
+                rows="3"
+                spellcheck="false"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                placeholder="example.com = mail.example.com&#10;example.net = webmail.example.org"
+              />
+            </div>
+
+            <!-- Remote mapping sources. Empty by default, so this stays a way in
+                 for somebody who keeps a list rather than a promise of one -->
+            <div>
+              <label class="text-sm font-medium">{{ translations.emailMailSitesUpdateUrlLabel }}</label>
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+                {{ translations.emailMailSitesUpdateUrlDesc }}
+              </p>
+              <textarea
+                v-model="settings.mailSiteListUrl"
+                wrap="off"
+                rows="3"
+                spellcheck="false"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                placeholder="https://example.com/mail-sites.txt"
+              />
+              <button
+                class="btn-primary btn-sm w-full mt-2 whitespace-nowrap"
+                :disabled="mailSiteUpdateStatus === 'loading' || !mailSiteListUrls.length"
+                @click="updateMailSiteListNow"
+              >
+                {{ translations.emailDisposableUpdateNow }}
+              </button>
+              <p v-if="mailSiteUpdateStatus === 'success' && mailSiteRemoteInfo" class="text-xs mt-1" :class="mailSiteRemoteInfo.failed ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'">
+                {{ translations.emailDisposableUpdateSuccess }}: {{ mailSiteRemoteInfo.count }}
+                <template v-if="mailSiteRemoteInfo.sources">
+                  · {{ translations.emailDisposableSources }}: {{ mailSiteRemoteInfo.sources }}
+                </template>
+                <template v-if="mailSiteRemoteInfo.failed">
+                  · {{ translations.emailDisposableSourcesFailed }}: {{ mailSiteRemoteInfo.failed }}
+                </template>
+              </p>
+              <p v-else-if="mailSiteUpdateStatus === 'error'" class="text-xs text-red-500 dark:text-red-400 mt-1">
+                {{ translations.emailDisposableUpdateError }}
+              </p>
+              <p v-else-if="mailSiteRemoteInfo" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ translations.emailDisposableUpdateSuccess }}: {{ mailSiteRemoteInfo.count }} ({{ new Date(mailSiteRemoteInfo.updatedAt).toLocaleDateString() }})
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1351,7 +1843,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                    read as setup the user forgot to do. On a browser without a
                    history API there was no such run, and the status line below
                    is the whole story -->
-              <p v-if="canImportHistory" class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              <p v-if="canImportHistory" class="hint text-xs text-gray-500 dark:text-gray-400 mb-2">
                 {{ translations.importHistoryIntro }}
               </p>
               <div class="flex items-start gap-2 mb-3">
@@ -1373,17 +1865,17 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               </div>
               <button
                 class="btn-primary w-full"
-                :disabled="isImporting || !canImportHistory" @click="importHistory('full')"
+                :disabled="isImporting || !canImportHistory" @click="importHistory()"
               >
                 <template v-if="!isImporting">
-                  {{ translations.importHistoryFull }}
+                  {{ importButtonLabel }}
                 </template>
                 <template v-else>
                   {{ translations.importing }} {{ importProgress.current }}/{{ importProgress.total }}
                 </template>
               </button>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {{ translations.importHistoryFullDesc }}
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ translations.importHistoryRunDesc }}
               </p>
               <div v-if="isImporting" class="w-full h-1 mt-2 bg-gray-200 rounded-full overflow-hidden">
                 <div
@@ -1399,18 +1891,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 {{ translations.cancel }}
               </button>
               <!-- Unlike the automatic import, this one runs in the page and dies with it -->
-              <p v-if="isImporting" class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              <p v-if="isImporting" class="hint text-xs text-gray-500 dark:text-gray-400 mt-2">
                 {{ translations.importKeepPageOpen }}
-              </p>
-
-              <button
-                class="btn-ghost w-full mt-3"
-                :disabled="isImporting || !canImportHistory" @click="importHistory('quick')"
-              >
-                {{ translations.importHistoryQuick }}
-              </button>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {{ translations.importHistoryQuickDesc }}
               </p>
             </div>
 
@@ -1434,13 +1916,6 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     >
                     <span class="ml-2 text-sm">{{ translations.allSettings }}</span>
                   </label>
-                  <label class="flex items-start">
-                    <input
-                      v-model="resetSelections.customShorteners" type="checkbox"
-                      class="h-4 w-4 flex-shrink-0 rounded" style="accent-color: #3b82f6;"
-                    >
-                    <span class="ml-2 text-sm">{{ translations.linkShortUrlResetCustom }}</span>
-                  </label>
                 </div>
               </div>
 
@@ -1451,7 +1926,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               >
                 {{ translations.resetSelectedData }}
               </button>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {{ translations.selectDataToReset }}
               </p>
             </div>
@@ -1463,7 +1938,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
              enough to show the contents. Last child and out of the flow, so the
              column above is laid out exactly as it was without it – hence the
              forced margin reset, which the column's own spacing would undo. -->
-        <div class="hidden xl:block absolute right-full top-0 h-full w-52 pr-8 !mt-0">
+        <div class="hidden xl:block absolute right-full top-0 h-full w-64 pr-8 !mt-0">
           <SectionNav
             :sections="sections" :active-id="activeSection"
             :heading="translations.onThisPage" class="sticky top-10"
@@ -1489,9 +1964,6 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         <li v-if="resetSelections.settings">
           {{ translations.allSettings }}
         </li>
-        <li v-if="resetSelections.customShorteners">
-          {{ translations.linkShortUrlResetCustom }}
-        </li>
       </ul>
       <p class="text-sm text-gray-600 dark:text-gray-300 mb-6">
         {{ translations.cannotBeUndone }}!
@@ -1515,6 +1987,16 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 </template>
 
 <style>
+/**
+ * The explanation under a setting, hidden in one place rather than by a `v-if`
+ * on each of the forty of them. Marked by hand, so a line that reports state –
+ * when a list was last updated, what this device can do – keeps its place on a
+ * compact page.
+ */
+.hints-hidden .hint {
+  display: none;
+}
+
 input[type="number"] {
   appearance: textfield;
   -moz-appearance: textfield;

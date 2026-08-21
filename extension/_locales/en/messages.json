@@ -60,23 +60,107 @@
     "description": "Heading of the settings page table of contents"
   },
   "generalSettings": {
-    "message": "General settings",
-    "description": "Title for general settings section"
+    "message": "General",
+    "description": "Title for general settings section, in a table of contents where every entry is a section of the settings"
   },
-  "safetyLevels": {
-    "message": "When to treat a site as familiar",
-    "description": "Title for safety levels section"
+  "familiaritySettings": {
+    "message": "Familiarity rules",
+    "description": "Title of the familiarity rules section"
   },
-  "visitsThreshold": {
-    "message": "Visits count threshold",
-    "description": "Label for visits threshold input"
+  "familiarityIntro": {
+    "message": "Everything else follows from one verdict: whether you already know a site. Warnings, the badge colour, link checks and the paste hold all read the answer from here. Pick which evidence counts, and how much of it has to agree.",
+    "description": "Intro text for the familiarity section"
   },
-  "visitsThresholdDesc": {
-    "message": "A site you have visited fewer times than this counts as unfamiliar and can be warned about. A higher number means more warnings and more caution, a lower one means fewer interruptions. Visits imported from your browser history count towards this, so sites you have used for a long time usually start out familiar.",
-    "description": "Description for visits threshold"
+  "familiarityVisits": {
+    "message": "Visits",
+    "description": "Title of the visit-count criterion"
+  },
+  "familiarityVisitsDesc": {
+    "message": "How many times you have opened the site. Two visits within a minute of each other count as one, so reloading a page does not inflate it.",
+    "description": "Description of the visit-count criterion"
+  },
+  "familiarityActiveDays": {
+    "message": "Active days",
+    "description": "Title of the active-days criterion"
+  },
+  "familiarityActiveDaysDesc": {
+    "message": "How many separate days you have been there. Ten visits in one afternoon are a single day, which is not what a site you use every week looks like.",
+    "description": "Description of the active-days criterion"
+  },
+  "familiarityAge": {
+    "message": "Known for",
+    "description": "Title of the first-visit age criterion"
+  },
+  "familiarityAgeDesc": {
+    "message": "How long ago your first recorded visit was. A domain registered last week cannot clear this one at all.",
+    "description": "Description of the first-visit age criterion"
+  },
+  "familiarityAtLeastLabel": {
+    "message": "at least",
+    "description": "Prefix for a criterion threshold input"
+  },
+  "familiarityVisitsUnit": {
+    "message": "visits",
+    "description": "Unit after the visit threshold"
+  },
+  "familiarityDaysUnit": {
+    "message": "days",
+    "description": "Unit after a threshold counted in days"
+  },
+  "familiarityRequiredAtLeast": {
+    "message": "Required at least:",
+    "description": "Tooltip prefix showing what a criterion asks for"
+  },
+  "familiarityModeLabel": {
+    "message": "How many checks have to pass",
+    "description": "Label for the familiarity mode select"
+  },
+  "familiarityModeAll": {
+    "message": "All of the enabled checks",
+    "description": "Familiarity mode: every enabled criterion"
+  },
+  "familiarityModeAny": {
+    "message": "Any one of them",
+    "description": "Familiarity mode: a single criterion is enough"
+  },
+  "familiarityModeAtLeast": {
+    "message": "A set number of them",
+    "description": "Familiarity mode: a chosen number of criteria"
+  },
+  "familiarityModeAtLeastLabel": {
+    "message": "Checks that must pass",
+    "description": "Label for the number of criteria required"
+  },
+  "familiaritySummaryAll": {
+    "message": "A site is familiar once every enabled check below passes.",
+    "description": "Summary of the familiarity rule, all mode"
+  },
+  "familiaritySummaryAny": {
+    "message": "A site is familiar as soon as any one check below passes.",
+    "description": "Summary of the familiarity rule, any mode"
+  },
+  "familiaritySummaryAtLeast": {
+    "message": "A site is familiar once at least {n} of the checks below pass.",
+    "description": "Summary of the familiarity rule, chosen-number mode"
+  },
+  "familiarityKeepOne": {
+    "message": "At least one check has to stay on.",
+    "description": "Why the last enabled checkbox cannot be cleared"
+  },
+  "familiarityNeedsImportTitle": {
+    "message": "Some sites have no dates on record",
+    "description": "Title of the warning about records missing the newer fields"
+  },
+  "familiarityNeedsImportText": {
+    "message": "sites are stored without an active-day count or a first-visit date, so they cannot pass those checks yet. A full history import fills them in.",
+    "description": "Body of the warning about records missing the newer fields"
+  },
+  "familiarityNeedsImportLink": {
+    "message": "Go to history import",
+    "description": "Link from the familiarity section to the import controls"
   },
   "displaySettings": {
-    "message": "Icon display settings",
+    "message": "Toolbar icon",
     "description": "Title for display settings section"
   },
   "displaySettingsPinNote": {
@@ -92,15 +176,39 @@
     "description": "Description for dynamic icon setting"
   },
   "showBadge": {
-    "message": "Visit counter on icon",
+    "message": "Counter on icon",
     "description": "Label for badge toggle"
   },
+  "badgeContentLabel": {
+    "message": "What the counter shows",
+    "description": "Label of the select that picks the number drawn on the icon"
+  },
+  "badgeContentDesc": {
+    "message": "Only the number inside the badge – its colour is the whole familiarity verdict either way. The list holds the checks you judge sites by, so switching one off in the familiarity rules takes it out of here too.",
+    "description": "Description of the badge content select"
+  },
+  "badgeContentVisits": {
+    "message": "Visits",
+    "description": "Badge shows the visit count"
+  },
+  "badgeContentActiveDays": {
+    "message": "Active days",
+    "description": "Badge shows the number of separate days the site was visited"
+  },
+  "badgeContentAge": {
+    "message": "Days known",
+    "description": "Badge shows how long ago the first visit was"
+  },
+  "badgeContentChecks": {
+    "message": "Passed checks",
+    "description": "Badge shows how many familiarity checks the site passes, as 2/3"
+  },
   "showBadgeDesc": {
-    "message": "Shows the visit count for the current site on the extension icon. The quickest way to see how well Visilant knows where you are, without opening anything.",
+    "message": "Shows a number for the current site on the extension icon. The quickest way to see how well Visilant knows where you are, without opening anything.",
     "description": "Description for badge setting"
   },
   "notificationSettings": {
-    "message": "Notification settings",
+    "message": "Notifications",
     "description": "Title for notification settings section"
   },
   "showWarningNotification": {
@@ -148,11 +256,11 @@
     "description": "Text shown while importing"
   },
   "importHistoryIntro": {
-    "message": "Your browser history was imported automatically when Visilant was installed, dates and all. The buttons below only re-run that.",
+    "message": "Your browser history was imported automatically when Visilant was installed, down to the date you first opened each site and the number of separate days you have been there. It is read on this device and kept on it – nothing is uploaded anywhere, and no site is contacted. The button below only re-runs that.",
     "description": "Note above the manual import buttons, explaining the automatic import already ran"
   },
   "importStatusNever": {
-    "message": "Nothing imported yet, so every site counts as unfamiliar. Run the full import below.",
+    "message": "Nothing imported yet, so every site counts as unfamiliar. Run the import below.",
     "description": "Import status: nothing has ever been imported"
   },
   "importStatusRunning": {
@@ -164,11 +272,11 @@
     "description": "Import status: everything imported, dates included"
   },
   "importStatusPartial": {
-    "message": "Visit counts are in, so warnings work correctly, but no full pass has finished, so first-visit dates and active days are still blank. Run the full import to fill them in.",
+    "message": "Visit counts are in, so warnings work correctly, but no full pass has finished, so first-visit dates and active days are still blank. Run the import to fill them in.",
     "description": "Import status: counts imported but no full pass ever finished"
   },
   "importStatusInterrupted": {
-    "message": "An import was cut short and has not been picked up again. Run the full import to finish it, it continues from where it stopped.",
+    "message": "An import was cut short and has not been picked up again. Run the import to finish it, it continues from where it stopped.",
     "description": "Import status: an import was cut short and never resumed"
   },
   "importStatusCancelled": {
@@ -176,7 +284,7 @@
     "description": "Import status: the user stopped the import"
   },
   "importStatusFailed": {
-    "message": "The last import ended with an error. Run the full import to try again.",
+    "message": "The last import ended with an error. Run the import to try again.",
     "description": "Import status: the import ended in an error"
   },
   "importStatusUnsupported": {
@@ -195,21 +303,17 @@
     "message": "sites",
     "description": "Unit after the number of sites stored by the last import"
   },
-  "importHistoryFull": {
-    "message": "Full import",
-    "description": "Label for the full history import button"
+  "importHistoryRun": {
+    "message": "Re-import history",
+    "description": "Label for the history import button"
   },
-  "importHistoryFullDesc": {
-    "message": "Reads every recorded visit, so first-visit dates and active days become real numbers instead of blanks. Worth running if the automatic import did not finish. Slower on a large history – you can cancel at any time.",
-    "description": "Description of the full history import"
+  "importHistoryFirstRun": {
+    "message": "Import history",
+    "description": "Label for the same button while nothing has been imported yet, so there is nothing to re-do"
   },
-  "importHistoryQuick": {
-    "message": "Refresh from history",
-    "description": "Label for the quick history re-import button"
-  },
-  "importHistoryQuickDesc": {
-    "message": "Re-reads the summary the browser keeps for each page. Use it if history synced in from another device, or if this profile was empty when Visilant was installed. Safe to repeat – counts are matched, not added up.",
-    "description": "Description of the quick history re-import"
+  "importHistoryRunDesc": {
+    "message": "Runs the same two passes the automatic import ran. First the summary the browser keeps for each page, which brings visit counts up to date in a moment. Then every recorded visit, one page at a time, which is the only place first-visit dates and active days can come from – slower on a large history, and you can cancel at any point without losing what it has already read. Worth running if the automatic import did not finish, or if history has synced in from another device since. Safe to repeat: counts are matched, not added up.",
+    "description": "Description of the history import button"
   },
   "firstSeenLabel": {
     "message": "First known visit",
@@ -464,7 +568,7 @@
     "description": "Domain format button tooltip while showing punycode"
   },
   "highlightingLegend": {
-    "message": "Latin: plain\nBlue: numbers (0-9)\nBold: separators (-_.)\nRed: everything else",
+    "message": "No highlighting: Latin letters and separators (-_.)\nBlue: numbers (0-9)\nRed: everything else",
     "description": "What each highlight colour means, appended to the button tooltip"
   },
   "domainOriginal": {
@@ -494,10 +598,6 @@
   "visitWebsite": {
     "message": "Visit a website to see stats",
     "description": "Message when no current hostname"
-  },
-  "defaultSafetyThreshold": {
-    "message": "Default: 10",
-    "description": "Placeholder for safety threshold input"
   },
   "logoAlt": {
     "message": "Visilant logo",
@@ -648,7 +748,7 @@
     "description": "Explanation for resolve-any option"
   },
   "linkShortUrlListUpdateUrl": {
-    "message": "Remote shortener lists",
+    "message": "Shortener list sources",
     "description": "Label for remote list URLs textarea"
   },
   "linkShortUrlListUpdateUrlDesc": {
@@ -871,14 +971,6 @@
     "message": "Real destination:",
     "description": "Label for real destination in intercept dialog"
   },
-  "linkShortUrlResetCustom": {
-    "message": "Custom shortener domains",
-    "description": "Button to clear user-defined shortener domains"
-  },
-  "linkShortUrlResetCustomDesc": {
-    "message": "Clear all domains you manually marked as shorteners",
-    "description": "Description for reset custom shorteners button"
-  },
   "linkTooltipResolveOnce": {
     "message": "Show real destination (once)",
     "description": "Button to resolve URL once without marking domain as shortener"
@@ -896,7 +988,7 @@
     "description": "Description for custom shortener domains textarea"
   },
   "antiTamperingSettings": {
-    "message": "Anti-tampering protection",
+    "message": "Anti-tampering",
     "description": "Title for anti-tampering settings section"
   },
   "antiTamperingSettingsDesc": {
@@ -1076,7 +1168,7 @@
     "description": "Hint for disposable addresses"
   },
   "emailListsTitle": {
-    "message": "Email address checking",
+    "message": "Email addresses",
     "description": "Options section header for email domain lists"
   },
   "emailListsDesc": {
@@ -1084,7 +1176,7 @@
     "description": "Options section description"
   },
   "emailCustomPublicLabel": {
-    "message": "Add public email services",
+    "message": "Public email services",
     "description": "Label for the custom public providers textarea"
   },
   "emailCustomPublicDesc": {
@@ -1092,7 +1184,7 @@
     "description": "Description for the custom public providers textarea"
   },
   "emailCustomDisposableLabel": {
-    "message": "Add disposable mail domains",
+    "message": "Disposable mail domains",
     "description": "Label for the custom disposable textarea"
   },
   "emailCustomDisposableDesc": {
@@ -1100,7 +1192,7 @@
     "description": "Description for the custom disposable textarea"
   },
   "emailDisposableUpdateUrlLabel": {
-    "message": "Disposable list update URL",
+    "message": "Disposable list sources",
     "description": "Label for the remote disposable list URL input"
   },
   "emailDisposableUpdateUrlDesc": {
@@ -1148,20 +1240,28 @@
     "description": "Caveat under the third-party lookup links"
   },
   "lookupServicesLabel": {
-    "message": "Lookup links",
+    "message": "External lookups",
     "description": "Options label for the editable service list"
   },
   "lookupServicesDesc": {
-    "message": "One per line, as Name | https://example.com/check/{domain}. The {domain} placeholder is replaced with the domain being checked. Delete any line you do not want, or clear the field to show no links at all. Only https links containing the placeholder are accepted.",
+    "message": "One per line, as Name = https://example.com/check/{domain}. The {domain} placeholder is replaced with the domain being checked. Delete any line you do not want, or clear the field to show no links at all. Only https links containing the placeholder are accepted.",
     "description": "Options description for the editable service list"
   },
   "lookupServicesNote": {
     "message": "These are links, not integrations: nothing is requested until you click one, so no API keys are involved and no service sees anything unless you choose to visit it.",
     "description": "Explains why links rather than API calls"
   },
-  "lookupServicesReset": {
-    "message": "Restore built-in list",
-    "description": "Button that puts the shipped lookup links back"
+  "optionsVerbose": {
+    "message": "Explanations",
+    "description": "Label of the toggle that shows or hides the descriptions on the settings page"
+  },
+  "optionsVerboseDesc": {
+    "message": "Every setting here comes with a line saying what it does. Switch these off and the page becomes a short list of controls – worth doing once you know what each one means, because nothing will be left to remind you. This only affects the settings page.",
+    "description": "Description of the explanations toggle, which stays visible in either mode"
+  },
+  "sectionReset": {
+    "message": "Reset this section to its defaults",
+    "description": "Tooltip of the reset button in the corner of every settings section"
   },
   "emailDisposableSources": {
     "message": "sources",
@@ -1298,5 +1398,37 @@
   "welcomeDefaultsBody": {
     "message": "The defaults are meant to suit most people, but they were picked by one person, largely around how that person browses. Visilant collects no telemetry – there is no way to see how anyone else has things set, and so no way to know what a better default would even be. Spend a couple of minutes in the settings: what warns you, when, and how loudly is all adjustable, and reading through it is also the fastest way to understand how the extension works.",
     "description": "Why the defaults are a guess and worth reviewing"
+  },
+  "emailMailSitesLabel": {
+    "message": "Mail provider sites",
+    "description": "Label for the editable mapping of a mail domain to the site it is read on"
+  },
+  "emailMailSitesDesc": {
+    "message": "Nobody ever opens gmail.com – Gmail is read on mail.google.com – so an address domain collects no visits of its own. One mapping per line, as \"gmail.com = mail.google.com\". Well-known providers are mapped already, and lines here add to them.",
+    "description": "Explanation under the mail-site mapping field"
+  },
+  "emailMailSitesUpdateUrlLabel": {
+    "message": "Mail provider site sources",
+    "description": "Label for remote sources of the mail-site mapping"
+  },
+  "emailMailSitesUpdateUrlDesc": {
+    "message": "One URL per line, each a list of the same mapping lines. Empty by default – no public list of this kind exists, so this is here for anyone who keeps one.",
+    "description": "Explanation under the remote mail-site source field"
+  },
+  "mailSiteLabel": {
+    "message": "Mail read on",
+    "description": "Heading above the sites an address domain's mail is actually read on"
+  },
+  "mailSiteNote": {
+    "message": "An address domain is not a site anyone opens, so it never collects visits. The mail is read on the site above, and those visits are the ones worth reading.",
+    "description": "Note under the mail-site list in the check panel"
+  },
+  "familiarityNoDatesTitle": {
+    "message": "Some sites are older than the browser remembers",
+    "description": "Title of the warning shown when a full import has run and dates are still missing"
+  },
+  "familiarityNoDatesText": {
+    "message": "sites have no active-day count and no first-visit date, and the browser history no longer reaches them – it does not go back that far, or it was cleared since. The full import has already run, so nothing can fill these in, and those two checks will keep failing for them. Only the visit count still speaks for these sites.",
+    "description": "Body of the warning shown when a full import has run and dates are still missing"
   }
 }
