@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import type { FamiliarityCriterionId, FamiliarityStats } from '~/logic/familiarity'
 import type { SiteVisitData } from '~/logic/storage'
 import punycode from 'punycode'
 import { getDomain } from 'tldts'
 import { computed, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
+import { aggregateFamiliarityStats, evaluateFamiliarity, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { isolatePageZoom } from '~/logic/page-zoom'
+import { popupWidthCap } from '~/logic/platform'
 import { settings } from '~/logic/storage'
 import { isTrackableHostname } from '~/logic/visit-stats'
 import Logo from '../components/Logo.vue'
@@ -70,6 +73,8 @@ function updateTranslations() {
     'externalLookupsCaveat',
     'untrackedHostTitle',
     'untrackedHostText',
+    'familiarityRequiredAtLeast',
+    'familiarityDaysUnit',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -83,6 +88,11 @@ function updateTranslations() {
 watch([loadedTranslations, isLoaded], () => {
   updateTranslations()
 }, { immediate: true })
+
+// The cap the popup column is held to, read once from the screen rather than
+// from the viewport – see popupWidthCap
+const widthCap = popupWidthCap()
+const popupMaxWidth = Number.isFinite(widthCap) ? `${widthCap}px` : undefined
 
 const isStandalonePage = ref(false)
 // The same document serves as the browser's own popup and, opened by URL, as an
@@ -146,19 +156,45 @@ const currentStats = computed<SiteVisitData | undefined>(() => {
   if (!records.length)
     return undefined
 
-  const firstSeen = records.map(r => r.firstSeen).filter((value): value is number => typeof value === 'number')
-  // Active days overlap between subdomains, so the largest is a lower bound –
-  // summing them would count the same day several times
-  const activeDays = records.map(r => r.activeDays).filter((value): value is number => typeof value === 'number')
+  // Folded the same way the familiarity check folds a family: visits add up,
+  // active days take the largest single member and the first visit the earliest
+  const aggregated = aggregateFamiliarityStats(records)
 
   return {
-    count: records.reduce((total, r) => total + r.count, 0),
+    count: aggregated.count,
     lastSeen: Math.max(...records.map(r => r.lastSeen)),
-    firstSeen: firstSeen.length ? Math.min(...firstSeen) : undefined,
-    activeDays: activeDays.length ? Math.max(...activeDays) : undefined,
+    firstSeen: aggregated.firstSeen,
+    activeDays: aggregated.activeDays,
     ignored: false,
   }
 })
+
+const familiarityRules = computed(() => normalizeFamiliarity(settings.value.familiarity))
+
+/** Which of the user's checks this address passes, and whether that is enough. */
+const currentVerdict = computed(() =>
+  evaluateFamiliarity(currentStats.value ?? { count: 0 }, familiarityRules.value))
+
+/**
+ * The outcome of one check, or undefined when the user has it switched off.
+ *
+ * Drives the colour on the facts below: a number that has no say in the verdict
+ * is left uncoloured rather than being tinted as if it did.
+ */
+function criterionOutcome(id: FamiliarityCriterionId) {
+  return currentVerdict.value.criteria.find(outcome => outcome.id === id)
+}
+
+function criterionColor(id: FamiliarityCriterionId) {
+  const outcome = criterionOutcome(id)
+  if (!outcome)
+    return ''
+  return outcome.met ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
+}
+
+/** The whole domain family's facts, for the cumulative row. */
+const familyStats = computed(() =>
+  aggregateFamiliarityStats(subdomains.value.map(domain => visits.value[domain])))
 
 // The domain display is deliberately wide – a hyperlegible face at 0.25em letter
 // spacing – so a long hostname cannot fit at the headline size. Stepping the size
@@ -297,9 +333,12 @@ function toggleAntiTampering() {
   }
 }
 
-function getCountColor(count: number) {
-  const threshold = settings.value.safety
-  return count >= threshold ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
+// Green means "familiar" under the user's rules, which visits alone no longer
+// decide once active days or age are switched on
+function getCountColor(stats: FamiliarityStats | undefined) {
+  return isFamiliar(stats ?? { count: 0 }, familiarityRules.value)
+    ? 'text-green-600 dark:text-green-400'
+    : 'text-red-500 dark:text-red-400'
 }
 
 function toggleDomainCase() {
@@ -415,14 +454,17 @@ onMounted(async () => {
   <div :class="isStandalonePage ? 'min-h-screen flex justify-center bg-gray-50 dark:bg-gray-900 py-8' : ''">
     <!-- The 600px column is the desktop popup, whose window sizes itself to the
          document. Firefox for Android has no such window – the popup is a panel
-         the width of the screen, so the column has to be capped at the viewport
+         the width of the screen, so the column has to be capped at the display
          or the whole dashboard hangs off the right edge -->
     <main
       class="px-4 py-5 text-gray-700 dark:text-gray-200 relative"
       :class="isStandalonePage
         ? 'w-full max-w-[600px] bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700'
-        : (isTabView ? 'w-full' : 'w-[600px] max-w-[100vw]')"
-      :style="{ fontSize: `${settings.popupFontSize}%` }"
+        : (isTabView ? 'w-full' : 'w-[600px]')"
+      :style="{
+        fontSize: `${settings.popupFontSize}%`,
+        ...(isPageView ? {} : { maxWidth: popupMaxWidth }),
+      }"
     >
       <div class="flex justify-between items-center mb-4">
         <Logo class="h-8 w-auto" />
@@ -504,7 +546,7 @@ onMounted(async () => {
             >
               –
             </div>
-            <div v-else class="font-mono font-bold" style="font-size: 1.3em;" :class="getCountColor(currentDomainCount)">
+            <div v-else class="font-mono font-bold" style="font-size: 1.3em;" :class="getCountColor(currentStats)">
               {{ currentDomainCount }}
             </div>
           </div>
@@ -538,8 +580,15 @@ onMounted(async () => {
               <div class="uppercase tracking-wider opacity-50">
                 {{ translations.firstSeenLabel }}
               </div>
-              <div v-if="currentStats.firstSeen">
+              <div
+                v-if="currentStats.firstSeen"
+                :class="criterionColor('age')"
+                :title="criterionOutcome('age') ? `${translations.familiarityRequiredAtLeast} ${criterionOutcome('age')!.required} ${translations.familiarityDaysUnit}` : undefined"
+              >
                 {{ formatTimestamp(currentStats.firstSeen) }}
+                <span v-if="criterionOutcome('age')" class="opacity-70">
+                  ({{ criterionOutcome('age')!.value }} {{ translations.familiarityDaysUnit }})
+                </span>
               </div>
               <div v-else class="opacity-40 italic" :title="translations.statsImportHint">
                 {{ translations.statsUnknown }}
@@ -555,7 +604,11 @@ onMounted(async () => {
               <div class="uppercase tracking-wider opacity-50">
                 {{ translations.activeDaysLabel }}
               </div>
-              <div v-if="currentStats.activeDays">
+              <div
+                v-if="currentStats.activeDays"
+                :class="criterionColor('activeDays')"
+                :title="criterionOutcome('activeDays') ? `${translations.familiarityRequiredAtLeast} ${criterionOutcome('activeDays')!.required}` : undefined"
+              >
                 {{ currentStats.activeDays }}
               </div>
               <div v-else class="opacity-40 italic" :title="translations.statsImportHint">
@@ -595,7 +648,7 @@ onMounted(async () => {
           <div class="mb-2">
             <div class="flex justify-between items-center uppercase tracking-wider mb-1" style="font-size: 0.75em;">
               <span class="opacity-50">{{ translations.baseDomain }}</span>
-              <span class="font-mono font-bold" :class="getCountColor(cumulativeCount)">{{ translations.total }}{{ cumulativeCount }}</span>
+              <span class="font-mono font-bold" :class="getCountColor(familyStats)">{{ translations.total }}{{ cumulativeCount }}</span>
             </div>
             <div class="secure-domain-display font-bold break-words" style="font-size: 1.1em;">
               <SecureText :text="baseDomain" />
@@ -674,7 +727,7 @@ onMounted(async () => {
                 <SecureText :text="displayDomain(domain)" />
                 <span v-if="domain === currentHostname" class="ml-1 text-[10px] text-blue-500 bg-blue-100 dark:bg-blue-900/40 dark:text-blue-300 px-1 rounded font-sans">{{ translations.current }}</span>
               </span>
-              <span class="font-mono font-bold" :class="getCountColor(visits[domain]?.count)">
+              <span class="font-mono font-bold" :class="getCountColor(visits[domain])">
                 {{ visits[domain]?.count || 0 }}
               </span>
             </div>

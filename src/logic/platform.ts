@@ -42,3 +42,16 @@ export function supportsHover(): boolean {
 export function resolveTooltipTrigger(trigger: TooltipTrigger): TooltipTrigger {
   return supportsHover() ? trigger : 'click-left'
 }
+
+/**
+ * The widest the popup may lay itself out, in CSS pixels.
+ *
+ * Measured against the screen, never the viewport. A desktop popup window sizes
+ * itself to the document, so `100vw` there is the width the document has just
+ * asked for: the two chase each other down and the dashboard collapses to the
+ * minimum. The screen does not move, and on a phone – where the popup is a
+ * panel the full width of the display – it is exactly the cap that is needed.
+ */
+export function popupWidthCap(): number {
+  return window.screen?.width || Number.POSITIVE_INFINITY
+}

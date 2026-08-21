@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { HistoryImportState } from '~/logic/history-import'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import logo from '~/assets/logo.svg'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
 import { HISTORY_IMPORT_STATE_KEY, readHistoryImportState } from '~/logic/history-import'
@@ -161,7 +160,7 @@ function close() {
 
     <div v-else class="max-w-xl mx-auto space-y-6">
       <div class="text-center">
-        <img :src="logo" style="max-width: 300px;" class="mx-auto" :alt="t('extensionName')">
+        <Logo style="max-width: 300px;" class="mx-auto" />
         <h1 class="text-xl font-bold">
           {{ t('welcomeTitle') }}
         </h1>
