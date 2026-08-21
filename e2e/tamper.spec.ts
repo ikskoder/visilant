@@ -7,7 +7,7 @@
  * the rest of the file proves nothing.
  */
 import { expect, test } from './fixtures'
-import { blankPage, serveSite, sw } from './helpers'
+import { blankPage, inWorker, serveSite } from './helpers'
 
 // Evaluated inside the extension's service worker, where the MV3 API lives
 declare const chrome: any
@@ -30,16 +30,21 @@ async function openHostilePage(context: any) {
   return page
 }
 
-/** handleTampering() in the background paints the badge with !!! */
+/**
+ * handleTampering() in the background paints the badge with !!!
+ *
+ * The tab is found by its address rather than by being the active one. A whole
+ * suite run leaves other pages open, and the badge of whichever tab happened to
+ * have focus says nothing about this one – which is how this file used to fail
+ * once in a full run and pass on its own.
+ */
 async function alarmRaised(context: any) {
-  const worker = await sw(context)
-
-  return worker.evaluate(async () => {
-    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  return inWorker(context, async (url: string) => {
+    const tabs = await chrome.tabs.query({ url })
     if (!tabs[0]?.id)
       return 'no-tab'
     return chrome.action.getBadgeText({ tabId: tabs[0].id })
-  })
+  }, `${HOSTILE_URL}*`)
 }
 
 async function attack(page: any, script: string, settleFirst = 1500) {

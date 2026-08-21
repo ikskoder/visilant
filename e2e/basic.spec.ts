@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures'
-import { blankPage, seedVisits, serveSite } from './helpers'
+import { blankPage, inWorker, patchSettings, seedVisits, serveSite } from './helpers'
 
 // Made-up hostnames served by the test itself. Nothing here touches the network:
 // a real site can go down, change its markup or – worse – quietly become a site
@@ -100,7 +100,9 @@ test('popup sort controls are visible for domain with data', async ({ page, exte
 
 test('options page loads with logo and settings title', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
-  await expect(page.locator('img[alt]').first()).toBeVisible({ timeout: 5000 })
+  // The logo is drawn into the page rather than loaded as an image, so that the
+  // theme can repaint the wordmark
+  await expect(page.locator('[role="img"][aria-label]').first()).toBeVisible({ timeout: 5000 })
 })
 
 test('options page has safety threshold input', async ({ page, extensionId }) => {
@@ -109,15 +111,6 @@ test('options page has safety threshold input', async ({ page, extensionId }) =>
   await expect(thresholdInput).toBeVisible({ timeout: 5000 })
   // Default threshold should be 10
   await expect(thresholdInput).toHaveValue('10')
-})
-
-test('options page has language selector', async ({ page, extensionId }) => {
-  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
-  const langSelect = page.locator('select').first()
-  await expect(langSelect).toBeVisible({ timeout: 5000 })
-  // Should have 3 language options
-  const options = langSelect.locator('option')
-  await expect(options).toHaveCount(3)
 })
 
 // ==========================================
@@ -222,12 +215,14 @@ test('scope domain list appears when whitelist selected', async ({ page, extensi
 // Buttons are found by their wording rather than by a colour class: the styling
 // moved into `btn-primary` / `btn-danger` utilities once and would do so again
 
-test('options page offers both history imports and says one already ran', async ({ page, extensionId }) => {
+test('options page offers one history import and says it already ran', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
   await page.waitForTimeout(1000)
 
-  await expect(page.locator('button', { hasText: 'Full import' })).toBeVisible({ timeout: 5000 })
-  await expect(page.locator('button', { hasText: 'Refresh from history' })).toBeVisible()
+  // One button, which runs both passes in turn. Two of them only asked the user
+  // to answer a question about browser APIs
+  await expect(page.locator('button', { hasText: 'Re-import history' })).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('#section-data button')).toHaveCount(2)
   // The automatic import means these buttons are a re-run, not setup that was missed
   await expect(page.locator('text=imported automatically when Visilant was installed')).toBeVisible()
 })
@@ -269,8 +264,9 @@ test('reset asks before it wipes, and only for what was ticked', async ({ page, 
 
 test('anti-tampering excluded domains textarea exists', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
-  // Anti-tampering textarea – its placeholder starts with "example.com"
-  const textarea = page.locator('textarea[placeholder^="example.com"]')
+  // Anti-tampering textarea, scoped to its own card – other sections have
+  // example.com in a placeholder too
+  const textarea = page.locator('#section-tampering textarea')
   await expect(textarea).toBeVisible({ timeout: 5000 })
 })
 
@@ -402,65 +398,6 @@ test('safety threshold persists after page reload', async ({ page, extensionId }
 })
 
 // ==========================================
-// Cross-component: language switching
-// ==========================================
-
-test('changing language in options switches popup to that language', async ({ page, extensionId, context }) => {
-  // Open options, switch to Russian
-  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
-  await page.waitForTimeout(1500)
-
-  const langSelect = page.locator('select').first()
-  await langSelect.selectOption('ru')
-  await page.waitForTimeout(1000)
-
-  // Options headings should now be in Russian. Named by role, since the same
-  // words also appear as entries in the page contents.
-  await expect(page.getByRole('heading', { name: 'Общие настройки' })).toBeVisible({ timeout: 5000 })
-  await expect(page.getByRole('heading', { name: 'Настройки уведомлений' })).toBeVisible({ timeout: 3000 })
-
-  // Open popup – it should also be in Russian
-  const popup = await context.newPage()
-  await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html`)
-  await popup.waitForTimeout(1500)
-
-  // "Visit a website" in Russian
-  await expect(popup.locator('text=Посетите веб-сайт')).toBeVisible({ timeout: 5000 })
-  await popup.close()
-
-  // Switch back to English
-  await langSelect.selectOption('en')
-  await page.waitForTimeout(1000)
-  await expect(page.getByRole('heading', { name: 'General settings' })).toBeVisible({ timeout: 5000 })
-})
-
-test('changing language in options switches popup domain view to that language', async ({ page, extensionId, context }) => {
-  await seedVisits(context, SITE_HOST, 1)
-
-  // Switch to Russian in options
-  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
-  await page.waitForTimeout(1500)
-  await page.locator('select').first().selectOption('ru')
-  await page.waitForTimeout(1000)
-
-  // Open popup for a domain – labels should be in Russian
-  const popup = await context.newPage()
-  await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
-  await popup.waitForTimeout(1500)
-
-  // Opened with ?domain=, so this is the standalone page, where the heading is
-  // "checked domain" rather than "current domain"
-  await expect(popup.locator('text=Проверяемый домен')).toBeVisible({ timeout: 5000 })
-  // Anti-tampering status in Russian
-  await expect(popup.locator('text=Защита от вмешательства')).toBeAttached({ timeout: 3000 })
-  await popup.close()
-
-  // Switch back to English
-  await page.locator('select').first().selectOption('en')
-  await page.waitForTimeout(1000)
-})
-
-// ==========================================
 // Cross-component: threshold affects popup colors
 // ==========================================
 
@@ -516,7 +453,7 @@ test('excluding domain in popup appears in options anti-tampering textarea', asy
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
   await page.waitForTimeout(1500)
 
-  const tamperingTextarea = page.locator('textarea[placeholder^="example.com"]')
+  const tamperingTextarea = page.locator('#section-tampering textarea')
   await expect(tamperingTextarea).toHaveValue(new RegExp(SITE_HOST.replace('.', '\\.')), { timeout: 5000 })
 
   // Clear it to reset
@@ -643,8 +580,8 @@ test('the options page has contents that scroll to a section', async ({ page, ex
   await page.waitForTimeout(1500)
 
   const nav = page.locator('nav').last()
-  await expect(nav.locator('a')).toHaveCount(8)
-  await expect(nav.locator('a').first()).toHaveText('General settings')
+  await expect(nav.locator('a')).toHaveCount(9)
+  await expect(nav.locator('a').first()).toHaveText('General')
 
   // Clicking is handled in script rather than by the link: fragment navigation
   // does nothing at all on an extension page
@@ -655,6 +592,53 @@ test('the options page has contents that scroll to a section', async ({ page, ex
   await expect(heading).toBeInViewport()
   // ...and the contents keep up with where the reader is
   await expect(nav.locator('a[aria-current]')).toHaveText('Your data')
+})
+
+/**
+ * Turn one familiarity check off the way a person does.
+ *
+ * The checkbox takes no pointer events – the whole card is the switch, so a miss
+ * still lands – which is exactly what `uncheck()` cannot cope with.
+ */
+async function clickCriterion(scope: any, index: number) {
+  await scope.locator('#section-familiarity .space-y-3 > div').nth(index).locator('span.text-sm.font-medium').click()
+}
+
+test('the familiarity section switches a check on and keeps the last one', async ({ page, extensionId }) => {
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(1500)
+
+  const section = page.locator('#section-familiarity')
+  const visits = section.locator('input[type="checkbox"]').nth(0)
+  const activeDays = section.locator('input[type="checkbox"]').nth(1)
+  const age = section.locator('input[type="checkbox"]').nth(2)
+
+  // All three count out of the box, and with company any of them can be cleared
+  await expect(visits).toBeChecked()
+  await expect(activeDays).toBeChecked()
+  await expect(age).toBeChecked()
+  await expect(visits).toBeEnabled()
+
+  await clickCriterion(page, 1)
+  await clickCriterion(page, 2)
+  await page.waitForTimeout(500)
+
+  // The last one left cannot be cleared – there would be no question left to answer
+  await expect(visits).toBeDisabled()
+  const stored = await page.evaluate(async () => {
+    const data = await chrome.storage.sync.get('settings')
+    return JSON.parse(data.settings).familiarity
+  })
+  expect(stored.activeDays.enabled).toBe(false)
+  expect(stored.visits).toEqual({ enabled: true, min: 10 })
+
+  // Asking for two of two is the mode written out, and the count follows what
+  // is actually enabled
+  await clickCriterion(page, 1)
+  await page.waitForTimeout(300)
+  await section.locator('select').first().selectOption('atLeast')
+  await page.waitForTimeout(300)
+  await expect(section.locator('text=/ 2')).toBeVisible()
 })
 
 test('the contents belong to the settings page and nowhere else', async ({ page, extensionId, context }) => {
@@ -669,4 +653,219 @@ test('the contents belong to the settings page and nowhere else', async ({ page,
     await expect(other.locator('text=On this page')).toHaveCount(0)
     await other.close()
   }
+})
+
+test('a section reset puts back that section and leaves the others alone', async ({ page, extensionId }) => {
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(1500)
+
+  const resetIn = (section: string) => page.locator(`#section-${section} button[aria-label]`).first()
+  // Nothing has been touched yet, so no reset has anything to do
+  await expect(resetIn('lookups')).toBeDisabled()
+
+  await page.locator('#section-lookups textarea').fill('Example | https://example.com/{domain}')
+  await page.locator('#section-tampering textarea').first().fill('spa.example')
+  await page.waitForTimeout(600)
+  await expect(resetIn('lookups')).toBeEnabled()
+
+  await resetIn('lookups').click()
+  await page.waitForTimeout(600)
+
+  const stored = await page.evaluate(async () => {
+    const data = await chrome.storage.sync.get('settings')
+    const parsed = JSON.parse(data.settings)
+    return { lines: parsed.lookupServices.split('\n').length, excluded: parsed.antiTamperingExcludedDomains }
+  })
+  // The shipped links are back, and the section next door still holds the
+  // domain that was typed into it
+  expect(stored.lines).toBeGreaterThan(1)
+  expect(stored.excluded).toBe('spa.example')
+  await expect(resetIn('lookups')).toBeDisabled()
+  await expect(resetIn('tampering')).toBeEnabled()
+
+  await resetIn('tampering').click()
+  await page.waitForTimeout(600)
+  await expect(page.locator('#section-tampering textarea').first()).toHaveValue('')
+})
+
+test('turning explanations off empties the settings page of them and nothing else', async ({ page, extensionId, context }) => {
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(1500)
+
+  const hints = page.locator('.hint')
+  const total = await hints.count()
+  expect(total).toBeGreaterThan(20)
+  await expect(hints.first()).toBeVisible()
+  const tall = await page.evaluate(() => document.body.scrollHeight)
+
+  // The toggle sits last in General, next to the theme picker
+  await page.locator('#section-general label.cursor-pointer').last().click()
+  await page.waitForTimeout(700)
+
+  // Still in the markup, just not taking up the page
+  await expect(hints).toHaveCount(total)
+  await expect(hints.first()).toBeHidden()
+  expect(await page.evaluate(() => document.body.scrollHeight)).toBeLessThan(tall)
+  // Its own description is the way back, so it stays
+  await expect(page.locator('#section-general p').last()).toBeVisible()
+
+  // The popup says what it says either way
+  const popup = await context.newPage()
+  await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html`)
+  await popup.waitForTimeout(1200)
+  await expect(popup.locator('.hint')).toHaveCount(0)
+  await popup.close()
+
+  await page.locator('#section-general label.cursor-pointer').last().click()
+  await page.waitForTimeout(700)
+  await expect(hints.first()).toBeVisible()
+})
+
+test('the badge draws whichever number the settings ask for', async ({ page, context }) => {
+  const DAY = 24 * 60 * 60 * 1000
+  await seedVisits(context, SITE_HOST, 42, { activeDays: 12, firstSeen: Date.now() - 30 * DAY })
+  await serveSite(page, SITE_URL)
+  await page.waitForTimeout(800)
+
+  // Read back what the record actually holds – the visit itself updates it, and
+  // the badge has to agree with the record rather than with the seed
+  const record: any = await inWorker(context, async (host: string) => {
+    const stored = await chrome.storage.local.get(host)
+    return stored[host]
+  }, SITE_HOST)
+
+  const badge = async (content: string) => {
+    await patchSettings(context, { badgeContent: content })
+    await page.reload()
+    await page.waitForTimeout(900)
+    return inWorker(context, async () => {
+      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+      return chrome.action.getBadgeText({ tabId: tabs[0].id })
+    })
+  }
+
+  expect(await badge('visits')).toBe(String(record.count))
+  expect(await badge('activeDays')).toBe(String(record.activeDays))
+  expect(await badge('age')).toBe(String(Math.floor((Date.now() - record.firstSeen) / DAY)))
+  // All three checks are on out of the box, and this record clears every one
+  expect(await badge('checks')).toBe('3/3')
+
+  // With a single check left on, counting them says nothing the colour has not
+  // already said, so the badge shows that check's own number
+  await patchSettings(context, {
+    familiarity: {
+      visits: { enabled: true, min: 10 },
+      activeDays: { enabled: false, min: 5 },
+      age: { enabled: false, min: 10 },
+      mode: 'all',
+      atLeast: 2,
+    },
+  })
+  expect(await badge('checks')).toBe(String(record.count))
+})
+
+test('the counter list holds only the checks the user judges sites by', async ({ page, extensionId }) => {
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(1500)
+
+  const select = page.locator('#section-display select')
+  await expect(select.locator('option')).toHaveText(['Visits', 'Active days', 'Days known', 'Passed checks'])
+
+  await select.selectOption('age')
+  await clickCriterion(page, 2)
+  await page.waitForTimeout(600)
+
+  // The check it named is gone from the list, and the box shows what the badge
+  // will actually draw rather than sitting empty
+  await expect(select.locator('option')).toHaveText(['Visits', 'Active days', 'Passed checks'])
+  await expect(select).toHaveValue('checks')
+
+  // One check left: there is nothing to choose between, so the whole thing goes
+  await clickCriterion(page, 1)
+  await page.waitForTimeout(600)
+  await expect(select).toBeHidden()
+})
+
+test('a familiarity check switches from anywhere on its card except the number', async ({ page, extensionId }) => {
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(1500)
+
+  const card = page.locator('#section-familiarity .space-y-3 > div').nth(1)
+  const box = page.locator('#section-familiarity .space-y-3 > div').nth(1).locator('input[type="checkbox"]')
+  await card.scrollIntoViewIfNeeded()
+  await expect(box).toBeChecked()
+
+  // The corner of the card, well away from the checkbox – it used to do nothing
+  const bounds = (await card.boundingBox())!
+  await card.click({ position: { x: bounds.width - 20, y: bounds.height - 6 } })
+  await expect(box).not.toBeChecked()
+  await card.click({ position: { x: bounds.width - 20, y: bounds.height - 6 } })
+  await expect(box).toBeChecked()
+
+  // Except where a click is aiming at the number rather than at the switch
+  await card.locator('input[type="number"]').click()
+  await page.waitForTimeout(400)
+  await expect(box).toBeChecked()
+})
+
+test('every choice on the options page is written at the same size', async ({ page, extensionId }) => {
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(1500)
+
+  // Sixteen of these labels were a size smaller than the six beside them, which
+  // reads as two kinds of control where there is only one
+  const sizes = await page.evaluate(() => {
+    const found: Record<string, number> = {}
+    document.querySelectorAll('label').forEach((label) => {
+      if (!label.querySelector('input[type="radio"], input[type="checkbox"]'))
+        return
+      const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT)
+      let node: Node | null
+      // eslint-disable-next-line no-cond-assign
+      while (node = walker.nextNode()) {
+        if ((node.textContent || '').trim().length < 2)
+          continue
+        const size = getComputedStyle(node.parentElement!).fontSize
+        found[size] = (found[size] || 0) + 1
+        break
+      }
+    })
+    return found
+  })
+
+  expect(Object.keys(sizes)).toEqual(['14px'])
+})
+
+test('wiping the visits updates what the page says about the import, without a reload', async ({ page, extensionId }) => {
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(1500)
+
+  const status = page.locator('#section-data p').nth(1)
+  await page.locator('#section-data button').first().click()
+  await expect(status).toContainText('Imported in full', { timeout: 20000 })
+
+  await page.locator('label', { hasText: 'All information about site visits' }).locator('input').check()
+  await page.locator('button', { hasText: 'Reset selected data' }).click()
+  await page.locator('.btn-danger', { hasText: 'Reset' }).last().click()
+
+  // The import state was wiped along with the visits, and this page is the one
+  // that wiped it – so it says so straight away rather than at the next reload
+  await expect(status).toContainText('Nothing imported yet', { timeout: 5000 })
+})
+
+test('the import button offers a first run before it offers a re-run', async ({ page, context, extensionId }) => {
+  // The install-time import has to be out of the way before its state is wiped,
+  // or the background writes it back underneath the page
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(2500)
+  await inWorker(context, async () => chrome.storage.local.remove('__visilantHistoryImport'))
+  await page.reload()
+  await page.waitForTimeout(1500)
+
+  const button = page.locator('#section-data button').first()
+  await expect(button).toHaveText('Import history')
+
+  await button.click()
+  // Nothing to re-do is only true until something has been done
+  await expect(button).toHaveText('Re-import history', { timeout: 20000 })
 })

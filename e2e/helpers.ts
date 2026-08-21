@@ -47,12 +47,18 @@ export async function inWorker<T>(context: any, fn: any, arg?: any): Promise<T> 
  * a domain to be familiar says how familiar, instead of hoping the threshold
  * happens to fall on the right side of however many times it was loaded.
  */
-export async function seedVisits(context: any, hostname: string, count: number) {
-  await inWorker(context, async ({ host, visits }: any) => {
+export async function seedVisits(
+  context: any,
+  hostname: string,
+  count: number,
+  /** The other two facts a record carries, for a test that turns those checks on. */
+  extra: { activeDays?: number, firstSeen?: number } = {},
+) {
+  await inWorker(context, async ({ host, visits, rest }: any) => {
     await chrome.storage.local.set({
-      [host]: { count: visits, firstSeen: 1, lastSeen: 1, activeDays: 1, ignored: false },
+      [host]: { count: visits, firstSeen: 1, lastSeen: 1, activeDays: 1, ignored: false, ...rest },
     })
-  }, { host: hostname, visits: count })
+  }, { host: hostname, visits: count, rest: extra })
 }
 
 /**
