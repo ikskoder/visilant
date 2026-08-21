@@ -1,5 +1,7 @@
 import type { EmailProviderKind } from './email-providers'
 import type { EmailAnalysis } from './email-safety'
+import type { FamiliarityStats } from './familiarity'
+import type { MailSiteFamily } from './mail-sites'
 import type { PastePayloadInfo } from './paste-guard'
 import { ref } from 'vue'
 
@@ -59,8 +61,12 @@ export const linkTooltipData = ref<LinkTooltipData | null>(null)
 // dashboard like the extension popup, rendered on the current page
 export interface DomainFamilyInfo {
   baseDomain: string
-  entries: { hostname: string, count: number }[]
+  entries: { hostname: string, count: number, activeDays?: number, firstSeen?: number }[]
   total: number
+  /** The family's facts rolled together, for a verdict on the family as a whole */
+  stats?: FamiliarityStats
+  /** For an address domain, the sites its mail is actually read on */
+  mailSites?: MailSiteFamily[]
 }
 
 export interface CheckPanelData {

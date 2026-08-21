@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { EmailProviderKind } from '~/logic/email-providers'
 import type { EmailAnalysis } from '~/logic/email-safety'
+import type { MailSiteFamily } from '~/logic/mail-sites'
+import type { SiteVisitData } from '~/logic/storage'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { getDomain } from 'tldts'
 import { onMounted, ref } from 'vue'
@@ -13,7 +15,9 @@ import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, parseMailtoUrl } from '~/logic/email-safety'
+import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { getHostnameFromHref, getPunycodeInfo } from '~/logic/link-safety'
+import { collectMailSiteFamilies, loadMailSitesFromRecords } from '~/logic/mail-sites'
 import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings } from '~/logic/storage'
@@ -37,8 +41,8 @@ interface UrlResolveState {
 }
 
 type CheckResult
-  = | { type: 'url', url: string, hostname: string, baseDomain: string, punycode: string | null, count: number, isSafe: boolean, isShortener: boolean, resolve: UrlResolveState }
-    | { type: 'email', analysis: EmailAnalysis, params: { key: string, value: string }[], count: number, isSafe: boolean, providerKind: EmailProviderKind }
+  = | { type: 'url', url: string, hostname: string, baseDomain: string, punycode: string | null, count: number, isSafe: boolean, isShortener: boolean, resolve: UrlResolveState, mailSites: MailSiteFamily[] }
+    | { type: 'email', analysis: EmailAnalysis, params: { key: string, value: string }[], count: number, isSafe: boolean, providerKind: EmailProviderKind, mailSites: MailSiteFamily[] }
     | { type: 'raw', payloadKind: string, payload: string }
     | { type: 'invalid' }
     | { type: 'qr-error' }
@@ -53,17 +57,26 @@ onMounted(() => {
 
 // Visits are stored per exact hostname, but "have I been here" should count the
 // whole domain family (gmail.com visits may live under www.gmail.com etc.)
-async function getVisitData(hostname: string): Promise<{ count: number, isSafe: boolean }> {
+async function getVisitData(hostname: string): Promise<{ count: number, isSafe: boolean, mailSites: MailSiteFamily[] }> {
   const base = getDomain(hostname) || hostname
   const allData = await browser.storage.local.get(null)
-  let total = 0
+  const records: SiteVisitData[] = []
   for (const key of Object.keys(allData)) {
     if (key === 'settings' || key === 'customShorteners')
       continue
     if (key === base || key.endsWith(`.${base}`))
-      total += (allData[key] as { count?: number })?.count || 0
+      records.push(allData[key] as SiteVisitData)
   }
-  return { count: total, isSafe: total >= settings.value.safety }
+  const stats = aggregateFamiliarityStats(records)
+  const rules = normalizeFamiliarity(settings.value.familiarity)
+  // A mail domain is never opened as a site, so a zero here says nothing. The
+  // same read already holds the mapping and the visits it points at.
+  loadMailSitesFromRecords(allData)
+  return {
+    count: stats.count,
+    isSafe: isFamiliar(stats, rules),
+    mailSites: collectMailSiteFamilies(allData, hostname, rules),
+  }
 }
 
 async function checkUrl(url: string) {
@@ -84,6 +97,7 @@ async function checkUrl(url: string) {
     isSafe: visitData.isSafe,
     isShortener: isShortenedUrl(hostname),
     resolve: { status: 'idle' },
+    mailSites: visitData.mailSites,
   }
   emit('checkedDomain', hostname)
 }
@@ -105,6 +119,7 @@ async function checkEmail(addrOrMailto: string) {
     count: visitData.count,
     isSafe: visitData.isSafe,
     providerKind: classifyEmailDomain(analysis.domain),
+    mailSites: visitData.mailSites,
   }
   emit('checkedDomain', analysis.domain)
 }
@@ -225,8 +240,10 @@ function onFileSelected(event: Event) {
   input.value = ''
 }
 
-function getCountColor(count: number) {
-  return count >= settings.value.safety ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
+// Coloured by the verdict rather than by the number: with active days or age in
+// play, a big count on its own no longer means the site is known
+function getCountColor(isSafe: boolean) {
+  return isSafe ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
 }
 
 // Hostnames without a dot (localhost and the like) are never counted, so their
@@ -324,7 +341,17 @@ function payloadTypeLabel(payloadKind: string) {
         <!-- No count line for an address that is never counted. The dashboard
              right below this field says why, so it is not repeated here. -->
         <div v-if="!result.isShortener && isTrackableHostname(result.hostname)" class="text-xs mb-1">
-          {{ t('linkTooltipVisits') }}: <span class="font-mono font-bold" :class="getCountColor(result.count)">{{ result.count }}</span>
+          {{ t('linkTooltipVisits') }}: <span class="font-mono font-bold" :class="getCountColor(result.isSafe)">{{ result.count }}</span>
+        </div>
+
+        <!-- Nobody opens an address domain, so a zero of its own says nothing.
+             The visits that mean anything are on the site its mail is read on. -->
+        <div v-if="result.mailSites.length" class="text-xs mb-1">
+          {{ t('mailSiteLabel') }}:
+          <span v-for="site in result.mailSites" :key="site.site" class="ml-1">
+            <SecureText :text="site.site" :force-highlight="true" :danger-only="true" />
+            <span class="font-mono font-bold ml-1" :class="getCountColor(!!site.familiar)">{{ site.total }}</span>
+          </span>
         </div>
 
         <!-- Structural markers and resemblance to a domain the user knows -->
@@ -397,7 +424,17 @@ function payloadTypeLabel(payloadKind: string) {
         </div>
         <EmailBreakdown :analysis="result.analysis" :params="result.params" :provider-kind="result.providerKind" :is-dark="isDark" />
         <div v-if="result.providerKind === 'regular'" class="text-xs mt-1">
-          {{ t('linkTooltipVisits') }}: <span class="font-mono font-bold" :class="getCountColor(result.count)">{{ result.count }}</span>
+          {{ t('linkTooltipVisits') }}: <span class="font-mono font-bold" :class="getCountColor(result.isSafe)">{{ result.count }}</span>
+        </div>
+
+        <!-- Nobody opens an address domain, so a zero of its own says nothing.
+             The visits that mean anything are on the site its mail is read on. -->
+        <div v-if="result.mailSites.length" class="text-xs mt-1">
+          {{ t('mailSiteLabel') }}:
+          <span v-for="site in result.mailSites" :key="site.site" class="ml-1">
+            <SecureText :text="site.site" :force-highlight="true" :danger-only="true" />
+            <span class="font-mono font-bold ml-1" :class="getCountColor(!!site.familiar)">{{ site.total }}</span>
+          </span>
         </div>
 
         <!-- The part after the @ is a domain like any other, and an address one

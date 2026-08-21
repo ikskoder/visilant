@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { FamiliarityStats } from '~/logic/familiarity'
 import type { CheckPanelData } from '~/logic/ui-state'
 import punycode from 'punycode'
 import { computed, ref, watch } from 'vue'
@@ -6,6 +7,7 @@ import DomainMarkers from '~/components/DomainMarkers.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
+import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { settings } from '~/logic/storage'
 import { isTrackableHostname } from '~/logic/visit-stats'
 
@@ -79,8 +81,27 @@ function displayDomain(domain: string) {
   }
 }
 
-function countColor(count: number) {
-  return count >= settings.value.safety
+const familiarityRules = computed(() => normalizeFamiliarity(settings.value.familiarity))
+
+/**
+ * The whole family's facts, which is what the verdict is about.
+ *
+ * Falls back to the bare total for a background too old to send them, so the
+ * panel still says something rather than treating every site as brand new.
+ */
+const familyStats = computed<FamiliarityStats>(() =>
+  props.data?.family.stats ?? { count: props.data?.family.total ?? 0 })
+
+/**
+ * Where the mail of an address domain is read, when that is somewhere else.
+ *
+ * `gmail.com` is never opened by anyone, so its own family is an unmovable zero.
+ * The sites below are the ones the visits are on.
+ */
+const mailSites = computed(() => props.data?.family.mailSites ?? [])
+
+function countColor(stats: FamiliarityStats) {
+  return isFamiliar(stats, familiarityRules.value)
     ? (props.isDark ? 'text-green-400' : 'text-green-600')
     : (props.isDark ? 'text-red-400' : 'text-red-500')
 }
@@ -93,10 +114,11 @@ const isUntrackedHost = computed(() => {
   return Boolean(hostname) && !isTrackableHostname(hostname!)
 })
 
-function statusBadge(count: number, hostname: string) {
+function statusBadge(stats: FamiliarityStats, hostname: string) {
+  const count = stats.count
   if (!isTrackableHostname(hostname))
     return { text: t.value('untrackedHostBadge'), class: props.isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600' }
-  if (count >= settings.value.safety)
+  if (isFamiliar(stats, familiarityRules.value))
     return { text: t.value('linkTooltipFamiliar'), class: props.isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700' }
   if (count === 0)
     return { text: t.value('linkTooltipNeverVisited'), class: props.isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700' }
@@ -141,8 +163,8 @@ function statusBadge(count: number, hostname: string) {
             <span v-else-if="data.email.providerKind === 'public'" class="panel-label px-1.5 py-0.5 rounded" :class="isDark ? 'bg-blue-900/40 text-blue-400' : 'bg-blue-100 text-blue-700'">
               {{ t('emailPublicProvider') }}
             </span>
-            <span v-else class="panel-label px-1.5 py-0.5 rounded" :class="statusBadge(data.family.total, data.hostname).class">
-              {{ statusBadge(data.family.total, data.hostname).text.toLowerCase() }}
+            <span v-else class="panel-label px-1.5 py-0.5 rounded" :class="statusBadge(familyStats, data.hostname).class">
+              {{ statusBadge(familyStats, data.hostname).text.toLowerCase() }}
             </span>
           </div>
           <div class="panel-label uppercase tracking-wider mb-0.5" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
@@ -174,8 +196,8 @@ function statusBadge(count: number, hostname: string) {
         <!-- Domain: checked hostname -->
         <div v-else class="mb-2">
           <div class="flex items-center flex-wrap gap-1.5 mb-1">
-            <span class="panel-label px-1.5 py-0.5 rounded" :class="statusBadge(data.family.total, data.hostname).class">
-              {{ statusBadge(data.family.total, data.hostname).text.toLowerCase() }}
+            <span class="panel-label px-1.5 py-0.5 rounded" :class="statusBadge(familyStats, data.hostname).class">
+              {{ statusBadge(familyStats, data.hostname).text.toLowerCase() }}
             </span>
           </div>
           <div class="panel-address font-bold">
@@ -246,11 +268,41 @@ function statusBadge(count: number, hostname: string) {
         <div v-if="!isUntrackedHost" class="pt-2" :class="isDark ? 'border-t border-gray-700/50' : 'border-t border-gray-200'">
           <div class="flex justify-between items-center mb-1">
             <span class="panel-label uppercase tracking-wider" :class="isDark ? 'text-gray-500' : 'text-gray-400'">{{ t('baseDomain') }}</span>
-            <span class="panel-label font-mono font-bold" :class="countColor(data.family.total)">{{ t('total') }}{{ data.family.total }}</span>
+            <!-- With the mailbox listed below, this zero is a fact about a name
+                 nobody opens rather than a verdict, so it is not painted as one -->
+            <span
+              class="panel-label font-mono font-bold"
+              :class="mailSites.length ? (isDark ? 'text-gray-500' : 'text-gray-400') : countColor(familyStats)"
+            >{{ t('total') }}{{ data.family.total }}</span>
           </div>
           <div class="font-bold break-all mb-2">
             <SecureText :text="displayDomain(data.family.baseDomain)" :highlight-override="localHighlight" :case-override="localCase" />
           </div>
+
+          <!-- An address domain has no site of its own – say where its mail lives -->
+          <template v-if="mailSites.length">
+            <div class="panel-label uppercase tracking-wider mb-1" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
+              {{ t('mailSiteLabel') }}
+            </div>
+            <div
+              class="panel-list rounded-lg border divide-y shadow-sm mb-1"
+              :class="isDark ? 'border-gray-700 divide-gray-700' : 'border-gray-200 divide-gray-100'"
+            >
+              <div
+                v-for="site in mailSites"
+                :key="site.site"
+                class="p-2.5 flex justify-between items-center gap-3"
+              >
+                <span class="break-all panel-entry">
+                  <SecureText :text="displayDomain(site.site)" :highlight-override="localHighlight" :case-override="localCase" />
+                </span>
+                <span class="font-mono font-bold panel-entry flex-shrink-0" :class="countColor(site.stats)">{{ site.total }}</span>
+              </div>
+            </div>
+            <div class="panel-label mb-2" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
+              {{ t('mailSiteNote') }}
+            </div>
+          </template>
 
           <template v-if="data.family.entries.length > 0">
             <div class="panel-label uppercase tracking-wider mb-1" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
@@ -272,11 +324,11 @@ function statusBadge(count: number, hostname: string) {
                 <span class="break-all panel-entry">
                   <SecureText :text="displayDomain(entry.hostname)" :highlight-override="localHighlight" :case-override="localCase" />
                 </span>
-                <span class="font-mono font-bold panel-entry flex-shrink-0" :class="countColor(entry.count)">{{ entry.count }}</span>
+                <span class="font-mono font-bold panel-entry flex-shrink-0" :class="countColor(entry)">{{ entry.count }}</span>
               </div>
             </div>
           </template>
-          <div v-else class="panel-label py-2 text-center" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
+          <div v-else-if="!mailSites.length" class="panel-label py-2 text-center" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
             {{ t('noVisitData') }}
           </div>
         </div>
