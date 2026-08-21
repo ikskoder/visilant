@@ -9,6 +9,9 @@ bc: build-chrome
 bf: build-firefox
 ad: android-devices
 ar: android-run
+nf: nix-firefox
+nc: nix-chrome
+nk: nix-check
 
 # Clear dist and manifest
 clear:
@@ -39,9 +42,36 @@ build-firefox:
   pnpm pack:xpi
   pnpm pack:src
 
-# Pack source code for AMO submission (uses git archive — only tracked files)
+# Pack source code for AMO submission (uses git archive – only tracked files)
 pack-src:
   pnpm pack:src
+
+# === REPRODUCIBLE BUILDS ===
+# The Nix build is the one releases are cut from. It pins node, pnpm and every
+# dependency through flake.lock, so the same commit gives the same bytes on any
+# machine. See REPRODUCE.md.
+
+# Reproducible build for Firefox, with hashes
+nix-firefox:
+  nix build .#firefox --print-build-logs
+  cat result/SHA256SUMS
+
+# Reproducible build for Chrome, with hashes
+nix-chrome:
+  nix build .#chrome --out-link result-chrome --print-build-logs
+  cat result-chrome/SHA256SUMS
+
+# Build both targets a second time and fail if a single byte differs
+nix-check:
+  nix build .#firefox --print-build-logs
+  nix build .#firefox --rebuild --print-build-logs
+  nix build .#chrome --out-link result-chrome --print-build-logs
+  nix build .#chrome --rebuild --out-link result-chrome --print-build-logs
+  @echo "Both targets rebuilt identically."
+
+# Compare a package downloaded from a store with a build from this tree
+verify PACKAGE:
+  ./scripts/verify.sh {{ PACKAGE }}
 
 # === ANDROID ===
 # Needs adb (in the Nix devshell), USB debugging on the phone, and remote

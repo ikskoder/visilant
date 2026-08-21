@@ -1,0 +1,112 @@
+# Reproducible release builds.
+#
+# Every step runs inside the Nix sandbox, so the only inputs are this repository
+# and flake.lock. The job builds each target twice – the second pass uses
+# `nix build --rebuild`, which rebuilds from scratch and fails if a single byte
+# of the output differs – then publishes hashes and a signed provenance
+# attestation so anyone can tie a downloaded archive to this commit.
+#
+# Every action is pinned to a commit, not a tag: a tag can be moved.
+name: build
+
+on:
+  push:
+    branches: [main]
+    # Both shapes of tag this repository has used, 3.0 and v3.0.
+    tags: ['v*', '[0-9]*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [firefox, chrome]
+    steps:
+      - name: Check out
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.1
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            sandbox = true
+
+      - name: Build
+        run: nix build .#${{ matrix.target }} --print-build-logs
+
+      - name: Rebuild and compare
+        run: nix build .#${{ matrix.target }} --rebuild --print-build-logs
+
+      - name: Collect artifacts
+        id: collect
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          archive=$(find result/ -maxdepth 1 \( -name '*.xpi' -o -name '*.zip' \) | head -n1)
+          install -m 644 "$archive" artifacts/
+          install -m 644 result/SHA256SUMS "artifacts/SHA256SUMS-${{ matrix.target }}"
+          install -m 644 result/SHA256SUMS-unpacked "artifacts/SHA256SUMS-unpacked-${{ matrix.target }}"
+          echo "archive=artifacts/$(basename "$archive")" >> "$GITHUB_OUTPUT"
+          cat "artifacts/SHA256SUMS-${{ matrix.target }}"
+
+      - name: Attest provenance
+        # Only for real releases – a signed statement about a throwaway branch
+        # build would say nothing useful.
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: ${{ steps.collect.outputs.archive }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: visilant-${{ matrix.target }}
+          path: artifacts/
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.1
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          path: downloads
+          merge-multiple: true
+
+      - name: Assemble checksums
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp downloads/*.xpi downloads/*.zip release/ 2>/dev/null || true
+          cp downloads/SHA256SUMS-unpacked-* release/
+          ( cd release && sha256sum *.xpi *.zip ) > release/SHA256SUMS
+          cat release/SHA256SUMS
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" release/* --clobber

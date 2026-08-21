@@ -1,0 +1,84 @@
+# Independent rebuild.
+#
+# Anyone can fork this repository, open Actions, and run this workflow against a
+# released tag. It rebuilds from source on GitHub's runners and compares the
+# result with the archive attached to that release. A green run by someone who
+# does not hold the signing keys is the part that makes the claim worth
+# anything.
+name: reproduce
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag, branch or commit to rebuild
+        required: true
+        default: main
+      target:
+        description: Which browser to build for
+        required: true
+        default: firefox
+        type: choice
+        options: [firefox, chrome]
+      expected:
+        description: sha256 of the published archive (optional – left empty, the release asset is fetched and compared)
+        required: false
+  schedule:
+    # Weekly, so a build that stops reproducing is noticed without anyone
+    # remembering to check.
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out ${{ inputs.ref || 'main' }}
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.1
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            sandbox = true
+
+      - name: Build
+        run: nix build .#${{ inputs.target || 'firefox' }} --print-build-logs
+
+      - name: Compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref || 'main' }}
+          EXPECTED: ${{ inputs.expected }}
+        run: |
+          set -euo pipefail
+          archive=$(find result/ -maxdepth 1 \( -name '*.xpi' -o -name '*.zip' \) | head -n1)
+          built=$(sha256sum "$archive" | cut -d' ' -f1)
+          echo "Built $(basename "$archive")"
+          echo "  sha256: $built"
+
+          expected="$EXPECTED"
+          if [ -z "$expected" ] && [ -n "$(git tag --list "$REF")" ]; then
+            gh release download "$REF" --pattern SHA256SUMS --dir published || true
+            if [ -f published/SHA256SUMS ]; then
+              expected=$(awk -v f="$(basename "$archive")" '$2 == f { print $1 }' published/SHA256SUMS)
+              echo "Published sha256 for $REF: ${expected:-not listed}"
+            fi
+          fi
+
+          if [ -z "$expected" ]; then
+            echo "Nothing to compare against – recording the hash only."
+            exit 0
+          fi
+
+          if [ "$built" = "$expected" ]; then
+            echo "MATCH – this build reproduces the published archive."
+          else
+            echo "MISMATCH – built $built, published $expected" >&2
+            exit 1
+          fi

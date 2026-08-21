@@ -15,11 +15,12 @@ node_modules
 src/auto-imports.d.ts
 src/components.d.ts
 .eslintcache
-Build.md
 .cursor
 .claude
 .vscode
-Build.md
 .envrc
 .direnv
 test-results
+artifacts
+result
+result-*

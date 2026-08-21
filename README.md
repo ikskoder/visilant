@@ -155,6 +155,27 @@ Visilant is open-source and operates locally within your browser:
   **Optional permissions:**
   - **Browser history**: Required only if you choose to import your existing browsing history to populate visit counts (recommended for reducing false positives).
 
+## Reproducible Builds
+
+You do not have to take our word for what the store installed. Every release can
+be rebuilt from this repository, byte for byte:
+
+```bash
+nix build github:ikskoder/visilant/v2.0.1#firefox
+sha256sum result/*.xpi          # compare with SHA256SUMS on the release
+```
+
+`scripts/verify.sh <downloaded.xpi>` goes one step further and compares the copy
+your browser actually installed with a fresh build, file by file. Release
+archives also carry a Sigstore-signed provenance attestation tying them to the
+commit and workflow that built them, and anyone can rerun the build in a fork
+through the **reproduce** workflow.
+
+Node, pnpm and every dependency are pinned through `flake.lock` and
+`pnpm-lock.yaml`, and the archive is packed with fixed timestamps and sorted
+entries, which is what makes two builds identical. Full instructions are in
+[REPRODUCE.md](REPRODUCE.md).
+
 ## Limitations
 
 While Visilant enhances awareness of "unfamiliar" websites, its limitations include:

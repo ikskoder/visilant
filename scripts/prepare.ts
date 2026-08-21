@@ -4,7 +4,9 @@ import chokidar from 'chokidar'
 import { isDev, r } from './utils'
 
 function writeManifest() {
-  execSync('npx esno ./scripts/manifest.ts', { stdio: 'inherit' })
+  // `esno` comes from node_modules/.bin, which pnpm puts on PATH. No `npx`:
+  // it is one more thing that can reach for the network mid-build.
+  execSync('esno ./scripts/manifest.ts', { stdio: 'inherit' })
 }
 
 writeManifest()
