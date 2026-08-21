@@ -6,6 +6,7 @@ import { createApp, watchEffect } from 'vue'
 import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, extractEmailFromText, parseMailtoUrl } from '~/logic/email-safety'
+import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { checkDomainMismatch, extractDomainFromText, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
 import { describePastePayload, isEditableTarget, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
@@ -16,6 +17,16 @@ import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, li
 import { addCustomShortener, isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
 import { isTrackableHostname } from '~/logic/visit-stats'
 import App from './views/App.vue'
+
+/** What the background hands back for one hostname – see `getVisitCountLogic`. */
+interface VisitCountResponse {
+  hostname: string
+  count: number
+  lastSeen: number
+  ignored: boolean
+  activeDays?: number
+  firstSeen?: number
+}
 
 // Helper to send message safely (fallback to runtime.sendMessage)
 async function sendMessageSafe<T = any>(id: string, data: any): Promise<T> {
@@ -70,22 +81,21 @@ async function checkSiteSafety(url: string): Promise<boolean> {
     return true
   }
 
-  const response = await sendMessageSafe<{ count: number, ignored: boolean }>('get-visit-count', { url })
+  const response = await sendMessageSafe<VisitCountResponse>('get-visit-count', { url })
   if (!response) {
     safetyLevel.value = true
     return true // Default to safe if no response
   }
 
   const visitData = response
-  const count = visitData.count
 
   // Update ignored state
   if (visitData.ignored) {
     isIgnored.value = true
   }
 
-  // Site is considered safe if count >= safety threshold
-  const isSafe = count >= settings.value.safety
+  // Visits, active days and age, in whatever combination the user asked for
+  const isSafe = isFamiliar(visitData, normalizeFamiliarity(settings.value.familiarity))
   safetyLevel.value = isSafe
   return isSafe
 }
@@ -329,11 +339,11 @@ async function fetchLinkData(href: string, hostname: string) {
     return cached
 
   // Fetch from background
-  const response = await sendMessageSafe<{ count: number, ignored: boolean }>('get-visit-count', { url: href })
+  const response = await sendMessageSafe<VisitCountResponse>('get-visit-count', { url: href })
   if (!response)
     return { count: 0, isSafe: true, ignored: false }
 
-  const isSafe = response.count >= settings.value.safety
+  const isSafe = isFamiliar(response, normalizeFamiliarity(settings.value.familiarity))
   const data = { count: response.count, isSafe, ignored: response.ignored }
   setCachedVisitCount(hostname, data)
   return data
@@ -1235,6 +1245,12 @@ async function mount(force = false) {
     applyHostStyles(container)
 
     const root = document.createElement('div')
+    // `all: initial` below resets the font to the browser default, which is a
+    // serif, so every component has to name its own or come out in Times. This
+    // is the floor under all of them, set on the wrapper inside the shadow root
+    // where no page rule can reach it – anything the stylesheet misses still
+    // reads as the extension rather than as the page's book type.
+    root.style.setProperty('font-family', 'Arial, Helvetica, sans-serif')
 
     const styleEl = document.createElement('style')
     const response = await fetch(browser.runtime.getURL('dist/contentScripts/style.css'))

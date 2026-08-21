@@ -81,6 +81,10 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
 .email-label {
   font-size: 0.85em !important;
   line-height: 1.3em !important;
-  word-break: break-all !important;
+  /* These lines are sentences, so they wrap between words. Only something that
+     cannot fit on a line of its own – a long address, a mailto parameter – is
+     split, and mid-word breaks stop happening to ordinary prose. */
+  word-break: normal !important;
+  overflow-wrap: anywhere !important;
 }
 </style>

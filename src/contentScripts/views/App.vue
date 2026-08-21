@@ -1,6 +1,7 @@
 <!-- eslint-disable no-console -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { resolveTooltipTrigger } from '~/logic/platform'
 import { defaultSettings, settings } from '~/logic/storage'
 import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
@@ -59,17 +60,16 @@ settings.value = settings.value || defaultSettings
 
 // Check site safety and update UI
 async function checkSiteSafety() {
-  const response = await sendMessageSafe<{ count: number, hostname: string, lastSeen: number, ignored: boolean }>('get-visit-count', { url: window.location.href })
+  const response = await sendMessageSafe<{ count: number, hostname: string, lastSeen: number, ignored: boolean, activeDays?: number, firstSeen?: number }>('get-visit-count', { url: window.location.href })
   if (!response)
     return
 
   const visitData = response
-  const count = visitData.count
   hostname.value = visitData.hostname
   isIgnored.value = visitData.ignored
 
-  // Update safety level
-  safetyLevel.value = count >= settings.value.safety
+  // Update safety level – the same rules the badge and the content script use
+  safetyLevel.value = isFamiliar(visitData, normalizeFamiliarity(settings.value.familiarity))
 }
 
 // Handle ignoring site
