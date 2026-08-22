@@ -24,12 +24,19 @@ const currentLanguage = ref('en')
 const isLoaded = ref(false)
 let initPromise: Promise<void> | null = null
 
-// Function to load translations for a language
-async function loadTranslations(lang: string): Promise<Messages | null> {
+/**
+ * Load a locale, and say which one is actually on screen.
+ *
+ * Not the same question as which one was asked for: a profile can name a locale
+ * this build no longer ships, and the fallback below answers it in English. The
+ * returned name is what got loaded, so the rest of the state can say English
+ * rather than keep insisting on a language nothing is being shown in.
+ */
+async function loadTranslations(lang: string): Promise<{ messages: Messages, locale: string } | null> {
   // Check if translations are already cached
   if (translationCache[lang]) {
     loadedTranslations.value = translationCache[lang]
-    return translationCache[lang]
+    return { messages: translationCache[lang], locale: lang }
   }
 
   try {
@@ -43,7 +50,7 @@ async function loadTranslations(lang: string): Promise<Messages | null> {
     // Cache translations
     translationCache[lang] = translations
     loadedTranslations.value = translations
-    return translations
+    return { messages: translations, locale: lang }
   }
   catch (error) {
     console.error(`Error loading translations for ${lang}:`, error)
@@ -79,8 +86,9 @@ function parseSettings(data: any): any {
 async function applyLanguage(lang: string): Promise<void> {
   const wasAlreadyLoaded = lang === currentLanguage.value && isLoaded.value
 
-  await loadTranslations(lang)
-  currentLanguage.value = lang
+  const loaded = await loadTranslations(lang)
+  // What is on screen, not what was asked for
+  currentLanguage.value = loaded?.locale || 'en'
   isLoaded.value = true
 
   // Force reactivity trigger even if language was the same

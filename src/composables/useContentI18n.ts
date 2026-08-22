@@ -23,12 +23,17 @@ const loadedTranslations = ref<Messages>({})
 const currentLanguage = ref('en')
 const isLoaded = ref(false)
 
-// Function to load translations for a language
-async function loadTranslations(lang: string): Promise<Messages | null> {
+/**
+ * Load a locale, and say which one is actually on screen.
+ *
+ * Not the same question as which one was asked for: a profile can name a locale
+ * this build no longer ships, and the fallback below answers it in English.
+ */
+async function loadTranslations(lang: string): Promise<{ messages: Messages, locale: string } | null> {
   // Check if translations are already cached
   if (translationCache[lang]) {
     loadedTranslations.value = translationCache[lang]
-    return translationCache[lang]
+    return { messages: translationCache[lang], locale: lang }
   }
 
   try {
@@ -42,7 +47,7 @@ async function loadTranslations(lang: string): Promise<Messages | null> {
     // Cache translations
     translationCache[lang] = translations
     loadedTranslations.value = translations
-    return translations
+    return { messages: translations, locale: lang }
   }
   catch (error) {
     console.error(`Error loading translations for ${lang}:`, error)
@@ -72,17 +77,17 @@ export function useContentI18n() {
   const setLanguage = async (lang: string) => {
     // Don't set isLoaded to false as it causes the UI to disappear
     // Just update the language and translations
-    currentLanguage.value = lang
-    // Preload translations for the new language
-    await loadTranslations(lang)
+    const loaded = await loadTranslations(lang)
+    // What is on screen, not what was asked for
+    currentLanguage.value = loaded?.locale || 'en'
   }
 
   // Load saved language preference
   async function init() {
     try {
       if (appSettings.value?.selectedLanguage) {
-        currentLanguage.value = appSettings.value.selectedLanguage
-        await loadTranslations(appSettings.value.selectedLanguage)
+        const loaded = await loadTranslations(appSettings.value.selectedLanguage)
+        currentLanguage.value = loaded?.locale || 'en'
       }
       else {
         await loadTranslations('en')
