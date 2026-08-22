@@ -23,7 +23,6 @@
     "build:background": "vite build --config vite.config.background.mts",
     "build:web": "vite build",
     "build:js": "vite build --config vite.config.content.mts",
-    "pack": "run-s pack:zip pack:xpi",
     "pack:zip": "esno scripts/pack.ts chrome",
     "pack:crx": "crx pack extension -o ./extension.crx",
     "pack:xpi": "esno scripts/pack.ts firefox",

@@ -108,5 +108,11 @@ export default defineConfig(({ command }) => ({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./test-setup.ts'],
+    // The Vite root is `src`, which is where the extension is. The build scripts
+    // are not, and they are worth testing too – so the unit run is anchored at
+    // the repository root and names both trees. Listed rather than left to the
+    // default glob, which would also pick up the Playwright specs in `e2e/`.
+    dir: r('.'),
+    include: ['src/**/*.{test,spec}.ts', 'scripts/**/*.{test,spec}.ts'],
   },
 }))

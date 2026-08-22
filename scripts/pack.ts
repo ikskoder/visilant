@@ -41,9 +41,44 @@ function walk(dir: string, base = ''): string[] {
   return files
 }
 
-export async function pack(sourceDir: string, outFile: string): Promise<void> {
-  if (!fs.existsSync(path.join(sourceDir, 'manifest.json')))
+export type Target = 'chrome' | 'firefox'
+
+/**
+ * Refuse to pack a tree that was built for the other browser.
+ *
+ * The two builds write to the same `extension/` directory and differ in exactly
+ * one visible place – Chrome gets `background.service_worker`, Firefox gets
+ * `background.scripts`, because a module background never runs on Firefox for
+ * Android. Nothing about the packer notices which one is on disk, so packing
+ * twice in a row without rebuilding used to hand out two archives of the same
+ * tree under two names, one of them carrying the wrong manifest.
+ */
+export function assertManifestTarget(manifest: unknown, target: Target): void {
+  const background = (manifest as { background?: Record<string, unknown> } | null)?.background
+  if (!background)
+    throw new Error('manifest.json has no background section – run a build first.')
+
+  const built: Target | null = 'service_worker' in background
+    ? 'chrome'
+    : 'scripts' in background
+      ? 'firefox'
+      : null
+
+  if (built !== target) {
+    throw new Error(
+      `extension/ was built for ${built ?? 'neither browser'}, not for ${target}. `
+      + `Run \`pnpm run ${target === 'firefox' ? 'build-firefox' : 'build'}\` first.`,
+    )
+  }
+}
+
+export async function pack(sourceDir: string, outFile: string, target?: Target): Promise<void> {
+  const manifestPath = path.join(sourceDir, 'manifest.json')
+  if (!fs.existsSync(manifestPath))
     throw new Error(`No manifest.json in ${sourceDir} – run a build first.`)
+
+  if (target)
+    assertManifestTarget(JSON.parse(fs.readFileSync(manifestPath, 'utf-8')), target)
 
   const date = fixedDate()
   const zip = new JSZip()
@@ -70,7 +105,7 @@ export async function pack(sourceDir: string, outFile: string): Promise<void> {
 }
 
 async function main() {
-  const target = process.argv[2]
+  const target = process.argv[2] as Target
   if (target !== 'chrome' && target !== 'firefox') {
     console.error('Usage: esno scripts/pack.ts <chrome|firefox>')
     process.exit(1)
@@ -81,7 +116,7 @@ async function main() {
   const ext = target === 'firefox' ? 'xpi' : 'zip'
   const out = `artifacts/visilant-${pkg.version}-${target}.${ext}`
 
-  await pack(r('extension'), r(out))
+  await pack(r('extension'), r(out), target)
   const digest = createHash('sha256').update(fs.readFileSync(r(out))).digest('hex')
   log('PACK', `${out}  sha256:${digest}`)
 }
