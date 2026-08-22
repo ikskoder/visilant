@@ -9,6 +9,7 @@ bc: build-chrome
 bf: build-firefox
 ad: android-devices
 ar: android-run
+ae: android-e2e
 nf: nix-firefox
 nc: nix-chrome
 nk: nix-check
@@ -120,6 +121,13 @@ android-run *ARGS:
   fi
 
   pnpm start:firefox-android "${args[@]}" $extra
+
+# Build for Firefox, install on the phone, then run the Android e2e tests.
+# `just ar` has to be running in another shell for the install to stay put – it
+# is a temporary add-on, and it goes when web-ext lets go.
+android-e2e *ARGS:
+  pnpm build-firefox
+  pnpm test:android {{ ARGS }}
 
 # === TESTING ===
 
