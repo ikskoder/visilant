@@ -80,14 +80,14 @@ Visilant implements multiple layers of protection to ensure reliable operation e
    - [Visilant for Chrome](https://chromewebstore.google.com/detail/visilant/cangpjiaklckllaeppbdhhpcmhjambak)
    - [Visilant for Firefox](https://addons.mozilla.org/en-GB/firefox/addon/visilant/)
 
-2. Pin the Visilant icon to your browser toolbar for constant visibility (recommended due to [Script Injection Limitations](#limitations)).
+2. Pin the Visilant icon to your browser toolbar for constant visibility (recommended due to [Script Injection Limitations](#limitations)). On Firefox for Android there is no toolbar to pin to – the icon, its colour and its counter are all there, under **Extensions** in the browser menu.
 
 3. Click the Visilant icon to open the extension popup. It provides an overview of your visit history for the current site and allows quick access to display settings.
 
 4. Click the Settings icon (gear) in the popup to open the full configuration page. Configure the extension according to your preferences:
 
    - **Familiarity rules**: Decide what makes a site "familiar", in a section of its own. Three checks are on offer, each with its own threshold: the number of **visits** (on by default, at 10), the number of **active days** – separate days you were there, which a single afternoon of clicking cannot fake – and how long the site has been **known**, counted in days since your first recorded visit. Switch on the ones you want and choose how many have to pass: all of them, any one of them, or a set number, such as two of three. Everything else the extension does follows from this one verdict.
-     - **_Note:_** Active days and first-visit dates only exist for sites recorded since those fields were added, and a site without them cannot pass those checks. A history import fills them in for every site the browser still remembers – for anything older than that, or removed by a clearing of history, there is nothing left to read, and the settings page says which case you are in.
+     - **_Note:_** Active days and first-visit dates only exist for sites recorded since those fields were added, and a site without them cannot pass those checks. A history import fills them in for every site the browser still remembers – for anything older than that, or removed by a clearing of history, there is nothing left to read, and the settings page says which case you are in. On Firefox for Android there is no history to read at all, so the older records keep only their visit count and everything visited from now on carries both dates from its first visit.
    - **Toolbar icon**:
 
      - Choose whether the icon carries a counter, and what that counter shows: any one of the checks you have switched on, or how many of them the site passes. With a single check in use there is nothing to choose between, so the question is not asked.
@@ -194,10 +194,10 @@ While Visilant enhances awareness of "unfamiliar" websites, its limitations incl
   If attackers gain control of a legitimate domain you've previously visited, Visilant won't detect it as suspicious since your visit history marks it as "familiar." However, at that point, you're likely facing a much larger security breach – such as a domain hijack or server compromise – where Visilant's lack of protection is the least of your concerns.
 
 - **Partial Cross-Device Sync**:
-  While your configuration settings are synced across devices (if you're logged into your browser), your visit history is stored locally to accommodate its size. This means a site marked as "familiar" on one computer will still be treated as "unfamiliar" on another until you visit it enough times there. Installing Visilant on that machine imports its history for you, which is what closes most of the gap.
+  While your configuration settings are synced across devices (if you're logged into your browser), your visit history is stored locally to accommodate its size. This means a site marked as "familiar" on one computer will still be treated as "unfamiliar" on another until you visit it enough times there. Installing Visilant on that machine imports its history for you, which is what closes most of the gap – except on Firefox for Android, which does not let extensions read its history, so a phone starts from nothing and learns as you browse.
 
 - **Script Injection Limitations**:
-  To detect input and clipboard interactions, Visilant injects a small script into visited pages. While Visilant implements anti-tampering protection that detects removal attempts and notifies you via system notifications, it's still recommended to pin the extension icon to your toolbar as an additional safeguard.
+  To detect input and clipboard interactions, Visilant injects a small script into visited pages. While Visilant implements anti-tampering protection that detects removal attempts and notifies you via system notifications, it's still recommended to keep the extension icon in sight as an additional safeguard – pinned to the toolbar on desktop, or under Extensions in the menu on Firefox for Android.
 
 Understanding these limitations is crucial for Visilant's effective use.
 

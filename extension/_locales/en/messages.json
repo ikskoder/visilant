@@ -167,6 +167,10 @@
     "message": "Both settings here only matter if the extension icon is pinned to your browser toolbar, and pinning it is well worth doing. The reason is in the notification settings just below.",
     "description": "Note explaining that the icon settings require the extension icon to be pinned"
   },
+  "displaySettingsPinNoteAndroid": {
+    "message": "Both settings here draw on the extension icon, which this browser keeps in its menu rather than on a toolbar. Open the menu and Visilant is under Extensions, icon and counter and all.",
+    "description": "Replaces the pin-to-toolbar note on Firefox for Android, where the extension icon lives in the browser menu"
+  },
   "dynamicIcon": {
     "message": "Dynamic icon",
     "description": "Label for dynamic icon toggle"
@@ -674,6 +678,10 @@
   "linkTooltipTriggerTouchNote": {
     "message": "This device has no pointer to hover with and no right click, so links are checked when you tap them, whichever option is selected below.",
     "description": "Shown above the trigger options on touch devices, where only the tap trigger can fire"
+  },
+  "linkTooltipTriggerNoMenusNote": {
+    "message": "This browser does not let extensions add anything to the long-press menu, so a right-click check would never fire. Links are checked when you click them instead.",
+    "description": "Shown under the link-check trigger where a pointer exists but the menus API does not, as on Firefox for Android with a mouse attached"
   },
   "linkShowVisitCount": {
     "message": "Show visit count when checking links",
@@ -1367,6 +1375,26 @@
     "message": "These numbers only reach as far back as the browser’s own history does. Browsers drop old entries after a while on their own, so a site you have used for years can show far fewer visits and a much later first visit than you would expect. That is the browser’s retention setting rather than a miscount. It also explains why a site you have known for years, but visit rarely, can fall short of the familiarity threshold and trigger a warning. From here on Visilant keeps its own count and misses none of your visits. It simply cannot look backwards, so a gap like that belongs to the early days and closes as you browse.",
     "description": "Note that the imported numbers only reach as far back as the browser keeps history"
   },
+  "welcomeSubtitleNoImport": {
+    "message": "Nothing was read, and nothing had to be.",
+    "description": "Subtitle of the welcome page on a browser that does not share its history"
+  },
+  "welcomeWhyTitleNoImport": {
+    "message": "Why it starts out quiet",
+    "description": "Heading of the first welcome section on a browser with no history API"
+  },
+  "welcomeWhyBodyNoImport": {
+    "message": "Visilant decides what to warn about by comparing a site against the ones you already use. Here there was nothing to start from, so it begins knowing nothing at all. That is worth knowing up front, because for the first while it will call sites unfamiliar that you have used for years – including your bank and your mailbox. It is not wrong, it simply has not seen them yet. Every visit teaches it one, and the warnings thin out on their own.",
+    "description": "Body of the first welcome section on a browser with no history API"
+  },
+  "welcomeSavedTitleNoImport": {
+    "message": "What it records as you browse",
+    "description": "Heading of the data section on a browser with no history API"
+  },
+  "welcomeSavedNoImportNote": {
+    "message": "From the first time you open a site, and never anything from before that.",
+    "description": "Line under the recorded-data list on a browser with no history API"
+  },
   "welcomeNotSavedTitle": {
     "message": "What was not saved",
     "description": "Heading of the paragraph listing what is not stored"
@@ -1430,5 +1458,13 @@
   "familiarityNoDatesText": {
     "message": "sites have no active-day count and no first-visit date, and the browser history no longer reaches them – it does not go back that far, or it was cleared since. The full import has already run, so nothing can fill these in, and those two checks will keep failing for them. Only the visit count still speaks for these sites.",
     "description": "Body of the warning shown when a full import has run and dates are still missing"
+  },
+  "familiarityNoImportTitle": {
+    "message": "Some sites were here before Visilant",
+    "description": "Heading of the missing-dates card on a browser with no history API"
+  },
+  "familiarityNoImportText": {
+    "message": "sites have no active-day count and no first-visit date. This browser keeps its history to itself, so there is no import that could fill them in and those two checks will keep failing for them. Only the visit count still speaks for these sites. Everything you visit from now on records both from its first visit.",
+    "description": "Body of the missing-dates card on a browser with no history API, such as Firefox for Android"
   }
 }

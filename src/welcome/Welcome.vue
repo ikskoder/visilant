@@ -19,6 +19,17 @@ const status = computed(() => state.value?.status ?? 'running')
 const isRunning = computed(() => status.value === 'running' || retrying.value)
 
 /**
+ * This browser never had a history to read – it is Firefox for Android.
+ *
+ * The page is written around an import that has just run, and on this browser
+ * none of that happened. Left as it was it said, in order: one thing was set up
+ * for you, why your history was read, that there was nothing to read, and what
+ * was saved out of it. Every claim but the third was false, and they were on
+ * screen together.
+ */
+const nothingToImport = computed(() => status.value === 'unsupported')
+
+/**
  * Result of the last pass that finished.
  *
  * The import runs twice – a fast counting pass, then a slow detail pass – and the
@@ -165,18 +176,20 @@ function close() {
           {{ t('welcomeTitle') }}
         </h1>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          {{ t('welcomeSubtitle') }}
+          {{ nothingToImport ? t('welcomeSubtitleNoImport') : t('welcomeSubtitle') }}
         </p>
       </div>
 
       <!-- Why this happens at all. First thing on the page on purpose: an import
-           nobody asked for needs its reason next to it, not in a FAQ. -->
+           nobody asked for needs its reason next to it, not in a FAQ. Where
+           there was no import, the same slot answers the question that browser
+           actually raises – why it knows nothing yet. -->
       <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h2 class="text-lg font-semibold mb-2">
-          {{ t('welcomeWhyTitle') }}
+          {{ nothingToImport ? t('welcomeWhyTitleNoImport') : t('welcomeWhyTitle') }}
         </h2>
         <p class="text-sm leading-relaxed">
-          {{ t('welcomeWhyBody') }}
+          {{ nothingToImport ? t('welcomeWhyBodyNoImport') : t('welcomeWhyBody') }}
         </p>
       </section>
 
@@ -257,10 +270,13 @@ function close() {
         </div>
       </section>
 
-      <!-- What the import actually took, in the terms it is stored in -->
+      <!-- What the import actually took, in the terms it is stored in. The same
+           list is the honest answer either way – it is what a record holds –
+           but with no import behind it, it is a description of what is about to
+           be recorded rather than of what already was. -->
       <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h2 class="text-lg font-semibold mb-2">
-          {{ t('welcomeSavedTitle') }}
+          {{ nothingToImport ? t('welcomeSavedTitleNoImport') : t('welcomeSavedTitle') }}
         </h2>
         <ul class="text-sm space-y-1 list-disc list-inside">
           <li>{{ t('welcomeSavedHostname') }}</li>
@@ -272,9 +288,11 @@ function close() {
         <!-- The figures are only as deep as the browser's own retention, which is
              the usual reason a rarely visited but long-known site stays under the
              familiarity threshold at first. The counter takes over from here, so
-             the gap is a starting condition rather than a permanent one -->
+             the gap is a starting condition rather than a permanent one.
+             Nothing of that applies where no history was read: there the depth
+             is simply the day the extension arrived. -->
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
-          {{ t('welcomeSavedRetention') }}
+          {{ nothingToImport ? t('welcomeSavedNoImportNote') : t('welcomeSavedRetention') }}
         </p>
         <h3 class="text-sm font-semibold mt-4 mb-1">
           {{ t('welcomeNotSavedTitle') }}

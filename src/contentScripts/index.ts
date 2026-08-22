@@ -101,6 +101,25 @@ async function checkSiteSafety(url: string): Promise<boolean> {
   return isSafe
 }
 
+/**
+ * Whether the browser can put an item in the long-press menu.
+ *
+ * Asked of the background, because the menus namespace is not handed to content
+ * scripts on any platform. Starts as no: a right-click trigger that cannot fire
+ * is silence, and silence is the one failure this feature must not have.
+ */
+let canUseContextMenus = false
+
+async function loadPlatformCapabilities() {
+  try {
+    const platform = await sendMessageSafe<{ contextMenus?: boolean }>('get-platform', {})
+    canUseContextMenus = platform?.contextMenus === true
+  }
+  catch {
+    // Left as no, which resolves a right-click trigger to the tap
+  }
+}
+
 // Load settings from storage
 async function loadSettings() {
   try {
@@ -114,6 +133,8 @@ async function loadSettings() {
     await loadShortenersFromStorage()
     // Load public/disposable email-domain lists for address classification
     await loadEmailListsFromStorage()
+    // Answered before the link-safety setup below reads it
+    await loadPlatformCapabilities()
   }
   catch (error) {
     console.error('Failed to load settings:', error)
@@ -160,16 +181,31 @@ async function showNotifications(type: 'input' | 'copy') {
   // Set the warning type
   warningType.value = type
 
+  // Claimed here rather than at the end: a keystroke and the `beforeinput` it
+  // produces arrive in the same tick, and both would clear the check above
+  // before either had finished awaiting its way to setting the flag.
+  hasNotifiedOnThisPage.value = true
+
   const style = settings.value.notificationStyle || defaultSettings.notificationStyle
 
-  if (style === 'browser' || style === 'both')
-    await sendMessageSafe('show-notification', { warningType: type }) // Show browser notification with type
-
+  // In-page first, and never behind the system one. `both` used to await the
+  // browser notification and only then raise this, so anything that rejected on
+  // the way – a background that would not wake, an Android that refuses to show
+  // notifications at all – took the in-page warning down with it. This is the
+  // half that always works, so it goes first and does not depend on the other.
   if (style === 'in-page' || style === 'both')
     showWarning.value = true
 
-  // Update tracking state
-  hasNotifiedOnThisPage.value = true
+  if (style === 'browser' || style === 'both') {
+    try {
+      await sendMessageSafe('show-notification', { warningType: type })
+    }
+    catch {
+      // A warning that did not appear is the one outcome this feature cannot
+      // have, so the system notification failing falls back to the page
+      showWarning.value = true
+    }
+  }
 }
 
 // Handle keydown event
@@ -300,7 +336,38 @@ async function handleCopyCut() {
 }
 
 // Register listeners immediately with capture: true to prevent blocking
+/**
+ * The other half of "something is being entered here".
+ *
+ * `keydown` is a keyboard event, and on a phone text does not have to come from
+ * a keyboard. A word taken from the suggestion bar, an IME composition,
+ * dictation and autofill can all put characters in a field with no key press
+ * behind them – and the warning whose whole job is to catch a password going
+ * into an unfamiliar site would never appear. `beforeinput` fires for all of
+ * them, whatever produced the text.
+ *
+ * Both listeners stay. `keydown` still answers for the shortcuts above, and a
+ * page is free to cancel `beforeinput` before it reaches anything. Whichever
+ * arrives first wins: the warning shows at most once per page either way.
+ */
+async function handleBeforeInput(event: Event) {
+  const kind = (event as InputEvent).inputType || ''
+
+  // Taking text out is not putting any in, and neither is undo or redo
+  if (kind.startsWith('delete') || kind === 'historyUndo' || kind === 'historyRedo')
+    return
+
+  // Paste has its own handler, which asks a better question than this one and
+  // may still be waiting for the answer
+  if (kind === 'insertFromPaste' || kind === 'insertFromPasteAsQuotation')
+    return
+
+  if (safetyLevel.value === false && settings.value?.showWarningNotification)
+    await showNotifications('input')
+}
+
 window.addEventListener('keydown', handleKeydown, true)
+window.addEventListener('beforeinput', handleBeforeInput, true)
 window.addEventListener('paste', handlePaste, true)
 window.addEventListener('copy', handleCopyCut, true)
 window.addEventListener('cut', handleCopyCut, true)
@@ -1044,7 +1111,7 @@ function setupLinkSafety() {
 
   // What the user picked, corrected for what this device can do: on a
   // touchscreen the hover and right-click triggers can never fire
-  const trigger = resolveTooltipTrigger(linkSafety.tooltipTrigger)
+  const trigger = resolveTooltipTrigger(linkSafety.tooltipTrigger, canUseContextMenus)
   // Read once alongside the trigger, so both come from the same settings snapshot
   const hoverDelay = Math.max(0, Number(linkSafety.hoverDelay ?? defaultSettings.linkSafety.hoverDelay))
 

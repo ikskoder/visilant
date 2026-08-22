@@ -56,6 +56,8 @@ vi.mock('webextension-polyfill', () => {
     runtime: {
       getURL: vi.fn((path: string) => `chrome-extension://mock-id/${path}`),
       id: 'mock-extension-id',
+      // A desktop answer by default. The Android one is what a few tests set.
+      getPlatformInfo: vi.fn().mockResolvedValue({ os: 'linux', arch: 'x86-64' }),
     },
     action: {
       setBadgeText: vi.fn().mockResolvedValue(undefined),

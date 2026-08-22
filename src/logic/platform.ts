@@ -21,6 +21,26 @@ export function hasHistoryApi(): boolean {
 }
 
 /**
+ * Is this the Android build of the browser?
+ *
+ * Asked of the browser, not guessed from the pointer: the two disagree on a
+ * phone with a mouse attached, and what this decides is wording rather than
+ * capability. Used where the same feature is real on both but reached
+ * differently – the extension icon is on a toolbar on desktop and inside the
+ * browser's menu here, so telling an Android user to pin it is an instruction
+ * with nothing to follow.
+ */
+export async function isAndroidBrowser(): Promise<boolean> {
+  try {
+    const info = await browser.runtime.getPlatformInfo()
+    return info?.os === 'android'
+  }
+  catch {
+    return false
+  }
+}
+
+/**
  * Can the pointer rest on something without pressing it?
  *
  * A mouse and a trackpad can, a touchscreen cannot. Asked of the pointer rather
@@ -38,9 +58,25 @@ export function supportsHover(): boolean {
  * would leave the link check quietly doing nothing – the worst outcome for a
  * feature whose whole job is to interrupt. The tap is the only moment left to
  * intervene at, which is exactly what the click-left trigger intervenes at.
+ *
+ * The two are not the same question, which is why `canUseContextMenus` is asked
+ * separately. Right-clicking needs a menu to put the item in, and Firefox for
+ * Android has no menus API however good the pointer is – so a phone with a
+ * Bluetooth mouse answers yes to hover and still cannot do it. Left as one
+ * question, that device kept `click-right` and the link check never fired
+ * again, with nothing on screen to explain it.
+ *
+ * A content script cannot answer the second one: the menus namespace is not
+ * exposed to it on any platform. It asks the background, and until the answer
+ * arrives the safe assumption is no – a trigger that fires too eagerly is
+ * recoverable, one that never fires is not.
  */
-export function resolveTooltipTrigger(trigger: TooltipTrigger): TooltipTrigger {
-  return supportsHover() ? trigger : 'click-left'
+export function resolveTooltipTrigger(trigger: TooltipTrigger, canUseContextMenus = false): TooltipTrigger {
+  if (!supportsHover())
+    return 'click-left'
+  if (trigger === 'click-right' && !canUseContextMenus)
+    return 'click-left'
+  return trigger
 }
 
 /**

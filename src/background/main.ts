@@ -734,6 +734,9 @@ const messageHandlers = {
   },
   'ignore-site': (data: any) => handleIgnoreSite(data.hostname),
   'get-settings': () => getSettingsLogic(),
+  // The menus namespace is not exposed to content scripts anywhere, so the one
+  // context that can answer this is the one that would create the menu
+  'get-platform': async () => ({ contextMenus: hasContextMenus() }),
   'show-notification': (data: any) => handleShowNotification(data.warningType),
   'tampering-detected': (_data: any, ctx?: { tabId?: number }) => handleTampering(ctx?.tabId),
   'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain),

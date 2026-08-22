@@ -13,7 +13,7 @@ import { enabledCriteria, FAMILIARITY_CRITERIA, normalizeFamiliarity, requiredMa
 import { describeImportHealth, readHistoryImportState, runHistoryImport } from '~/logic/history-import'
 import { fetchRemoteMailSiteLists, STORAGE_KEY_CUSTOM_MAIL_SITES, STORAGE_KEY_REMOTE_MAIL_SITES, updateRemoteMailSites } from '~/logic/mail-sites'
 import { isolatePageZoom } from '~/logic/page-zoom'
-import { hasHistoryApi, supportsHover } from '~/logic/platform'
+import { hasContextMenus, hasHistoryApi, isAndroidBrowser, supportsHover } from '~/logic/platform'
 import { fetchRemoteShortenerLists, STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
 import { defaultSettings, settings } from '~/logic/storage'
 import { visitKeysToRemove } from '~/logic/visit-reset'
@@ -64,10 +64,13 @@ function updateTranslations() {
     'familiarityNeedsImportTitle',
     'familiarityNoDatesTitle',
     'familiarityNoDatesText',
+    'familiarityNoImportTitle',
+    'familiarityNoImportText',
     'familiarityNeedsImportText',
     'familiarityNeedsImportLink',
     'displaySettings',
     'displaySettingsPinNote',
+    'displaySettingsPinNoteAndroid',
     'dynamicIcon',
     'dynamicIconDesc',
     'showBadge',
@@ -149,6 +152,7 @@ function updateTranslations() {
     'linkTooltipTriggerClickLeftDesc',
     'linkTooltipTriggerClickRightDesc',
     'linkTooltipTriggerTouchNote',
+    'linkTooltipTriggerNoMenusNote',
     'linkTooltipTriggerHoverUnavailable',
     'linkTooltipTriggerClickRightUnavailable',
     'linkShowVisitCount',
@@ -256,6 +260,11 @@ const customDisposableText = ref('')
 
 // Extra `address-domain = site` lines, on top of the built-in table
 const customMailSitesText = ref('')
+
+// Both the dynamic icon and the counter work on Firefox for Android – they are
+// drawn in the browser's own menu, under Extensions – so this decides wording
+// and nothing else. Asked of the browser rather than of the pointer, and once.
+const isAndroid = ref(false)
 
 /**
  * Which settings each section owns.
@@ -367,6 +376,8 @@ onMounted(async () => {
   // Zoom set on this page belongs to this page. Extension pages share one
   // origin, so without this the popup inherits whatever is chosen here.
   isolatePageZoom()
+
+  isAndroid.value = await isAndroidBrowser()
 
   const stored = await browser.storage.local.get([
     'customShorteners',
@@ -531,6 +542,14 @@ const canImportHistory = hasHistoryApi()
 // A phone has no hovering and no right click, which decides what the link-check
 // trigger below can actually do
 const pointerCanHover = supportsHover()
+
+// Two questions, not one. Right-clicking needs somewhere to put the menu item,
+// and Firefox for Android has no menus API however good the pointer is – so a
+// phone with a Bluetooth mouse can hover and still never fire a right-click
+// check. Read here rather than in the content script, which is not given the
+// menus namespace on any platform.
+const canRightClick = pointerCanHover && hasContextMenus()
+
 const importHealth = computed<ImportHealth>(() => canImportHistory
   ? describeImportHealth(lastImport.value, Date.now(), isImporting.value)
   : 'unsupported')
@@ -749,8 +768,35 @@ const showStatsCoverageWarning = computed(() =>
  * history no longer holds – cleared, or simply older than the browser keeps –
  * stays dateless however many times the import is re-run. Once the full pass has
  * finished, pointing at it again is a promise it cannot keep.
+ *
+ * `unsupported` is the same answer arrived at from the other end: on Firefox for
+ * Android there is no history to read at all, so there is no import to point at
+ * either. It used to fall through to the fixable wording, which offered a link
+ * to a section that says the browser will not allow it.
  */
-const statsGapIsPermanent = computed(() => importHealth.value === 'complete')
+const statsGapIsPermanent = computed(() =>
+  importHealth.value === 'complete' || importHealth.value === 'unsupported')
+
+/**
+ * The two permanent cases read differently and must not borrow each other's
+ * words: one says the import has already run, the other that there was never
+ * one to run.
+ */
+const statsGapTitle = computed(() => {
+  if (importHealth.value === 'unsupported')
+    return translations.value.familiarityNoImportTitle
+  return statsGapIsPermanent.value
+    ? translations.value.familiarityNoDatesTitle
+    : translations.value.familiarityNeedsImportTitle
+})
+
+const statsGapText = computed(() => {
+  if (importHealth.value === 'unsupported')
+    return translations.value.familiarityNoImportText
+  return statsGapIsPermanent.value
+    ? translations.value.familiarityNoDatesText
+    : translations.value.familiarityNeedsImportText
+})
 
 // Database management functions
 
@@ -1113,10 +1159,10 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             class="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50"
           >
             <div class="text-sm font-medium text-amber-800 dark:text-amber-300">
-              {{ statsGapIsPermanent ? translations.familiarityNoDatesTitle : translations.familiarityNeedsImportTitle }}
+              {{ statsGapTitle }}
             </div>
             <p class="text-xs text-amber-900/80 dark:text-amber-200/80 mt-1">
-              {{ statsCoverage?.missing }} / {{ statsCoverage?.total }} – {{ statsGapIsPermanent ? translations.familiarityNoDatesText : translations.familiarityNeedsImportText }}
+              {{ statsCoverage?.missing }} / {{ statsCoverage?.total }} – {{ statsGapText }}
             </p>
             <!-- No link once the import has run: there is nothing there to press -->
             <a
@@ -1140,7 +1186,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           <!-- Said once for the whole section: both toggles draw on the same
                icon, and neither shows anything while it is hidden in the menu -->
           <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
-            {{ translations.displaySettingsPinNote }}
+            {{ isAndroid ? translations.displaySettingsPinNoteAndroid : translations.displaySettingsPinNote }}
           </p>
 
           <div class="space-y-4">
@@ -1445,12 +1491,21 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <p v-if="!pointerCanHover" class="text-xs text-gray-500 dark:text-gray-400 mb-3">
                 {{ translations.linkTooltipTriggerTouchNote }}
               </p>
+              <!-- A pointer that can hover, on a browser with no menus API: the
+                   note above does not apply and the right-click option below is
+                   the only one that cannot fire -->
+              <p v-else-if="!canRightClick" class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                {{ translations.linkTooltipTriggerNoMenusNote }}
+              </p>
               <div class="space-y-2">
                 <!-- Hovering and right-clicking are disabled rather than hidden
-                     on a touchscreen: a choice that silently does nothing is
-                     worse than one the device visibly cannot offer, and hiding
-                     them would leave a profile whose stored trigger is one of
-                     the two with nothing on screen to explain itself. -->
+                     where they cannot fire: a choice that silently does nothing
+                     is worse than one the device visibly cannot offer, and
+                     hiding them would leave a profile whose stored trigger is
+                     one of the two with nothing on screen to explain itself.
+                     Each carries its own reason, because they are not the same
+                     reason – one is about the pointer, the other about an API
+                     the browser does not have. -->
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="hover"
@@ -1480,13 +1535,13 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-right"
-                    :disabled="!pointerCanHover"
-                    class="h-4 w-4 flex-shrink-0" :class="{ 'opacity-50': !pointerCanHover }" style="accent-color: #3b82f6;"
+                    :disabled="!canRightClick"
+                    class="h-4 w-4 flex-shrink-0" :class="{ 'opacity-50': !canRightClick }" style="accent-color: #3b82f6;"
                   >
                   <span class="ml-2 text-sm">
-                    <span :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerClickRight }}</span>
-                    <p class="hint text-xs text-gray-500 dark:text-gray-400" :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
-                    <p v-if="!pointerCanHover" class="text-xs text-amber-600 dark:text-amber-400">
+                    <span :class="{ 'opacity-50': !canRightClick }">{{ translations.linkTooltipTriggerClickRight }}</span>
+                    <p class="hint text-xs text-gray-500 dark:text-gray-400" :class="{ 'opacity-50': !canRightClick }">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
+                    <p v-if="!canRightClick" class="text-xs text-amber-600 dark:text-amber-400">
                       {{ translations.linkTooltipTriggerClickRightUnavailable }}
                     </p>
                   </span>
@@ -1901,9 +1956,16 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   </template>
                 </p>
               </div>
+              <!-- Both of these are gone where there is no history to read.
+                   A dead button called "Re-import history", with a paragraph
+                   describing the two passes it would run, sits directly under a
+                   line saying the browser will not allow any of it – which is
+                   how it read on Firefox for Android. The status line above is
+                   the whole story there. -->
               <button
+                v-if="canImportHistory"
                 class="btn-primary w-full"
-                :disabled="isImporting || !canImportHistory" @click="importHistory()"
+                :disabled="isImporting" @click="importHistory()"
               >
                 <template v-if="!isImporting">
                   {{ importButtonLabel }}
@@ -1912,7 +1974,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   {{ translations.importing }} {{ importProgress.current }}/{{ importProgress.total }}
                 </template>
               </button>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <p v-if="canImportHistory" class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {{ translations.importHistoryRunDesc }}
               </p>
               <div v-if="isImporting" class="w-full h-1 mt-2 bg-gray-200 rounded-full overflow-hidden">
