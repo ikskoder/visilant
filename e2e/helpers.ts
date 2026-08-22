@@ -17,6 +17,9 @@ export async function sw(context: any) {
   return worker
 }
 
+/** The key the background publishes the install-time import under. */
+const HISTORY_IMPORT_STATE_KEY = '__visilantHistoryImport'
+
 /**
  * Run something inside the service worker, surviving its teardown.
  *
@@ -94,4 +97,38 @@ export async function serveSite(page: any, url: string, html = blankPage()) {
     route.fulfill({ status: 200, contentType: 'text/html', body: html }))
   await page.goto(url)
   await page.waitForLoadState('load')
+}
+
+/**
+ * Wait out the import the extension starts by itself on install.
+ *
+ * It publishes to the same keys these tests write, so state seeded before it
+ * settles is simply overwritten – on a fresh profile with no history to read,
+ * with a finished import of nothing. Two passes run one after the other, so a
+ * single `done` is not the end of it. Only a state that stops changing is.
+ *
+ * Every read goes through `inWorker` rather than a handle taken once. The worker
+ * is stopped whenever the browser decides it is idle, which on a loaded machine
+ * happens between two polls of this very loop, and a handle taken before that
+ * evaluates in a context where `chrome` no longer exists.
+ */
+export async function waitForAutoImport(context: any) {
+  const read = () => inWorker<string>(context, async (key: string) => {
+    const stored = await chrome.storage.local.get(key)
+    const state = stored[key]
+    return state ? `${state.status}:${state.updatedAt}:${state.finishedAt}` : 'none'
+  }, HISTORY_IMPORT_STATE_KEY)
+
+  let previous = ''
+  const deadline = Date.now() + 30000
+
+  while (Date.now() < deadline) {
+    const current = await read()
+    if (current !== 'none' && !current.startsWith('running') && current === previous)
+      return
+    previous = current
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+
+  throw new Error(`the install-time import never settled, last state: ${previous}`)
 }

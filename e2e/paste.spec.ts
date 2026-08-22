@@ -7,7 +7,7 @@
  * whether something of ours is covering the page.
  */
 import { expect, test } from './fixtures'
-import { blankPage, patchSettings, serveSite, sw } from './helpers'
+import { blankPage, inWorker, patchSettings, serveSite } from './helpers'
 
 // Evaluated inside the extension's service worker, where the MV3 API lives
 declare const chrome: any
@@ -27,8 +27,7 @@ const SITE_HTML = blankPage('paste poc', `
 
 /** Pre-seed the visit record so the site arrives already marked as ignored. */
 async function markIgnored(context: any, hostname: string) {
-  const worker = await sw(context)
-  await worker.evaluate(async (host: string) => {
+  await inWorker(context, async (host: string) => {
     await chrome.storage.local.set({ [host]: { count: 1, firstSeen: 0, lastSeen: 0, activeDays: 1, ignored: true } })
   }, hostname)
 }
@@ -57,6 +56,29 @@ async function pasteInto(page: any, selector: string) {
  * only a dialog that spans the viewport ever answers here – the input warning
  * sits in the top right corner and is not in the way.
  */
+/**
+ * The same question, waited on.
+ *
+ * The dialog goes up only once the background has answered whether the site is
+ * familiar, so a single read a fixed pause after the keypress is a race that a
+ * loaded machine loses. Absence is still read once, because there a fixed pause
+ * followed by one look is exactly the assertion being made.
+ */
+async function expectOverlay(page: any) {
+  await expect.poll(() => overlayShowing(page), { timeout: 15000, intervals: [200] }).toBe(true)
+}
+
+/**
+ * Waited on too, because this asks whether a dialog that was up has gone.
+ *
+ * Not the same question as the control test's, which asks whether one ever
+ * appeared – that one is a fixed pause and a single look on purpose, and
+ * polling it would answer yes the instant it started.
+ */
+async function expectOverlayGone(page: any) {
+  await expect.poll(() => overlayShowing(page), { timeout: 5000, intervals: [200] }).toBe(false)
+}
+
 function overlayShowing(page: any): Promise<boolean> {
   return page.evaluate(() => {
     const el = document.elementFromPoint(8, 8) as HTMLElement | null
@@ -84,26 +106,25 @@ test('a paste on an unfamiliar site is held back', async ({ context }) => {
   await pasteInto(page, '#victim')
 
   await expect(page.locator('#victim')).toHaveValue('')
-  expect(await overlayShowing(page)).toBe(true)
+  await expectOverlay(page)
 })
 
 test('refusing the paste does not let the next one through', async ({ context }) => {
   await patchSettings(context, { blockPasteOnUnfamiliar: true })
   const page = await openSite(context)
   await pasteInto(page, '#victim')
-  expect(await overlayShowing(page)).toBe(true)
+  await expectOverlay(page)
 
   // Refused by clicking away from the card, which is centred and at most 420px
   // wide, so the corner is always backdrop
   await page.mouse.click(8, 8)
-  await page.waitForTimeout(700)
-  expect(await overlayShowing(page)).toBe(false)
+  await expectOverlayGone(page)
   await expect(page.locator('#victim')).toHaveValue('')
 
   // Saying no is about this paste, not about the site
   await pasteInto(page, '#victim')
   await expect(page.locator('#victim')).toHaveValue('')
-  expect(await overlayShowing(page)).toBe(true)
+  await expectOverlay(page)
 })
 
 test('a paste into a read-only field is not held', async ({ context }) => {

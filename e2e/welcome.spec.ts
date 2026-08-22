@@ -7,7 +7,7 @@
  * a real import.
  */
 import { expect, test } from './fixtures'
-import { sw } from './helpers'
+import { inWorker, waitForAutoImport } from './helpers'
 
 // Evaluated inside the extension's service worker, where the MV3 API lives
 declare const chrome: any
@@ -31,36 +31,9 @@ const BASE_STATE = {
 
 /** Publish an import state the way the background would while it runs. */
 async function publishState(context: any, patch: Record<string, unknown>) {
-  const worker = await sw(context)
-  await worker.evaluate(async ({ key, state }: any) => {
+  await inWorker(context, async ({ key, state }: any) => {
     await chrome.storage.local.set({ [key]: state })
   }, { key: STATE_KEY, state: { ...BASE_STATE, ...patch } })
-}
-
-/**
- * Wait out the import the extension starts by itself on install.
- *
- * It publishes to the very key these tests write, so a state seeded before it
- * settles is simply overwritten – on a fresh profile with no history to read,
- * with a finished import of nothing.
- */
-async function waitForAutoImport(context: any) {
-  const worker = await sw(context)
-  const read = () => worker.evaluate(async (key: string) => {
-    const stored = await chrome.storage.local.get(key)
-    const state = stored[key]
-    return state ? `${state.status}:${state.updatedAt}:${state.finishedAt}` : 'none'
-  }, STATE_KEY)
-
-  // Two passes run one after the other, so a single `done` is not the end of it.
-  // Only a state that stops changing is.
-  let previous = ''
-  await expect.poll(async () => {
-    const current = await read()
-    const settled = current !== 'none' && !current.startsWith('running') && current === previous
-    previous = current
-    return settled
-  }, { timeout: 20000, intervals: [500] }).toBe(true)
 }
 
 async function openWelcome(context: any, extensionId: string) {
@@ -150,9 +123,8 @@ test('the settings button opens the options page', async ({ context, extensionId
 test('zoom on the welcome page stays on the welcome page', async ({ context, extensionId }) => {
   // Same origin as the action popup, which is what the isolation is there for
   const page = await openWelcome(context, extensionId)
-  const worker = await sw(context)
 
-  const scope = await worker.evaluate(async () => {
+  const scope = await inWorker(context, async () => {
     const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
     return (await chrome.tabs.getZoomSettings(tabs[0].id)).scope
   })

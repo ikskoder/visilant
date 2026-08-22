@@ -43,6 +43,14 @@ jobs:
       - name: Install dependencies
         run: nix develop --command pnpm install --frozen-lockfile
 
+      # Before the checks, not after them. `src/auto-imports.d.ts` and
+      # `src/components.d.ts` are written by the Vite plugins and are not in the
+      # repository, so on a fresh checkout `browser` and every auto-imported Vue
+      # helper are undeclared and `tsc` reports hundreds of TS2304 errors. The
+      # end-to-end run needs the same build anyway, so this costs nothing.
+      - name: Build
+        run: nix develop --command pnpm build
+
       - name: Lint
         run: nix develop --command pnpm exec eslint --no-cache .
 
@@ -51,11 +59,6 @@ jobs:
 
       - name: Unit tests
         run: nix develop --command pnpm test run
-
-      # Loads the built extension into Chromium, so it needs a build first. The
-      # devshell already carries the shared libraries Playwright's browser wants.
-      - name: Build for the end-to-end run
-        run: nix develop --command pnpm build
 
       # No `--with-deps`: the shared libraries Chromium wants come from the
       # devshell's LD_LIBRARY_PATH, the same way they do on a developer's machine

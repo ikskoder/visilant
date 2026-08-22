@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures'
-import { sw } from './helpers'
+import { inWorker } from './helpers'
 
 declare const chrome: any
 
@@ -8,17 +8,16 @@ test('zoom on the options page is not written to the origin the popup reads', as
   await options.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
   await options.waitForTimeout(1500)
 
-  const worker = await sw(context)
-  const tabId = await worker.evaluate(async () => {
+  const tabId = await inWorker<number>(context, async () => {
     const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
     return tabs[0].id
   })
 
   // The user zooms the settings page
-  await worker.evaluate(async (id: number) => chrome.tabs.setZoom(id, 1.3), tabId)
+  await inWorker(context, async (id: number) => chrome.tabs.setZoom(id, 1.3), tabId)
   await options.waitForTimeout(600)
 
-  const scope = await worker.evaluate(async (id: number) => (await chrome.tabs.getZoomSettings(id)).scope, tabId)
+  const scope = await inWorker<string>(context, async (id: number) => (await chrome.tabs.getZoomSettings(id)).scope, tabId)
   expect(scope).toBe('per-tab')
 
   // What the action popup inherits is the origin's own factor. Probed with a
@@ -28,7 +27,7 @@ test('zoom on the options page is not written to the origin the popup reads', as
   const probe = await context.newPage()
   await probe.goto(`chrome-extension://${extensionId}/dist/contentScripts/style.css`)
   await probe.waitForTimeout(500)
-  const originZoom = await worker.evaluate(async () => {
+  const originZoom = await inWorker<number>(context, async () => {
     const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
     return chrome.tabs.getZoom(tabs[0].id)
   })
@@ -39,6 +38,6 @@ test('zoom on the options page is not written to the origin the popup reads', as
   // would otherwise drop on every navigation
   await options.reload()
   await options.waitForTimeout(1800)
-  const restored = await worker.evaluate(async (id: number) => chrome.tabs.getZoom(id), tabId)
+  const restored = await inWorker<number>(context, async (id: number) => chrome.tabs.getZoom(id), tabId)
   expect(restored).toBeCloseTo(1.3, 2)
 })

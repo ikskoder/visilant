@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures'
-import { blankPage, inWorker, patchSettings, seedVisits, serveSite } from './helpers'
+import { blankPage, inWorker, patchSettings, seedVisits, serveSite, waitForAutoImport } from './helpers'
 
 // Evaluated inside the extension's own worker, where the namespace exists
 declare const chrome: any
@@ -218,7 +218,10 @@ test('scope domain list appears when whitelist selected', async ({ page, extensi
 // Buttons are found by their wording rather than by a colour class: the styling
 // moved into `btn-primary` / `btn-danger` utilities once and would do so again
 
-test('options page offers one history import and says it already ran', async ({ page, extensionId }) => {
+test('options page offers one history import and says it already ran', async ({ page, extensionId, context }) => {
+  // Every line below is about an import that has finished, so waiting for it is
+  // the test, not setup. A fixed pause only ever passed on a fast machine.
+  await waitForAutoImport(context)
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
   await page.waitForTimeout(1000)
 
@@ -726,6 +729,9 @@ test('turning explanations off empties the settings page of them and nothing els
 
 test('the badge draws whichever number the settings ask for', async ({ page, context }) => {
   const DAY = 24 * 60 * 60 * 1000
+  // The install-time import writes the same records, so a seed laid before it
+  // settles is overwritten and the badge then disagrees with the seed
+  await waitForAutoImport(context)
   await seedVisits(context, SITE_HOST, 42, { activeDays: 12, firstSeen: Date.now() - 30 * DAY })
   await serveSite(page, SITE_URL)
   await page.waitForTimeout(800)
@@ -737,21 +743,33 @@ test('the badge draws whichever number the settings ask for', async ({ page, con
     return stored[host]
   }, SITE_HOST)
 
-  const badge = async (content: string) => {
+  // The tab is found by its address rather than by being the active one in the
+  // last focused window. A headless runner need have no focused window at all,
+  // and that query then answers about some other tab – one the badge was never
+  // drawn on, which is why the read stayed empty however long it waited.
+  //
+  // Waited on rather than read once as well: the background draws the badge
+  // after it hears about the reload, so a fixed pause is a race.
+  const badgeShows = async (content: string, expected: string) => {
     await patchSettings(context, { badgeContent: content })
     await page.reload()
-    await page.waitForTimeout(900)
-    return inWorker(context, async () => {
-      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-      return chrome.action.getBadgeText({ tabId: tabs[0].id })
-    })
+    // The badge exists for the tab being looked at and no other – the background
+    // returns early on `!tab.active`, so that a ctrl+clicked background tab
+    // cannot repaint the icon of the tab in front of the user. Asking for it
+    // without being on that tab is asking for something that by design is not
+    // drawn, so the test does what a reader does and brings it to the front.
+    await page.bringToFront()
+    await expect.poll(() => inWorker(context, async (host: string) => {
+      const [tab] = await chrome.tabs.query({ url: `*://${host}/*` })
+      return tab ? chrome.action.getBadgeText({ tabId: tab.id }) : 'no tab'
+    }, SITE_HOST), { timeout: 15000, intervals: [300] }).toBe(expected)
   }
 
-  expect(await badge('visits')).toBe(String(record.count))
-  expect(await badge('activeDays')).toBe(String(record.activeDays))
-  expect(await badge('age')).toBe(String(Math.floor((Date.now() - record.firstSeen) / DAY)))
+  await badgeShows('visits', String(record.count))
+  await badgeShows('activeDays', String(record.activeDays))
+  await badgeShows('age', String(Math.floor((Date.now() - record.firstSeen) / DAY)))
   // All three checks are on out of the box, and this record clears every one
-  expect(await badge('checks')).toBe('3/3')
+  await badgeShows('checks', '3/3')
 
   // With a single check left on, counting them says nothing the colour has not
   // already said, so the badge shows that check's own number
@@ -764,7 +782,7 @@ test('the badge draws whichever number the settings ask for', async ({ page, con
       atLeast: 2,
     },
   })
-  expect(await badge('checks')).toBe(String(record.count))
+  await badgeShows('checks', String(record.count))
 })
 
 test('the counter list holds only the checks the user judges sites by', async ({ page, extensionId }) => {
@@ -896,9 +914,12 @@ test('wiping the visits updates what the page says about the import, without a r
 
 test('the import button offers a first run before it offers a re-run', async ({ page, context, extensionId }) => {
   // The install-time import has to be out of the way before its state is wiped,
-  // or the background writes it back underneath the page
+  // or the background writes it back underneath the page. Waited for rather
+  // than slept through: a pause long enough here is not long enough on a
+  // loaded machine, and the wipe then lands in the middle of the import.
+  await waitForAutoImport(context)
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
-  await page.waitForTimeout(2500)
+  await page.waitForTimeout(1000)
   await inWorker(context, async () => chrome.storage.local.remove('__visilantHistoryImport'))
   await page.reload()
   await page.waitForTimeout(1500)
