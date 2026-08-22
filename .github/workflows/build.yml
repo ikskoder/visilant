@@ -21,8 +21,61 @@ permissions:
   contents: read
 
 jobs:
+  # The Nix build proves the bytes reproduce, and says nothing at all about
+  # whether the code is right – a red typecheck and a broken test both build
+  # perfectly. Release depends on this through `build`, so a tag cannot be
+  # published past a failing check.
+  quality:
+    name: lint, types and tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.1
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # The same devshell the developer has, so node and pnpm are the versions
+      # flake.lock pins rather than whatever the runner ships
+      - name: Install dependencies
+        run: nix develop --command pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: nix develop --command pnpm exec eslint --no-cache .
+
+      - name: Type check
+        run: nix develop --command pnpm typecheck
+
+      - name: Unit tests
+        run: nix develop --command pnpm test run
+
+      # Loads the built extension into Chromium, so it needs a build first. The
+      # devshell already carries the shared libraries Playwright's browser wants.
+      - name: Build for the end-to-end run
+        run: nix develop --command pnpm build
+
+      # No `--with-deps`: the shared libraries Chromium wants come from the
+      # devshell's LD_LIBRARY_PATH, the same way they do on a developer's machine
+      - name: Install Chromium for Playwright
+        run: nix develop --command pnpm exec playwright install chromium
+
+      - name: End-to-end tests
+        run: nix develop --command pnpm test:e2e
+
+      - name: Keep the report of a failed run
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+
   build:
     name: build ${{ matrix.target }}
+    needs: quality
     runs-on: ubuntu-24.04
     permissions:
       contents: read
