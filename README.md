@@ -163,7 +163,7 @@ You do not have to take our word for what the store installed. Every release can
 be rebuilt from this repository, byte for byte:
 
 ```bash
-nix build github:ikskoder/visilant/v2.0.1#firefox
+nix build github:ikskoder/visilant/v3.0.0#firefox
 sha256sum result/*.xpi          # compare with SHA256SUMS on the release
 ```
 

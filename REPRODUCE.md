@@ -27,7 +27,7 @@ produce something else.
 With [Nix](https://nixos.org/download/) installed and flakes enabled:
 
 ```bash
-nix build github:ikskoder/visilant/v2.0.1#firefox
+nix build github:ikskoder/visilant/v3.0.0#firefox
 sha256sum result/*.xpi
 ```
 
@@ -38,7 +38,7 @@ has to match exactly.
 The same works from a clone:
 
 ```bash
-git checkout v2.0.1
+git checkout v3.0.0
 nix build .#firefox
 cat result/SHA256SUMS
 ```
@@ -94,7 +94,7 @@ attestation, signed through Sigstore. It ties the file to the commit and the
 workflow that produced it:
 
 ```bash
-gh attestation verify visilant-2.0.1-firefox.xpi --repo ikskoder/visilant
+gh attestation verify visilant-3.0.0-firefox.xpi --repo ikskoder/visilant
 ```
 
 That is a statement about the builder. The hash comparison above is a statement
