@@ -4,12 +4,14 @@ import type { SiteVisitData } from '~/logic/storage'
 import { getDomain } from 'tldts'
 import { onMessage } from 'webext-bridge/background'
 import { badgeText } from '~/logic/badge'
+import { fetchBlobBounded } from '~/logic/bounded-fetch'
 import { buildFamiliarIndex, findLookalikes } from '~/logic/domain-similarity'
 import { getProviderReferenceDomains } from '~/logic/email-providers'
 import { analyzeEmailAddress, parseMailtoUrl } from '~/logic/email-safety'
-import { applyVisitToFamiliar, collectFamiliarDomains } from '~/logic/familiar-index'
+import { applyVisitToFamiliar, collectFamiliarDomains, FAMILIAR_INDEX_KEY } from '~/logic/familiar-index'
 import { aggregateFamiliarityStats, familiaritySignature, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { HISTORY_AUTO_IMPORT_KEY, HISTORY_IMPORT_STATE_KEY, isImportAlive, readHistoryImportState, runHistoryImport, shouldAutoImport } from '~/logic/history-import'
+import { watchListStorage } from '~/logic/list-sync'
 import { collectMailSiteFamilies, loadMailSitesFromRecords } from '~/logic/mail-sites'
 import { hasContextMenus } from '~/logic/platform'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
@@ -19,6 +21,10 @@ import { applyVisit, isTrackableHostname } from '~/logic/visit-stats'
 
 // Load user-defined and remotely fetched shortener domains on service worker start
 loadShortenersFromStorage()
+
+// ...and follow them afterwards, so an edit in the settings reaches a worker that
+// is already running rather than waiting for the next time it is torn down
+watchListStorage()
 
 // A profile updated from a version that only had a visit threshold keeps the
 // number the user set. Done on startup rather than only on install, so a browser
@@ -133,7 +139,10 @@ async function incrementVisitCount(url: string) {
   const updated = applyVisit(existingData, Date.now())
 
   await browser.storage.local.set({ [hostname]: updated })
-  await noteVisitForFamiliarIndex(hostname, updated)
+  // Whether this was a visit or a reload inside the debounce window – the same
+  // question the counter above just answered, and the index has to give the
+  // same answer or the two drift apart
+  await noteVisitForFamiliarIndex(hostname, updated, updated.count !== (existingData?.count ?? 0))
 }
 
 /**
@@ -446,7 +455,6 @@ async function getVisitCountLogic(url: string) {
 // Familiar domain index (lookalike detection)
 // ==========================================
 
-const FAMILIAR_INDEX_KEY = '__visilantFamiliar'
 /** A stored list older than this is rebuilt from scratch on next use. */
 const FAMILIAR_INDEX_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
@@ -546,7 +554,7 @@ async function getFamiliarIndex(): Promise<FamiliarIndex> {
  * the whole domain family would mean scanning all of storage on every single
  * navigation.
  */
-async function noteVisitForFamiliarIndex(hostname: string, visitData: SiteVisitData) {
+async function noteVisitForFamiliarIndex(hostname: string, visitData: SiteVisitData, counted: boolean) {
   if (!familiarDomains)
     return
 
@@ -554,7 +562,7 @@ async function noteVisitForFamiliarIndex(hostname: string, visitData: SiteVisitD
   if (!registrable)
     return
 
-  const added = applyVisitToFamiliar(familiarDomains, registrable, visitData, currentFamiliarityRules())
+  const added = applyVisitToFamiliar(familiarDomains, registrable, visitData, currentFamiliarityRules(), Date.now(), counted)
   familiarIndexStale = true
 
   // Only a new member is worth a write, and drifting counts are corrected by the
@@ -843,14 +851,23 @@ async function showQrNotification(messageKey: string, detail?: string) {
   })
 }
 
+/**
+ * Ceiling on a right-clicked image. A QR code is a few kilobytes, and this is
+ * fetched with the extension's own host permissions from whatever URL the page
+ * put in the `src` – so it gets the same deadline and byte cap as a remote list.
+ */
+const MAX_QR_IMAGE_BYTES = 16 * 1024 * 1024
+
 // Fetch an image by URL, decode a QR code from it and push the payload to the tab
 async function handleQrImageCheck(srcUrl: string, tabId?: number) {
   let payload: string | null = null
   try {
-    const response = await fetch(srcUrl)
-    if (!response.ok)
-      throw new Error(`fetch failed: ${response.status}`)
-    const blob = await response.blob()
+    const blob = await fetchBlobBounded(srcUrl, {
+      maxBytes: MAX_QR_IMAGE_BYTES,
+      // A page can point `src` at anything. Whatever this is, it is not an image
+      // and there is no QR code in it.
+      accept: type => type.startsWith('image/'),
+    })
     payload = await decodeQrFromImageBitmapSource(blob)
   }
   catch {

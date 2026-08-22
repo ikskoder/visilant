@@ -1,6 +1,9 @@
 import { expect, test } from './fixtures'
 import { blankPage, inWorker, patchSettings, seedVisits, serveSite } from './helpers'
 
+// Evaluated inside the extension's own worker, where the namespace exists
+declare const chrome: any
+
 // Made-up hostnames served by the test itself. Nothing here touches the network:
 // a real site can go down, change its markup or – worse – quietly become a site
 // the profile has visited, which is the one thing several of these tests need to
@@ -836,9 +839,21 @@ test('every choice on the options page is written at the same size', async ({ pa
   expect(Object.keys(sizes)).toEqual(['14px'])
 })
 
-test('wiping the visits updates what the page says about the import, without a reload', async ({ page, extensionId }) => {
+test('wiping the visits updates what the page says about the import, without a reload', async ({ page, context, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
   await page.waitForTimeout(1500)
+
+  // Sentinels under every kind of key the same storage area holds. A checkbox
+  // that names visit information may not reach a single one of them.
+  await inWorker(context, async () => chrome.storage.local.set({
+    customShorteners: ['sentinel-short.test'],
+    customPublicEmailProviders: ['sentinel-public.test'],
+    customDisposableEmailDomains: ['sentinel-temp.test'],
+    customMailSites: ['sentinel.test = mail.sentinel.test'],
+    remoteShortenerDomains: { domains: ['sentinel-remote.test'], updatedAt: 1, urls: [] },
+    remoteMailSites: { domains: ['sentinel.test = mail.sentinel.test'], updatedAt: 1, urls: [] },
+    textDefaultsSeeded: true,
+  }))
 
   const status = page.locator('#section-data p').nth(1)
   await page.locator('#section-data button').first().click()
@@ -851,6 +866,32 @@ test('wiping the visits updates what the page says about the import, without a r
   // The import state was wiped along with the visits, and this page is the one
   // that wiped it – so it says so straight away rather than at the next reload
   await expect(status).toContainText('Nothing imported yet', { timeout: 5000 })
+
+  const survivors = await inWorker(context, async () => chrome.storage.local.get([
+    'customShorteners',
+    'customPublicEmailProviders',
+    'customDisposableEmailDomains',
+    'customMailSites',
+    'remoteShortenerDomains',
+    'remoteMailSites',
+    'textDefaultsSeeded',
+  ]))
+  expect(survivors).toEqual({
+    customShorteners: ['sentinel-short.test'],
+    customPublicEmailProviders: ['sentinel-public.test'],
+    customDisposableEmailDomains: ['sentinel-temp.test'],
+    customMailSites: ['sentinel.test = mail.sentinel.test'],
+    remoteShortenerDomains: { domains: ['sentinel-remote.test'], updatedAt: 1, urls: [] },
+    remoteMailSites: { domains: ['sentinel.test = mail.sentinel.test'], updatedAt: 1, urls: [] },
+    textDefaultsSeeded: true,
+  })
+
+  // And the visits really are gone, or the assertion above proves nothing
+  const visits = await inWorker(context, async () => {
+    const all = await chrome.storage.local.get(null)
+    return Object.keys(all).filter(key => key.includes('.') && typeof (all[key] as any)?.count === 'number')
+  })
+  expect(visits).toEqual([])
 })
 
 test('the import button offers a first run before it offers a re-run', async ({ page, context, extensionId }) => {

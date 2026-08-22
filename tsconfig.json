@@ -6,7 +6,11 @@
     "lib": ["DOM", "ESNext"],
     "baseUrl": ".",
     "module": "ESNext",
-    "moduleResolution": "node",
+    // Bundler, not node: Vite 8 and its plugins publish their types through
+    // `exports` only, and the old resolver cannot see them – which turned every
+    // build config into a wall of implicit `any` and made `pnpm typecheck` red
+    // in a way no source change could fix.
+    "moduleResolution": "Bundler",
     "paths": {
       "~/*": ["src/*"]
     },

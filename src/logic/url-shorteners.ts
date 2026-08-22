@@ -1,3 +1,4 @@
+import { matchesDomainSet } from './domain-set'
 import { parseShortenerDomains, STORAGE_KEY_REMOTE_SHORTENERS } from './shortener-lists'
 
 // Built-in list of known URL shortener domains (one per line, raw text)
@@ -2650,17 +2651,10 @@ export function getShortenerCount(): number {
  * Also checks subdomains (e.g. custom.bit.ly).
  */
 export function isShortenedUrl(hostname: string): boolean {
-  const lower = hostname.toLowerCase()
-  if (shortenerDomains.has(lower))
-    return true
-
-  // Check if it's a subdomain of a known shortener
-  for (const domain of shortenerDomains) {
-    if (lower.endsWith(`.${domain}`))
-      return true
-  }
-
-  return false
+  // Walked from the hostname rather than over the set: the built-in list alone
+  // is ~2.5 thousand domains, and it used to be read end to end for every link
+  // on the page
+  return matchesDomainSet(hostname.toLowerCase(), shortenerDomains)
 }
 
 export interface ResolvedUrlResult {
@@ -2850,11 +2844,10 @@ export function setCachedResolvedUrl(url: string, result: ResolvedUrlResult): vo
 export async function loadShortenersFromStorage(): Promise<void> {
   const stored = await browser.storage.local.get(['customShorteners', STORAGE_KEY_REMOTE_SHORTENERS])
 
-  const custom = (stored.customShorteners as string[]) || []
-  if (custom.length)
-    loadCustomShorteners(custom)
+  // Applied even when empty. Storage is the source of truth for both layers, and
+  // a list the user has just cleared has to leave the runtime set with it.
+  loadCustomShorteners((stored.customShorteners as string[]) || [])
 
   const remote = stored[STORAGE_KEY_REMOTE_SHORTENERS] as { domains?: string[] } | undefined
-  if (remote?.domains?.length)
-    updateShortenerList(remote.domains)
+  updateShortenerList(remote?.domains || [])
 }

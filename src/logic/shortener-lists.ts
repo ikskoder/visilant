@@ -7,6 +7,8 @@
  * imports this instead and stays light.
  */
 
+import { fetchTextBounded } from './bounded-fetch'
+
 /** storage.local key holding the merged remote list, shared by all contexts. */
 export const STORAGE_KEY_REMOTE_SHORTENERS = 'remoteShortenerDomains'
 
@@ -17,13 +19,16 @@ export function parseShortenerDomains(raw: string): string[] {
     .filter(line => line.length > 0 && !line.startsWith('#') && line.includes('.'))
 }
 
+/**
+ * Ceiling on the merged list. The built-in list is ~2.5 thousand domains, and
+ * every one of them is checked against on every link, so a source answering with
+ * a million lines would be paid for on every hover rather than once.
+ */
+export const MAX_REMOTE_SHORTENERS = 100_000
+
 /** Fetch one list. Throws on network or HTTP errors. */
 export async function fetchRemoteShortenerList(url: string): Promise<string[]> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
-  if (!response.ok)
-    throw new Error(`HTTP ${response.status}`)
-
-  return parseShortenerDomains(await response.text())
+  return parseShortenerDomains(await fetchTextBounded(url)).slice(0, MAX_REMOTE_SHORTENERS)
 }
 
 export interface RemoteShortenerResult {
@@ -57,5 +62,5 @@ export async function fetchRemoteShortenerLists(urls: string[]): Promise<RemoteS
       merged.add(domain)
   }
 
-  return { domains: [...merged], ok, failed }
+  return { domains: [...merged].slice(0, MAX_REMOTE_SHORTENERS), ok, failed }
 }

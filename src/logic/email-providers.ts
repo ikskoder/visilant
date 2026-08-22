@@ -1,3 +1,6 @@
+import { fetchTextBounded, MAX_LIST_SOURCES } from './bounded-fetch'
+import { matchesDomainSet } from './domain-set'
+
 // Classification of email domains: well-known public providers (anyone can
 // register an address – domain reputation says nothing about the sender) and
 // disposable/temp-mail services (almost always spam or scam in real mail).
@@ -203,12 +206,28 @@ function rebuildSets() {
   disposableSet = new Set<string>([...parseEmailDomainList(BUILTIN_DISPOSABLE_DOMAINS), ...customDisposable, ...remoteDisposable])
 }
 
+function normalizeDomains(domains: string[]): string[] {
+  return domains.map(d => d.trim().toLowerCase()).filter(d => d.length > 0)
+}
+
+/** Load the user's own list of public providers. */
+export function loadCustomPublicList(domains: string[]): void {
+  customPublic = normalizeDomains(domains)
+  rebuildSets()
+}
+
+/** Load the user's own list of disposable domains. */
+export function loadCustomDisposableList(domains: string[]): void {
+  customDisposable = normalizeDomains(domains)
+  rebuildSets()
+}
+
 /**
  * Load user-defined lists (called on startup from storage.local).
  */
 export function loadCustomEmailLists(publicDomains: string[], disposableDomains: string[]): void {
-  customPublic = publicDomains.map(d => d.trim().toLowerCase()).filter(d => d.length > 0)
-  customDisposable = disposableDomains.map(d => d.trim().toLowerCase()).filter(d => d.length > 0)
+  customPublic = normalizeDomains(publicDomains)
+  customDisposable = normalizeDomains(disposableDomains)
   rebuildSets()
 }
 
@@ -216,7 +235,7 @@ export function loadCustomEmailLists(publicDomains: string[], disposableDomains:
  * Load a remotely fetched disposable-domain list (merged, built-ins never lost).
  */
 export function updateDisposableList(remoteDomains: string[]): void {
-  remoteDisposable = remoteDomains.map(d => d.trim().toLowerCase()).filter(d => d.length > 0)
+  remoteDisposable = normalizeDomains(remoteDomains)
   rebuildSets()
 }
 
@@ -227,7 +246,7 @@ export function updateDisposableList(remoteDomains: string[]): void {
  * rebuild – adding a custom domain, say – cannot silently throw it away.
  */
 export function updatePublicList(remoteDomains: string[]): void {
-  remotePublic = remoteDomains.map(d => d.trim().toLowerCase()).filter(d => d.length > 0)
+  remotePublic = normalizeDomains(remoteDomains)
   rebuildSets()
 }
 
@@ -239,25 +258,15 @@ export function getPublicCount(): number {
   return publicSet.size
 }
 
-function matchesSet(domain: string, set: Set<string>): boolean {
-  if (set.has(domain))
-    return true
-  for (const d of set) {
-    if (domain.endsWith(`.${d}`))
-      return true
-  }
-  return false
-}
-
 /**
  * Classify an email domain. Disposable wins over public: some temp-mail
  * services hide behind provider-looking names.
  */
 export function classifyEmailDomain(domain: string): EmailProviderKind {
   const lower = domain.trim().toLowerCase()
-  if (matchesSet(lower, disposableSet))
+  if (matchesDomainSet(lower, disposableSet))
     return 'disposable'
-  if (matchesSet(lower, publicSet))
+  if (matchesDomainSet(lower, publicSet))
     return 'public'
   return 'regular'
 }
@@ -269,19 +278,22 @@ const MAX_REMOTE_LIST_SIZE = 100_000
  * Returns the parsed domains. Throws on network/HTTP errors.
  */
 export async function fetchRemoteDomainList(url: string): Promise<string[]> {
-  const response = await fetch(url)
-  if (!response.ok)
-    throw new Error(`Failed to fetch list: ${response.status}`)
-  const text = await response.text()
-  return parseEmailDomainList(text).slice(0, MAX_REMOTE_LIST_SIZE)
+  return parseEmailDomainList(await fetchTextBounded(url)).slice(0, MAX_REMOTE_LIST_SIZE)
 }
 
-/** Read a newline-separated list of source URLs, ignoring blanks and comments. */
+/**
+ * Read a newline-separated list of source URLs, ignoring blanks and comments.
+ *
+ * Capped, and capped here rather than at the fetch: this is also what the
+ * settings page counts when it says how many sources a field names, so a URL
+ * past the cap is missing from the count as well as from the update.
+ */
 export function parseListUrls(raw: string): string[] {
   return raw
     .split(/[\n\r]+/)
     .map(line => line.trim())
     .filter(line => line.length > 0 && !line.startsWith('#') && /^https?:\/\//i.test(line))
+    .slice(0, MAX_LIST_SOURCES)
 }
 
 export interface RemoteListResult {
@@ -339,11 +351,11 @@ export async function loadEmailListsFromStorage(): Promise<void> {
     (stored[STORAGE_KEY_CUSTOM_PUBLIC] as string[]) || [],
     (stored[STORAGE_KEY_CUSTOM_DISPOSABLE] as string[]) || [],
   )
+  // Applied even when empty. Storage is the source of truth for these layers, and
+  // a list the user has just cleared has to leave the runtime set with it.
   const remotePublicStored = stored[STORAGE_KEY_REMOTE_PUBLIC] as { domains?: string[] } | undefined
-  if (remotePublicStored?.domains?.length)
-    updatePublicList(remotePublicStored.domains)
+  updatePublicList(remotePublicStored?.domains || [])
 
   const remote = stored[STORAGE_KEY_REMOTE_DISPOSABLE] as { domains?: string[] } | undefined
-  if (remote?.domains?.length)
-    updateDisposableList(remote.domains)
+  updateDisposableList(remote?.domains || [])
 }

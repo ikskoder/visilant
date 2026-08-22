@@ -178,3 +178,30 @@ describe('applyVisitToFamiliar', () => {
     expect(applyVisitToFamiliar(familiar, 'example.com', { count: 40, activeDays: 5 }, strict, NOW)).toBe(true)
   })
 })
+
+describe('applyVisitToFamiliar and the debounce', () => {
+  it('does not raise the ranking for a reload that was not counted as a visit', () => {
+    const familiar = [{ domain: 'example.com', label: 'example', visits: 40 }]
+
+    // Three page loads inside the debounce window: the stored record stands
+    // still at 40, and so must the entry that ranks it
+    for (let i = 0; i < 3; i++)
+      applyVisitToFamiliar(familiar, 'example.com', record(40), rules, NOW, false)
+
+    expect(familiar[0].visits).toBe(40)
+  })
+
+  it('raises it for a visit that was counted', () => {
+    const familiar = [{ domain: 'example.com', label: 'example', visits: 40 }]
+    applyVisitToFamiliar(familiar, 'example.com', record(41), rules, NOW, true)
+    expect(familiar[0].visits).toBe(41)
+  })
+
+  // The family is a sum over its hostnames, so one hostname own count is a
+  // floor rather than the answer
+  it('never drops below the count that hostname already has', () => {
+    const familiar = [{ domain: 'example.com', label: 'example', visits: 5 }]
+    applyVisitToFamiliar(familiar, 'example.com', record(80), rules, NOW, false)
+    expect(familiar[0].visits).toBe(80)
+  })
+})

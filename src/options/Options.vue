@@ -10,12 +10,13 @@ import { useTheme } from '~/composables/useTheme'
 import { resolveBadgeContent } from '~/logic/badge'
 import { fetchRemoteDomainLists, parseListUrls, STORAGE_KEY_CUSTOM_DISPOSABLE, STORAGE_KEY_CUSTOM_PUBLIC, STORAGE_KEY_REMOTE_DISPOSABLE, STORAGE_KEY_REMOTE_PUBLIC, updateDisposableList, updatePublicList } from '~/logic/email-providers'
 import { enabledCriteria, FAMILIARITY_CRITERIA, normalizeFamiliarity, requiredMatches } from '~/logic/familiarity'
-import { describeImportHealth, HISTORY_AUTO_IMPORT_KEY, readHistoryImportState, runHistoryImport } from '~/logic/history-import'
+import { describeImportHealth, readHistoryImportState, runHistoryImport } from '~/logic/history-import'
 import { fetchRemoteMailSiteLists, STORAGE_KEY_CUSTOM_MAIL_SITES, STORAGE_KEY_REMOTE_MAIL_SITES, updateRemoteMailSites } from '~/logic/mail-sites'
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { hasHistoryApi, supportsHover } from '~/logic/platform'
 import { fetchRemoteShortenerLists, STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
 import { defaultSettings, settings } from '~/logic/storage'
+import { visitKeysToRemove } from '~/logic/visit-reset'
 import SectionNav from './SectionNav.vue'
 import SectionReset from './SectionReset.vue'
 
@@ -287,26 +288,6 @@ const SECTION_TEXTS: Record<string, Ref<string>[]> = {
   'email-lists': [customPublicProvidersText, customDisposableText, customMailSitesText],
 }
 
-/** Whether a section already stands at its defaults, in which case its reset does nothing. */
-function sectionIsDefault(id: string): boolean {
-  const keys = SECTION_SETTINGS[id] || []
-  const stored = settings.value
-  return keys.every(key => JSON.stringify(stored[key]) === JSON.stringify(defaultSettings[key]))
-    && (SECTION_TEXTS[id] || []).every(text => text.value.trim() === '')
-}
-
-/** Put one section back to how it ships, and nothing outside it. */
-function resetSection(id: string) {
-  const patch: Record<string, unknown> = {}
-  for (const key of SECTION_SETTINGS[id] || [])
-    patch[key] = structuredClone(defaultSettings[key])
-
-  settings.value = { ...settings.value, ...patch }
-
-  for (const text of SECTION_TEXTS[id] || [])
-    text.value = ''
-}
-
 type UpdateStatus = 'idle' | 'loading' | 'success' | 'error'
 interface RemoteListInfo { count: number, updatedAt: number, sources?: number, failed?: number }
 
@@ -318,6 +299,60 @@ const shortenerUpdateStatus = ref<UpdateStatus>('idle')
 const shortenerRemoteInfo = ref<RemoteListInfo | null>(null)
 const mailSiteUpdateStatus = ref<UpdateStatus>('idle')
 const mailSiteRemoteInfo = ref<RemoteListInfo | null>(null)
+
+/**
+ * The last thing each section owns: the lists fetched from a source, cached in
+ * `storage.local` for every context to read.
+ *
+ * A reset that put the source URL back to its default and emptied the custom
+ * list used to leave the downloaded list untouched, still classifying links and
+ * addresses by whatever the old URL had answered – while the reset button went
+ * dead, reporting a section that stood at its defaults. Resetting a section
+ * means what it says, so the cache goes with it.
+ */
+const SECTION_REMOTE: Record<string, { key: string, info: Ref<RemoteListInfo | null>, status: Ref<UpdateStatus>, clear?: () => void }[]> = {
+  'link-safety': [
+    // No `clear` on purpose: the settings page does not import the shortener
+    // module, and the other contexts pick the removal up from storage
+    { key: STORAGE_KEY_REMOTE_SHORTENERS, info: shortenerRemoteInfo, status: shortenerUpdateStatus },
+  ],
+  'email-lists': [
+    { key: STORAGE_KEY_REMOTE_PUBLIC, info: publicRemoteInfo, status: publicUpdateStatus, clear: () => updatePublicList([]) },
+    { key: STORAGE_KEY_REMOTE_DISPOSABLE, info: disposableRemoteInfo, status: disposableUpdateStatus, clear: () => updateDisposableList([]) },
+    { key: STORAGE_KEY_REMOTE_MAIL_SITES, info: mailSiteRemoteInfo, status: mailSiteUpdateStatus, clear: () => updateRemoteMailSites([]) },
+  ],
+}
+
+/** Whether a section already stands at its defaults, in which case its reset does nothing. */
+function sectionIsDefault(id: string): boolean {
+  const keys = SECTION_SETTINGS[id] || []
+  const stored = settings.value
+  return keys.every(key => JSON.stringify(stored[key]) === JSON.stringify(defaultSettings[key]))
+    && (SECTION_TEXTS[id] || []).every(text => text.value.trim() === '')
+    && (SECTION_REMOTE[id] || []).every(cache => cache.info.value === null)
+}
+
+/** Put one section back to how it ships, and nothing outside it. */
+async function resetSection(id: string) {
+  const patch: Record<string, unknown> = {}
+  for (const key of SECTION_SETTINGS[id] || [])
+    patch[key] = structuredClone(defaultSettings[key])
+
+  settings.value = { ...settings.value, ...patch }
+
+  for (const text of SECTION_TEXTS[id] || [])
+    text.value = ''
+
+  for (const cache of SECTION_REMOTE[id] || []) {
+    await browser.storage.local.remove(cache.key)
+    // This page holds its own copy of some of these lists, and the other
+    // contexts are watching the same keys – so the removal above is what
+    // reaches them, and this is only about the page doing the removing.
+    cache.clear?.()
+    cache.info.value = null
+    cache.status.value = 'idle'
+  }
+}
 
 // Last import of any kind, including the automatic one at install
 const lastImport = ref<HistoryImportState | null>(null)
@@ -413,18 +448,27 @@ async function updateRemoteList(options: {
 
   status.value = 'loading'
 
-  const { domains, ok, failed } = await fetchLists(urls)
-  if (!ok) {
-    status.value = 'error'
-    return
+  // Anything thrown past the fetcher's own handling – a storage quota, a source
+  // that answered with a gigabyte – has to land on the button. Without this the
+  // status stayed on `loading`, which also disables the button, so one unlucky
+  // update left the section unable to try again until the page was reloaded.
+  try {
+    const { domains, ok, failed } = await fetchLists(urls)
+    if (!ok) {
+      status.value = 'error'
+      return
+    }
+
+    const updatedAt = Date.now()
+    await browser.storage.local.set({ [storageKey]: { domains, updatedAt, urls } })
+    apply?.(domains)
+
+    info.value = { count: domains.length, updatedAt, sources: ok, failed }
+    status.value = 'success'
   }
-
-  const updatedAt = Date.now()
-  await browser.storage.local.set({ [storageKey]: { domains, updatedAt, urls } })
-  apply?.(domains)
-
-  info.value = { count: domains.length, updatedAt, sources: ok, failed }
-  status.value = 'success'
+  catch {
+    status.value = 'error'
+  }
 }
 
 function updatePublicListNow() {
@@ -777,17 +821,11 @@ async function resetSelected() {
   showResetConfirm.value = false
 
   if (resetSelections.value.visits) {
-    // Get all keys from storage
+    // Picked by shape, not by exclusion: the same storage area holds the lists
+    // the user typed, the lists they fetched and the migration flags, and a
+    // checkbox that names visit information may not reach any of them.
     const result = await browser.storage.local.get(null)
-    const keysToRemove = Object.keys(result).filter(key =>
-      // Remove only visit counts (entries that are not settings). The
-      // auto-import flag survives: wiping the visits is a deliberate choice,
-      // and without the flag the next extension update would see an empty
-      // profile and quietly import the history back.
-      key !== 'settings' && key !== HISTORY_AUTO_IMPORT_KEY,
-    )
-    // Remove all visit count entries
-    await browser.storage.local.remove(keysToRemove)
+    await browser.storage.local.remove(visitKeysToRemove(result))
 
     // The import state was one of those keys, and the paragraph above still
     // reports the import that has just been wiped. Re-read rather than listen:

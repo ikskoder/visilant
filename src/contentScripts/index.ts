@@ -8,6 +8,7 @@ import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-pr
 import { analyzeEmailAddress, extractEmailFromText, parseMailtoUrl } from '~/logic/email-safety'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { checkDomainMismatch, extractDomainFromText, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
+import { watchListStorage } from '~/logic/list-sync'
 import { describePastePayload, isEditableTarget, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { resolveTooltipTrigger } from '~/logic/platform'
@@ -1319,6 +1320,11 @@ async function mount(force = false) {
 
 // Firefox `browser.tabs.executeScript()` requires scripts return a primitive value
 (async () => {
+  // Follow the lists for as long as this tab lives. Registered before anything
+  // can fail: a tab open at the time of an edit would otherwise keep classifying
+  // by the lists it started with until it is reloaded.
+  watchListStorage()
+
   // Initialize settings and check safety immediately
   await loadSettings()
   await checkSiteSafety(window.location.href)

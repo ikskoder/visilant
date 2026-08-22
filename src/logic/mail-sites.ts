@@ -1,5 +1,6 @@
 import type { FamiliaritySettings, FamiliarityStats } from './familiarity'
 import type { SiteVisitData } from './storage'
+import { fetchTextBounded } from './bounded-fetch'
 import { aggregateFamiliarityStats, isFamiliar } from './familiarity'
 
 /**
@@ -201,10 +202,7 @@ const MAX_REMOTE_LINES = 20_000
 
 /** Fetch one mapping list. Throws on network and HTTP errors. */
 async function fetchRemoteMailSiteList(url: string): Promise<string[]> {
-  const response = await fetch(url)
-  if (!response.ok)
-    throw new Error(`Failed to fetch list: ${response.status}`)
-  const text = await response.text()
+  const text = await fetchTextBounded(url)
   return formatMailSiteMap(parseMailSiteMap(text)).split('\n').filter(Boolean).slice(0, MAX_REMOTE_LINES)
 }
 

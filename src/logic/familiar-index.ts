@@ -19,6 +19,15 @@ import { aggregateFamiliarityStats, isFamiliar } from './familiarity'
  */
 export const FAMILIAR_INDEX_LIMIT = 2000
 
+/**
+ * storage.local key the built list is cached under.
+ *
+ * Lives here rather than next to the code that writes it, because the visit
+ * wipe has to name it too: the list is derived from the visit records and says
+ * nothing once they are gone.
+ */
+export const FAMILIAR_INDEX_KEY = '__visilantFamiliar'
+
 interface CollectOptions {
   /** What makes a domain family familiar – the same rules the rest of the UI uses */
   rules: FamiliaritySettings
@@ -95,6 +104,13 @@ export function collectFamiliarDomains(
  * Returns true when the membership changed, which is the only case worth
  * persisting. A count that drifts low until the next rebuild affects nothing but
  * the order of two equally strong matches.
+ *
+ * `counted` says whether this navigation was a visit at all. Two page loads
+ * inside the debounce window are one visit everywhere else, and adding one here
+ * regardless made a family's ranking climb on reloads alone – enough, on a page
+ * that reloads itself, to reorder the lookalike matches out of any relation to
+ * how often the user actually goes there, and the inflated number then got
+ * written out with the next new member.
  */
 export function applyVisitToFamiliar(
   familiar: FamiliarDomain[],
@@ -102,11 +118,12 @@ export function applyVisitToFamiliar(
   stats: FamiliarityStats,
   rules: FamiliaritySettings,
   now: number = Date.now(),
+  counted: boolean = true,
 ): boolean {
   const existing = familiar.find(entry => entry.domain === registrable)
 
   if (existing) {
-    existing.visits = Math.max(existing.visits + 1, stats.count)
+    existing.visits = Math.max(existing.visits + (counted ? 1 : 0), stats.count)
     return false
   }
 
