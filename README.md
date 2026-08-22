@@ -151,9 +151,10 @@ Visilant is open-source and operates locally within your browser:
   - **Notifications**: To display system alerts when anti-tampering protection detects malicious interference.
   - **Context Menus**: To add a "Check link safety" option to the right-click menu for links.
   - **Host permissions** (`*://*/*`): To inject content scripts that monitor keyboard and clipboard interactions and analyze links on all websites.
+  - **Browser history**: To read your existing history once and turn it into per-hostname visit counts. An empty profile treats every site as unfamiliar, so without that first pass the extension warns about everything and reads as broken. It is decided once per profile: a fresh install imports, an update does so only if the profile holds no counts yet, and neither is repeated afterwards. The history is read in the browser and never leaves it. Only a visit count, a first and last date and a number of active days are kept per hostname, with no page addresses, no titles and no search terms. You can re-run or wipe the import yourself in the settings, under Your data.
 
-  **Optional permissions:**
-  - **Browser history**: Required only if you choose to import your existing browsing history to populate visit counts (recommended for reducing false positives).
+  Firefox for Android has no history API. There the import cannot run at all, and
+  the settings page says so instead of offering a button that would do nothing.
 
 ## Reproducible Builds
 
