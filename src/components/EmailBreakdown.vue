@@ -25,10 +25,33 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
 
 <template>
   <div class="email-breakdown">
-    <!-- Full address with per-char highlighting, @ kept neutral -->
-    <div class="font-medium email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
+    <!-- Full address with per-char highlighting, @ kept neutral. Only where a
+         two-row breakdown would not fit – the link tooltip is one line wide. -->
+    <div v-if="compact" class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
       <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" /><span :class="isDark ? 'text-gray-400' : 'text-gray-500'">@</span><SecureText :text="analysis.domain" :force-highlight="true" :danger-only="true" />
     </div>
+
+    <!--
+      Named halves wherever there is room, the way the in-page check panel has
+      always shown them. The two answer different questions: anyone can take any
+      name at a public provider, while the domain is a site the history can say
+      something about – and picking one out of the other in a single run of
+      letter-spaced characters is the mistake this check exists to prevent.
+    -->
+    <template v-else>
+      <div class="email-label uppercase tracking-wider" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
+        {{ t('emailAccountName') }}
+      </div>
+      <div class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
+        <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" />
+      </div>
+      <div class="email-label uppercase tracking-wider mt-1" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
+        {{ t('emailDomainLabel') }}
+      </div>
+      <div class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
+        <SecureText :text="analysis.domain" :force-highlight="true" :danger-only="true" />
+      </div>
+    </template>
 
     <!-- Punycode of the domain -->
     <div v-if="analysis.domainInfo.punycode" class="email-label mt-1" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
@@ -73,8 +96,11 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
 
 <style scoped>
 .email-address {
-  font-size: 1em !important;
-  line-height: 1.3em !important;
+  /* The two halves of the address are what the whole check is about, and they
+     were set at the same size as the labels naming them. Everything else here
+     is context for these two lines. */
+  font-size: 1.3em !important;
+  line-height: 1.25em !important;
   word-break: break-all !important;
 }
 

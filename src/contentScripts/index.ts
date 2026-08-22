@@ -1,3 +1,5 @@
+import type { FamiliarityStats } from '~/logic/familiarity'
+import type { VisitFacts } from '~/logic/link-safety'
 import type { Settings } from '~/logic/storage'
 import type { TamperWatch } from '~/logic/tamper-watch'
 import type { CheckPanelData, DomainFamilyInfo, LinkTooltipData, RawPayloadInfo } from '~/logic/ui-state'
@@ -280,13 +282,13 @@ async function handleKeydown(event: KeyboardEvent) {
  */
 async function interceptPaste(target: HTMLElement, text: string) {
   const hostname = window.location.hostname
-  const visits = await sendMessageSafe<{ count: number }>('get-visit-count', { url: window.location.href })
+  const visits = await sendMessageSafe<VisitCountResponse>('get-visit-count', { url: window.location.href })
   const punycodeResult = getPunycodeInfo(hostname)
 
   await ensureTooltipUiMounted()
   pasteInterceptData.value = {
     domain: hostname,
-    count: visits?.count || 0,
+    stats: { count: visits?.count || 0, activeDays: visits?.activeDays, firstSeen: visits?.firstSeen },
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
     payload: describePastePayload(text),
   }
@@ -409,10 +411,13 @@ async function fetchLinkData(href: string, hostname: string) {
   // Fetch from background
   const response = await sendMessageSafe<VisitCountResponse>('get-visit-count', { url: href })
   if (!response)
-    return { count: 0, isSafe: true, ignored: false }
+    return { stats: { count: 0 }, isSafe: true, ignored: false }
 
-  const isSafe = isFamiliar(response, normalizeFamiliarity(settings.value.familiarity))
-  const data = { count: response.count, isSafe, ignored: response.ignored }
+  // Every fact travels on, not just the count: the check surfaces show the
+  // evidence a verdict rests on, and only the background can read it
+  const stats: FamiliarityStats = { count: response.count, activeDays: response.activeDays, firstSeen: response.firstSeen }
+  const isSafe = isFamiliar(stats, normalizeFamiliarity(settings.value.familiarity))
+  const data: VisitFacts = { stats, isSafe, ignored: response.ignored }
   setCachedVisitCount(hostname, data)
   return data
 }
@@ -451,7 +456,7 @@ async function showLinkInterceptByUrl(url: string) {
           originalUrl: url,
           resolvedUrl: result.finalUrl,
           resolvedDomain: result.finalHostname,
-          resolvedCount: resolvedVisitData.count,
+          resolvedStats: resolvedVisitData.stats,
           resolvedIsSafe: resolvedVisitData.isSafe,
           chain: result.chain,
           status: 'resolved',
@@ -468,7 +473,7 @@ async function showLinkInterceptByUrl(url: string) {
       originalUrl: url,
       resolvedUrl: '',
       resolvedDomain: '',
-      resolvedCount: 0,
+      resolvedStats: { count: 0 },
       resolvedIsSafe: false,
       chain: [],
       status: 'idle',
@@ -480,7 +485,7 @@ async function showLinkInterceptByUrl(url: string) {
     domain: hostname,
     url,
     target: '_blank',
-    count: visitData.count,
+    stats: visitData.stats,
     isSafe: visitData.isSafe,
     mismatch: null,
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
@@ -527,12 +532,12 @@ async function showLinkTooltipByUrl(url: string, opts?: { force?: boolean }) {
 
   linkTooltipData.value = {
     domain: hostname,
-    count: visitData.count,
+    stats: visitData.stats,
     isSafe: visitData.isSafe,
     mismatch: null, // No text to compare from context menu
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
     shortUrl: shouldShowShortUrl
-      ? { originalUrl: url, resolvedUrl: '', resolvedDomain: '', resolvedCount: 0, resolvedIsSafe: false, chain: [], status: shouldAutoResolve ? 'loading' : 'idle', isKnownShortener }
+      ? { originalUrl: url, resolvedUrl: '', resolvedDomain: '', resolvedStats: { count: 0 }, resolvedIsSafe: false, chain: [], status: shouldAutoResolve ? 'loading' : 'idle', isKnownShortener }
       : null,
     anchorRect,
     href: url,
@@ -580,7 +585,7 @@ async function buildEmailTooltipData(
   return {
     kind: 'email',
     domain: analysis.domain,
-    count: visitData.count,
+    stats: visitData.stats,
     isSafe: visitData.isSafe,
     mismatch: null,
     punycode: analysis.domainInfo.punycode,
@@ -652,7 +657,7 @@ function showRawPayloadTooltip(payload: string, payloadKind: RawPayloadInfo['pay
   linkTooltipData.value = {
     kind: 'text',
     domain: '',
-    count: 0,
+    stats: { count: 0 },
     isSafe: true,
     mismatch: null,
     punycode: null,
@@ -695,7 +700,7 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
           originalUrl: url,
           resolvedUrl: result.finalUrl,
           resolvedDomain: result.finalHostname,
-          resolvedCount: resolvedVisitData.count,
+          resolvedStats: resolvedVisitData.stats,
           resolvedIsSafe: resolvedVisitData.isSafe,
           chain: result.chain,
           status: 'resolved',
@@ -710,7 +715,7 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
           originalUrl: url,
           resolvedUrl: '',
           resolvedDomain: '',
-          resolvedCount: 0,
+          resolvedStats: { count: 0 },
           resolvedIsSafe: false,
           chain: result?.chain || [url],
           status: 'error',
@@ -725,7 +730,7 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
       const isKnownShortener = linkTooltipData.value.shortUrl?.isKnownShortener ?? false
       linkTooltipData.value = {
         ...linkTooltipData.value,
-        shortUrl: { originalUrl: url, resolvedUrl: '', resolvedDomain: '', resolvedCount: 0, resolvedIsSafe: false, chain: [url], status: 'error', error: 'failed', isKnownShortener },
+        shortUrl: { originalUrl: url, resolvedUrl: '', resolvedDomain: '', resolvedStats: { count: 0 }, resolvedIsSafe: false, chain: [url], status: 'error', error: 'failed', isKnownShortener },
       }
     }
   }
@@ -752,7 +757,7 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
       originalUrl: data.href,
       resolvedUrl: '',
       resolvedDomain: '',
-      resolvedCount: 0,
+      resolvedStats: { count: 0 },
       resolvedIsSafe: false,
       chain: [],
       status: 'loading',
@@ -787,7 +792,7 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
       originalUrl: data.href,
       resolvedUrl: '',
       resolvedDomain: '',
-      resolvedCount: 0,
+      resolvedStats: { count: 0 },
       resolvedIsSafe: false,
       chain: [],
       status: shouldAutoResolve ? 'loading' : 'idle',
@@ -823,7 +828,7 @@ async function resolveAndUpdateIntercept() {
           originalUrl: url,
           resolvedUrl: result.finalUrl,
           resolvedDomain: result.finalHostname,
-          resolvedCount: resolvedVisitData.count,
+          resolvedStats: resolvedVisitData.stats,
           resolvedIsSafe: resolvedVisitData.isSafe,
           chain: result.chain,
           status: 'resolved',
@@ -838,7 +843,7 @@ async function resolveAndUpdateIntercept() {
           originalUrl: url,
           resolvedUrl: '',
           resolvedDomain: '',
-          resolvedCount: 0,
+          resolvedStats: { count: 0 },
           resolvedIsSafe: false,
           chain: result?.chain || [url],
           status: 'error',
@@ -856,7 +861,7 @@ async function resolveAndUpdateIntercept() {
           originalUrl: url,
           resolvedUrl: '',
           resolvedDomain: '',
-          resolvedCount: 0,
+          resolvedStats: { count: 0 },
           resolvedIsSafe: false,
           chain: [url],
           status: 'error',
@@ -895,7 +900,7 @@ async function resolveAndUpdateIntercept() {
       originalUrl: data.url,
       resolvedUrl: '',
       resolvedDomain: '',
-      resolvedCount: 0,
+      resolvedStats: { count: 0 },
       resolvedIsSafe: false,
       chain: [],
       status: 'loading',
@@ -927,7 +932,7 @@ async function resolveAndUpdateIntercept() {
       originalUrl: data.url,
       resolvedUrl: '',
       resolvedDomain: '',
-      resolvedCount: 0,
+      resolvedStats: { count: 0 },
       resolvedIsSafe: false,
       chain: [],
       status: shouldAutoResolve ? 'loading' : 'idle',
@@ -956,10 +961,10 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
   const mismatchResult = checkDomainMismatch(linkText, hostname)
 
   // Fetch textDomain visit data if mismatch
-  let mismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null = null
+  let mismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null = null
   if (mismatchResult.mismatch && mismatchResult.textDomain) {
     const textDomainData = await fetchLinkData(`https://${mismatchResult.textDomain}`, mismatchResult.textDomain)
-    mismatch = { textDomain: mismatchResult.textDomain, textDomainCount: textDomainData.count, textDomainIsSafe: textDomainData.isSafe }
+    mismatch = { textDomain: mismatchResult.textDomain, textDomainStats: textDomainData.stats, textDomainIsSafe: textDomainData.isSafe }
   }
 
   // Check for punycode/unicode
@@ -975,12 +980,12 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
 
   linkTooltipData.value = {
     domain: hostname,
-    count: visitData.count,
+    stats: visitData.stats,
     isSafe: visitData.isSafe,
     mismatch,
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
     shortUrl: shouldShowShortUrl
-      ? { originalUrl: href, resolvedUrl: '', resolvedDomain: '', resolvedCount: 0, resolvedIsSafe: false, chain: [], status: shouldAutoResolve ? 'loading' : 'idle', isKnownShortener }
+      ? { originalUrl: href, resolvedUrl: '', resolvedDomain: '', resolvedStats: { count: 0 }, resolvedIsSafe: false, chain: [], status: shouldAutoResolve ? 'loading' : 'idle', isKnownShortener }
       : null,
     anchorRect,
     href,
@@ -1031,7 +1036,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
           originalUrl: href,
           resolvedUrl: result.finalUrl,
           resolvedDomain: result.finalHostname,
-          resolvedCount: resolvedVisitData.count,
+          resolvedStats: resolvedVisitData.stats,
           resolvedIsSafe: resolvedVisitData.isSafe,
           chain: result.chain,
           status: 'resolved',
@@ -1054,7 +1059,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
       originalUrl: href,
       resolvedUrl: '',
       resolvedDomain: '',
-      resolvedCount: 0,
+      resolvedStats: { count: 0 },
       resolvedIsSafe: false,
       chain: [],
       status: 'idle',
@@ -1074,17 +1079,17 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
   const punycodeResult = getPunycodeInfo(hostname)
 
   // Fetch textDomain visit data if mismatch
-  let interceptMismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null = null
+  let interceptMismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null = null
   if (mismatchResult.mismatch && mismatchResult.textDomain) {
     const textDomainData = await fetchLinkData(`https://${mismatchResult.textDomain}`, mismatchResult.textDomain)
-    interceptMismatch = { textDomain: mismatchResult.textDomain, textDomainCount: textDomainData.count, textDomainIsSafe: textDomainData.isSafe }
+    interceptMismatch = { textDomain: mismatchResult.textDomain, textDomainStats: textDomainData.stats, textDomainIsSafe: textDomainData.isSafe }
   }
 
   linkInterceptData.value = {
     domain: hostname,
     url: href,
     target,
-    count: visitData.count,
+    stats: visitData.stats,
     isSafe: visitData.isSafe,
     mismatch: interceptMismatch,
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,

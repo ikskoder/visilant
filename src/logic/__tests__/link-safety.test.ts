@@ -247,16 +247,18 @@ describe('visit count cache', () => {
   })
 
   it('caches and retrieves visit count', () => {
-    setCachedVisitCount('cached.com', { count: 5, isSafe: true, ignored: false })
+    setCachedVisitCount('cached.com', { stats: { count: 5, activeDays: 3 }, isSafe: true, ignored: false })
     const result = getCachedVisitCount('cached.com')
     expect(result).not.toBeNull()
-    expect(result!.count).toBe(5)
+    expect(result!.stats.count).toBe(5)
+    // Every fact the verdict rests on comes back out, not the count alone
+    expect(result!.stats.activeDays).toBe(3)
     expect(result!.isSafe).toBe(true)
     expect(result!.ignored).toBe(false)
   })
 
   it('returns null for expired cache entries', () => {
-    setCachedVisitCount('expired.com', { count: 3, isSafe: false, ignored: false })
+    setCachedVisitCount('expired.com', { stats: { count: 3 }, isSafe: false, ignored: false })
 
     // Fast-forward time past TTL (30 seconds)
     vi.useFakeTimers()

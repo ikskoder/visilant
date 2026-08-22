@@ -2,8 +2,10 @@
 import type { LinkInterceptData } from '~/logic/ui-state'
 import { computed } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
+import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
+import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import MismatchTable from './MismatchTable.vue'
 
@@ -25,6 +27,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { statusLabel } = useFamiliarityFacts()
 
 function handleResolveOnce() {
   ;(window as any).__visilant_resolveInterceptOnce?.()
@@ -43,14 +46,6 @@ function shouldShowCount(isSafe: boolean) {
     default: return true
   }
 }
-
-const statusLabel = computed(() => (isSafe: boolean, count: number) => {
-  if (isSafe)
-    return { text: t.value('linkTooltipFamiliar'), class: 'text-green-400' }
-  if (count === 0)
-    return { text: t.value('linkTooltipNeverVisited'), class: 'text-red-400' }
-  return { text: t.value('linkTooltipUnfamiliar'), class: 'text-yellow-400' }
-})
 
 const hasTraceData = computed(() => {
   return props.traceChain && props.data?.shortUrl?.status === 'resolved' && (props.data.shortUrl.chain.length > 2)
@@ -115,10 +110,10 @@ const resolvedIsSafe = computed(() => {
             class="dialog-label"
             :text-domain="data.mismatch.textDomain"
             :text-domain-is-safe="data.mismatch.textDomainIsSafe"
-            :text-domain-count="data.mismatch.textDomainCount"
+            :text-domain-stats="data.mismatch.textDomainStats"
             :dest-domain="data.domain"
             :dest-is-safe="data.isSafe"
-            :dest-count="data.count"
+            :dest-stats="data.stats"
             :show-visit-count="showVisitCount"
             cell-padding="p-2"
             @details="emit('details', $event)"
@@ -151,13 +146,15 @@ const resolvedIsSafe = computed(() => {
             </span>
           </div>
           <div v-if="!data.shortUrl?.isKnownShortener" class="dialog-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
-            <template v-if="shouldShowCount(data.isSafe)">
-              {{ t('linkTooltipVisits') }}:
-              <span class="font-medium" :class="isDark ? 'text-white' : 'text-gray-900'">{{ data.count }}</span>
-              <span class="mx-1">&middot;</span>
-            </template>
-            <span :class="statusLabel(data.isSafe, data.count).class">
-              {{ statusLabel(data.isSafe, data.count).text }}
+            <FamiliarityFacts v-if="shouldShowCount(data.isSafe)" :stats="data.stats">
+              <template #status>
+                <span :class="statusLabel(data.isSafe, data.stats.count).class">
+                  {{ statusLabel(data.isSafe, data.stats.count).text }}
+                </span>
+              </template>
+            </FamiliarityFacts>
+            <span v-else :class="statusLabel(data.isSafe, data.stats.count).class">
+              {{ statusLabel(data.isSafe, data.stats.count).text }}
             </span>
           </div>
 
@@ -211,13 +208,15 @@ const resolvedIsSafe = computed(() => {
             </div>
 
             <div class="dialog-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
-              <template v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)">
-                {{ t('linkTooltipVisits') }}:
-                <span class="font-medium" :class="isDark ? 'text-white' : 'text-gray-900'">{{ data.shortUrl.resolvedCount }}</span>
-                <span class="mx-1">&middot;</span>
-              </template>
-              <span :class="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedCount).class">
-                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedCount).text }}
+              <FamiliarityFacts v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)" :stats="data.shortUrl.resolvedStats">
+                <template #status>
+                  <span :class="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).class">
+                    {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).text }}
+                  </span>
+                </template>
+              </FamiliarityFacts>
+              <span v-else :class="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).class">
+                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).text }}
               </span>
             </div>
 

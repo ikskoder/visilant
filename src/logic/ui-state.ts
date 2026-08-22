@@ -16,7 +16,8 @@ export interface ShortUrlInfo {
   originalUrl: string
   resolvedUrl: string
   resolvedDomain: string
-  resolvedCount: number
+  /** The destination's own facts, for the same evidence line the link gets */
+  resolvedStats: FamiliarityStats
   resolvedIsSafe: boolean
   chain: string[] // full redirect chain
   status: 'idle' | 'loading' | 'resolved' | 'error'
@@ -43,9 +44,9 @@ export interface RawPayloadInfo {
 export interface LinkTooltipData {
   kind?: TooltipKind
   domain: string // email mode: the address's domain; text mode: ''
-  count: number
+  stats: FamiliarityStats
   isSafe: boolean
-  mismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null
+  mismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null
   punycode: string | null
   shortUrl?: ShortUrlInfo | null
   anchorRect: { top: number, bottom: number, left: number, right: number }
@@ -85,9 +86,9 @@ export interface LinkInterceptData {
   domain: string
   url: string
   target: string
-  count: number
+  stats: FamiliarityStats
   isSafe: boolean
-  mismatch: { textDomain: string, textDomainCount: number, textDomainIsSafe: boolean } | null
+  mismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null
   punycode: string | null
   shortUrl?: ShortUrlInfo | null
 }
@@ -101,7 +102,7 @@ export const linkInterceptResolve = ref<((proceed: boolean) => void) | null>(nul
 // yes only lifts the block, leaving the user to paste again themselves.
 export interface PasteInterceptData {
   domain: string
-  count: number
+  stats: FamiliarityStats
   punycode: string | null
   payload: PastePayloadInfo
 }

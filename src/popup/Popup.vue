@@ -4,6 +4,7 @@ import type { SiteVisitData } from '~/logic/storage'
 import punycode from 'punycode'
 import { getDomain } from 'tldts'
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
 import { aggregateFamiliarityStats, evaluateFamiliarity, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
@@ -16,6 +17,7 @@ import SecureText from '../components/SecureText.vue'
 import CheckField from './CheckField.vue'
 
 const { t, isLoaded, loadedTranslations } = useI18n()
+const { factsFor, withThresholds } = useFamiliarityFacts()
 const { isDark } = useTheme()
 // Shared components read the theme through this key, because inside the
 // content script's shadow DOM the `dark` class on <html> does not reach them
@@ -195,6 +197,24 @@ const currentVerdict = computed(() =>
  */
 function criterionOutcome(id: FamiliarityCriterionId) {
   return currentVerdict.value.criteria.find(outcome => outcome.id === id)
+}
+
+/**
+ * The same fact as the check surfaces would word it, for the grid below.
+ *
+ * The grid lays first visit, last visit and active days out in a shape of its
+ * own, but the numbers inside it are the ones every other surface shows – so
+ * whether the threshold rides along with them is one setting, not two.
+ * Undefined for a criterion the user has switched off, which the grid still
+ * lists as a plain fact.
+ */
+function criterionText(id: FamiliarityCriterionId) {
+  const fact = factsFor(currentStats.value ?? { count: 0 }).find(entry => entry.id === id)
+  if (!fact)
+    return undefined
+  // The grid names every row already, so the bar rides along in the cell rather
+  // than claiming a column of its own
+  return withThresholds.value ? fact.combined : fact.value
 }
 
 function criterionColor(id: FamiliarityCriterionId) {
@@ -589,7 +609,10 @@ onMounted(async () => {
           <!-- Structural markers and resemblance to a domain the user knows -->
           <DomainMarkers :hostname="currentHostname" class="mt-2" style="font-size: 0.85em;" />
           <LookalikeNotice :hostname="currentHostname" style="font-size: 0.85em;" />
-          <ExternalLookups :hostname="currentHostname" style="font-size: 0.85em;" />
+          <!-- Not scaled down like the two above it: the same control appears in
+               the check card as well, and one screen showing it at two sizes
+               reads as two different things -->
+          <ExternalLookups :hostname="currentHostname" />
 
           <!-- Visit history facts. firstSeen/activeDays stay empty until a full
                history import supplies them – we never guess a date. -->
@@ -608,8 +631,8 @@ onMounted(async () => {
                 :title="criterionOutcome('age') ? `${translations.familiarityRequiredAtLeast} ${criterionOutcome('age')!.required} ${translations.familiarityDaysUnit}` : undefined"
               >
                 {{ formatTimestamp(currentStats.firstSeen) }}
-                <span v-if="criterionOutcome('age')" class="opacity-70">
-                  ({{ criterionOutcome('age')!.value }} {{ translations.familiarityDaysUnit }})
+                <span v-if="criterionText('age')" class="opacity-70">
+                  ({{ criterionText('age') }})
                 </span>
               </div>
               <div v-else class="opacity-40 italic" :title="translations.statsImportHint">
@@ -631,7 +654,7 @@ onMounted(async () => {
                 :class="criterionColor('activeDays')"
                 :title="criterionOutcome('activeDays') ? `${translations.familiarityRequiredAtLeast} ${criterionOutcome('activeDays')!.required}` : undefined"
               >
-                {{ currentStats.activeDays }}
+                {{ criterionText('activeDays') ?? currentStats.activeDays }}
               </div>
               <div v-else class="opacity-40 italic" :title="translations.statsImportHint">
                 {{ translations.statsUnknown }}

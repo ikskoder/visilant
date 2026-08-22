@@ -58,6 +58,13 @@ vi.mock('webextension-polyfill', () => {
       id: 'mock-extension-id',
       // A desktop answer by default. The Android one is what a few tests set.
       getPlatformInfo: vi.fn().mockResolvedValue({ os: 'linux', arch: 'x86-64' }),
+      // The background is not there under jsdom. Answering undefined is what a
+      // torn-down service worker does, and every caller already handles it.
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      onMessage: {
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      },
     },
     action: {
       setBadgeText: vi.fn().mockResolvedValue(undefined),

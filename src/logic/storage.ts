@@ -15,6 +15,16 @@ export interface Settings {
   // What counts as a familiar site – see logic/familiarity.ts
   familiarity: FamiliaritySettings
 
+  /**
+   * Whether every fact behind a verdict is shown next to the bar it has to clear.
+   *
+   * Off, a check reads `Visits: 3`, and the bar is one hover away in the title.
+   * On, it reads `Visits: 3 / 10`, which answers "how far off is this" without
+   * asking, at the cost of a longer line in a tooltip that is already narrow.
+   * The facts themselves are shown either way – this is only about the bar.
+   */
+  showFamiliarityThresholds: boolean
+
   // Display settings
   showBadge: boolean
 
@@ -135,6 +145,11 @@ export const defaultSettings: Settings = {
   safety: 10,
 
   familiarity: defaultFamiliaritySettings,
+
+  // The numbers alone, with the bar behind them left to the title. A tooltip on
+  // a link is the narrowest surface in the extension and the one shown most
+  // often, so it starts at the shorter of the two lines
+  showFamiliarityThresholds: false,
 
   // Display settings
   showBadge: true,

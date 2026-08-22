@@ -99,7 +99,7 @@ describe('reactive state mutations', () => {
   it('can set linkTooltipData', () => {
     linkTooltipData.value = {
       domain: 'example.com',
-      count: 5,
+      stats: { count: 5 },
       isSafe: false,
       mismatch: null,
       punycode: null,
@@ -107,7 +107,7 @@ describe('reactive state mutations', () => {
       href: 'https://example.com',
     }
     expect(linkTooltipData.value!.domain).toBe('example.com')
-    expect(linkTooltipData.value!.count).toBe(5)
+    expect(linkTooltipData.value!.stats.count).toBe(5)
     linkTooltipData.value = null
   })
 

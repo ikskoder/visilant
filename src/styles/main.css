@@ -5,6 +5,17 @@ body,
   padding: 0;
 }
 
+/* The size the extension's own pages are read at.
+ *
+ * Chrome hands extension pages a body of 75% – 12px against its own 16px root –
+ * and Firefox hands them the ordinary 16px, so the same build was read at two
+ * different sizes and the Chrome one was simply small. Nothing here had ever
+ * chosen a size, it was inherited from whichever browser was drawing. Picking
+ * one makes both agree, and the popup's own A- / A+ scales from it. */
+body {
+  font-size: 14px;
+}
+
 html.dark body {
   background-color: #111827; /* gray-900 */
   color: #e5e7eb; /* gray-200 */

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { EmailProviderKind } from '~/logic/email-providers'
 import type { EmailAnalysis } from '~/logic/email-safety'
+import type { FamiliarityStats } from '~/logic/familiarity'
 import type { MailSiteFamily } from '~/logic/mail-sites'
 import type { SiteVisitData } from '~/logic/storage'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
@@ -9,6 +10,7 @@ import { onMounted, ref } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailBreakdown from '~/components/EmailBreakdown.vue'
 import ExternalLookups from '~/components/ExternalLookups.vue'
+import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
@@ -36,13 +38,13 @@ interface UrlResolveState {
   finalHostname?: string
   finalUrl?: string
   chain?: string[]
-  finalCount?: number
+  finalStats?: FamiliarityStats
   finalIsSafe?: boolean
 }
 
 type CheckResult
-  = | { type: 'url', url: string, hostname: string, baseDomain: string, punycode: string | null, count: number, isSafe: boolean, isShortener: boolean, resolve: UrlResolveState, mailSites: MailSiteFamily[] }
-    | { type: 'email', analysis: EmailAnalysis, params: { key: string, value: string }[], count: number, isSafe: boolean, providerKind: EmailProviderKind, mailSites: MailSiteFamily[] }
+  = | { type: 'url', url: string, hostname: string, baseDomain: string, punycode: string | null, stats: FamiliarityStats, isSafe: boolean, isShortener: boolean, resolve: UrlResolveState, mailSites: MailSiteFamily[] }
+    | { type: 'email', analysis: EmailAnalysis, params: { key: string, value: string }[], stats: FamiliarityStats, isSafe: boolean, providerKind: EmailProviderKind, mailSites: MailSiteFamily[] }
     | { type: 'raw', payloadKind: string, payload: string }
     | { type: 'invalid' }
     | { type: 'qr-error' }
@@ -57,7 +59,7 @@ onMounted(() => {
 
 // Visits are stored per exact hostname, but "have I been here" should count the
 // whole domain family (gmail.com visits may live under www.gmail.com etc.)
-async function getVisitData(hostname: string): Promise<{ count: number, isSafe: boolean, mailSites: MailSiteFamily[] }> {
+async function getVisitData(hostname: string): Promise<{ stats: FamiliarityStats, isSafe: boolean, mailSites: MailSiteFamily[] }> {
   const base = getDomain(hostname) || hostname
   const allData = await browser.storage.local.get(null)
   const records: SiteVisitData[] = []
@@ -73,7 +75,7 @@ async function getVisitData(hostname: string): Promise<{ count: number, isSafe: 
   // same read already holds the mapping and the visits it points at.
   loadMailSitesFromRecords(allData)
   return {
-    count: stats.count,
+    stats,
     isSafe: isFamiliar(stats, rules),
     mailSites: collectMailSiteFamilies(allData, hostname, rules),
   }
@@ -93,7 +95,7 @@ async function checkUrl(url: string) {
     hostname,
     baseDomain: getDomain(hostname) || hostname,
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
-    count: visitData.count,
+    stats: visitData.stats,
     isSafe: visitData.isSafe,
     isShortener: isShortenedUrl(hostname),
     resolve: { status: 'idle' },
@@ -116,7 +118,7 @@ async function checkEmail(addrOrMailto: string) {
     type: 'email',
     analysis,
     params: parsed?.params ?? [],
-    count: visitData.count,
+    stats: visitData.stats,
     isSafe: visitData.isSafe,
     providerKind: classifyEmailDomain(analysis.domain),
     mailSites: visitData.mailSites,
@@ -176,7 +178,7 @@ async function expandUrl() {
         finalHostname: resolved.finalHostname,
         finalUrl: resolved.finalUrl,
         chain: resolved.chain,
-        finalCount: visitData.count,
+        finalStats: visitData.stats,
         finalIsSafe: visitData.isSafe,
       }
       // The real destination is what matters – switch the dashboard to it
@@ -238,12 +240,6 @@ function onFileSelected(event: Event) {
   if (file)
     handleImage(file)
   input.value = ''
-}
-
-// Coloured by the verdict rather than by the number: with active days or age in
-// play, a big count on its own no longer means the site is known
-function getCountColor(isSafe: boolean) {
-  return isSafe ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
 }
 
 // Hostnames without a dot (localhost and the like) are never counted, so their
@@ -330,8 +326,8 @@ function payloadTypeLabel(payloadKind: string) {
           <span v-if="result.isShortener" class="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">
             {{ t('linkTooltipShortener') }}
           </span>
-          <span v-else class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.count, result.hostname).class">
-            {{ statusText(result.isSafe, result.count, result.hostname).text.toLowerCase() }}
+          <span v-else class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.stats.count, result.hostname).class">
+            {{ statusText(result.isSafe, result.stats.count, result.hostname).text.toLowerCase() }}
           </span>
         </div>
 
@@ -345,25 +341,34 @@ function payloadTypeLabel(payloadKind: string) {
 
         <!-- No count line for an address that is never counted. The dashboard
              right below this field says why, so it is not repeated here. -->
-        <div v-if="!result.isShortener && isTrackableHostname(result.hostname)" class="text-xs mb-1">
-          {{ t('linkTooltipVisits') }}: <span class="font-mono font-bold" :class="getCountColor(result.isSafe)">{{ result.count }}</span>
-        </div>
-
-        <!-- Nobody opens an address domain, so a zero of its own says nothing.
-             The visits that mean anything are on the site its mail is read on. -->
-        <div v-if="result.mailSites.length" class="text-xs mb-1">
-          {{ t('mailSiteLabel') }}:
-          <span v-for="site in result.mailSites" :key="site.site" class="ml-1">
-            <SecureText :text="site.site" :force-highlight="true" :danger-only="true" />
-            <span class="font-mono font-bold ml-1" :class="getCountColor(!!site.familiar)">{{ site.total }}</span>
-          </span>
+        <div v-if="!result.isShortener && isTrackableHostname(result.hostname)" class="mb-1">
+          <FamiliarityFacts :stats="result.stats" />
         </div>
 
         <!-- Structural markers and resemblance to a domain the user knows -->
-        <div class="text-xs">
+        <div>
           <DomainMarkers :hostname="result.hostname" :url="result.url" />
           <LookalikeNotice :hostname="result.hostname" />
           <ExternalLookups :hostname="result.hostname" />
+        </div>
+
+        <!-- Nobody opens an address domain, so a zero of its own says nothing.
+             The visits that mean anything are on the site its mail is read on –
+             and they are the ones worth judging, so that site gets the same
+             evidence every other check surface shows rather than one number. -->
+        <div v-if="result.mailSites.length" class="mail-sites mb-1">
+          <span class="opacity-60">{{ t('mailSiteLabel') }}:</span>
+          <div v-for="site in result.mailSites" :key="site.site" class="mt-0.5">
+            <!-- Same weight as the address halves above: this is the other name
+                 the reader is here to look at, not a caption on the table -->
+            <div class="font-bold text-[1.3em] leading-tight break-all">
+              <SecureText :text="site.site" :force-highlight="true" :danger-only="true" />
+            </div>
+            <FamiliarityFacts :stats="site.stats" class="mt-0.5" />
+            <!-- The address domain is a name on an envelope, this is a site
+                 somebody actually opens – so it is the one worth looking up -->
+            <ExternalLookups :hostname="site.site" />
+          </div>
         </div>
 
         <!-- Expand shortened URL -->
@@ -395,8 +400,8 @@ function payloadTypeLabel(payloadKind: string) {
             <span class="font-medium break-words secure-domain-display">
               <SecureText :text="result.resolve.finalHostname || ''" />
             </span>
-            <span class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.resolve.finalIsSafe || false, result.resolve.finalCount || 0, result.resolve.finalHostname || '').class">
-              {{ statusText(result.resolve.finalIsSafe || false, result.resolve.finalCount || 0, result.resolve.finalHostname || '').text.toLowerCase() }}
+            <span class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.resolve.finalIsSafe || false, result.resolve.finalStats?.count || 0, result.resolve.finalHostname || '').class">
+              {{ statusText(result.resolve.finalIsSafe || false, result.resolve.finalStats?.count || 0, result.resolve.finalHostname || '').text.toLowerCase() }}
             </span>
           </div>
           <div class="text-xs opacity-60 break-all mb-1">
@@ -423,30 +428,40 @@ function payloadTypeLabel(payloadKind: string) {
           <span v-else-if="result.providerKind === 'public'" class="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
             {{ t('emailPublicProvider') }}
           </span>
-          <span v-else class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.count, result.analysis.domain).class">
-            {{ statusText(result.isSafe, result.count, result.analysis.domain).text.toLowerCase() }}
+          <span v-else class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.stats.count, result.analysis.domain).class">
+            {{ statusText(result.isSafe, result.stats.count, result.analysis.domain).text.toLowerCase() }}
           </span>
         </div>
         <EmailBreakdown :analysis="result.analysis" :params="result.params" :provider-kind="result.providerKind" :is-dark="isDark" />
-        <div v-if="result.providerKind === 'regular'" class="text-xs mt-1">
-          {{ t('linkTooltipVisits') }}: <span class="font-mono font-bold" :class="getCountColor(result.isSafe)">{{ result.count }}</span>
-        </div>
-
-        <!-- Nobody opens an address domain, so a zero of its own says nothing.
-             The visits that mean anything are on the site its mail is read on. -->
-        <div v-if="result.mailSites.length" class="text-xs mt-1">
-          {{ t('mailSiteLabel') }}:
-          <span v-for="site in result.mailSites" :key="site.site" class="ml-1">
-            <SecureText :text="site.site" :force-highlight="true" :danger-only="true" />
-            <span class="font-mono font-bold ml-1" :class="getCountColor(!!site.familiar)">{{ site.total }}</span>
-          </span>
+        <div v-if="result.providerKind === 'regular'" class="mt-1">
+          <FamiliarityFacts :stats="result.stats" />
         </div>
 
         <!-- The part after the @ is a domain like any other, and an address one
              letter off a provider the user knows is the whole point of checking -->
-        <div class="text-xs mt-1">
+        <div class="mt-1">
           <DomainMarkers :hostname="result.analysis.domain" />
           <LookalikeNotice :hostname="result.analysis.domain" context="email" />
+          <ExternalLookups :hostname="result.analysis.domain" />
+        </div>
+
+        <!-- Nobody opens an address domain, so a zero of its own says nothing.
+             The visits that mean anything are on the site its mail is read on –
+             and they are the ones worth judging, so that site gets the same
+             evidence every other check surface shows rather than one number. -->
+        <div v-if="result.mailSites.length" class="mail-sites mt-1">
+          <span class="opacity-60">{{ t('mailSiteLabel') }}:</span>
+          <div v-for="site in result.mailSites" :key="site.site" class="mt-0.5">
+            <!-- Same weight as the address halves above: this is the other name
+                 the reader is here to look at, not a caption on the table -->
+            <div class="font-bold text-[1.3em] leading-tight break-all">
+              <SecureText :text="site.site" :force-highlight="true" :danger-only="true" />
+            </div>
+            <FamiliarityFacts :stats="site.stats" class="mt-0.5" />
+            <!-- The address domain is a name on an envelope, this is a site
+                 somebody actually opens – so it is the one worth looking up -->
+            <ExternalLookups :hostname="site.site" />
+          </div>
         </div>
       </template>
 

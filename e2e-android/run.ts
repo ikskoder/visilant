@@ -228,6 +228,57 @@ test('a page load is counted, and reloads inside the debounce window are not', a
 })
 
 // ==========================================
+// What a check says, at the width of a phone
+// ==========================================
+
+// A check names every fact its verdict rests on, which on a phone is three
+// labels and three numbers – and with the thresholds switched on, six. Laid out
+// as one run they ran off the edge of the screen, so they are stacked. Only a
+// real display can say whether that worked.
+test('the familiarity facts stack one per line and stay inside the screen', async (port) => {
+  const snapshot = await withBackground(port, readStorage)
+  try {
+    const now = Date.now()
+    await withBackground(port, (session, background) => writeStorage(session, background, {
+      'facts-check.test': { count: 209, firstSeen: now - 109 * 86_400_000, lastSeen: now, activeDays: 30, ignored: false },
+    }))
+
+    await withExtensionPage(port, 'dist/popup/index.html?check=1', async (session, page) => {
+      // v-model listens for the event, not for the assignment, so the native
+      // setter is called first and the event sent after it
+      await session.evaluate(page, `(() => {
+        const input = document.querySelector('input[type="text"]')
+        const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+        setValue.call(input, 'https://facts-check.test/')
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        const button = [...document.querySelectorAll('button')].find(b => /^check$/i.test(b.textContent.trim()))
+        button.click()
+        return 'ok'
+      })()`)
+      await sleep(2500)
+
+      const facts = await session.json<{ id: string, text: string, top: number, right: number, width: number }[]>(page, `JSON.stringify(
+        [...document.querySelectorAll('.familiarity-facts [data-criterion]')].map((el) => {
+          const box = el.getBoundingClientRect()
+          const line = el.parentElement.getBoundingClientRect()
+          return { id: el.dataset.criterion, text: el.textContent.trim(), top: Math.round(line.top), right: Math.round(box.right), width: document.documentElement.clientWidth }
+        }))`)
+
+      assertEqual(facts.map(f => f.id), ['visits', 'activeDays', 'age'], 'the check did not report all three facts')
+
+      const tops = facts.map(f => f.top)
+      assertEqual(new Set(tops).size, tops.length, `the facts share a line rather than stacking: ${JSON.stringify(facts)}`)
+
+      const overflowing = facts.filter(f => f.right > f.width)
+      assertEqual(overflowing, [], 'a fact runs off the side of the screen')
+    })
+  }
+  finally {
+    await restoreStorage(port, snapshot)
+  }
+})
+
+// ==========================================
 // Storage is not only visits
 // ==========================================
 

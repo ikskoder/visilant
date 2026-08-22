@@ -7,7 +7,7 @@ const baseData: LinkInterceptData = {
   domain: 'suspicious.com',
   url: 'https://suspicious.com/login',
   target: '_blank',
-  count: 0,
+  stats: { count: 0 },
   isSafe: false,
   mismatch: null,
   punycode: null,
@@ -79,7 +79,7 @@ describe('linkInterceptDialog component', () => {
       ...baseData,
       mismatch: {
         textDomain: 'paypal.com',
-        textDomainCount: 100,
+        textDomainStats: { count: 100 },
         textDomainIsSafe: true,
       },
     }
@@ -102,7 +102,7 @@ describe('linkInterceptDialog component', () => {
       ...baseData,
       mismatch: {
         textDomain: 'paypal.com',
-        textDomainCount: 100,
+        textDomainStats: { count: 100 },
         textDomainIsSafe: true,
       },
     }
@@ -144,7 +144,7 @@ describe('linkInterceptDialog component', () => {
         originalUrl: 'https://bit.ly/abc',
         resolvedUrl: '',
         resolvedDomain: '',
-        resolvedCount: 0,
+        resolvedStats: { count: 0 },
         resolvedIsSafe: false,
         chain: [],
         status: 'idle',
@@ -166,7 +166,7 @@ describe('linkInterceptDialog component', () => {
         originalUrl: 'https://bit.ly/abc',
         resolvedUrl: '',
         resolvedDomain: '',
-        resolvedCount: 0,
+        resolvedStats: { count: 0 },
         resolvedIsSafe: false,
         chain: [],
         status: 'idle',

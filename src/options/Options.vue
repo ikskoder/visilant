@@ -61,6 +61,8 @@ function updateTranslations() {
     'familiaritySummaryAny',
     'familiaritySummaryAtLeast',
     'familiarityKeepOne',
+    'familiarityShowThresholds',
+    'familiarityShowThresholdsDesc',
     'familiarityNeedsImportTitle',
     'familiarityNoDatesTitle',
     'familiarityNoDatesText',
@@ -278,7 +280,7 @@ const isAndroid = ref(false)
  */
 const SECTION_SETTINGS: Record<string, (keyof Settings)[]> = {
   'general': ['theme', 'verboseOptions'],
-  'familiarity': ['familiarity'],
+  'familiarity': ['familiarity', 'showFamiliarityThresholds'],
   'display': ['showBadge', 'badgeContent', 'changeIcon'],
   'notifications': ['showWarningNotification', 'notificationStyle', 'showInputWarning', 'showCopyWarning', 'blockPasteOnUnfamiliar'],
   'tampering': ['antiTamperingExcludedDomains'],
@@ -1150,6 +1152,24 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <span class="text-sm text-gray-500 dark:text-gray-400">{{ row.unit }}</span>
               </div>
             </div>
+          </div>
+
+          <!-- How the checks above read on every other surface. It belongs with
+               the rules rather than with the link tooltip, because the same line
+               is drawn in the popup, the panel and both dialogs. -->
+          <div class="flex items-start justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div>
+              <label class="text-sm font-medium">{{ translations.familiarityShowThresholds }}</label>
+              <p class="hint text-xs text-gray-500 dark:text-gray-400">
+                {{ translations.familiarityShowThresholdsDesc }}
+              </p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input v-model="settings.showFamiliarityThresholds" type="checkbox" class="sr-only peer">
+              <div
+                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
+              />
+            </label>
           </div>
 
           <!-- Only shown when it is actually about to bite: one of the two newer

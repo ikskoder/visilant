@@ -90,7 +90,10 @@ watch(() => props.hostname, async (hostname) => {
           {{ match.source === 'provider' ? t('lookalikeLooksLikeProvider') : t('lookalikeLooksLike') }}
           <SecureText :text="match.domain" force-highlight danger-only class="font-mono" />
         </span>
-        <span class="opacity-70">
+        <!-- Its own colour rather than the inherited one. This renders inside a
+             shadow root on somebody else's page, and `color` crosses that
+             boundary – text that names no colour takes the host page's. -->
+        <span class="opacity-70" :class="isDark ? 'text-gray-300' : 'text-gray-600'">
           <!-- A provider off the list was never visited, so a count of zero
                would read as a finding about the user rather than about it -->
           <template v-if="match.source !== 'provider'">

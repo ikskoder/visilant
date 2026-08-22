@@ -5,7 +5,7 @@ import LinkTooltip from '../LinkTooltip.vue'
 
 const baseData: LinkTooltipData = {
   domain: 'example.com',
-  count: 5,
+  stats: { count: 5 },
   isSafe: false,
   mismatch: null,
   punycode: null,
@@ -114,7 +114,7 @@ describe('linkTooltip component', () => {
       ...baseData,
       mismatch: {
         textDomain: 'paypal.com',
-        textDomainCount: 100,
+        textDomainStats: { count: 100 },
         textDomainIsSafe: true,
       },
     }
@@ -145,7 +145,7 @@ describe('linkTooltip component', () => {
         originalUrl: 'https://bit.ly/abc',
         resolvedUrl: '',
         resolvedDomain: '',
-        resolvedCount: 0,
+        resolvedStats: { count: 0 },
         resolvedIsSafe: false,
         chain: [],
         status: 'idle',
@@ -167,7 +167,7 @@ describe('linkTooltip component', () => {
         originalUrl: 'https://bit.ly/abc',
         resolvedUrl: '',
         resolvedDomain: '',
-        resolvedCount: 0,
+        resolvedStats: { count: 0 },
         resolvedIsSafe: false,
         chain: [],
         status: 'loading',
@@ -188,7 +188,7 @@ describe('linkTooltip component', () => {
         originalUrl: 'https://bit.ly/abc',
         resolvedUrl: 'https://real-site.com/page',
         resolvedDomain: 'real-site.com',
-        resolvedCount: 42,
+        resolvedStats: { count: 42 },
         resolvedIsSafe: true,
         chain: ['https://bit.ly/abc', 'https://real-site.com/page'],
         status: 'resolved',

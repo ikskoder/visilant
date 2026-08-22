@@ -2,8 +2,10 @@
 import type { PasteInterceptData } from '~/logic/ui-state'
 import { computed, ref, watch } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
+import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
+import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 
 const props = defineProps<{
@@ -19,6 +21,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { statusLabel } = useFamiliarityFacts()
 
 // Hidden by default. Whatever is pasted here is exactly the kind of thing that
 // should not land on a screen without being asked for.
@@ -85,12 +88,13 @@ const payloadKind = computed(() => {
             </span>
           </div>
           <div class="dialog-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
-            {{ t('linkTooltipVisits') }}:
-            <span class="font-medium" :class="isDark ? 'text-white' : 'text-gray-900'">{{ data.count }}</span>
-            <span class="mx-1">&middot;</span>
-            <span :class="data.count === 0 ? 'text-red-400' : 'text-yellow-400'">
-              {{ data.count === 0 ? t('linkTooltipNeverVisited') : t('linkTooltipUnfamiliar') }}
-            </span>
+            <FamiliarityFacts :stats="data.stats">
+              <template #status>
+                <span :class="statusLabel(false, data.stats.count).class">
+                  {{ statusLabel(false, data.stats.count).text }}
+                </span>
+              </template>
+            </FamiliarityFacts>
           </div>
 
           <!-- Punycode. Skipped when it would repeat the domain verbatim -->

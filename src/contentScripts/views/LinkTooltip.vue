@@ -3,8 +3,10 @@ import type { LinkTooltipData } from '~/logic/ui-state'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailBreakdown from '~/components/EmailBreakdown.vue'
+import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
+import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import MismatchTable from './MismatchTable.vue'
 
@@ -40,14 +42,7 @@ function shouldShowCount(isSafe: boolean) {
 }
 
 const { t } = useI18n()
-
-const statusLabel = computed(() => (isSafe: boolean, count: number) => {
-  if (isSafe)
-    return { text: t.value('linkTooltipFamiliar'), class: 'text-green-400' }
-  if (count === 0)
-    return { text: t.value('linkTooltipNeverVisited'), class: 'text-red-400' }
-  return { text: t.value('linkTooltipUnfamiliar'), class: 'text-yellow-400' }
-})
+const { statusLabel } = useFamiliarityFacts()
 
 function handleResolveClick() {
   ;(window as any).__visilant_resolveTooltipUrl?.()
@@ -204,11 +199,11 @@ onBeforeUnmount(() => {
               class="tooltip-label px-1.5 py-0.5 rounded"
               :class="data.isSafe
                 ? (isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700')
-                : data.count === 0
+                : data.stats.count === 0
                   ? (isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700')
                   : (isDark ? 'bg-yellow-900/40 text-yellow-400' : 'bg-yellow-100 text-yellow-700')"
             >
-              {{ statusLabel(data.isSafe, data.count).text.toLowerCase() }}
+              {{ statusLabel(data.isSafe, data.stats.count).text.toLowerCase() }}
             </span>
           </div>
 
@@ -229,7 +224,7 @@ onBeforeUnmount(() => {
 
           <!-- Visit count for the address's domain (regular domains only) -->
           <div v-if="data.email.providerKind === 'regular' && shouldShowCount(data.isSafe)" class="tooltip-label mt-1 mb-2" :class="isDark ? 'text-white' : 'text-gray-800'">
-            {{ t('linkTooltipVisits') }}: {{ data.count }}
+            <FamiliarityFacts :stats="data.stats" />
           </div>
 
           <!-- Structural markers of the address's domain -->
@@ -283,10 +278,10 @@ onBeforeUnmount(() => {
             class="tooltip-label mb-2"
             :text-domain="data.mismatch.textDomain"
             :text-domain-is-safe="data.mismatch.textDomainIsSafe"
-            :text-domain-count="data.mismatch.textDomainCount"
+            :text-domain-stats="data.mismatch.textDomainStats"
             :dest-domain="data.domain"
             :dest-is-safe="data.isSafe"
-            :dest-count="data.count"
+            :dest-stats="data.stats"
             :show-visit-count="showVisitCount"
             cell-padding="p-1.5"
             @details="emit('details', $event)"
@@ -330,11 +325,11 @@ onBeforeUnmount(() => {
                 class="tooltip-label px-1.5 py-0.5 rounded"
                 :class="data.isSafe
                   ? (isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700')
-                  : data.count === 0
+                  : data.stats.count === 0
                     ? (isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700')
                     : (isDark ? 'bg-yellow-900/40 text-yellow-400' : 'bg-yellow-100 text-yellow-700')"
               >
-                {{ statusLabel(data.isSafe, data.count).text.toLowerCase() }}
+                {{ statusLabel(data.isSafe, data.stats.count).text.toLowerCase() }}
               </span>
             </template>
           </div>
@@ -354,7 +349,7 @@ onBeforeUnmount(() => {
 
           <!-- Visit count: never show for known shorteners -->
           <div v-if="!data.shortUrl?.isKnownShortener && shouldShowCount(data.isSafe)" class="tooltip-label mb-2" :class="isDark ? 'text-white' : 'text-gray-800'">
-            {{ t('linkTooltipVisits') }}: {{ data.count }}
+            <FamiliarityFacts :stats="data.stats" />
           </div>
 
           <!-- Short URL: idle state – resolve button -->
@@ -414,15 +409,15 @@ onBeforeUnmount(() => {
                 class="tooltip-label px-1.5 py-0.5 rounded"
                 :class="data.shortUrl.resolvedIsSafe
                   ? (isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700')
-                  : data.shortUrl.resolvedCount === 0
+                  : data.shortUrl.resolvedStats.count === 0
                     ? (isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700')
                     : (isDark ? 'bg-yellow-900/40 text-yellow-400' : 'bg-yellow-100 text-yellow-700')"
               >
-                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedCount).text.toLowerCase() }}
+                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).text.toLowerCase() }}
               </span>
             </div>
             <div v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)" class="tooltip-label" :class="isDark ? 'text-white' : 'text-gray-800'">
-              {{ t('linkTooltipVisits') }}: {{ data.shortUrl.resolvedCount }}
+              <FamiliarityFacts :stats="data.shortUrl.resolvedStats" />
             </div>
 
             <!-- Redirect chain trace -->

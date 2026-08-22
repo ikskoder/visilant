@@ -57,7 +57,38 @@ test('checking a URL reports its base domain and visit count', async ({ context,
 
   await expect(field(page).locator('text=Base domain')).toContainText('example.org', { timeout: 5000 })
   // Visits are counted across the whole domain family, not per exact hostname
-  await expect(field(page).locator('.font-mono.font-bold').first()).toHaveText('4')
+  await expect(field(page).locator('[data-criterion="visits"]').first()).toHaveText('4')
+})
+
+const DAY = 24 * 60 * 60 * 1000
+
+test('a check reports every fact its verdict was drawn from', async ({ context, extensionId }) => {
+  await seedVisits(context, 'evidence.example.org', 4, { activeDays: 3, firstSeen: Date.now() - 7 * DAY })
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'https://evidence.example.org/')
+
+  // Not the visit count on its own: a site can be called unfamiliar over a date
+  // while the only number on screen says it has been visited plenty
+  await expect(field(page).locator('[data-criterion="visits"]').first()).toHaveText('4', { timeout: 5000 })
+  await expect(field(page).locator('[data-criterion="activeDays"]').first()).toHaveText('3')
+  await expect(field(page).locator('[data-criterion="age"]').first()).toContainText('7')
+})
+
+test('the facts become a headed table once the bar is asked for', async ({ context, extensionId }) => {
+  await patchSettings(context, { showFamiliarityThresholds: true })
+  await seedVisits(context, 'threshold.example.org', 4, { activeDays: 3, firstSeen: Date.now() - 7 * DAY })
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'https://threshold.example.org/')
+
+  // Headings, because a bare "4 / 10" is a pair of numbers whose meaning is gone
+  // a moment later. The shipped bar for visits is 10.
+  await expect(field(page).locator('table').first()).toContainText('Needed', { timeout: 5000 })
+  await expect(field(page).locator('[data-criterion="visits"]').first()).toHaveText('4')
+  await expect(field(page).locator('[data-required="visits"]').first()).toHaveText('10')
+  // Four visits against a bar of ten, so the row is marked as not cleared
+  await expect(field(page).locator('[data-passed="visits"]').first()).toHaveText('✗')
 })
 
 test('a bare domain is understood without a scheme', async ({ context, extensionId }) => {
@@ -66,7 +97,7 @@ test('a bare domain is understood without a scheme', async ({ context, extension
   await check(page, 'example.net')
 
   await expect(field(page).locator('.secure-domain-display').first()).toHaveText('example.net', { timeout: 5000 })
-  await expect(field(page).locator('.font-mono.font-bold').first()).toHaveText('0')
+  await expect(field(page).locator('[data-criterion="visits"]').first()).toHaveText('0')
   // Nothing sits in front of the base domain, so there is no base domain to add
   await expect(field(page).locator('text=Base domain')).toHaveCount(0)
 })
@@ -219,9 +250,13 @@ test('a gmail address points at google.com, where the visits actually are', asyn
 
   await check(page, 'someone@gmail.com')
 
-  await expect(field(page).locator('text=Mail read on')).toBeVisible({ timeout: 5000 })
-  await expect(field(page).locator('text=Mail read on')).toContainText('google.com')
-  await expect(field(page).locator('text=Mail read on').locator('.font-mono')).toHaveText('340')
+  const mail = field(page).locator('.mail-sites')
+  await expect(mail).toBeVisible({ timeout: 5000 })
+  await expect(mail).toContainText('google.com')
+  // The whole verdict for that site, not just its count – it is the one the
+  // answer about the address actually rests on
+  await expect(mail.locator('[data-criterion="visits"]')).toHaveText('340')
+  await expect(mail.locator('[data-criterion="activeDays"]')).toHaveText('40')
 })
 
 test('a domain that is a site of its own is not sent anywhere else', async ({ context, extensionId }) => {
@@ -231,5 +266,5 @@ test('a domain that is a site of its own is not sent anywhere else', async ({ co
   await check(page, 'someone@example.org')
 
   await expect(field(page).getByText('Email address', { exact: true })).toBeVisible({ timeout: 5000 })
-  await expect(field(page).locator('text=Mail read on')).toHaveCount(0)
+  await expect(field(page).locator('.mail-sites')).toHaveCount(0)
 })

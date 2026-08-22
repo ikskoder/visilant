@@ -181,9 +181,17 @@ onMounted(async () => {
 </script>
 
 <template>
-  <!-- The .dark class activates UnoCSS dark: variants inside the shadow DOM,
-       matching how useTheme toggles it on documentElement in popup/options -->
-  <div :class="{ dark: isDark }">
+  <!--
+    The .dark class activates UnoCSS dark: variants inside the shadow DOM,
+    matching how useTheme toggles it on documentElement in popup/options.
+
+    The colour beside it is not decoration. `color` is an inherited property and
+    inheritance crosses the shadow boundary, so any text in here that does not
+    name its own colour takes the host page's – and a page whose text is near
+    black rendered invisibly on the dark cards. Everything below still overrides
+    it where it means something, this only decides what plain text looks like.
+  -->
+  <div :class="[{ dark: isDark }, isDark ? 'text-gray-100' : 'text-gray-900']">
     <InputWarning
       :safety-level="safetyLevel"
       :show="showWarning"

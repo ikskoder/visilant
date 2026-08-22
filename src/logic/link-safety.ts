@@ -1,18 +1,31 @@
+import type { FamiliarityStats } from './familiarity'
 import type { LinkSafetySettings } from './storage'
 import punycode from 'punycode'
 
-// Cache visit counts per domain for the current page session
-const visitCountCache = new Map<string, { count: number, isSafe: boolean, ignored: boolean, timestamp: number }>()
+/**
+ * What is known about one hostname, cached for the current page session.
+ *
+ * Holds the whole set of facts rather than the visit count alone: every check
+ * surface shows the evidence its verdict rests on, and a cache that kept only
+ * the count would send the others back to the background link by link.
+ */
+export interface VisitFacts {
+  stats: FamiliarityStats
+  isSafe: boolean
+  ignored: boolean
+}
+
+const visitCountCache = new Map<string, VisitFacts & { timestamp: number }>()
 const CACHE_TTL_MS = 30_000 // 30 seconds
 
-export function getCachedVisitCount(hostname: string) {
+export function getCachedVisitCount(hostname: string): VisitFacts | null {
   const cached = visitCountCache.get(hostname)
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS)
     return cached
   return null
 }
 
-export function setCachedVisitCount(hostname: string, data: { count: number, isSafe: boolean, ignored: boolean }) {
+export function setCachedVisitCount(hostname: string, data: VisitFacts) {
   visitCountCache.set(hostname, { ...data, timestamp: Date.now() })
 }
 

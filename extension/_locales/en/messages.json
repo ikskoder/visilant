@@ -147,6 +147,26 @@
     "message": "At least one check has to stay on.",
     "description": "Why the last enabled checkbox cannot be cleared"
   },
+  "familiarityShowThresholds": {
+    "message": "Show what each check needs",
+    "description": "Setting label for showing thresholds next to familiarity facts"
+  },
+  "familiarityShowThresholdsDesc": {
+    "message": "Every check shows the facts it was decided on – how many visits, how many active days, how long the site has been known. Off, they come one per line, as “Visits: 3”, and the bar each one has to clear is one hover away. On, the same facts come as a small table with the bar and a pass mark beside every number, which takes more room and leaves nothing to remember.",
+    "description": "What the threshold display option controls"
+  },
+  "familiarityFactCheck": {
+    "message": "Check",
+    "description": "Column heading for the familiarity check being reported"
+  },
+  "familiarityFactValue": {
+    "message": "This site",
+    "description": "Column heading for what the site actually has"
+  },
+  "familiarityFactNeeded": {
+    "message": "Needed",
+    "description": "Column heading for the threshold a check has to clear"
+  },
   "familiarityNeedsImportTitle": {
     "message": "Some sites have no dates on record",
     "description": "Title of the warning about records missing the newer fields"
@@ -684,11 +704,11 @@
     "description": "Shown under the link-check trigger where a pointer exists but the menus API does not, as on Firefox for Android with a mouse attached"
   },
   "linkShowVisitCount": {
-    "message": "Show visit count when checking links",
+    "message": "Show the familiarity facts when checking links",
     "description": "Setting label for visit count display mode"
   },
   "linkShowVisitCountDesc": {
-    "message": "Whether the tooltip also says how many times you have been to the link’s site. Limiting it to unfamiliar sites keeps the tooltip quiet on everyday links.",
+    "message": "Whether a link check also lists the evidence its verdict rests on – visits, active days and how long the site has been known, whichever of them you judge by. Limiting it to unfamiliar sites keeps the tooltip quiet on everyday links.",
     "description": "What the visit-count option controls"
   },
   "linkShowVisitCountAlways": {
@@ -980,7 +1000,7 @@
     "description": "Label for real destination in intercept dialog"
   },
   "linkTooltipResolveOnce": {
-    "message": "Show real destination (once)",
+    "message": "Show real destination",
     "description": "Button to resolve URL once without marking domain as shortener"
   },
   "linkTooltipMarkAsShortener": {

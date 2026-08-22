@@ -4,6 +4,7 @@ import type { CheckPanelData } from '~/logic/ui-state'
 import punycode from 'punycode'
 import { computed, ref, watch } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
+import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
@@ -279,6 +280,13 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
             <SecureText :text="displayDomain(data.family.baseDomain)" :highlight-override="localHighlight" :case-override="localCase" />
           </div>
 
+          <!-- What the badge above was decided on. Left out when the mail sites
+               are listed below: those facts belong to the name nobody opens, and
+               the numbers that mean anything are on the rows further down. -->
+          <div v-if="!mailSites.length" class="panel-label mb-2" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+            <FamiliarityFacts :stats="familyStats" />
+          </div>
+
           <!-- An address domain has no site of its own – say where its mail lives -->
           <template v-if="mailSites.length">
             <div class="panel-label uppercase tracking-wider mb-1" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
@@ -288,15 +296,14 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
               class="panel-list rounded-lg border divide-y shadow-sm mb-1"
               :class="isDark ? 'border-gray-700 divide-gray-700' : 'border-gray-200 divide-gray-100'"
             >
-              <div
-                v-for="site in mailSites"
-                :key="site.site"
-                class="p-2.5 flex justify-between items-center gap-3"
-              >
+              <!-- The facts rather than the bare total the subdomain rows carry:
+                   this site is the one the verdict about the address actually
+                   rests on, so it is judged in full like any other -->
+              <div v-for="site in mailSites" :key="site.site" class="p-2.5">
                 <span class="break-all panel-entry">
                   <SecureText :text="displayDomain(site.site)" :highlight-override="localHighlight" :case-override="localCase" />
                 </span>
-                <span class="font-mono font-bold panel-entry flex-shrink-0" :class="countColor(site.stats)">{{ site.total }}</span>
+                <FamiliarityFacts :stats="site.stats" class="panel-label mt-1" :class="isDark ? 'text-gray-400' : 'text-gray-500'" />
               </div>
             </div>
             <div class="panel-label mb-2" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
