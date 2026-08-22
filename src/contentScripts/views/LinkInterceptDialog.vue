@@ -337,6 +337,16 @@ button {
 .dialog-container {
   width: min(420px, 90vw) !important;
   max-width: 90vw !important;
+  /* Continue and Cancel are at the bottom, and on a phone this dialog is the
+     whole link check: hover and right-click are gone there, so every external
+     link comes through here. Landscape, a large font size or a mismatch table
+     can leave it taller than the viewport, and it had no scroll of its own –
+     the two buttons simply sat off the screen with no way to reach them.
+     `dvh` rather than `vh` so a soft keyboard shrinking the viewport is what
+     gets measured, and the safe-area insets for the notch and gesture bar. */
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
   box-sizing: border-box !important;
 }
 

@@ -536,6 +536,14 @@ button {
   min-width: min(200px, 80vw) !important;
   max-width: min(600px, 90vw) !important;
   width: auto !important;
+  /* A resolved shortener with its redirect chain, or a mismatch table, makes
+     this far taller than the hover tooltip it started as – and on a phone it is
+     opened by a tap and has buttons of its own. It gets the same cap and its
+     own scroll as the panel does. `dvh` follows a soft keyboard, and the
+     safe-area insets keep the bottom clear of the gesture bar. */
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
   box-sizing: border-box !important;
 }
 

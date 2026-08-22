@@ -209,6 +209,14 @@ button {
 .dialog-container {
   width: min(420px, 90vw) !important;
   max-width: 90vw !important;
+  /* Allow and Cancel are at the bottom, and this dialog is raised by a paste –
+     which on a phone means the keyboard is up and the viewport is already half
+     of what it was. Without a cap of its own it grew past the visible area and
+     took its buttons with it. `dvh` is the measurement that follows the
+     keyboard, and the safe-area insets keep it clear of the gesture bar. */
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
   box-sizing: border-box !important;
 }
 
