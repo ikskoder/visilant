@@ -290,9 +290,14 @@ function payloadTypeLabel(payloadKind: string) {
         :placeholder="t('checkFieldPlaceholder')"
         @keydown.enter="onSubmit"
       >
+      <!-- The only name this button had was a `title`, which a touchscreen never
+           shows: on a phone it was a 32 px picture of a QR code and nothing
+           else. `tap-target` comes from the popup and grows the hit area to
+           44 px where the pointer is a finger. -->
       <button
-        class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400"
+        class="tap-target w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400"
         :title="t('checkFieldSelectFile')"
+        :aria-label="t('checkFieldSelectFile')"
         @click="fileInput?.click()"
       >
         <div i-carbon-qr-code />

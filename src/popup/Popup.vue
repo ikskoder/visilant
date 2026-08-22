@@ -3,7 +3,7 @@ import type { FamiliarityCriterionId, FamiliarityStats } from '~/logic/familiari
 import type { SiteVisitData } from '~/logic/storage'
 import punycode from 'punycode'
 import { getDomain } from 'tldts'
-import { computed, onMounted, provide, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
 import { aggregateFamiliarityStats, evaluateFamiliarity, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
@@ -89,10 +89,22 @@ watch([loadedTranslations, isLoaded], () => {
   updateTranslations()
 }, { immediate: true })
 
-// The cap the popup column is held to, read once from the screen rather than
-// from the viewport – see popupWidthCap
-const widthCap = popupWidthCap()
-const popupMaxWidth = Number.isFinite(widthCap) ? `${widthCap}px` : undefined
+// The cap the popup column is held to, read from the screen rather than from
+// the viewport – see popupWidthCap.
+//
+// Re-read on resize, because the Android panel outlives a rotation: a cap taken
+// in landscape and kept through the turn is wider than the portrait display it
+// then has to fit in, and one taken in portrait leaves most of a landscape
+// screen unused. Reading the screen rather than the viewport is also what makes
+// listening safe – the popup resizing itself cannot change the answer, so there
+// is no loop of the kind the desktop popup would otherwise fall into.
+const widthCap = ref(popupWidthCap())
+const popupMaxWidth = computed(() =>
+  Number.isFinite(widthCap.value) ? `${widthCap.value}px` : undefined)
+
+function refreshWidthCap() {
+  widthCap.value = popupWidthCap()
+}
 
 const isStandalonePage = ref(false)
 // The same document serves as the browser's own popup and, opened by URL, as an
@@ -403,6 +415,14 @@ watch(isPageView, (pageView) => {
   document.documentElement.classList.toggle('standalone-page', pageView)
 }, { immediate: true })
 
+onMounted(() => {
+  window.addEventListener('resize', refreshWidthCap)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', refreshWidthCap)
+})
+
 onMounted(async () => {
   // Settled before anything can return early, since the whole layout hangs on
   // it. Guarded because this decides a margin, and nothing about a margin is
@@ -472,8 +492,9 @@ onMounted(async () => {
           <!-- Font size controls -->
           <div class="flex items-center gap-1 text-gray-400 dark:text-gray-500">
             <button
-              class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-sm font-bold"
+              class="tap-target w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-sm font-bold"
               title="Decrease font size"
+              aria-label="Decrease font size"
               :disabled="settings.popupFontSize <= 70"
               :class="{ 'opacity-30 cursor-not-allowed': settings.popupFontSize <= 70 }"
               @click="settings.popupFontSize = Math.max(70, settings.popupFontSize - 10)"
@@ -482,8 +503,9 @@ onMounted(async () => {
             </button>
             <span class="text-xs w-8 text-center tabular-nums">{{ settings.popupFontSize }}%</span>
             <button
-              class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-sm font-bold"
+              class="tap-target w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-sm font-bold"
               title="Increase font size"
+              aria-label="Increase font size"
               :disabled="settings.popupFontSize >= 150"
               :class="{ 'opacity-30 cursor-not-allowed': settings.popupFontSize >= 150 }"
               @click="settings.popupFontSize = Math.min(150, settings.popupFontSize + 10)"
@@ -491,7 +513,7 @@ onMounted(async () => {
               A+
             </button>
           </div>
-          <button class="icon-btn text-2xl" :title="translations.settings" @click="openOptionsPage">
+          <button class="icon-btn tap-target text-2xl" :title="translations.settings" :aria-label="translations.settings" @click="openOptionsPage">
             <div i-carbon-settings />
           </button>
         </div>
@@ -782,5 +804,17 @@ html:not(.standalone-page) .overflow-y-auto::-webkit-scrollbar {
 html:not(.standalone-page) .overflow-y-auto {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
+}
+
+/* A 24 px button is comfortable under a mouse and a poor target for a fingertip,
+   which is why this is asked of the pointer rather than applied everywhere: the
+   box stays as it is on desktop, and grows to the 44 px an accessible touch
+   target wants where there is nothing more precise than a finger. The icon does
+   not change size – only the area that answers the tap. */
+@media (pointer: coarse) {
+  .tap-target {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
 }
 </style>
