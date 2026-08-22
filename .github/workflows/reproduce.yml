@@ -35,10 +35,40 @@ jobs:
   reproduce:
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out ${{ inputs.ref || 'main' }}
+      # The weekly run has no inputs, so it used to check out `main`, find no tag
+      # of that name, and report a hash with nothing to compare it against – a
+      # green run that had verified nothing. It resolves the newest release here
+      # instead, which is the only thing there is a published hash for.
+      - name: Decide what to rebuild
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          ref="$INPUT_REF"
+          if [ -z "$ref" ]; then
+            ref=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+            if [ -z "$ref" ]; then
+              echo "No published release to rebuild." >&2
+              exit 1
+            fi
+            echo "Newest release: $ref"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "target=${INPUT_TARGET:-firefox}" >> "$GITHUB_OUTPUT"
+          # A scheduled run exists to notice a build that stopped reproducing, so
+          # anything short of an actual comparison is a failure for it
+          echo "must_compare=${{ github.event_name == 'schedule' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out ${{ steps.target.outputs.ref }}
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.1
         with:
-          ref: ${{ inputs.ref || 'main' }}
+          ref: ${{ steps.target.outputs.ref }}
+          # `git tag --list` below needs the tags, and a ref checkout brings none
+          fetch-depth: 0
 
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
@@ -48,13 +78,14 @@ jobs:
             sandbox = true
 
       - name: Build
-        run: nix build .#${{ inputs.target || 'firefox' }} --print-build-logs
+        run: nix build .#${{ steps.target.outputs.target }} --print-build-logs
 
       - name: Compare
         env:
           GH_TOKEN: ${{ github.token }}
-          REF: ${{ inputs.ref || 'main' }}
+          REF: ${{ steps.target.outputs.ref }}
           EXPECTED: ${{ inputs.expected }}
+          MUST_COMPARE: ${{ steps.target.outputs.must_compare }}
         run: |
           set -euo pipefail
           archive=$(find result/ -maxdepth 1 \( -name '*.xpi' -o -name '*.zip' \) | head -n1)
@@ -72,6 +103,10 @@ jobs:
           fi
 
           if [ -z "$expected" ]; then
+            if [ "$MUST_COMPARE" = "true" ]; then
+              echo "No published hash for $REF – nothing was verified." >&2
+              exit 1
+            fi
             echo "Nothing to compare against – recording the hash only."
             exit 0
           fi
