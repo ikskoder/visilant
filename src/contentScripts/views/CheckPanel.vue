@@ -4,6 +4,7 @@ import type { CheckPanelData } from '~/logic/ui-state'
 import punycode from 'punycode'
 import { computed, ref, watch } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
+import EmailCheckCaveat from '~/components/EmailCheckCaveat.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
@@ -192,6 +193,9 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
           <div v-else-if="data.email.providerKind === 'disposable'" class="panel-label mt-1" :class="isDark ? 'text-red-400' : 'text-red-600'">
             ⚠ {{ t('emailDisposableHint') }}
           </div>
+
+          <!-- Last, because it qualifies everything above it -->
+          <EmailCheckCaveat class="panel-label" />
         </div>
 
         <!-- Domain: checked hostname -->

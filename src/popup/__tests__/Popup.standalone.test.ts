@@ -32,6 +32,16 @@ beforeEach(() => {
 })
 
 describe('popup as a standalone page', () => {
+  // This page was opened about a site the reader had just been looking at, so
+  // the exclusion shortcut belongs here – unlike on the check page, where the
+  // name on screen was typed into a field
+  it('offers the anti-tampering control, record or not', async () => {
+    stubLocalStorage({})
+    const wrapper = await mountForDomain('never-visited.example')
+
+    expect(wrapper.text()).toContain('antiTampering')
+  })
+
   it('shows the visit facts when the address has a record of its own', async () => {
     stubLocalStorage({ 'example.com': record })
     const wrapper = await mountForDomain('example.com')
@@ -70,13 +80,6 @@ describe('popup as a standalone page', () => {
     const wrapper = await mountForDomain('never-visited.example')
 
     expect(wrapper.text()).not.toContain('activeDaysLabel')
-  })
-
-  it('always offers the anti-tampering control, record or not', async () => {
-    stubLocalStorage({})
-    const wrapper = await mountForDomain('never-visited.example')
-
-    expect(wrapper.text()).toContain('antiTampering')
   })
 })
 

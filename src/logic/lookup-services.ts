@@ -37,6 +37,28 @@ export const DEFAULT_LOOKUP_SERVICES: LookupService[] = [
 export const LOOKUP_DOMAIN_PLACEHOLDER = '{domain}'
 
 /**
+ * Open a third-party site in a background tab, so the popup survives the click.
+ *
+ * A popup closes the moment focus leaves it, and a plain link would let the user
+ * open exactly one service before having to start over. A tab opened unfocused
+ * takes no focus, so several can be queued in one go.
+ *
+ * Modifier and middle clicks are left to the browser, and so is the whole thing
+ * where there is no tabs API. The href stays on the anchor either way, so this
+ * only ever improves on what the browser would have done.
+ */
+export async function openInBackgroundTab(event: MouseEvent, url: string): Promise<void> {
+  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
+    return
+
+  if (!browser?.tabs?.create)
+    return
+
+  event.preventDefault()
+  await browser.tabs.create({ url, active: false })
+}
+
+/**
  * Read a user-supplied list of `Name = https://example.com/{domain}` lines.
  *
  * The older `|` is still read, so a list written before the separator changed

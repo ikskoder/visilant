@@ -109,6 +109,15 @@ function refreshWidthCap() {
 }
 
 const isStandalonePage = ref(false)
+
+/**
+ * The "check anything" page, as opposed to the details page for one domain.
+ *
+ * The two are both standalone, and they differ in where the domain on screen
+ * came from: the details page was opened about a site the reader was just
+ * looking at, while here they typed or pasted a name into a field.
+ */
+const isCheckPage = ref(false)
 // The same document serves as the browser's own popup and, opened by URL, as an
 // ordinary tab. In a tab it should behave like a page: use the whole window and
 // scroll. tabs.getCurrent() is what tells the two apart, resolving to undefined
@@ -471,6 +480,7 @@ onMounted(async () => {
   // Standalone "check anything" page opened from the popup button
   if (urlParams.get('check')) {
     isStandalonePage.value = true
+    isCheckPage.value = true
     return
   }
 
@@ -665,8 +675,18 @@ onMounted(async () => {
             {{ translations.statsFamilyWide }}
           </p>
 
-          <!-- Anti-Tampering Status -->
-          <div class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <!--
+            Anti-tampering status, and only where there is a site it is about.
+
+            It reports on a site the reader was just on, which is why the wording
+            says "this site" – over a tab, or on the details page opened from a
+            link there. The check page is the one place with no such site: the
+            name on screen was typed into a field, and the page the reader is
+            actually on is the extension's own, so saying protection is active
+            there is a claim about nothing. The exclusion list stays reachable
+            from the details page and from the settings either way.
+          -->
+          <div v-if="!isCheckPage" class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <div
               class="flex items-center gap-1.5 cursor-help"
               :title="`${translations.antiTamperingTooltipWhat}\n\n${isAntiTamperingExcluded ? translations.antiTamperingTooltipOff : translations.antiTamperingTooltipOn}`"

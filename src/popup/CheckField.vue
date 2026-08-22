@@ -7,8 +7,10 @@ import type { SiteVisitData } from '~/logic/storage'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { getDomain } from 'tldts'
 import { onMounted, ref } from 'vue'
+import AddressCompare from '~/components/AddressCompare.vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailBreakdown from '~/components/EmailBreakdown.vue'
+import EmailCheckCaveat from '~/components/EmailCheckCaveat.vue'
 import ExternalLookups from '~/components/ExternalLookups.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
@@ -463,6 +465,14 @@ function payloadTypeLabel(payloadKind: string) {
             <ExternalLookups :hostname="site.site" />
           </div>
         </div>
+
+        <!-- After the domain material, because that is the order the reader
+             works in: settle the half history can speak for, then look hard at
+             the half it cannot -->
+        <AddressCompare :address="result.analysis.raw" />
+
+        <!-- Last, because it qualifies everything above it -->
+        <EmailCheckCaveat />
       </template>
 
       <!-- tel: / WIFI: / sms: / geo: payloads -->

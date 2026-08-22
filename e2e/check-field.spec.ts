@@ -91,6 +91,18 @@ test('the facts become a headed table once the bar is asked for', async ({ conte
   await expect(field(page).locator('[data-passed="visits"]').first()).toHaveText('✗')
 })
 
+// The check page is the one surface with no site behind it: the reader is on the
+// extension's own page and the name on screen is one they typed. "Anti-tampering:
+// active" there is a claim about nothing.
+test('the checked domain carries no anti-tampering claim', async ({ context, extensionId }) => {
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'https://tamper-claim.example.org/')
+
+  await expect(page.locator('text=Checked domain')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('text=Anti-tampering')).toHaveCount(0)
+})
+
 test('a bare domain is understood without a scheme', async ({ context, extensionId }) => {
   const page = await openCheckPage(context, extensionId)
 
@@ -257,6 +269,59 @@ test('a gmail address points at google.com, where the visits actually are', asyn
   // answer about the address actually rests on
   await expect(mail.locator('[data-criterion="visits"]')).toHaveText('340')
   await expect(mail.locator('[data-criterion="activeDays"]')).toHaveText('40')
+})
+
+// A domain the user has written to for years says nothing about whether today's
+// sender is the same person. Only an earlier address does, and holding two of
+// them up to the light is the task eyes are worst at.
+test('two addresses can be held against each other, character by character', async ({ context, extensionId }) => {
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'anna@exarnple.org')
+
+  const toggle = page.locator('text=Compare with an address you already trust')
+  await expect(toggle).toBeVisible({ timeout: 5000 })
+  await toggle.click()
+
+  const field = page.locator('input[placeholder="Address from an earlier message"]')
+  await field.fill('anna@example.org')
+  await expect(page.locator('text=Not the same address')).toBeVisible({ timeout: 3000 })
+
+  // "rn" against "m" – three columns out of the alignment, and nothing else
+  await expect(page.locator('text=3 characters do not line up')).toBeVisible()
+
+  // The same address, and the answer flips
+  await field.fill('anna@exarnple.org')
+  await expect(page.locator('text=The same address, character for character')).toBeVisible({ timeout: 3000 })
+})
+
+// The check reads an address and stops there – it never learns which server sent
+// anything. Somebody who takes a clean result for a verdict is worse off than
+// somebody who never ran it, so the limits sit next to the answer.
+test('an email check says what it cannot tell you', async ({ context, extensionId }) => {
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'someone@example.org')
+
+  const caveat = page.locator('text=Got a message that worried you')
+  await expect(caveat).toBeVisible({ timeout: 5000 })
+
+  // Folded away until asked for: four paragraphs on every check would be noise
+  await expect(page.locator('text=This check only ever saw the address')).toHaveCount(0)
+  await caveat.click()
+  await expect(page.locator('text=This check only ever saw the address')).toBeVisible()
+
+  // A link and a file are two different pages at VirusTotal, and sending
+  // somebody to the wrong one in the middle of advice about not opening things
+  // would be a small cruelty
+  const targets = await page.locator('a', { hasText: /VirusTotal|urlscan/ }).evaluateAll(
+    (anchors: Element[]) => anchors.map(anchor => anchor.getAttribute('href')),
+  )
+  expect(targets).toEqual([
+    'https://www.virustotal.com/gui/home/url',
+    'https://urlscan.io/',
+    'https://www.virustotal.com/gui/home/upload',
+  ])
 })
 
 test('a domain that is a site of its own is not sent anywhere else', async ({ context, extensionId }) => {

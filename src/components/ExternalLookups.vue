@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
-import { buildLookupUrl, getLookupServices } from '~/logic/lookup-services'
+import { buildLookupUrl, getLookupServices, openInBackgroundTab } from '~/logic/lookup-services'
 import { settings } from '~/logic/storage'
 
 // Plain links, not API calls: the extension issues no request of its own, and
@@ -26,27 +26,6 @@ const links = computed(() => {
 watch(() => props.hostname, () => {
   expanded.value = false
 })
-
-/**
- * Open the lookup in a background tab so the popup survives the click.
- *
- * A popup closes the moment focus leaves it, so a plain link would let the user
- * check exactly one service and then have to start over. A tab opened
- * unfocused takes no focus, so several can be queued in one go.
- *
- * Modifier and middle clicks are left to the browser, and so is the whole thing
- * when there is no tabs API – the href stays on the anchor either way.
- */
-async function openLookup(event: MouseEvent, url: string) {
-  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
-    return
-
-  if (!browser?.tabs?.create)
-    return
-
-  event.preventDefault()
-  await browser.tabs.create({ url, active: false })
-}
 </script>
 
 <template>
@@ -72,7 +51,7 @@ async function openLookup(event: MouseEvent, url: string) {
           :class="isDark
             ? 'border-gray-600 hover:bg-gray-700 text-blue-300'
             : 'border-gray-300 hover:bg-gray-100 text-blue-700'"
-          @click="openLookup($event, link.url)"
+          @click="openInBackgroundTab($event, link.url)"
         >{{ link.name }} ↗</a>
       </div>
       <!-- A notch larger than the links above it: the popup already scales this

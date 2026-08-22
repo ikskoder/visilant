@@ -1195,6 +1195,66 @@
     "message": "Disposable/temporary mail service – messages from such addresses are almost always spam or scam",
     "description": "Hint for disposable addresses"
   },
+  "emailCaveatTitle": {
+    "message": "Got a message that worried you? Read this first",
+    "description": "Toggle for the note about what to do with a suspicious message, and what this check cannot settle"
+  },
+  "emailCaveatNoMailbox": {
+    "message": "This check only ever saw the address. It has no way into your mail, so it never learns which server really sent the message or what the message says. Everything above is worth knowing – none of it makes a message safe.",
+    "description": "First paragraph of the email caveat: no mailbox integration"
+  },
+  "emailCaveatReadAddress": {
+    "message": "Once the domain looks right, the name in front of it is what is left, and one swapped character is the whole trick. Do not read the two by eye if you can help it: if an earlier message from this person went somewhere, paste that address into the comparison above and the difference is pointed at for you.",
+    "description": "Second paragraph: compare the address against an earlier one rather than by eye"
+  },
+  "emailCaveatSenderHacked": {
+    "message": "An address you know is still not the end of it, because a real sender can be hacked. What the message asks you to do is the better question.",
+    "description": "Third paragraph: a genuine sender can be compromised"
+  },
+  "emailCaveatLinks": {
+    "message": "A link or a QR code out of the message can be pasted into the field above, and it is worth doing when the link claims to be somewhere you already use. Whether it really is that site is the one question this extension can answer. A name you have never seen before it cannot judge at all, and neither can you by looking, so put that one through {virustotal-url} or {urlscan} instead.",
+    "description": "Fourth paragraph: when checking a link here helps, and when it does not"
+  },
+  "emailCaveatAttachments": {
+    "message": "Attachments are a different matter: ask someone you trust if you have anybody to ask, and otherwise send the file to {virustotal-file} rather than opening it. If you are in doubt, do not download it at all – some file types can do harm before anyone opens them.",
+    "description": "Fifth paragraph: what to do with an attachment"
+  },
+  "addressCompareTitle": {
+    "message": "Compare with an address you already trust",
+    "description": "Toggle for the two-address comparison"
+  },
+  "addressCompareHint": {
+    "message": "Reading an address letter by letter is the advice, and eyes are bad at it. If an earlier message from the same person went somewhere, paste that address here and the difference will be pointed at instead.",
+    "description": "Why the comparison exists"
+  },
+  "addressComparePlaceholder": {
+    "message": "Address from an earlier message",
+    "description": "Placeholder for the trusted address field"
+  },
+  "addressCompareChecked": {
+    "message": "Checked",
+    "description": "Row label for the address being checked"
+  },
+  "addressCompareKnown": {
+    "message": "Trusted",
+    "description": "Row label for the address the user pasted"
+  },
+  "addressCompareIdentical": {
+    "message": "The same address, character for character",
+    "description": "Verdict when the two addresses match exactly"
+  },
+  "addressCompareCaseOnly": {
+    "message": "The same address, typed in a different case. A domain is case-insensitive and mail servers treat the name that way too.",
+    "description": "Verdict when the two differ only in capitalisation"
+  },
+  "addressCompareDiffers": {
+    "message": "Not the same address – {n} characters do not line up",
+    "description": "Verdict when the two addresses differ, {n} is the count"
+  },
+  "addressCompareNotAnAddress": {
+    "message": "No email address found in that text",
+    "description": "Shown when the pasted text holds no address"
+  },
   "emailListsTitle": {
     "message": "Email addresses",
     "description": "Options section header for email domain lists"
