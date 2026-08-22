@@ -20,14 +20,21 @@ export async function getManifest() {
         data_collection_permissions: {
           required: ['none'],
         },
+        // The declaration above is the extension's whole privacy statement, and
+        // a browser that does not understand the key does not show it. Built-in
+        // data consent landed in 140 on desktop.
+        strict_min_version: '140.0',
       },
       // Without this key AMO assumes the extension is not compatible with
       // Android and does not list it as available there. It does not gate
       // installing – a direct link works either way – it decides whether anyone
-      // browsing AMO on a phone is ever shown it. The floor is 140 because
-      // `data_collection_permissions` above is only understood from 140 on.
+      // browsing AMO on a phone is ever shown it.
+      //
+      // 142, not 140: the same consent feature reached Firefox for Android two
+      // releases later, so 140 and 141 would be told the extension supports
+      // them while the one thing it promises about data would go unread.
       gecko_android: {
-        strict_min_version: '140.0',
+        strict_min_version: '142.0',
       },
     },
     action: {
