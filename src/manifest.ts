@@ -139,10 +139,11 @@ export async function getManifest() {
       },
     ],
     content_security_policy: {
-      extension_pages: isDev
-        // this is required on dev for Vite script to load
-        ? 'script-src \'self\'; object-src \'self\''
-        : 'script-src \'self\'; object-src \'self\'',
+      // The same in dev and in production. It used to be written as a
+      // conditional with two identical branches, which read as though dev
+      // loosened something - it does not, and the Vite dev server is reached
+      // through the pages themselves rather than through the policy.
+      extension_pages: 'script-src \'self\'; object-src \'self\'',
     },
   }
 

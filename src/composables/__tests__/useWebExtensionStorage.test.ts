@@ -165,3 +165,34 @@ describe('createWebExtensionStorage', () => {
     expect(handle.writeError.value).toBeNull()
   })
 })
+
+describe('the defaults object', () => {
+  // The ref is reactive and everything bound to it writes through, so handing it
+  // the caller's own defaults means a nested edit edits the shipped defaults -
+  // and every "is this at its defaults" comparison then answers yes to whatever
+  // the user just typed.
+  it('is never the object the ref holds, before hydration', () => {
+    const handle = createWebExtensionStorage<Prefs>('prefs', defaults, { mergeDefaults: true })
+
+    expect(handle.data.value).not.toBe(defaults)
+    handle.data.value.threshold = 99
+    expect(defaults.threshold).toBe(10)
+  })
+
+  it('is never the object the ref holds, on a profile with nothing stored', async () => {
+    const handle = createWebExtensionStorage<Prefs>('prefs', defaults, { mergeDefaults: true })
+    await handle.ready
+
+    handle.data.value.threshold = 77
+    expect(defaults.threshold).toBe(10)
+  })
+
+  it('is not shared through the merge either', async () => {
+    vi.mocked(browser.storage.sync.get).mockResolvedValueOnce({ prefs: JSON.stringify({ threshold: 25 }) })
+    const handle = createWebExtensionStorage<Prefs>('prefs', defaults, { mergeDefaults: true })
+    await handle.ready
+
+    handle.data.value.label = 'edited'
+    expect(defaults.label).toBe('default')
+  })
+})

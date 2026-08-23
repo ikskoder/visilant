@@ -109,7 +109,9 @@ export function createWebExtensionStorage<T>(
   const rawInit: T = toValue(initialValue)
   const type = guessSerializerType(rawInit)
 
-  const data = (shallow ? shallowRef : ref)(initialValue) as Ref<T>
+  const data = (shallow ? shallowRef : ref)(
+    typeof rawInit === 'object' && rawInit !== null ? structuredClone(rawInit) : initialValue,
+  ) as Ref<T>
   const serializer = options.serializer ?? StorageSerializers[type]
   const writeError = ref<unknown>(null)
 
@@ -124,6 +126,18 @@ export function createWebExtensionStorage<T>(
   let settled: string | null = null
   let writable = true
 
+  /**
+   * A copy of the defaults, never the defaults themselves.
+   *
+   * The ref is reactive and everything bound to it writes through. Handing it
+   * the caller's own object means a nested `v-model` edits the shipped defaults,
+   * and every "is this at its defaults" comparison then answers yes to whatever
+   * the user just typed.
+   */
+  function cloneInit(): T {
+    return typeof rawInit === 'object' && rawInit !== null ? structuredClone(rawInit) : rawInit
+  }
+
   async function read(event?: { key: string, newValue: string | null }) {
     if (event && event.key !== key)
       return
@@ -131,14 +145,21 @@ export function createWebExtensionStorage<T>(
     try {
       const rawValue = event ? event.newValue : await storageInterface.getItem(key)
       if (rawValue == null) {
-        data.value = rawInit
+        // Cloned, never the object itself. `rawInit` is the caller's defaults
+        // object, and putting it straight in the ref makes every later edit an
+        // edit of the shipped defaults - which is what "is this at its
+        // defaults" and "put it back to its defaults" are both measured against.
+        data.value = cloneInit()
         settled = null
         // Only a context that owns the value seeds it. Nothing is lost if none
         // does: every reader merges the defaults in memory anyway.
         if (writeDefaults && writable && rawInit !== null) {
           const serialized = await serializer.write(rawInit)
-          settled = serialized
           await storageInterface.setItem(key, serialized)
+          // Recorded only once it is actually stored: claiming it beforehand
+          // meant a failed write left the next identical commit skipped as a
+          // no-op, and nothing was ever saved
+          settled = serialized
         }
       }
       else if (mergeDefaults) {
@@ -146,7 +167,7 @@ export function createWebExtensionStorage<T>(
         if (typeof mergeDefaults === 'function')
           data.value = mergeDefaults(value, rawInit)
         else if (type === 'object' && !Array.isArray(value))
-          data.value = { ...(rawInit as Record<keyof unknown, unknown>), ...(value as Record<keyof unknown, unknown>) } as T
+          data.value = { ...(cloneInit() as Record<keyof unknown, unknown>), ...(value as Record<keyof unknown, unknown>) } as T
         else data.value = value
         // The merged object, not the raw string: a merge that only filled in
         // keys the profile never stored is not an edit, and used to be written
@@ -172,7 +193,9 @@ export function createWebExtensionStorage<T>(
    */
   let writeChain: Promise<void> = Promise.resolve()
 
-  // Started before the watcher is armed, so the first read is never a write
+  // The read that fills the ref. It is async, so its assignment lands well after
+  // the watcher below is armed – what stops it coming back round as a write is
+  // `settled`, not the order of these two lines.
   const ready = read()
 
   async function commit() {

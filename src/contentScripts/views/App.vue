@@ -5,6 +5,7 @@ import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { resolveTooltipTrigger } from '~/logic/platform'
 import { applySettingsSnapshot, defaultSettings, settings } from '~/logic/storage'
 import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, showWarning, warningFrameHost, warningType } from '~/logic/ui-state'
+import { isTrackableHostname } from '~/logic/visit-stats'
 import CheckPanel from './CheckPanel.vue'
 import InputWarning from './InputWarning.vue'
 import LinkInterceptDialog from './LinkInterceptDialog.vue'
@@ -62,6 +63,17 @@ if (!settings.value)
 
 // Check site safety and update UI
 async function checkSiteSafety() {
+  // An address that is not tracked has a visit count of zero that can never
+  // move, and reading that as unfamiliar would warn about the router's own page
+  // forever. The content script already decides this - and used to have its
+  // decision overwritten here, on any page the app was force-mounted on.
+  const pageHost = window.location.hostname
+  if (!pageHost || !isTrackableHostname(pageHost)) {
+    hostname.value = pageHost
+    safetyLevel.value = true
+    return
+  }
+
   const response = await sendMessageSafe<{ count: number, hostname: string, lastSeen: number, ignored: boolean, activeDays?: number, firstSeen?: number }>('get-visit-count', { url: window.location.href })
   if (!response)
     return

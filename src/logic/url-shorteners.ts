@@ -2725,8 +2725,19 @@ export async function resolveUrlChain(url: string): Promise<ResolvedUrlResult> {
       // If we landed on a known shortener, try to extract JS/meta redirect from HTML
       const currentHostname = getHostname(currentUrl)
       if (currentHostname && isShortenedUrl(currentHostname)) {
-        const html = await readTextBounded(response, MAX_HTML_BYTES)
-        const extractedUrl = extractRedirectFromHtml(html, currentUrl)
+        // A page too large to read is not a failure to resolve. The HTTP
+        // redirects have already been followed by then, so `currentUrl` is a
+        // real answer - throwing here discarded it and reported an error for a
+        // link that had been resolved.
+        let html = ''
+        try {
+          html = await readTextBounded(response, MAX_HTML_BYTES)
+        }
+        catch {
+          await response.body?.cancel().catch(() => {})
+        }
+
+        const extractedUrl = html ? extractRedirectFromHtml(html, currentUrl) : null
         if (extractedUrl && extractedUrl !== currentUrl) {
           chain.push(extractedUrl)
           currentUrl = extractedUrl

@@ -488,13 +488,24 @@ export async function runHistoryImport(options: {
       let carriedDomains = 0
       let carriedVisits = 0
       if (state.cursor) {
-        const finished = hostnames.filter(hostname => hostname <= state.cursor)
-        const stored = await browser.storage.local.get(finished)
-        for (const hostname of finished) {
+        // Everything after the checkpoint, plus anything before it that has no
+        // active-day count. The cursor alone would skip a host that was not in
+        // the history when the first pass walked past its position - the list
+        // is rebuilt from the history each time, and the history moves. A host
+        // before the cursor that already has active days was either scanned by
+        // this run or has nothing left to learn.
+        const stored = await browser.storage.local.get(hostnames)
+        const pending: string[] = []
+        for (const hostname of hostnames) {
+          const record = stored[hostname] as SiteVisitData | undefined
+          if (hostname > state.cursor || typeof record?.activeDays !== 'number') {
+            pending.push(hostname)
+            continue
+          }
           carriedDomains++
-          carriedVisits += (stored[hostname] as SiteVisitData | undefined)?.count || 0
+          carriedVisits += record?.count || 0
         }
-        hostnames = hostnames.filter(hostname => hostname > state.cursor)
+        hostnames = pending
       }
 
       state.phase = 'scanning'

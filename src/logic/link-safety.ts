@@ -139,6 +139,15 @@ function sameSiteOrBelow(a: string, b: string): boolean {
 }
 
 /**
+ * The `.${b}` test above is deliberately symmetric and deliberately blunt: this
+ * module is in the content script and cannot carry the public suffix list, so it
+ * cannot tell `github.io` from `example.com`. Text reading `github.io` on a link
+ * to `evil.github.io` therefore passes here. That is a name nobody writes as a
+ * link label, and the lookalike check and the structural markers - both of which
+ * do know where the boundary is - still read the destination.
+ */
+
+/**
  * Check if the visible link text shows a different domain than the actual href.
  * This is the #1 phishing trick: <a href="evil.com">paypal.com</a>
  *

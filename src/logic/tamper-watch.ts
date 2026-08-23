@@ -134,14 +134,30 @@ export function isVisuallyHidden(container: HTMLElement): boolean {
     return true
   }
 
-  // An ancestor can hide us without touching our own styles at all. Only the
-  // three that mean "not rendered" are read here – a transform or a clip on the
-  // body is an everyday thing on real sites, and where those actually matter is
-  // whether the panel ends up on the screen, which `isPanelOffScreen` asks
-  // directly rather than by guessing from a property.
+  return false
+}
+
+/**
+ * Is something above us in the tree hiding the whole panel?
+ *
+ * Kept apart from `isVisuallyHidden`, and asked only on the slow repeat check,
+ * because every one of these is an ordinary thing for a page to do for a moment:
+ * `body { opacity: 0 }` with a fade-in on load, and the web-font guard that puts
+ * `visibility: hidden` on the body until the face arrives, are both everywhere.
+ * Read once at mount time - which is where `isVisuallyHidden` is read - they
+ * would raise the alarm on a large part of the web.
+ *
+ * What tells those apart from a page hiding the panel is that they stop. So this
+ * is only believed when it is still true on the next check, a second later.
+ */
+export function isHiddenByAncestor(container: HTMLElement): boolean {
+  const view = container.ownerDocument.defaultView
+  if (!view)
+    return false
+
   for (let node = container.parentElement; node; node = node.parentElement) {
-    const parent = view.getComputedStyle(node)
-    if (parent.display === 'none' || parent.visibility === 'hidden' || isTransparent(parent.opacity))
+    const style = view.getComputedStyle(node)
+    if (style.display === 'none' || style.visibility === 'hidden' || isTransparent(style.opacity))
       return true
   }
 
@@ -180,12 +196,26 @@ export function isPanelOffScreen(
   return (visibleWidth * visibleHeight) / area < 0.5
 }
 
-/** The largest thing our shadow root is currently rendering, if anything is. */
+/**
+ * The largest thing our shadow root is currently rendering, if anything is.
+ *
+ * A full-screen backdrop does not count. Both intercept dialogs draw one -
+ * `fixed inset-0`, which is by definition the largest element in the tree - so
+ * taking the largest outright measured the viewport rather than the card. Every
+ * corner probe then landed on transparent backdrop, and the off-screen check
+ * compared the viewport with itself and could never fire.
+ */
 function largestRenderedRect(shadow: ShadowRoot | HTMLElement): DOMRect | null {
+  const view = (shadow as HTMLElement).ownerDocument?.defaultView
+  const viewportArea = (view?.innerWidth ?? 0) * (view?.innerHeight ?? 0)
+
   let best: DOMRect | null = null
   shadow.querySelectorAll('*').forEach((element) => {
     const rect = element.getBoundingClientRect()
     if (rect.width < 24 || rect.height < 24)
+      return
+    // A backdrop, not a panel
+    if (viewportArea > 0 && rect.width * rect.height > viewportArea * 0.9)
       return
     if (!best || rect.width * rect.height > best.width * best.height)
       best = rect
@@ -268,11 +298,10 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
   const { container, shadow, guardedNodes, onTamper, isSelfRemoving } = options
   const doc = container.ownerDocument
   let stopped = false
-  // Set while we rewrite the style attribute ourselves, so restoring the guard
-  // does not read back as the page having touched it
-  let selfWriting = false
   let timer: ReturnType<typeof setInterval> | null = null
   let lastReportAt = 0
+  /** An ancestor was found hiding us last time round – see `isHiddenByAncestor`. */
+  let ancestorHidPreviously = false
 
   /**
    * Say something, and keep watching.
@@ -334,7 +363,7 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
 
   // Rewriting or stripping the inline guard styles
   const attributeObserver = new MutationObserver(() => {
-    if (selfWriting || stopped)
+    if (stopped)
       return
 
     // Only the inline guard is repairable from here. Restoring it when the panel
@@ -342,11 +371,14 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
     // same styles back on every mutation the restore itself produces, forever.
     if (!isHostStyleIntact(container) || container.hasAttribute('hidden')) {
       // Put the panel back before saying anything: the warning is worth more
-      // when the thing it is warning about is visible again
-      selfWriting = true
+      // when the thing it is warning about is visible again.
+      //
+      // The restore below generates mutation records of its own, which arrive
+      // as a later callback - a flag set and cleared inside this one cannot
+      // suppress them, and one used to be here pretending to. What actually
+      // ends it is that the next pass finds the styles intact and does nothing.
       applyHostStyles(container)
       container.removeAttribute('hidden')
-      selfWriting = false
       report('hidden')
       return
     }
@@ -401,7 +433,16 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
       const check = () => {
         if (stopped)
           return
+
+        // Believed only on the second sighting: a page fading its body in, or
+        // holding it hidden until a web font loads, looks exactly like this for
+        // a moment and is not tampering with anything
+        const ancestorHides = isHiddenByAncestor(container)
+        const ancestorConfirmed = ancestorHides && ancestorHidPreviously
+        ancestorHidPreviously = ancestorHides
+
         const problem = verify()
+          ?? (ancestorConfirmed ? 'hidden' : null)
           ?? (isPanelOffScreen(container, shadow) ? 'hidden' : null)
           ?? (findCoveringElement(container, shadow) ? 'covered' : null)
         if (problem)

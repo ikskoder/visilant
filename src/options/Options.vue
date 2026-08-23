@@ -10,7 +10,7 @@ import { useTheme } from '~/composables/useTheme'
 import { resolveBadgeContent } from '~/logic/badge'
 import { fetchRemoteDomainLists, parseListUrls, STORAGE_KEY_CUSTOM_DISPOSABLE, STORAGE_KEY_CUSTOM_PUBLIC, STORAGE_KEY_REMOTE_DISPOSABLE, STORAGE_KEY_REMOTE_PUBLIC, updateDisposableList, updatePublicList } from '~/logic/email-providers'
 import { enabledCriteria, FAMILIARITY_CRITERIA, normalizeFamiliarity, requiredMatches } from '~/logic/familiarity'
-import { describeImportHealth, HISTORY_IMPORT_STATE_KEY, newImportRunId, readHistoryImportState, runHistoryImport } from '~/logic/history-import'
+import { describeImportHealth, HISTORY_IMPORT_STATE_KEY, readHistoryImportState } from '~/logic/history-import'
 import { fetchRemoteMailSiteLists, STORAGE_KEY_CUSTOM_MAIL_SITES, STORAGE_KEY_REMOTE_MAIL_SITES, updateRemoteMailSites } from '~/logic/mail-sites'
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { hasContextMenus, hasHistoryApi, isAndroidBrowser, supportsHover } from '~/logic/platform'
@@ -381,6 +381,9 @@ async function resetSection(id: string) {
 // Last import of any kind, including the automatic one at install
 const lastImport = ref<HistoryImportState | null>(null)
 
+/** How far the running import has got, read off the state it publishes. */
+const importProgress = ref({ current: 0, total: 0 })
+
 /**
  * A clock the import status can depend on.
  *
@@ -402,7 +405,14 @@ let clock: ReturnType<typeof setInterval> | null = null
 function watchImportState(changes: Record<string, { newValue?: unknown }>) {
   if (!(HISTORY_IMPORT_STATE_KEY in changes))
     return
-  lastImport.value = (changes[HISTORY_IMPORT_STATE_KEY].newValue as HistoryImportState | undefined) ?? null
+
+  const state = (changes[HISTORY_IMPORT_STATE_KEY].newValue as HistoryImportState | undefined) ?? null
+  lastImport.value = state
+
+  // The progress bar reads the published state now, because the import runs in
+  // the background and this page is a watcher of it like any other
+  if (state && state.status === 'running')
+    importProgress.value = { current: state.current, total: state.total }
 }
 const lastImportLabel = computed(() => {
   const state = lastImport.value
@@ -597,7 +607,6 @@ function updateShortenerListNow() {
 
 // Loading states
 const isImporting = ref(false)
-const importProgress = ref({ current: 0, total: 0 })
 const importCancelled = ref(false)
 const showResetConfirm = ref(false)
 
@@ -868,8 +877,9 @@ const statsGapText = computed(() => {
 
 // Database management functions
 
-function cancelImport() {
+async function cancelImport() {
   importCancelled.value = true
+  await browser.runtime.sendMessage({ type: 'cancel-history-import', data: {} }).catch(() => undefined)
 }
 
 /**
@@ -889,60 +899,30 @@ async function importHistory() {
   importCancelled.value = false
 
   try {
-    const progress = (state: HistoryImportState) => {
-      importProgress.value = { current: state.current, total: state.total }
-    }
+    // Asked of the background rather than run here. The visit records have one
+    // writer, and running the import in this page made a second one: two queues
+    // doing read-modify-write on the same keys, and a reset in the background
+    // that could not stop this half of it. Progress arrives through the
+    // published state, which `watchImportState` is already following.
+    const answer = await browser.runtime.sendMessage({
+      type: 'import-history',
+      data: {},
+    }) as { success: boolean, state: HistoryImportState } | undefined
 
-    // One name for both passes, so the two of them are one run as far as
-    // everybody else is concerned – and so a background resume that is still
-    // going can be seen for what it is rather than overwritten
-    const runId = newImportRunId()
+    if (answer?.state)
+      lastImport.value = answer.state
+    else
+      lastImport.value = await readHistoryImportState()
 
-    const quick = await runHistoryImport({
-      mode: 'quick',
-      onProgress: progress,
-      shouldStop: () => importCancelled.value,
-      runId,
-      stage: 'quick-running',
-      nextStage: 'full-pending',
-    })
-
-    // Somebody else's run is in flight and this one never started. Say so rather
-    // than reporting their progress as this button's result.
-    if (quick.runId !== runId) {
-      lastImport.value = quick
-      return
-    }
-
-    // Cancelled or unsupported: the slow pass would only fail the same way, and
-    // a cancel means the user is done waiting
-    const result = quick.status === 'done'
-      ? await runHistoryImport({
-        mode: 'full',
-        // A Re-import pressed by hand rescans everything. `resume` only
-        // continues a run of the same name, which the quick pass above just
-        // started – so this picks up that pass and nothing older.
-        resume: true,
-        onProgress: progress,
-        shouldStop: () => importCancelled.value,
-        runId,
-        stage: 'full-running',
-      })
-      : quick
-
-    lastImport.value = result
     // A full pass fills in first-visit dates and active days, so the warning
     // about missing ones has to be asked again rather than left standing
     await readStatsCoverage()
-
-    // An import can move thousands of domains across the familiarity threshold,
-    // so the lookalike reference set has to be rebuilt rather than nudged
-    try {
-      await browser.runtime.sendMessage({ type: 'rebuild-familiar-index', data: {} })
-    }
-    catch {
-      // Background asleep – it rebuilds on next use anyway
-    }
+  }
+  catch (error) {
+    // The background could not be reached at all. Say what is known rather than
+    // leaving the button spinning.
+    console.error('Visilant: the import could not be started', error)
+    lastImport.value = await readHistoryImportState()
   }
   finally {
     isImporting.value = false

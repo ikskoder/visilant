@@ -47,6 +47,21 @@ async function read(): Promise<AlarmMap> {
   return cache
 }
 
+/**
+ * Writes, one at a time.
+ *
+ * Two tabs raising an alarm in the same tick are two read-modify-writes of one
+ * key, and one of them loses - which for an alarm means a page that was caught
+ * hiding the panel goes unmarked.
+ */
+let chain: Promise<unknown> = Promise.resolve()
+
+function enqueue<T>(work: () => Promise<T>): Promise<T> {
+  const next = chain.then(work, work)
+  chain = next.then(() => undefined, () => undefined)
+  return next
+}
+
 async function write(alarms: AlarmMap): Promise<void> {
   cache = alarms
   await area().set({ [ALARM_KEY]: alarms })
@@ -54,9 +69,11 @@ async function write(alarms: AlarmMap): Promise<void> {
 
 /** Mark a tab as having caught its page hiding the extension's UI. */
 export async function raiseTamperAlarm(tabId: number, url: string): Promise<void> {
-  const alarms = { ...(await read()) }
-  alarms[String(tabId)] = { url, at: Date.now() }
-  await write(alarms)
+  await enqueue(async () => {
+    const alarms = { ...(await read()) }
+    alarms[String(tabId)] = { url, at: Date.now() }
+    await write(alarms)
+  })
 }
 
 /** Is this tab under an alarm right now? */
@@ -71,16 +88,18 @@ export async function hasTamperAlarm(tabId: number): Promise<boolean> {
  * document has done nothing yet, and a closed tab's id gets handed out again.
  */
 export async function clearTamperAlarm(tabId: number): Promise<void> {
-  const alarms = await read()
-  if (!alarms[String(tabId)])
-    return
+  await enqueue(async () => {
+    const alarms = await read()
+    if (!alarms[String(tabId)])
+      return
 
-  const next = { ...alarms }
-  delete next[String(tabId)]
-  await write(next)
+    const next = { ...alarms }
+    delete next[String(tabId)]
+    await write(next)
+  })
 }
 
 /** Everything the browser has been carrying since it was last closed. */
 export async function clearAllTamperAlarms(): Promise<void> {
-  await write({})
+  await enqueue(() => write({}))
 }

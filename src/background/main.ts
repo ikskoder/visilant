@@ -299,6 +299,66 @@ export async function runAutoHistoryImport(attempts = 0, existingRunId?: string)
     await applyImportedHistory()
 }
 
+/**
+ * Set while a manual import is running here, and cleared when it stops.
+ *
+ * The settings page used to call `runHistoryImport` in its own context, which
+ * meant a second queue of writes to the same records - and a second generation
+ * counter, so a reset in the background could not stop it. Now it asks, this
+ * runs, and the page watches the published state like everybody else.
+ */
+let manualImportCancelled = false
+
+/**
+ * Run the two passes by hand, on the user's say-so.
+ *
+ * The same chain the automatic import runs, in the background where the visit
+ * records have exactly one writer. Progress reaches the settings page through
+ * the published state, which it watches anyway.
+ */
+async function runManualHistoryImport() {
+  manualImportCancelled = false
+  const runId = newImportRunId()
+  const startedAt = visitGeneration()
+  const shouldStop = () => manualImportCancelled || visitGeneration() !== startedAt
+
+  try {
+    const quick = await runHistoryImport({
+      mode: 'quick',
+      shouldStop,
+      runId,
+      stage: 'quick-running',
+      nextStage: 'full-pending',
+    })
+
+    // Somebody else's run holds the key and this one never started
+    if (quick.runId !== runId)
+      return { success: false, state: quick }
+
+    const result = quick.status === 'done'
+      ? await runHistoryImport({
+        mode: 'full',
+        // A Re-import rescans everything: `resume` only continues a run of the
+        // same name, and the quick pass above just started this one
+        resume: true,
+        shouldStop,
+        runId,
+        stage: 'full-running',
+      })
+      : quick
+
+    if (result.status === 'done')
+      await applyImportedHistory()
+    else
+      await rebuildFamiliarIndex()
+
+    return { success: true, state: result }
+  }
+  finally {
+    manualImportCancelled = false
+  }
+}
+
 /** Give up rather than restart a full import forever if it keeps dying. */
 const MAX_IMPORT_ATTEMPTS = 5
 
@@ -692,6 +752,11 @@ function dueForFamilyCheck(registrable: string, now: number): boolean {
   if (now - (familyCheckedAt.get(registrable) ?? 0) < FAMILY_CHECK_INTERVAL_MS)
     return false
 
+  // Deleted before it is set, so the entry moves to the end of the insertion
+  // order. Without that, `set` on a key already present leaves it where it was,
+  // and the eviction below drops whichever domain was seen first - which on any
+  // real profile is the one visited most.
+  familyCheckedAt.delete(registrable)
   if (familyCheckedAt.size >= FAMILY_CHECK_MEMO_LIMIT) {
     const oldest = familyCheckedAt.keys().next()
     if (!oldest.done)
@@ -1017,6 +1082,13 @@ const messageHandlers = {
     await runAutoHistoryImport()
     return { success: true }
   },
+  // The settings page asking for a re-import. Run here, not there: the visit
+  // records have one writer and this is it.
+  'import-history': () => runManualHistoryImport(),
+  'cancel-history-import': async () => {
+    manualImportCancelled = true
+    return { success: true }
+  },
   'ignore-site': (data: any) => handleIgnoreSite(data.hostname, data.ignored !== false),
   // What an iframe asks about itself, and the two things it can ask for
   'frame-verdict': (data: any, ctx?: MessageContext) => handleFrameVerdict(data.url, ctx?.tabUrl),
@@ -1068,7 +1140,12 @@ const messageHandlers = {
 Object.entries(messageHandlers).forEach(([type, handler]) => {
   onMessage(type, async ({ data, sender }: any) => {
     await backgroundReady
-    return (handler as (data: any, ctx?: MessageContext) => Promise<any>)(data, { tabId: sender?.tabId })
+    return (handler as (data: any, ctx?: MessageContext) => Promise<any>)(data, {
+      tabId: sender?.tabId,
+      // A frame with no address of its own is judged as the page around it, and
+      // that page's URL is the only place to get it from
+      tabUrl: sender?.tabId != null ? (await browser.tabs.get(sender.tabId).catch(() => null))?.url : undefined,
+    })
   })
 })
 
@@ -1080,12 +1157,20 @@ browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
 
   const handler = messageHandlers[message.type as keyof typeof messageHandlers]
   if (handler) {
+    // `return true` holds the response channel open, so a handler that throws
+    // and never answers leaves the caller waiting for as long as the worker
+    // lives. A content script waiting on `get-visit-count` never reaches a
+    // verdict, and with the paste guard on that means every paste on the page
+    // is held with nothing to explain it. An error is an answer.
     backgroundReady
       .then(() => (handler as (data: any, ctx?: MessageContext) => Promise<any>)(
         message.data,
         { tabId: sender.tab?.id, tabUrl: sender.tab?.url },
       ))
-      .then(sendResponse)
+      .then(sendResponse, (error) => {
+        console.error(`Visilant: ${message.type} failed`, error)
+        sendResponse(undefined)
+      })
     return true
   }
 })
@@ -1218,6 +1303,10 @@ browser.runtime.onInstalled.addListener(async () => {
 // would take every listener below it with it – including the settings watcher.
 if (hasContextMenus()) {
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
+    // The menus outlive the worker, so a click here is exactly the kind of event
+    // that wakes a cold one - and everything below reads the settings
+    await backgroundReady
+
     if (info.menuItemId === CONTEXT_MENU_DOMAIN_ID && info.linkUrl) {
       if (/^mailto:/i.test(info.linkUrl)) {
         const parsed = parseMailtoUrl(info.linkUrl)

@@ -740,20 +740,24 @@ async function buildEmailTooltipData(
     ? collectMailtoRecipients(parsed)
     : [{ field: 'to' as const, address }]
   const checked = allRecipients.slice(0, MAX_MAILTO_RECIPIENTS)
-  const recipients: EmailRecipientInfo[] = []
-  for (const recipient of checked) {
-    const recipientAnalysis = analyzeEmailAddress(recipient.address)
-    if (!recipientAnalysis)
-      continue
-    const facts = await fetchLinkData(`https://${recipientAnalysis.domain}`, recipientAnalysis.domain)
-    recipients.push({
-      field: recipient.field,
-      analysis: recipientAnalysis,
-      providerKind: classifyEmailDomain(recipientAnalysis.domain),
-      stats: facts.stats,
-      isSafe: facts.isSafe,
-    })
-  }
+  const analysed = checked
+    .map(recipient => ({ recipient, analysis: analyzeEmailAddress(recipient.address) }))
+    .filter((entry): entry is { recipient: typeof checked[number], analysis: NonNullable<ReturnType<typeof analyzeEmailAddress>> } => entry.analysis !== null)
+
+  // All at once, not one after another. Twenty-five round trips in a row, each
+  // of which may have to wake a sleeping service worker, is seconds of a tooltip
+  // that is supposed to appear while the pointer is still on the link.
+  const facts = await Promise.all(
+    analysed.map(entry => fetchLinkData(`https://${entry.analysis.domain}`, entry.analysis.domain)),
+  )
+
+  const recipients: EmailRecipientInfo[] = analysed.map((entry, index) => ({
+    field: entry.recipient.field,
+    analysis: entry.analysis,
+    providerKind: classifyEmailDomain(entry.analysis.domain),
+    stats: facts[index].stats,
+    isSafe: facts[index].isSafe,
+  }))
 
   let mismatch: { textAddress: string } | null = null
   if (anchorText) {

@@ -23,6 +23,7 @@
  */
 
 import { isEditableEventTarget, shouldInterceptPaste } from '~/logic/paste-guard'
+import { parseStoredSettings } from '~/logic/storage'
 import { isTrackableHostname } from '~/logic/visit-stats'
 
 /** What the background can say about the frame's own address. */
@@ -46,6 +47,9 @@ interface FrameVerdict {
 }
 
 const UNKNOWN: FrameVerdict = { isSafe: null, ignored: false, guardPaste: false, warn: false, hostname: '' }
+
+/** How long a held paste waits for a verdict before the dialog stops waiting. */
+const HOLD_TIMEOUT_MS = 6000
 
 const IGNORED_KEYS = new Set([
   'Shift',
@@ -95,21 +99,55 @@ function install() {
   let pending: Promise<FrameVerdict> | null = null
 
   /**
+   * Whether the user asked for pastes to be held, read straight from storage.
+   *
+   * Separate from the verdict, and deliberately so. The verdict has to come from
+   * the background, which may be asleep and take a moment to wake. This is one
+   * storage read in this document, and it answers the only question a paste
+   * handler cannot afford to get wrong: whether to hold at all. Without it, a
+   * paste arriving before the background answered was held on a page belonging
+   * to somebody who had switched the whole feature off.
+   */
+  let guardPaste: boolean | null = null
+
+  async function primeSettings(): Promise<void> {
+    if (guardPaste !== null)
+      return
+    try {
+      const stored = await browser.storage.sync.get('settings')
+      guardPaste = Boolean(parseStoredSettings(stored.settings)?.blockPasteOnUnfamiliar)
+    }
+    catch {
+      // Nothing was read, so nothing is claimed. Off is what the setting ships
+      // as, and holding a paste for a feature nobody asked for is the worse of
+      // the two mistakes.
+      guardPaste = false
+    }
+  }
+
+  /**
    * Ask what this frame is, once.
    *
    * Started by the first sign of a person rather than by the frame loading. An
    * advertisement nobody touches never sends a message at all, and a form
    * somebody is about to type into has its answer well before the first key.
+   *
+   * A failed round trip is not remembered. The background is asleep, or the
+   * extension was just reloaded - and pinning the frame to "nothing is known"
+   * for the life of the document turns the guard off silently, which is the one
+   * thing this file exists to prevent.
    */
   function prime(): Promise<FrameVerdict> {
+    void primeSettings()
+
     pending ??= send<FrameVerdict>('frame-verdict', { url: window.location.href })
       .then((answer) => {
         settled = answer ?? UNKNOWN
         return settled
       })
       .catch(() => {
-        settled = UNKNOWN
-        return settled
+        pending = null
+        return UNKNOWN
       })
     return pending
   }
@@ -169,14 +207,21 @@ function install() {
       // there was nothing to hold for. The paste is already cancelled, so the
       // user is told rather than left looking at an empty field.
       const shown = status === 'checking'
-        ? (answer.guardPaste && answer.isSafe === false && !answer.ignored ? 'unfamiliar' : 'settled')
+        ? (answer.isSafe === false && !answer.ignored ? 'unfamiliar' : 'settled')
         : 'unfamiliar'
 
-      const proceed = await send<{ allowed: boolean }>('frame-paste-intercept', {
-        hostname: answer.hostname,
-        isSafe: answer.isSafe,
-        status: shown,
-      })
+      // Raced against a deadline. Without one, a top document that took the
+      // message and never answered - two frames pasting at once used to manage
+      // exactly that - left `holding` set, and from then on every paste in this
+      // frame was cancelled with no dialog and no way to get one.
+      const proceed = await Promise.race([
+        send<{ allowed: boolean }>('frame-paste-intercept', {
+          hostname: answer.hostname || own,
+          isSafe: answer.isSafe,
+          status: shown,
+        }),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), HOLD_TIMEOUT_MS)),
+      ])
       if (proceed?.allowed)
         allowed = true
     }
@@ -202,13 +247,17 @@ function install() {
       return
     }
 
-    // No answer yet. Only reachable by pasting into a frame that has never been
-    // clicked or focused, which is close to impossible - but the paste is held
-    // rather than let through, because held is the recoverable half.
+    // No verdict yet, but the setting is known - and the setting is what says
+    // whether to hold at all. Held only where the user asked for it, which is
+    // the difference between protecting a secret and dropping somebody's paste
+    // for a feature they switched off.
     if (!settled) {
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      void hold('checking')
+      void prime()
+      if (guardPaste) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        void hold('checking')
+      }
       return
     }
 

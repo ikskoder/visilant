@@ -5,7 +5,7 @@
  */
 import type { TamperReason } from '../tamper-watch'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { applyHostStyles, createTamperWatch, HOST_STYLES, isHostStyleIntact, isVisuallyHidden } from '../tamper-watch'
+import { applyHostStyles, createTamperWatch, HOST_STYLES, isHiddenByAncestor, isHostStyleIntact, isVisuallyHidden } from '../tamper-watch'
 
 function settle() {
   return new Promise(resolve => setTimeout(resolve, 0))
@@ -245,5 +245,33 @@ describe('the watch after it has said something', () => {
     container.setAttribute('style', 'display:none')
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(isHostStyleIntact(container)).toBe(true)
+  })
+})
+
+describe('what an ordinary page does on its way in', () => {
+  // Both of these are everywhere: a theme that fades the body in on load, and
+  // the web-font guard that hides the body until the face arrives. Read once at
+  // mount time, they raised the alarm on a large part of the web.
+  it('does not read a fading-in body as tampering', () => {
+    document.documentElement.innerHTML = '<head></head><body style="opacity: 0"></body>'
+    const container = document.createElement('div')
+    applyHostStyles(container)
+    document.body.appendChild(container)
+
+    // The check that runs at mount time says nothing about the ancestors
+    expect(isVisuallyHidden(container)).toBe(false)
+    // The slow repeat check sees it, and only believes it the second time round
+    expect(isHiddenByAncestor(container)).toBe(true)
+  })
+
+  it('still sees the panel own styles being taken away', () => {
+    document.documentElement.innerHTML = '<head></head><body></body>'
+    const container = document.createElement('div')
+    applyHostStyles(container)
+    document.body.appendChild(container)
+    expect(isHostStyleIntact(container)).toBe(true)
+
+    container.removeAttribute('style')
+    expect(isHostStyleIntact(container)).toBe(false)
   })
 })
