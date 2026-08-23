@@ -111,6 +111,8 @@ export const checkPanelData = ref<CheckPanelData | null>(null)
 
 // Link safety intercept dialog state
 export interface LinkInterceptData {
+  /** See the note on `linkInterceptVisible`. Absent means yes. */
+  ownNavigation?: boolean
   domain: string
   url: string
   target: string
@@ -121,6 +123,15 @@ export interface LinkInterceptData {
   shortUrl?: ShortUrlInfo | null
 }
 
+/**
+ * Whether the dialog is the one that navigates when the user says go.
+ *
+ * True for a dialog raised about a bare URL – the long-press menu, a QR code –
+ * where there is no element to click. False when a real link was intercepted:
+ * the content script puts that click back on the anchor itself, so the target,
+ * `download`, `rel` and the page's own handler all still apply. Navigating from
+ * here in that case would throw all of it away.
+ */
 export const linkInterceptVisible = ref(false)
 export const linkInterceptData = ref<LinkInterceptData | null>(null)
 export const linkInterceptResolve = ref<((proceed: boolean) => void) | null>(null)

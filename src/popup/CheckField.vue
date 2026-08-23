@@ -579,7 +579,7 @@ function payloadTypeLabel(payloadKind: string) {
           {{ t('qrPayloadType') }}: {{ payloadTypeLabel(result.payloadKind) }}
         </div>
         <div class="text-sm p-2 rounded bg-gray-100 dark:bg-gray-900 break-all">
-          <SecureText :text="result.payload" :force-highlight="true" :danger-only="true" />
+          <SecureText :text="result.payload" :force-highlight="true" :danger-only="true" :preserve-case="true" />
         </div>
       </template>
 

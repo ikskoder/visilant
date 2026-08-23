@@ -28,7 +28,7 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
     <!-- Full address with per-char highlighting, @ kept neutral. Only where a
          two-row breakdown would not fit – the link tooltip is one line wide. -->
     <div v-if="compact" class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
-      <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" /><span :class="isDark ? 'text-gray-400' : 'text-gray-500'">@</span><SecureText :text="analysis.domain" :force-highlight="true" :danger-only="true" />
+      <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" :preserve-case="true" /><span :class="isDark ? 'text-gray-400' : 'text-gray-500'">@</span><SecureText :text="analysis.domain" :force-highlight="true" :danger-only="true" />
     </div>
 
     <!--
@@ -43,7 +43,7 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
         {{ t('emailAccountName') }}
       </div>
       <div class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
-        <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" />
+        <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" :preserve-case="true" />
       </div>
       <div class="email-label uppercase tracking-wider mt-1" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
         {{ t('emailDomainLabel') }}

@@ -7,6 +7,7 @@ import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
+import { useModalDialog } from '~/composables/useModalDialog'
 
 const props = defineProps<{
   visible: boolean
@@ -62,6 +63,18 @@ const message = computed(() => {
   }
 })
 
+// The dialog itself, and the button focus lands on when it opens. Never the one
+// that goes through with the paste – see `useModalDialog`.
+const card = ref<HTMLElement | null>(null)
+const safeButton = ref<HTMLElement | null>(null)
+
+useModalDialog({
+  visible: () => props.visible && Boolean(props.data),
+  container: () => card.value,
+  initialFocus: () => safeButton.value,
+  onEscape: () => emit('cancel', false),
+})
+
 const payloadKind = computed(() => {
   const kind = props.data?.payload.kind
   return kind ? t.value(`pasteInterceptKind${kind.charAt(0).toUpperCase()}${kind.slice(1)}`) : ''
@@ -81,6 +94,10 @@ const payloadKind = computed(() => {
 
       <!-- Dialog card -->
       <div
+        ref="card"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="title"
         class="relative dialog-container rounded-xl shadow-2xl px-5 pb-5 pt-4"
         :class="isDark ? 'bg-gray-900 border border-gray-700/50' : 'bg-white border border-gray-200'"
       >
@@ -217,6 +234,7 @@ const payloadKind = computed(() => {
              cancelled either way, and the only thing left is to say so -->
         <button
           v-if="status === 'safe'"
+          ref="safeButton"
           class="w-full px-4 py-2.5 rounded-lg border transition-colors dialog-button"
           :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
           @click="emit('allow', false)"
@@ -225,6 +243,7 @@ const payloadKind = computed(() => {
         </button>
         <div v-else-if="isDecision" class="flex gap-3">
           <button
+            ref="safeButton"
             class="flex-1 px-4 py-2.5 rounded-lg border transition-colors dialog-button"
             :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
             @click="emit('cancel', dontAskAgain)"
@@ -241,6 +260,7 @@ const payloadKind = computed(() => {
         </div>
         <button
           v-else
+          ref="safeButton"
           class="w-full px-4 py-2.5 rounded-lg border transition-colors dialog-button"
           :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
           @click="emit('cancel', false)"

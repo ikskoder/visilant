@@ -1618,5 +1618,17 @@
   "antiTamperingParentRule": {
     "message": "turned off by a rule for",
     "description": "Precedes the parent domain whose exclusion rule covers the current host"
+  },
+  "ignoredSiteNotice": {
+    "message": "Warnings are off for this site",
+    "description": "Shown in the popup when the user has silenced warnings for the current site"
+  },
+  "ignoredSiteResume": {
+    "message": "Turn back on",
+    "description": "Button that lifts the per-site silence on warnings"
+  },
+  "ignoredSiteTooltip": {
+    "message": "You chose not to be warned about this site again. Turning it back on brings back the typing, copying and paste warnings here.",
+    "description": "Explains what the per-site silence covers"
   }
 }

@@ -15,6 +15,16 @@ const props = withDefaults(defineProps<{
    * wrap, not on every inline mention of a domain.
    */
   markWraps?: boolean
+  /**
+   * Leave the letters exactly as they are.
+   *
+   * The case setting is about domain names, where upper and lower mean the same
+   * thing. This component is also handed things where they do not: the name half
+   * of an email address, a username, the raw text out of a QR code, a Wi-Fi
+   * password. Lower-casing those is not a display choice, it is changing the
+   * evidence - and for a password it is changing the value.
+   */
+  preserveCase?: boolean
 }>(), {
   // Absent boolean props default to false in Vue. Keeping undefined lets the
   // ?? fallback to global settings still work when the prop is not passed
@@ -23,6 +33,47 @@ const props = withDefaults(defineProps<{
 const RE_ALPHA = /[a-z]/i
 const RE_DIGIT = /\d/
 const RE_SPECIAL = /[.\-_]/
+
+/**
+ * Characters that are there but cannot be seen.
+ *
+ * Right-to-left overrides reverse the text after them, so `annexe\u202Efdp.exe`
+ * reads as `annexeexe.pdf` on screen while being something else entirely. Zero
+ * width characters split a name without leaving a mark, so `paypa\u200Bl.com`
+ * looks like `paypal.com` and is not. A CSS class cannot make either of them
+ * visible - there is no glyph to style - so they are replaced by a token that
+ * says which character is sitting there.
+ */
+const INVISIBLE = new Set([
+  0x00AD, // soft hyphen
+  0x061C, // arabic letter mark
+  0x180E, // mongolian vowel separator
+  0x200B, // zero width space
+  0x200C, // zero width non-joiner
+  0x200D, // zero width joiner
+  0x200E, // left-to-right mark
+  0x200F, // right-to-left mark
+  0x2028, // line separator
+  0x2029, // paragraph separator
+  0x202A, // left-to-right embedding
+  0x202B, // right-to-left embedding
+  0x202C, // pop directional formatting
+  0x202D, // left-to-right override
+  0x202E, // right-to-left override
+  0x2060, // word joiner
+  0x2066, // left-to-right isolate
+  0x2067, // right-to-left isolate
+  0x2068, // first strong isolate
+  0x2069, // pop directional isolate
+  0xFEFF, // zero width no-break space
+])
+
+/** The same red as an unexpected letter: it is the same kind of surprise. */
+const INVISIBLE_CLASS = 'text-red-600 dark:text-red-400 font-bold bg-red-100 dark:bg-red-900/30 rounded px-0.5 mx-0.5'
+
+function invisibleToken(codePoint: number): string {
+  return `<U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}>`
+}
 
 const segments = computed(() => {
   const text = props.text
@@ -51,6 +102,8 @@ const segments = computed(() => {
 
   // Helper to apply case transformation
   function transform(char: string): string {
+    if (props.preserveCase)
+      return char
     const mode = props.caseOverride ?? settings.value.domainCase
     if (mode === 'upper')
       return char.toUpperCase()
@@ -60,24 +113,32 @@ const segments = computed(() => {
   }
 
   const result: { text: string, class: string }[] = []
-  let currentClass = getClass(text[0])
-  let currentText = transform(text[0])
+  let currentClass: string | null = null
+  let currentText = ''
 
-  for (let i = 1; i < text.length; i++) {
-    const char = text[i]
-    const charClass = getClass(char)
-    const transformedChar = transform(char)
+  const push = () => {
+    if (currentText)
+      result.push({ text: currentText, class: currentClass ?? '' })
+  }
+
+  // Walked by code point rather than by code unit, so a character outside the
+  // basic plane is one character here rather than two halves of one
+  for (const char of Array.from(text)) {
+    const codePoint = char.codePointAt(0) ?? 0
+    const shown = INVISIBLE.has(codePoint) ? invisibleToken(codePoint) : transform(char)
+    const charClass = INVISIBLE.has(codePoint) ? INVISIBLE_CLASS : getClass(char)
+
     if (charClass === currentClass) {
-      currentText += transformedChar
+      currentText += shown
     }
     else {
-      result.push({ text: currentText, class: currentClass })
+      push()
       currentClass = charClass
-      currentText = transformedChar
+      currentText = shown
     }
   }
-  // Push the last segment
-  result.push({ text: currentText, class: currentClass })
+
+  push()
   return result
 })
 
@@ -177,12 +238,21 @@ onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <template>
-  <span ref="root" class="secure-domain-display">
+  <!--
+    Held to one direction on purpose. A bidi control inside the text is shown as
+    a token rather than obeyed, and the isolation keeps whatever is left from
+    reordering the ordinary words around it on the page.
+  -->
+  <span ref="root" class="secure-domain-display" dir="ltr">
     <template v-for="(part, index) in parts" :key="index"><span :class="[part.class, { 'wraps-here': endsLine.has(index) }]">{{ part.text }}</span><wbr v-if="part.breakAfter"></template>
   </span>
 </template>
 
 <style scoped>
+.secure-domain-display {
+  unicode-bidi: isolate;
+}
+
 /*
  * The continuation marker is absolutely positioned on purpose: laid out in flow
  * it would take up space, change where the line breaks, and move the very wrap

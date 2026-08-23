@@ -154,3 +154,44 @@ describe('secureText component', () => {
     })
   })
 })
+
+describe('characters that cannot be seen', () => {
+  // A right-to-left override reverses everything after it, so this reads as
+  // `annexeexe.pdf` on screen and is not that at all. There is no glyph to
+  // colour red, so the character is named instead.
+  it('names a right-to-left override rather than obeying it', () => {
+    const wrapper = mount(SecureText, { props: { text: 'annexe‮fdp.exe' } })
+    expect(wrapper.text()).toContain('<U+202E>')
+    expect(wrapper.text()).not.toContain('‮')
+  })
+
+  it('names a zero-width space, which splits a name without leaving a mark', () => {
+    const wrapper = mount(SecureText, { props: { text: 'paypa​l.com' } })
+    expect(wrapper.text()).toContain('<U+200B>')
+  })
+
+  it('leaves an ordinary name exactly as it is', () => {
+    const wrapper = mount(SecureText, { props: { text: 'example.com' } })
+    expect(wrapper.text()).toBe('example.com')
+  })
+
+  it('holds the text to one direction', () => {
+    const wrapper = mount(SecureText, { props: { text: 'example.com' } })
+    expect(wrapper.find('span.secure-domain-display').attributes('dir')).toBe('ltr')
+  })
+})
+
+describe('preserveCase', () => {
+  // The case setting is about domain names. An email account name, a username
+  // and a Wi-Fi password are not those, and for the last one lower-casing it is
+  // not a display choice at all.
+  it('leaves the letters alone when asked to', () => {
+    const wrapper = mount(SecureText, { props: { text: 'John.Doe', preserveCase: true } })
+    expect(wrapper.text()).toBe('John.Doe')
+  })
+
+  it('still follows the case setting for a domain', () => {
+    const wrapper = mount(SecureText, { props: { text: 'Example.COM', caseOverride: 'lower' } })
+    expect(wrapper.text()).toBe('example.com')
+  })
+})

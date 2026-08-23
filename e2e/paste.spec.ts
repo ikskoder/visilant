@@ -204,3 +204,17 @@ test('a paste made before the verdict lands is held and then explained', async (
   await expectOverlay(page)
   await expect(page.locator('#victim')).toHaveValue('')
 })
+
+test('the paste dialog can be answered with the keyboard alone', async ({ context }) => {
+  // The dialog interrupts a real action and used to leave focus on the page
+  // behind it: Tab walked through a page nobody could see, Escape did nothing,
+  // and a stray Enter could set off a second intercept behind the first.
+  await patchSettings(context, { blockPasteOnUnfamiliar: true })
+  const page = await openSite(context)
+  await pasteInto(page, '#victim')
+  await expectOverlay(page)
+
+  await page.keyboard.press('Escape')
+  await expectOverlayGone(page)
+  await expect(page.locator('#victim')).toHaveValue('')
+})

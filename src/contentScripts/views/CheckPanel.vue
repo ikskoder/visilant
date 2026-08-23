@@ -9,6 +9,7 @@ import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
+import { useModalDialog } from '~/composables/useModalDialog'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { settings } from '~/logic/storage'
 import { isTrackableHostname } from '~/logic/visit-stats'
@@ -40,20 +41,23 @@ watch(() => props.visible, (visible) => {
   }
 })
 
-// Escape closes the panel while it is open
-watch(() => props.visible, (visible) => {
-  if (visible)
-    window.addEventListener('keydown', onKeydown, true)
-  else
-    window.removeEventListener('keydown', onKeydown, true)
-})
+/**
+ * The panel, and the button focus lands on when it opens.
+ *
+ * Escape used to be handled here on its own, and the listener was only removed
+ * when the panel was hidden – so a panel that was open when the app was torn
+ * down left its handler on the window. Everything about the keyboard now lives
+ * in one place, which also brings the focus trap and giving focus back.
+ */
+const card = ref<HTMLElement | null>(null)
+const closeButton = ref<HTMLElement | null>(null)
 
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    event.stopPropagation()
-    emit('close')
-  }
-}
+useModalDialog({
+  visible: () => props.visible && Boolean(props.data),
+  container: () => card.value,
+  initialFocus: () => closeButton.value,
+  onEscape: () => emit('close'),
+})
 
 // Same convention as the popup row: a button shows the state it is in, and the
 // tooltip says what pressing it will do
@@ -137,6 +141,10 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
       @click.self="emit('close')"
     >
       <div
+        ref="card"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="t('checkPanelTitle')"
         class="panel-container rounded-xl shadow-2xl p-4"
         :class="isDark ? 'bg-gray-900 border border-gray-700/50 text-gray-200' : 'bg-white border border-gray-200 text-gray-800'"
         :style="{ fontSize: `${fontSize / 100}em` }"
@@ -147,6 +155,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
             {{ t('checkPanelTitle') }}
           </span>
           <button
+            ref="closeButton"
             class="w-6 h-6 flex items-center justify-center rounded-full transition-colors"
             :class="isDark ? 'text-gray-400 hover:text-white hover:bg-gray-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'"
             @click="emit('close')"
@@ -173,7 +182,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
             {{ t('emailAccountName') }}
           </div>
           <div class="panel-address font-bold">
-            <SecureText :text="data.email.analysis.localPart" :highlight-override="localHighlight" :case-override="localCase" />
+            <SecureText :text="data.email.analysis.localPart" :highlight-override="localHighlight" :preserve-case="true" />
           </div>
           <div class="panel-label uppercase tracking-wider mt-1.5 mb-0.5" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
             {{ t('emailDomainLabel') }}

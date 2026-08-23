@@ -1218,11 +1218,47 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
     resolveAndUpdateTooltip(href, hostname)
 }
 
-function navigateToUrl(url: string, target: string) {
-  if (target === '_blank' || target === '_new')
-    window.open(url, '_blank', 'noopener,noreferrer')
-  else
-    window.location.href = url
+/**
+ * The click we are putting back, so our own handler lets it through.
+ *
+ * Set for the length of one synchronous dispatch and cleared immediately after.
+ */
+let replayingClick: HTMLAnchorElement | null = null
+
+/**
+ * Send the user where the link said, as much like a real click as possible.
+ *
+ * The old way was `location.href = url`, which is not what a link does. It threw
+ * away the named target, `download`, `rel`, `referrerpolicy` and `ping`, turned
+ * every link into a full page load - so a single-page app reloaded itself
+ * instead of routing - and skipped the page's own click handler entirely.
+ *
+ * A click dispatched on the anchor keeps all of that: the browser follows the
+ * element with its attributes, and the page's handlers run. The one thing that
+ * cannot be put back is a modifier: a browser only honours ctrl and shift on an
+ * event it produced itself, so a middle or ctrl click is opened by hand and
+ * loses the rest.
+ */
+function followLink(anchor: HTMLAnchorElement, openInNewTab: boolean) {
+  if (openInNewTab) {
+    const rel = anchor.rel?.toLowerCase() ?? ''
+    const features = rel.includes('noreferrer') ? 'noopener,noreferrer' : 'noopener'
+    window.open(anchor.href, '_blank', features)
+    return
+  }
+
+  replayingClick = anchor
+  try {
+    anchor.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: window,
+    }))
+  }
+  finally {
+    replayingClick = null
+  }
 }
 
 async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: boolean): Promise<boolean> {
@@ -1230,13 +1266,13 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
   const target = openInNewTab ? '_blank' : (anchor.target || '_self')
   const hostname = getHostnameFromHref(href)
   if (!hostname) {
-    navigateToUrl(href, target)
+    followLink(anchor, openInNewTab)
     return false
   }
 
   const currentHostname = window.location.hostname
   if (!isExternalLink(href, currentHostname)) {
-    navigateToUrl(href, target)
+    followLink(anchor, openInNewTab)
     return false
   }
 
@@ -1266,7 +1302,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
         }
         // Use resolved domain's safety for intercept decision
         if (resolvedVisitData.isSafe) {
-          navigateToUrl(href, target)
+          followLink(anchor, openInNewTab)
           return false
         }
       }
@@ -1291,7 +1327,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
 
   // Safe site – allow navigation (only if we didn't auto-resolve, which was handled above)
   if (!shouldResolve && visitData.isSafe) {
-    navigateToUrl(href, target)
+    followLink(anchor, openInNewTab)
     return false
   }
 
@@ -1315,13 +1351,19 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
     mismatch: interceptMismatch,
     punycode: alternateSpelling(hostname),
     shortUrl: shortUrlInfo,
+    // There is a real link behind this one, and it is put back as a click
+    ownNavigation: false,
   }
   linkInterceptVisible.value = true
 
-  // Return a promise that resolves when user decides
-  return new Promise<boolean>((resolve) => {
+  const proceed = await new Promise<boolean>((resolve) => {
     linkInterceptResolve.value = resolve
   })
+
+  if (proceed)
+    followLink(anchor, openInNewTab)
+
+  return proceed
 }
 
 function setupLinkSafety() {
@@ -1419,6 +1461,11 @@ function setupLinkSafety() {
     if (!anchor || !anchor.href)
       return
 
+    // The click we are putting back after checking it. Letting it through is the
+    // whole point - the browser and the page get to handle it as they would have.
+    if (replayingClick === anchor)
+      return
+
     // mailto: never goes through the intercept dialog – show the email tooltip
     // instead. Its "open mail app" button performs the actual navigation
     if (isMailtoHref(anchor.href)) {
@@ -1431,9 +1478,27 @@ function setupLinkSafety() {
     if (!isExternalLink(anchor.href, currentHostname))
       return
 
+    // Already known to be a site the user knows, and nothing to resolve. Not
+    // cancelled at all, so the link behaves exactly like a link: the page's own
+    // router runs, `download` downloads, and a modified click does what the
+    // browser does with one.
+    const hostname = getHostnameFromHref(anchor.href)
+    const known = hostname ? getCachedVisitCount(hostname) : null
+    const shortUrl = settings.value.linkSafety.shortUrlMode
+    const mightBeShort = shortUrl === 'auto'
+      && (settings.value.linkSafety.shortUrlResolveAny || (hostname ? isShortenedUrl(hostname) : false))
+    if (known?.isSafe && !mightBeShort)
+      return
+
     event.preventDefault()
     event.stopPropagation()
-    handleLinkIntercept(anchor, event.ctrlKey || event.metaKey)
+
+    // Cancelled, so this must end in a navigation or a dialog. Failing silently
+    // leaves a link that does nothing at all when it is clicked.
+    handleLinkIntercept(anchor, event.ctrlKey || event.metaKey).catch((error) => {
+      console.error('Visilant: could not check this link', error)
+      followLink(anchor, event.ctrlKey || event.metaKey)
+    })
   }
 
   // Dismiss tooltip on scroll or Escape

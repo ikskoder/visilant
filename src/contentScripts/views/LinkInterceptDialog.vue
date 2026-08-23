@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { LinkInterceptData } from '~/logic/ui-state'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
+import { useModalDialog } from '~/composables/useModalDialog'
 import MismatchTable from './MismatchTable.vue'
 
 const props = defineProps<{
@@ -27,6 +28,23 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+/**
+ * The dialog, and where focus lands when it opens.
+ *
+ * The close cross, not Continue: this dialog is here because something about the
+ * link is worth a second look, and a stray Enter must not be the thing that
+ * follows it. See `useModalDialog`.
+ */
+const card = ref<HTMLElement | null>(null)
+const closeButton = ref<HTMLElement | null>(null)
+
+useModalDialog({
+  visible: () => props.visible && Boolean(props.data),
+  container: () => card.value,
+  initialFocus: () => closeButton.value,
+  onEscape: () => emit('cancel'),
+})
 const { statusLabel } = useFamiliarityFacts()
 
 function handleResolveOnce() {
@@ -69,7 +87,7 @@ const resolvedIsSafe = computed(() => {
       <div class="absolute inset-0 bg-black/60 pointer-events-none" />
 
       <!-- Dialog card -->
-      <div class="relative dialog-container rounded-xl shadow-2xl px-5 pb-3 pt-0" :class="[isDark ? 'bg-gray-900 border border-gray-700/50' : 'bg-white border border-gray-200', { 'dialog-wide': data?.mismatch, 'dialog-full': hasTraceData }]">
+      <div ref="card" role="dialog" aria-modal="true" :aria-label="t('linkInterceptTitle')" class="relative dialog-container rounded-xl shadow-2xl px-5 pb-3 pt-0" :class="[isDark ? 'bg-gray-900 border border-gray-700/50' : 'bg-white border border-gray-200', { 'dialog-wide': data?.mismatch, 'dialog-full': hasTraceData }]">
         <!-- Warning icon + title + close -->
         <div class="flex items-center gap-2 mb-3">
           <svg class="w-5 h-5 text-red-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -79,6 +97,7 @@ const resolvedIsSafe = computed(() => {
             {{ t('linkInterceptTitle') }}
           </h2>
           <button
+            ref="closeButton"
             class="close-x w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors"
             :class="isDark ? 'text-gray-500 hover:text-white hover:bg-gray-700/50' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200/50'"
             @click="emit('cancel')"

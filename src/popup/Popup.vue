@@ -60,6 +60,9 @@ function updateTranslations() {
     'antiTamperingProtected',
     'antiTamperingNotProtected',
     'antiTamperingParentRule',
+    'ignoredSiteNotice',
+    'ignoredSiteResume',
+    'ignoredSiteTooltip',
     'antiTamperingDisableForSite',
     'antiTamperingEnableForSite',
     'antiTamperingTooltipWhat',
@@ -194,6 +197,28 @@ const currentStats = computed<SiteVisitData | undefined>(() => {
     ignored: false,
   }
 })
+
+/**
+ * Whether the user has silenced the warnings for this exact host.
+ *
+ * There was a command to set this and nothing at all to unset it: "do not show
+ * again" was a one-way door, and the only way back was to delete every visit
+ * record in the profile. A security exception you cannot see and cannot undo is
+ * worse than no exception at all.
+ */
+const isIgnoredHost = computed(() => {
+  const host = currentHostname.value
+  return Boolean(host && (visits.value[host] as SiteVisitData | undefined)?.ignored)
+})
+
+async function resumeWarnings() {
+  const host = currentHostname.value
+  if (!host)
+    return
+
+  await browser.runtime.sendMessage({ type: 'ignore-site', data: { hostname: host, ignored: false } })
+  await loadDomainData(host)
+}
 
 const familiarityRules = computed(() => normalizeFamiliarity(settings.value.familiarity))
 
@@ -713,6 +738,25 @@ onMounted(async () => {
             there is a claim about nothing. The exclusion list stays reachable
             from the details page and from the settings either way.
           -->
+          <!-- Only when there is something to undo. A row that always said
+               "warnings are on" would be one more line on a page that is short
+               of room, and it says nothing the rest of the panel does not. -->
+          <div v-if="!isCheckPage && isIgnoredHost" class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div class="flex items-center gap-1.5 cursor-help" :title="translations.ignoredSiteTooltip">
+              <div class="w-2 h-2 rounded-full flex-shrink-0 bg-amber-400" />
+              <span style="font-size: 0.8em;" class="text-amber-600">
+                {{ translations.ignoredSiteNotice }}
+              </span>
+            </div>
+            <button
+              class="text-blue-500 hover:text-blue-700 hover:underline transition-colors" style="font-size: 0.8em;"
+              :title="translations.ignoredSiteTooltip"
+              @click="resumeWarnings"
+            >
+              {{ translations.ignoredSiteResume }}
+            </button>
+          </div>
+
           <div v-if="!isCheckPage" class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <div
               class="flex items-center gap-1.5 cursor-help"

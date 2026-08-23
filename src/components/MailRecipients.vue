@@ -48,7 +48,7 @@ const show = computed(() => props.recipients.length > 1 || (props.notChecked ?? 
         :class="isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'"
       >{{ t(fieldLabel[recipient.field]) }}</span>
       <span class="break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
-        <SecureText :text="recipient.analysis.localPart" :force-highlight="true" :danger-only="true" /><span :class="isDark ? 'text-gray-400' : 'text-gray-500'">@</span><SecureText :text="recipient.analysis.domain" :force-highlight="true" :danger-only="true" />
+        <SecureText :text="recipient.analysis.localPart" :force-highlight="true" :danger-only="true" :preserve-case="true" /><span :class="isDark ? 'text-gray-400' : 'text-gray-500'">@</span><SecureText :text="recipient.analysis.domain" :force-highlight="true" :danger-only="true" />
       </span>
     </div>
 

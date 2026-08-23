@@ -134,7 +134,10 @@ function handleInterceptContinue() {
     linkInterceptResolve.value(true)
     linkInterceptResolve.value = null
   }
-  if (data?.url) {
+  // Only when there is no element behind this dialog. Where there is one, the
+  // content script puts the click back on the link itself, which keeps the
+  // target, `download`, `rel` and the page's own handler – see `followLink`.
+  if (data?.url && data.ownNavigation !== false) {
     const target = data.target || '_self'
     if (target === '_blank' || target === '_new')
       window.open(data.url, '_blank', 'noopener,noreferrer')

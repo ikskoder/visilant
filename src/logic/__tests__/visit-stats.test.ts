@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyVisit, dayKey, isTrackableHostname, VISIT_DEBOUNCE_MS } from '../visit-stats'
+import { applyVisit, classifyHost, dayKey, isTrackableHostname, VISIT_DEBOUNCE_MS } from '../visit-stats'
 
 // Local noon, so the day key cannot slip into a neighbouring day in any timezone
 function at(year: number, month: number, day: number, hour = 12, minute = 0) {
@@ -18,18 +18,6 @@ describe('dayKey', () => {
 
   it('gives different keys across midnight', () => {
     expect(dayKey(at(2026, 3, 7, 23, 59))).not.toBe(dayKey(at(2026, 3, 8, 0, 1)))
-  })
-})
-
-describe('isTrackableHostname', () => {
-  it('tracks dotted hostnames', () => {
-    expect(isTrackableHostname('example.com')).toBe(true)
-    expect(isTrackableHostname('a.b.example.co.uk')).toBe(true)
-  })
-
-  it('skips dotless hostnames', () => {
-    expect(isTrackableHostname('localhost')).toBe(false)
-    expect(isTrackableHostname('intranet')).toBe(false)
   })
 })
 
@@ -86,5 +74,64 @@ describe('applyVisit', () => {
   it('preserves the ignored flag', () => {
     const existing = { count: 2, lastSeen: now, ignored: true }
     expect(applyVisit(existing, now + VISIT_DEBOUNCE_MS + 1).ignored).toBe(true)
+  })
+})
+
+describe('classifyHost', () => {
+  it.each([
+    ['example.com', 'dns'],
+    ['a.b.example.co.uk', 'dns'],
+    ['1.2.3.4', 'ipv4'],
+    ['8.8.8.8', 'ipv4'],
+    ['192.168.1.1', 'private-ip'],
+    ['10.0.0.5', 'private-ip'],
+    ['172.16.4.4', 'private-ip'],
+    ['127.0.0.1', 'private-ip'],
+    ['169.254.1.1', 'private-ip'],
+    ['2606:4700::1111', 'ipv6'],
+    ['[2606:4700::1111]', 'ipv6'],
+    ['::1', 'private-ip'],
+    ['[::1]', 'private-ip'],
+    ['fe80::1', 'private-ip'],
+    ['fd00::1', 'private-ip'],
+    ['localhost', 'local'],
+    ['nas', 'local'],
+    ['printer.lan', 'local'],
+    ['host.internal', 'local'],
+    ['thing.home.arpa', 'local'],
+  ] as const)('reads %s as %s', (hostname, kind) => {
+    expect(classifyHost(hostname)).toBe(kind)
+  })
+})
+
+describe('isTrackableHostname', () => {
+  it('tracks dotted hostnames', () => {
+    expect(isTrackableHostname('example.com')).toBe(true)
+    expect(isTrackableHostname('a.b.example.co.uk')).toBe(true)
+  })
+
+  it('skips dotless hostnames', () => {
+    expect(isTrackableHostname('localhost')).toBe(false)
+    expect(isTrackableHostname('intranet')).toBe(false)
+  })
+
+  // The hole this closes: a public IPv6 address has no dot in it, so it was
+  // filed as an internal name - forced safe on the current page, and warned
+  // about nothing at all
+  it('counts a public address, v4 or v6', () => {
+    expect(isTrackableHostname('8.8.8.8')).toBe(true)
+    expect(isTrackableHostname('2606:4700::1111')).toBe(true)
+    expect(isTrackableHostname('example.com')).toBe(true)
+  })
+
+  // ...and the other end of the same mistake: everything on the home network
+  // has dots, so the router's own page was warned about until it had been
+  // opened ten times
+  it('leaves an address that only means something on one network alone', () => {
+    expect(isTrackableHostname('192.168.1.1')).toBe(false)
+    expect(isTrackableHostname('127.0.0.1')).toBe(false)
+    expect(isTrackableHostname('::1')).toBe(false)
+    expect(isTrackableHostname('localhost')).toBe(false)
+    expect(isTrackableHostname('printer.lan')).toBe(false)
   })
 })

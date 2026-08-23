@@ -954,8 +954,11 @@ test('a reset takes the lookalike index down with the records', async ({ page, c
   expect((await lookalikesFor(check)).length).toBeGreaterThan(0)
 
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
-  await page.waitForTimeout(1500)
-  await page.locator('label', { hasText: 'All information about site visits' }).locator('input').check()
+  // Waited for rather than slept through: the page holds a spinner until the
+  // stored settings arrive, and a fixed pause lands in the middle of that on a
+  // loaded machine
+  await page.locator('#section-data').waitFor({ state: 'visible', timeout: 20000 })
+  await page.locator('label', { hasText: 'All information about site visits' }).locator('input').check({ timeout: 20000 })
   await page.locator('button', { hasText: 'Reset selected data' }).click()
   await page.locator('.btn-danger', { hasText: 'Reset' }).last().click()
   await page.waitForTimeout(1500)

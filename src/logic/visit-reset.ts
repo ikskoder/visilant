@@ -1,7 +1,6 @@
 import type { SiteVisitData } from './storage'
 import { FAMILIAR_INDEX_KEY } from './familiar-index'
 import { HISTORY_IMPORT_STATE_KEY } from './history-import'
-import { isTrackableHostname } from './visit-stats'
 
 /**
  * Which of the `storage.local` keys "delete my visits" is allowed to touch.
@@ -25,6 +24,18 @@ const VISIT_DERIVED_KEYS: readonly string[] = [
   HISTORY_IMPORT_STATE_KEY,
 ]
 
+/**
+ * Could this key be a hostname at all?
+ *
+ * Deliberately not `isTrackableHostname`: that is a policy about what is worth
+ * counting from now on, and it moves. A record written under a rule that has
+ * since changed is still the user's visit data, and a wipe that quietly left it
+ * behind would be the worst kind of bug in a button that promises to remove it.
+ */
+function isPossibleHostKey(key: string): boolean {
+  return !key.startsWith('__') && /^[\w.:\-[\]]+$/.test(key)
+}
+
 function isVisitRecord(value: unknown): value is SiteVisitData {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     return false
@@ -42,6 +53,6 @@ function isVisitRecord(value: unknown): value is SiteVisitData {
 export function visitKeysToRemove(records: Record<string, unknown>): string[] {
   return Object.keys(records).filter(key =>
     VISIT_DERIVED_KEYS.includes(key)
-    || (isTrackableHostname(key) && isVisitRecord(records[key])),
+    || (isPossibleHostKey(key) && isVisitRecord(records[key])),
   )
 }

@@ -270,7 +270,7 @@ onBeforeUnmount(() => {
             :class="isDark ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-800'"
             style="word-break: break-all !important; max-height: 120px !important; overflow-y: auto !important;"
           >
-            <SecureText :text="data.rawText.payload" :force-highlight="true" :danger-only="true" />
+            <SecureText :text="data.rawText.payload" :force-highlight="true" :danger-only="true" :preserve-case="true" />
           </div>
         </template>
 
