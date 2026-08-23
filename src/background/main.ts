@@ -1,13 +1,13 @@
 import type { FamiliarDomain, FamiliarIndex } from '~/logic/domain-similarity'
 import type { FamiliarityStats } from '~/logic/familiarity'
 import type { SiteVisitData } from '~/logic/storage'
-import { getDomain } from 'tldts'
 import { onMessage } from 'webext-bridge/background'
 import { badgeText } from '~/logic/badge'
 import { fetchBlobBounded } from '~/logic/bounded-fetch'
+import { belongsToSite, siteDomain, siteDomainOrSelf } from '~/logic/domain-boundary'
 import { buildFamiliarIndex, findLookalikes } from '~/logic/domain-similarity'
 import { getProviderReferenceDomains } from '~/logic/email-providers'
-import { analyzeEmailAddress, parseMailtoUrl } from '~/logic/email-safety'
+import { analyzeEmailAddress, collectMailtoRecipients, parseMailtoUrl } from '~/logic/email-safety'
 import { applyVisitToFamiliar, collectFamiliarDomains, FAMILIAR_INDEX_KEY } from '~/logic/familiar-index'
 import { aggregateFamiliarityStats, familiaritySignature, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { HISTORY_AUTO_IMPORT_KEY, HISTORY_IMPORT_STATE_KEY, isImportAlive, readHistoryImportState, runHistoryImport, shouldAutoImport } from '~/logic/history-import'
@@ -430,12 +430,12 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
 // Collect visit data for a whole domain family (base domain + subdomains),
 // the same aggregation the popup dashboard shows
 async function getDomainFamilyLogic(hostname: string) {
-  const base = getDomain(hostname) || hostname
+  const base = siteDomainOrSelf(hostname)
   const allData = await browser.storage.local.get(null)
   const entries: { hostname: string, count: number, activeDays?: number, firstSeen?: number }[] = []
   const records: SiteVisitData[] = []
   for (const key of Object.keys(allData)) {
-    if (key !== base && !key.endsWith(`.${base}`))
+    if (!belongsToSite(key, base))
       continue
     const record = allData[key] as SiteVisitData | undefined
     if (typeof record?.count === 'number') {
@@ -478,10 +478,22 @@ async function getVisitCountLogic(url: string) {
 /** A stored list older than this is rebuilt from scratch on next use. */
 const FAMILIAR_INDEX_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
+/**
+ * Which boundary the stored list was built under.
+ *
+ * Bumped whenever the line between one site and the next moves, because every
+ * entry in the stored list is a domain drawn at that line. Version 1 folded all
+ * of `github.io` into one entry – reading that list under the current boundary
+ * would compare tenants against a name no tenant has.
+ */
+const FAMILIAR_INDEX_BOUNDARY = 2
+
 interface StoredFamiliarList {
   domains: FamiliarDomain[]
   /** Rules the list was built under – see `familiaritySignature` */
   rules: string
+  /** See `FAMILIAR_INDEX_BOUNDARY`. Absent on a list written before it existed. */
+  boundary?: number
   builtAt: number
 }
 
@@ -503,6 +515,7 @@ async function persistFamiliarDomains(domains: FamiliarDomain[]) {
   const payload: StoredFamiliarList = {
     domains,
     rules: familiaritySignature(currentFamiliarityRules()),
+    boundary: FAMILIAR_INDEX_BOUNDARY,
     builtAt: Date.now(),
   }
   await browser.storage.local.set({ [FAMILIAR_INDEX_KEY]: payload })
@@ -513,7 +526,7 @@ async function rebuildFamiliarDomains(): Promise<FamiliarDomain[]> {
   const records = await browser.storage.local.get(null)
   const domains = collectFamiliarDomains(records, {
     rules: currentFamiliarityRules(),
-    toRegistrable: hostname => getDomain(hostname),
+    toRegistrable: hostname => siteDomain(hostname),
   })
 
   await persistFamiliarDomains(domains)
@@ -526,6 +539,7 @@ async function loadFamiliarDomains(): Promise<void> {
   const isUsable = stored
     && Array.isArray(stored.domains)
     && stored.rules === familiaritySignature(currentFamiliarityRules())
+    && stored.boundary === FAMILIAR_INDEX_BOUNDARY
     && Date.now() - (stored.builtAt || 0) < FAMILIAR_INDEX_MAX_AGE_MS
 
   familiarDomains = isUsable ? stored.domains : await rebuildFamiliarDomains()
@@ -578,7 +592,7 @@ async function noteVisitForFamiliarIndex(hostname: string, visitData: SiteVisitD
   if (!familiarDomains)
     return
 
-  const registrable = getDomain(hostname)
+  const registrable = siteDomain(hostname)
   if (!registrable)
     return
 
@@ -626,7 +640,7 @@ async function findLookalikesLogic(hostname: string, context?: 'email') {
 
   const history = await getFamiliarIndex()
   const index = context === 'email' ? getEmailIndex(history) : history
-  return findLookalikes(hostname, index, getDomain(hostname) || undefined)
+  return findLookalikes(hostname, index, siteDomain(hostname) || undefined)
 }
 
 // Handle ignore site requests
@@ -727,6 +741,20 @@ async function handleTampering(tabId?: number) {
   await browser.action.setIcon({ path: getIconPaths('site-danger'), ...(tabId != null && { tabId }) })
 
   return 'Tampering handled'
+}
+
+/**
+ * Open the check page with something already in it.
+ *
+ * Used for a `mailto:` with more than one recipient, where there is no single
+ * domain a dashboard could be about. The check page reads every address in the
+ * link, which is the whole point – the domain view could only ever have shown
+ * the first one.
+ */
+async function handleOpenCheckTab(value: string) {
+  const url = browser.runtime.getURL(`dist/popup/index.html?check=1&value=${encodeURIComponent(value)}`)
+  await browser.tabs.create({ url })
+  return 'Check tab opened'
 }
 
 // Open popup page in a new tab with domain context
@@ -929,18 +957,25 @@ browser.runtime.onInstalled.addListener(async () => {
 if (hasContextMenus()) {
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
     if (info.menuItemId === CONTEXT_MENU_DOMAIN_ID && info.linkUrl) {
-      // Open detailed popup in a new tab for the link's domain
-      let hostname: string | null = null
       if (/^mailto:/i.test(info.linkUrl)) {
         const parsed = parseMailtoUrl(info.linkUrl)
-        const analysis = parsed?.addresses[0] ? analyzeEmailAddress(parsed.addresses[0]) : null
-        hostname = analysis?.domain ?? null
+        const recipients = collectMailtoRecipients(parsed)
+        // One recipient still gets the domain dashboard it always did. Several,
+        // and there is no one domain to show – the check page reads them all.
+        if (recipients.length > 1) {
+          await handleOpenCheckTab(info.linkUrl)
+        }
+        else {
+          const analysis = recipients[0] ? analyzeEmailAddress(recipients[0].address) : null
+          if (analysis?.domain)
+            await handleOpenPopupTab(analysis.domain)
+        }
       }
       else {
-        hostname = getHostname(info.linkUrl)
+        const hostname = getHostname(info.linkUrl)
+        if (hostname)
+          await handleOpenPopupTab(hostname)
       }
-      if (hostname)
-        await handleOpenPopupTab(hostname)
     }
 
     if (info.menuItemId === CONTEXT_MENU_LINK_ID && info.linkUrl && tab?.id) {

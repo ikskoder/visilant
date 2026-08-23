@@ -2,12 +2,12 @@ import type { FamiliarityStats } from '~/logic/familiarity'
 import type { VisitFacts } from '~/logic/link-safety'
 import type { Settings } from '~/logic/storage'
 import type { TamperWatch } from '~/logic/tamper-watch'
-import type { CheckPanelData, DomainFamilyInfo, LinkTooltipData, RawPayloadInfo } from '~/logic/ui-state'
+import type { CheckPanelData, DomainFamilyInfo, EmailRecipientInfo, LinkTooltipData, RawPayloadInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { createApp, watchEffect } from 'vue'
 import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
-import { analyzeEmailAddress, extractEmailFromText, parseMailtoUrl } from '~/logic/email-safety'
+import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { checkDomainMismatch, extractDomainFromText, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
@@ -576,17 +576,42 @@ async function buildEmailTooltipData(
 
   const visitData = await fetchLinkData(`https://${analysis.domain}`, analysis.domain)
 
+  // Everyone the message would reach, not only the name at the front of it
+  const allRecipients = isMailto
+    ? collectMailtoRecipients(parsed)
+    : [{ field: 'to' as const, address }]
+  const checked = allRecipients.slice(0, MAX_MAILTO_RECIPIENTS)
+  const recipients: EmailRecipientInfo[] = []
+  for (const recipient of checked) {
+    const recipientAnalysis = analyzeEmailAddress(recipient.address)
+    if (!recipientAnalysis)
+      continue
+    const facts = await fetchLinkData(`https://${recipientAnalysis.domain}`, recipientAnalysis.domain)
+    recipients.push({
+      field: recipient.field,
+      analysis: recipientAnalysis,
+      providerKind: classifyEmailDomain(recipientAnalysis.domain),
+      stats: facts.stats,
+      isSafe: facts.isSafe,
+    })
+  }
+
   let mismatch: { textAddress: string } | null = null
   if (anchorText) {
     const textEmail = extractEmailFromText(anchorText)
     if (textEmail) {
-      if (textEmail.toLowerCase() !== analysis.raw.toLowerCase())
+      // Held against every recipient, not just the first: a link whose text
+      // names the second address of three is still telling the truth about it,
+      // and one that names nobody on the list is the case worth flagging
+      const named = recipients.some(r => r.analysis.raw.toLowerCase() === textEmail.toLowerCase())
+      if (!named)
         mismatch = { textAddress: textEmail }
     }
     else {
       const textDomain = extractDomainFromText(anchorText)
-      if (textDomain && textDomain.replace(/^www\./, '') !== analysis.domain)
-        mismatch = { textAddress: textDomain }
+      const bare = textDomain?.replace(/^www\./, '')
+      if (bare && !recipients.some(r => r.analysis.domain === bare))
+        mismatch = { textAddress: textDomain! }
     }
   }
 
@@ -600,7 +625,14 @@ async function buildEmailTooltipData(
     shortUrl: null,
     anchorRect,
     href: isMailto ? addrOrMailto : `mailto:${address}`,
-    email: { analysis, params: parsed?.params ?? [], mismatch, providerKind: classifyEmailDomain(analysis.domain) },
+    email: {
+      analysis,
+      params: parsed?.params ?? [],
+      mismatch,
+      providerKind: classifyEmailDomain(analysis.domain),
+      recipients,
+      recipientsNotChecked: allRecipients.length - checked.length,
+    },
   }
 }
 

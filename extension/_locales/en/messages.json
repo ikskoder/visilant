@@ -1550,5 +1550,29 @@
   "settingsNotSaved": {
     "message": "This change was not saved. Your browser refused to store it, most likely because the synced settings are full. Try again, and if it keeps happening, shorten one of the lists below.",
     "description": "Shown on the settings page when writing to storage failed"
+  },
+  "emailRecipientsTitle": {
+    "message": "Recipients",
+    "description": "Heading above the list of everyone a mailto link would write to"
+  },
+  "emailRecipientsNotChecked": {
+    "message": "more recipients, not checked",
+    "description": "Follows a count when a mailto link names more recipients than are checked"
+  },
+  "emailFieldTo": {
+    "message": "To",
+    "description": "Label for a main recipient of a mailto link"
+  },
+  "emailFieldCc": {
+    "message": "Cc",
+    "description": "Label for a copied recipient of a mailto link"
+  },
+  "emailFieldBcc": {
+    "message": "Bcc",
+    "description": "Label for a blind-copied recipient of a mailto link"
+  },
+  "emailRecipientUnfamiliar": {
+    "message": "not a site you know",
+    "description": "Marker next to a mailto recipient whose domain fails the familiarity checks"
   }
 }

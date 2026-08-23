@@ -2,11 +2,11 @@
 import type { FamiliarityCriterionId, FamiliarityStats } from '~/logic/familiarity'
 import type { SiteVisitData } from '~/logic/storage'
 import punycode from 'punycode'
-import { getDomain } from 'tldts'
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
+import { belongsToSite, siteDomainOrSelf } from '~/logic/domain-boundary'
 import { aggregateFamiliarityStats, evaluateFamiliarity, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { popupWidthCap } from '~/logic/platform'
@@ -118,6 +118,8 @@ const isStandalonePage = ref(false)
  * looking at, while here they typed or pasted a name into a field.
  */
 const isCheckPage = ref(false)
+// What the check page starts with, when it was opened about something
+const checkPageInitial = ref('')
 // The same document serves as the browser's own popup and, opened by URL, as an
 // ordinary tab. In a tab it should behave like a page: use the whole window and
 // scroll. tabs.getCurrent() is what tells the two apart, resolving to undefined
@@ -402,7 +404,10 @@ function displayDomain(domain: string) {
 
 async function loadDomainData(hostname: string) {
   currentHostname.value = hostname
-  baseDomain.value = getDomain(hostname) || ''
+  // An IP address and an intranet name have no site to belong to, so each is a
+  // family of one. Leaving this empty used to hide a record that plainly exists:
+  // the page had visits stored under `192.168.1.10` and showed nothing at all.
+  baseDomain.value = siteDomainOrSelf(hostname)
   visits.value = {}
   subdomains.value = []
 
@@ -416,7 +421,7 @@ async function loadDomainData(hostname: string) {
     if (key === 'settings')
       continue
 
-    if (key === baseDomain.value || key.endsWith(`.${baseDomain.value}`)) {
+    if (belongsToSite(key, baseDomain.value)) {
       matched.push(key)
       visits.value[key] = allData[key]
     }
@@ -481,6 +486,9 @@ onMounted(async () => {
   if (urlParams.get('check')) {
     isStandalonePage.value = true
     isCheckPage.value = true
+    // Opened from the long-press menu on a mailto with several recipients:
+    // the address list travels with the link, not as a single domain
+    checkPageInitial.value = urlParams.get('value') ?? ''
     return
   }
 
@@ -558,7 +566,7 @@ onMounted(async () => {
         <div i-carbon-qr-code />
         {{ translations.checkExternalButton }}
       </button>
-      <CheckField v-else @checked-domain="loadDomainData" />
+      <CheckField v-else :initial="checkPageInitial" @checked-domain="loadDomainData" />
 
       <div v-if="currentHostname">
         <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">

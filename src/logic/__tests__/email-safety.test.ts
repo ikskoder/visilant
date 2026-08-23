@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeEmailAddress, extractEmailFromText, parseMailtoUrl } from '../email-safety'
+import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, parseMailtoUrl } from '../email-safety'
 
 describe('analyzeEmailAddress', () => {
   it('analyzes a plain ASCII address', () => {
@@ -111,5 +111,39 @@ describe('extractEmailFromText', () => {
 
   it('still finds an email near the start of very long text', () => {
     expect(extractEmailFromText(`a@b.com ${'x'.repeat(1000)}`)).toBe('a@b.com')
+  })
+})
+
+describe('collectMailtoRecipients', () => {
+  it('finds every address, not only the first', () => {
+    const parsed = parseMailtoUrl('mailto:trusted@known.example,attacker@evil.example')
+    expect(collectMailtoRecipients(parsed).map(r => r.address)).toEqual([
+      'trusted@known.example',
+      'attacker@evil.example',
+    ])
+  })
+
+  it('reads cc and bcc, which reach real people too', () => {
+    const parsed = parseMailtoUrl('mailto:a@one.example?cc=b@two.example,c@three.example&bcc=d@four.example&subject=hi')
+    expect(collectMailtoRecipients(parsed)).toEqual([
+      { field: 'to', address: 'a@one.example' },
+      { field: 'cc', address: 'b@two.example' },
+      { field: 'cc', address: 'c@three.example' },
+      { field: 'bcc', address: 'd@four.example' },
+    ])
+  })
+
+  it('counts a person named twice once', () => {
+    const parsed = parseMailtoUrl('mailto:a@one.example?cc=A@One.example')
+    expect(collectMailtoRecipients(parsed)).toHaveLength(1)
+  })
+
+  it('ignores the parameters that are not recipients', () => {
+    const parsed = parseMailtoUrl('mailto:a@one.example?subject=b@evil.example&body=c@evil.example')
+    expect(collectMailtoRecipients(parsed).map(r => r.address)).toEqual(['a@one.example'])
+  })
+
+  it('has nothing to say about a plain address', () => {
+    expect(collectMailtoRecipients(null)).toEqual([])
   })
 })

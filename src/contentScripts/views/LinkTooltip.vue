@@ -5,6 +5,7 @@ import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailBreakdown from '~/components/EmailBreakdown.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
+import MailRecipients from '~/components/MailRecipients.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
@@ -221,6 +222,14 @@ onBeforeUnmount(() => {
           </div>
 
           <EmailBreakdown :analysis="data.email.analysis" :params="data.email.params" :provider-kind="data.email.providerKind" :is-dark="isDark" compact />
+
+          <!-- A mailto carries a list. Only the first name used to be checked. -->
+          <MailRecipients
+            v-if="data.email.recipients"
+            :recipients="data.email.recipients"
+            :not-checked="data.email.recipientsNotChecked"
+            :is-dark="isDark"
+          />
 
           <!-- Visit count for the address's domain (regular domains only) -->
           <div v-if="data.email.providerKind === 'regular' && shouldShowCount(data.isSafe)" class="tooltip-label mt-1 mb-2" :class="isDark ? 'text-white' : 'text-gray-800'">

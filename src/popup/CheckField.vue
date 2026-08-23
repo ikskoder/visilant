@@ -4,8 +4,8 @@ import type { EmailAnalysis } from '~/logic/email-safety'
 import type { FamiliarityStats } from '~/logic/familiarity'
 import type { MailSiteFamily } from '~/logic/mail-sites'
 import type { SiteVisitData } from '~/logic/storage'
+import type { EmailRecipientInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
-import { getDomain } from 'tldts'
 import { onMounted, ref } from 'vue'
 import AddressCompare from '~/components/AddressCompare.vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
@@ -14,11 +14,13 @@ import EmailCheckCaveat from '~/components/EmailCheckCaveat.vue'
 import ExternalLookups from '~/components/ExternalLookups.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
+import MailRecipients from '~/components/MailRecipients.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
+import { belongsToSite, siteDomainOrSelf } from '~/logic/domain-boundary'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
-import { analyzeEmailAddress, parseMailtoUrl } from '~/logic/email-safety'
+import { analyzeEmailAddress, collectMailtoRecipients, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { getHostnameFromHref, getPunycodeInfo } from '~/logic/link-safety'
 import { collectMailSiteFamilies, loadMailSitesFromRecords } from '~/logic/mail-sites'
@@ -27,6 +29,11 @@ import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings } from '~/logic/storage'
 import { isShortenedUrl } from '~/logic/url-shorteners'
 import { isTrackableHostname } from '~/logic/visit-stats'
+
+const props = defineProps<{
+  /** Something to check straight away, when the page was opened about it. */
+  initial?: string
+}>()
 
 const emit = defineEmits<{
   (e: 'checkedDomain', hostname: string): void
@@ -46,7 +53,7 @@ interface UrlResolveState {
 
 type CheckResult
   = | { type: 'url', url: string, hostname: string, baseDomain: string, punycode: string | null, stats: FamiliarityStats, isSafe: boolean, isShortener: boolean, resolve: UrlResolveState, mailSites: MailSiteFamily[] }
-    | { type: 'email', analysis: EmailAnalysis, params: { key: string, value: string }[], stats: FamiliarityStats, isSafe: boolean, providerKind: EmailProviderKind, mailSites: MailSiteFamily[] }
+    | { type: 'email', analysis: EmailAnalysis, params: { key: string, value: string }[], stats: FamiliarityStats, isSafe: boolean, providerKind: EmailProviderKind, mailSites: MailSiteFamily[], recipients: EmailRecipientInfo[], recipientsNotChecked: number }
     | { type: 'raw', payloadKind: string, payload: string }
     | { type: 'invalid' }
     | { type: 'qr-error' }
@@ -55,20 +62,27 @@ const inputText = ref('')
 const result = ref<CheckResult | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
-onMounted(() => {
-  loadEmailListsFromStorage()
+onMounted(async () => {
+  await loadEmailListsFromStorage()
+
+  // Opened about something – a mailto with several recipients, most often.
+  // Run after the lists are in, or the first check would classify without them.
+  if (props.initial) {
+    inputText.value = props.initial
+    await runCheck(props.initial)
+  }
 })
 
 // Visits are stored per exact hostname, but "have I been here" should count the
 // whole domain family (gmail.com visits may live under www.gmail.com etc.)
 async function getVisitData(hostname: string): Promise<{ stats: FamiliarityStats, isSafe: boolean, mailSites: MailSiteFamily[] }> {
-  const base = getDomain(hostname) || hostname
+  const base = siteDomainOrSelf(hostname)
   const allData = await browser.storage.local.get(null)
   const records: SiteVisitData[] = []
   for (const key of Object.keys(allData)) {
     if (key === 'settings' || key === 'customShorteners')
       continue
-    if (key === base || key.endsWith(`.${base}`))
+    if (belongsToSite(key, base))
       records.push(allData[key] as SiteVisitData)
   }
   const stats = aggregateFamiliarityStats(records)
@@ -95,7 +109,7 @@ async function checkUrl(url: string) {
     type: 'url',
     url,
     hostname,
-    baseDomain: getDomain(hostname) || hostname,
+    baseDomain: siteDomainOrSelf(hostname),
     punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
     stats: visitData.stats,
     isSafe: visitData.isSafe,
@@ -116,6 +130,26 @@ async function checkEmail(addrOrMailto: string) {
     return
   }
   const visitData = await getVisitData(analysis.domain)
+
+  // Everyone the message would reach. `cc` and `bcc` are recipients too, and
+  // checking only the first address let the rest travel unexamined.
+  const allRecipients = isMailto ? collectMailtoRecipients(parsed) : [{ field: 'to' as const, address: address! }]
+  const checked = allRecipients.slice(0, MAX_MAILTO_RECIPIENTS)
+  const recipients: EmailRecipientInfo[] = []
+  for (const recipient of checked) {
+    const recipientAnalysis = analyzeEmailAddress(recipient.address)
+    if (!recipientAnalysis)
+      continue
+    const facts = await getVisitData(recipientAnalysis.domain)
+    recipients.push({
+      field: recipient.field,
+      analysis: recipientAnalysis,
+      providerKind: classifyEmailDomain(recipientAnalysis.domain),
+      stats: facts.stats,
+      isSafe: facts.isSafe,
+    })
+  }
+
   result.value = {
     type: 'email',
     analysis,
@@ -124,6 +158,8 @@ async function checkEmail(addrOrMailto: string) {
     isSafe: visitData.isSafe,
     providerKind: classifyEmailDomain(analysis.domain),
     mailSites: visitData.mailSites,
+    recipients,
+    recipientsNotChecked: allRecipients.length - checked.length,
   }
   emit('checkedDomain', analysis.domain)
 }
@@ -435,6 +471,9 @@ function payloadTypeLabel(payloadKind: string) {
           </span>
         </div>
         <EmailBreakdown :analysis="result.analysis" :params="result.params" :provider-kind="result.providerKind" :is-dark="isDark" />
+
+        <!-- A mailto carries a list, cc and bcc included -->
+        <MailRecipients :recipients="result.recipients" :not-checked="result.recipientsNotChecked" :is-dark="isDark" />
         <div v-if="result.providerKind === 'regular'" class="mt-1">
           <FamiliarityFacts :stats="result.stats" />
         </div>

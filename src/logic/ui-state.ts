@@ -1,5 +1,5 @@
 import type { EmailProviderKind } from './email-providers'
-import type { EmailAnalysis } from './email-safety'
+import type { EmailAnalysis, MailtoField } from './email-safety'
 import type { FamiliarityStats } from './familiarity'
 import type { MailSiteFamily } from './mail-sites'
 import type { PastePayloadInfo } from './paste-guard'
@@ -28,11 +28,30 @@ export interface ShortUrlInfo {
 // Tooltip content variants: absent kind = 'link' (backward compatible)
 export type TooltipKind = 'link' | 'email' | 'text'
 
+/**
+ * One address the message would actually go to, checked in its own right.
+ *
+ * A `mailto:` carries a list, and `cc` and `bcc` are part of it. Reading only
+ * the first meant `mailto:known@example.com,attacker@evil.example` showed as
+ * checked on the strength of the name the user recognised.
+ */
+export interface EmailRecipientInfo {
+  field: MailtoField
+  analysis: EmailAnalysis
+  providerKind: EmailProviderKind
+  stats: FamiliarityStats
+  isSafe: boolean
+}
+
 export interface EmailTooltipInfo {
   analysis: EmailAnalysis
   params: { key: string, value: string }[]
   mismatch: { textAddress: string } | null
   providerKind: EmailProviderKind
+  /** Every recipient, the one above included. Empty for a bare address. */
+  recipients?: EmailRecipientInfo[]
+  /** How many were left unchecked because the list was longer than the cap. */
+  recipientsNotChecked?: number
 }
 
 export interface RawPayloadInfo {

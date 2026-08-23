@@ -114,6 +114,57 @@ export function parseMailtoUrl(href: string): { addresses: string[], params: { k
   return { addresses, params }
 }
 
+/** Which box of the message an address sits in. */
+export type MailtoField = 'to' | 'cc' | 'bcc'
+
+export interface MailtoRecipient {
+  field: MailtoField
+  address: string
+}
+
+/**
+ * How many addresses are worth analysing.
+ *
+ * A page writes the `mailto:`, so the list is as long as it likes. Every entry
+ * costs an analysis and a visit lookup, and a check nobody can read is not a
+ * check – so the rest are counted and named as not looked at, never dropped
+ * silently.
+ */
+export const MAX_MAILTO_RECIPIENTS = 25
+
+/**
+ * Every address the mail client would actually put in the message.
+ *
+ * The `to` list is only the first box. `cc` and `bcc` are ordinary query
+ * parameters of a `mailto:`, they reach real people just the same, and reading
+ * the first address of the first box was enough to make
+ * `mailto:known@example.com,attacker@evil.example` look checked.
+ */
+export function collectMailtoRecipients(parsed: { addresses: string[], params: { key: string, value: string }[] } | null): MailtoRecipient[] {
+  if (!parsed)
+    return []
+
+  const split = (value: string) => value.split(',').map(part => part.trim()).filter(Boolean)
+
+  const collected: MailtoRecipient[] = parsed.addresses.map(address => ({ field: 'to' as const, address }))
+  for (const { key, value } of parsed.params) {
+    const field = key.trim().toLowerCase()
+    if (field === 'cc' || field === 'bcc')
+      collected.push(...split(value).map(address => ({ field: field as MailtoField, address })))
+  }
+
+  // One person named twice is one recipient. Compared case-insensitively on the
+  // whole address, which is the same string the analysis is keyed on.
+  const seen = new Set<string>()
+  return collected.filter(({ address }) => {
+    const key = address.toLowerCase()
+    if (seen.has(key))
+      return false
+    seen.add(key)
+    return true
+  })
+}
+
 const EMAIL_IN_TEXT_PATTERN = /[^\s@<>,;:"'()[\]]+@[^\s@<>,;:"'()[\]]+\.\p{L}{2,}/u
 
 /**

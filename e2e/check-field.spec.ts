@@ -333,3 +333,51 @@ test('a domain that is a site of its own is not sent anywhere else', async ({ co
   await expect(field(page).getByText('Email address', { exact: true })).toBeVisible({ timeout: 5000 })
   await expect(field(page).locator('.mail-sites')).toHaveCount(0)
 })
+
+test('two tenants of one hosting platform are two different sites', async ({ context, extensionId }) => {
+  // A platform that hands out a subdomain per customer. Under the default
+  // public suffix list both of these fold into `github.io`, so one tenant's
+  // fifty visits used to vouch for a tenant the user has never opened.
+  await seedVisits(context, 'alice.github.io', 50, { activeDays: 30 })
+
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'https://evil.github.io/login')
+
+  // The stranger is its own site, with its own count of nothing
+  await expect(field(page).locator('[data-criterion="visits"]').first()).toContainText('0')
+  await expect(field(page).locator('text=evil.github.io').first()).toBeVisible()
+})
+
+test('a tenant keeps its own subdomains', async ({ context, extensionId }) => {
+  await seedVisits(context, 'alice.github.io', 30, { activeDays: 20 })
+
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'https://blog.alice.github.io/post')
+
+  await expect(field(page).locator('[data-criterion="visits"]').first()).toContainText('30')
+})
+
+test('every recipient of a mailto is checked, not just the first', async ({ context, extensionId }) => {
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'mailto:trusted@known.example,attacker@evil.example?cc=copied@third.example')
+
+  const recipients = field(page).locator('.mail-recipients')
+  await expect(recipients).toBeVisible({ timeout: 5000 })
+  await expect(recipients).toContainText('Recipients (3)')
+  await expect(recipients).toContainText('attacker')
+  await expect(recipients).toContainText('evil.example')
+  // A copied recipient reaches a real person and is named as one
+  await expect(recipients).toContainText('Cc')
+  await expect(recipients).toContainText('third.example')
+})
+
+test('a single-recipient address keeps the shape it always had', async ({ context, extensionId }) => {
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'billing@some-supplier.com')
+
+  await expect(field(page).locator('.mail-recipients')).toHaveCount(0)
+})
