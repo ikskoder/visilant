@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyPayload, extractCheckTarget } from '../payload-classify'
+import { classifyPayload, classifyQrPayload, extractCheckTarget } from '../payload-classify'
 
 describe('classifyPayload', () => {
   it('classifies http(s) URLs', () => {
@@ -60,5 +60,28 @@ describe('extractCheckTarget', () => {
     expect(extractCheckTarget('just some words')).toBeNull()
     expect(extractCheckTarget('')).toBeNull()
     expect(extractCheckTarget('   ')).toBeNull()
+  })
+})
+
+describe('classifyQrPayload', () => {
+  // One reading for both doors. The long-press menu stopped at
+  // `classifyPayload`, so a bare name in a QR code was raw text there and a
+  // domain on the check page - two different screens for the same code.
+  it('reads a bare name as the site it is', () => {
+    expect(classifyQrPayload('example.com')).toEqual({ kind: 'url', value: 'https://example.com' })
+  })
+
+  it('leaves a payload that names its own scheme alone', () => {
+    expect(classifyQrPayload('https://example.com/path')).toEqual({ kind: 'url', value: 'https://example.com/path' })
+    expect(classifyQrPayload('WIFI:S:home;T:WPA;P:secret;;').kind).toBe('wifi')
+    expect(classifyQrPayload('tel:+123456').kind).toBe('tel')
+  })
+
+  it('finds an address written on its own', () => {
+    expect(classifyQrPayload('billing@supplier.example')).toEqual({ kind: 'email', value: 'billing@supplier.example' })
+  })
+
+  it('leaves something that is not an address as text', () => {
+    expect(classifyQrPayload('just some words').kind).toBe('text')
   })
 })

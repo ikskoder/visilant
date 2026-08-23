@@ -670,6 +670,49 @@ async function getFamiliarIndex(): Promise<FamiliarIndex> {
  * the whole domain family would mean scanning all of storage on every single
  * navigation.
  */
+/**
+ * How often one domain's whole family is worth adding up.
+ *
+ * The incremental update below judges a domain by the hostname just visited,
+ * because that record is already in hand. That is an understatement: somebody
+ * who uses `mail.example.com` and `accounts.example.com` five times each knows
+ * `example.com` ten times over, and neither host says so on its own. Until the
+ * next full rebuild - which is a day away unless something forces it - that
+ * family was missing from the reference set, and a name imitating it went
+ * unremarked.
+ *
+ * Adding up the family costs a read of all the stored records, which is far too
+ * much for every navigation. Once per domain per ten minutes is not.
+ */
+const FAMILY_CHECK_INTERVAL_MS = 10 * 60 * 1000
+const FAMILY_CHECK_MEMO_LIMIT = 500
+const familyCheckedAt = new Map<string, number>()
+
+function dueForFamilyCheck(registrable: string, now: number): boolean {
+  if (now - (familyCheckedAt.get(registrable) ?? 0) < FAMILY_CHECK_INTERVAL_MS)
+    return false
+
+  if (familyCheckedAt.size >= FAMILY_CHECK_MEMO_LIMIT) {
+    const oldest = familyCheckedAt.keys().next()
+    if (!oldest.done)
+      familyCheckedAt.delete(oldest.value)
+  }
+  familyCheckedAt.set(registrable, now)
+  return true
+}
+
+/** Everything stored under one site, added up the way a verdict is taken. */
+async function familyStatsFor(site: string): Promise<FamiliarityStats> {
+  const all = await browser.storage.local.get(null)
+  const records: SiteVisitData[] = []
+  for (const key of Object.keys(all)) {
+    const record = all[key] as SiteVisitData | undefined
+    if (typeof record?.count === 'number' && belongsToSite(key, site))
+      records.push(record)
+  }
+  return aggregateFamiliarityStats(records)
+}
+
 async function noteVisitForFamiliarIndex(hostname: string, visitData: SiteVisitData, counted: boolean) {
   if (!familiarDomains)
     return
@@ -678,13 +721,35 @@ async function noteVisitForFamiliarIndex(hostname: string, visitData: SiteVisitD
   if (!registrable)
     return
 
-  const added = applyVisitToFamiliar(familiarDomains, registrable, visitData, currentFamiliarityRules(), Date.now(), counted)
+  const rules = currentFamiliarityRules()
+  const added = applyVisitToFamiliar(familiarDomains, registrable, visitData, rules, Date.now(), counted)
   familiarIndexStale = true
 
   // Only a new member is worth a write, and drifting counts are corrected by the
   // next rebuild and affect nothing but the order of equally strong matches
-  if (added)
+  if (added) {
     await persistFamiliarDomains(familiarDomains)
+    return
+  }
+
+  // The hostname on its own did not qualify. Every so often, ask what the whole
+  // family adds up to, because that is the number the verdict is actually taken
+  // from everywhere else.
+  const now = Date.now()
+  if (familiarDomains.some(entry => entry.domain === registrable) || !dueForFamilyCheck(registrable, now))
+    return
+
+  const family = await familyStatsFor(registrable)
+  if (!isFamiliar(family, rules, now))
+    return
+
+  const label = registrable.split('.')[0]
+  if (!label)
+    return
+
+  familiarDomains.push({ domain: registrable, label, visits: family.count })
+  familiarIndexStale = true
+  await persistFamiliarDomains(familiarDomains)
 }
 
 /**
@@ -1117,9 +1182,11 @@ async function handleQrImageCheck(srcUrl: string, tabId?: number) {
   try {
     const blob = await fetchBlobBounded(srcUrl, {
       maxBytes: MAX_QR_IMAGE_BYTES,
-      // A page can point `src` at anything. Whatever this is, it is not an image
-      // and there is no QR code in it.
-      accept: type => type.startsWith('image/'),
+      // The declared type is a hint and servers get it wrong constantly - a
+      // perfectly good PNG served as `application/octet-stream`, or with no type
+      // at all, was refused here. The decoder below is the real check: it is
+      // handed the bytes and fails on anything that is not an image.
+      accept: type => !type || type.startsWith('image/') || type === 'application/octet-stream' || type === 'binary/octet-stream',
     })
     payload = await decodeQrFromImageBitmapSource(blob)
   }

@@ -1,3 +1,4 @@
+import type { FamiliarDomain } from '../domain-similarity'
 import { describe, expect, it } from 'vitest'
 import { applyVisitToFamiliar, collectFamiliarDomains, FAMILIAR_INDEX_LIMIT } from '../familiar-index'
 import { defaultFamiliaritySettings } from '../familiarity'
@@ -203,5 +204,47 @@ describe('applyVisitToFamiliar and the debounce', () => {
     const familiar = [{ domain: 'example.com', label: 'example', visits: 5 }]
     applyVisitToFamiliar(familiar, 'example.com', record(80), rules, NOW, false)
     expect(familiar[0].visits).toBe(80)
+  })
+})
+
+describe('a family no single host qualifies for', () => {
+  const rules = {
+    visits: { enabled: true, min: 10 },
+    activeDays: { enabled: false, min: 5 },
+    age: { enabled: false, min: 10 },
+    mode: 'all' as const,
+    atLeast: 2,
+  }
+
+  // The understatement this documents: somebody who uses two subdomains five
+  // times each knows the site ten times over, and neither host says so alone
+  it('is not added on the strength of one hostname', () => {
+    const familiar: FamiliarDomain[] = []
+    const added = applyVisitToFamiliar(
+      familiar,
+      'example.com',
+      { count: 5 },
+      rules,
+      Date.now(),
+      true,
+    )
+
+    expect(added).toBe(false)
+    expect(familiar).toEqual([])
+  })
+
+  it('is added once the hostname itself clears the bar', () => {
+    const familiar: FamiliarDomain[] = []
+    const added = applyVisitToFamiliar(
+      familiar,
+      'example.com',
+      { count: 10 },
+      rules,
+      Date.now(),
+      true,
+    )
+
+    expect(added).toBe(true)
+    expect(familiar[0].domain).toBe('example.com')
   })
 })

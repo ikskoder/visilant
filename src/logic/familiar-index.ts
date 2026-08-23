@@ -97,9 +97,13 @@ export function collectFamiliarDomains(
  * hand, whereas the family's would cost a scan of all storage. Every one of them
  * understates the family – fewer visits, no more active days than its busiest
  * member, no earlier a first visit – so a domain can only ever join the list
- * later than it strictly qualifies, never earlier. The next full rebuild – after
- * a history import, a rule change, or a day of use – corrects both the
- * membership and the counts.
+ * later than it strictly qualifies, never earlier.
+ *
+ * That understatement used to stand until the next full rebuild, a day away
+ * unless something forced one, which left a family nobody host qualified for
+ * out of the reference set for that long. The caller now adds the family up
+ * itself every so often to catch exactly that case – see `familyStatsFor` in
+ * the background. A rebuild still corrects the counts.
  *
  * Returns true when the membership changed, which is the only case worth
  * persisting. A count that drifts low until the next rebuild affects nothing but

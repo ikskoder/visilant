@@ -25,7 +25,7 @@ import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/l
 import { alternateSpelling, getHostnameFromHref } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
 import { collectMailSiteFamilies, loadMailSitesFromRecords } from '~/logic/mail-sites'
-import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
+import { classifyQrPayload } from '~/logic/payload-classify'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings } from '~/logic/storage'
 import { isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
@@ -215,7 +215,9 @@ async function runCheck(rawText: string) {
     return
   }
 
-  const { kind, value } = classifyPayload(trimmed)
+  // The same reading the long-press menu gives a QR payload, which is the point
+  // of it being one function: a bare `example.com` is a domain through both
+  const { kind, value } = classifyQrPayload(trimmed)
   if (kind === 'url') {
     await checkUrl(value, generation)
   }
@@ -227,19 +229,8 @@ async function runCheck(rawText: string) {
     if (generation === checkGeneration)
       result.value = { type: 'raw', payloadKind: kind, payload: trimmed }
   }
-  else {
-    // Free-form text: try to extract an email / URL / bare domain
-    const target = extractCheckTarget(trimmed)
-    if (generation !== checkGeneration)
-      return
-    if (!target)
-      result.value = { type: 'invalid' }
-    else if (target.kind === 'email')
-      await checkEmail(target.value, generation)
-    else if (target.kind === 'url')
-      await checkUrl(target.value, generation)
-    else
-      await checkUrl(`https://${target.value}`, generation)
+  else if (generation === checkGeneration) {
+    result.value = { type: 'invalid' }
   }
 }
 

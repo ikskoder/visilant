@@ -12,7 +12,7 @@ import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { alternateSpelling, checkDomainMismatch, clearVisitCache, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
 import { describePastePayload, editableTargetOf, isEditableEventTarget, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
-import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
+import { classifyQrPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { resolveTooltipTrigger } from '~/logic/platform'
 import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, settings, settingsReady } from '~/logic/storage'
 import { applyHostStyles, createTamperWatch } from '~/logic/tamper-watch'
@@ -618,6 +618,7 @@ async function showLinkInterceptByUrl(url: string) {
           resolvedUrl: result.finalUrl,
           resolvedDomain: result.finalHostname,
           resolvedStats: resolvedVisitData.stats,
+          resolvedPunycode: alternateSpelling(result.finalHostname),
           resolvedIsSafe: resolvedVisitData.isSafe,
           chain: result.chain,
           status: 'resolved',
@@ -906,6 +907,7 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string, re
           resolvedUrl: result.finalUrl,
           resolvedDomain: result.finalHostname,
           resolvedStats: resolvedVisitData.stats,
+          resolvedPunycode: alternateSpelling(result.finalHostname),
           resolvedIsSafe: resolvedVisitData.isSafe,
           chain: result.chain,
           status: 'resolved',
@@ -1036,6 +1038,7 @@ async function resolveAndUpdateIntercept(retry = false) {
           resolvedUrl: result.finalUrl,
           resolvedDomain: result.finalHostname,
           resolvedStats: resolvedVisitData.stats,
+          resolvedPunycode: alternateSpelling(result.finalHostname),
           resolvedIsSafe: resolvedVisitData.isSafe,
           chain: result.chain,
           status: 'resolved',
@@ -1295,6 +1298,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
           resolvedUrl: result.finalUrl,
           resolvedDomain: result.finalHostname,
           resolvedStats: resolvedVisitData.stats,
+          resolvedPunycode: alternateSpelling(result.finalHostname),
           resolvedIsSafe: resolvedVisitData.isSafe,
           chain: result.chain,
           status: 'resolved',
@@ -1563,6 +1567,10 @@ let guardedNodes: Element[] = []
 let tamperWatch: TamperWatch | null = null
 let stopUiVisibilityWatch: (() => void) | null = null
 let isMounting = false
+
+/** How long a document has to produce a body before this gives up on it. */
+const MOUNT_BODY_TIMEOUT_MS = 10_000
+const MOUNT_BODY_POLL_MS = 50
 // Set while we take our own UI down, so our removal is not read as the page's.
 // This has to be an explicit flag rather than "has the app mounted yet": a page
 // that rips the container out in the moments before Vue finishes mounting is
@@ -1672,10 +1680,14 @@ async function mount(force = false) {
       return
     }
 
-    // Wait for body to be available
-    while (!document.body) {
-      await new Promise(resolve => requestAnimationFrame(resolve))
-    }
+    // Wait for body to be available. Bounded, because a document that never
+    // gets one - an XML or SVG file opened directly - would otherwise spin for
+    // as long as the tab is open.
+    for (let waited = 0; !document.body && waited < MOUNT_BODY_TIMEOUT_MS; waited += MOUNT_BODY_POLL_MS)
+      await new Promise(resolve => setTimeout(resolve, MOUNT_BODY_POLL_MS))
+
+    if (!document.body)
+      return
 
     // Determine if we need to mount the UI
     const isNotificationsEnabled = settings.value.showWarningNotification
@@ -1758,6 +1770,28 @@ async function mount(force = false) {
   }
   catch (e) {
     console.error('Failed to mount content script:', e)
+
+    // Put back whatever got as far as being assigned. Without this a failure
+    // after the container was created left it set, and the guard at the top of
+    // this function turned every later attempt into an immediate return - so
+    // the tab had no UI and no way to get one.
+    isSelfRemoving = true
+    try {
+      stopUiVisibilityWatch?.()
+      tamperWatch?.stop()
+      app?.unmount()
+      container?.remove()
+    }
+    catch {
+      // Nothing here may throw on top of the error being handled
+    }
+    stopUiVisibilityWatch = null
+    tamperWatch = null
+    app = null
+    container = null
+    shadowRoot = null
+    guardedNodes = []
+    isSelfRemoving = false
   }
   finally {
     isMounting = false
@@ -1946,11 +1980,12 @@ browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse:
   if (message.type === 'show-qr-result' && message.data?.payload) {
     const payload: string = message.data.payload
     ensureTooltipUiMounted().then(() => {
-      const { kind, value } = classifyPayload(payload)
+      // The same reading the check page gives it – see `classifyQrPayload`
+      const { kind, value } = classifyQrPayload(payload)
       if (kind === 'url')
         showLinkTooltipByUrl(value, { force: true })
       else if (kind === 'email')
-        showEmailTooltipByAddress(payload)
+        showEmailTooltipByAddress(value)
       else
         showRawPayloadTooltip(payload, kind)
     })

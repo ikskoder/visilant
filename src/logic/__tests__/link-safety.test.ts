@@ -347,3 +347,29 @@ describe('alternateSpelling', () => {
     expect(alternateSpelling('example.com')).toBeNull()
   })
 })
+
+describe('checkDomainMismatch and where one site ends', () => {
+  // Half the web puts its login on a subdomain, and a red mismatch marker on
+  // that pattern costs more than the marker is worth
+  it('does not flag a link to a subdomain of the name it shows', () => {
+    expect(checkDomainMismatch('example.com', 'login.example.com').mismatch).toBe(false)
+    expect(checkDomainMismatch('login.example.com', 'example.com').mismatch).toBe(false)
+  })
+
+  it('still flags a name used as a label in front of somebody else', () => {
+    const result = checkDomainMismatch('paypal.com', 'paypal.com.evil.net')
+    expect(result.mismatch).toBe(true)
+    expect(result.textDomain).toBe('paypal.com')
+  })
+
+  it('flags a name that merely ends in the same letters', () => {
+    expect(checkDomainMismatch('example.com', 'notexample.com').mismatch).toBe(true)
+  })
+
+  it('sees a name with an invisible character hidden in it', () => {
+    // A zero-width space between the letters. The pattern used not to match at
+    // all, so nothing was compared and nothing was reported.
+    expect(checkDomainMismatch('paypa​l.com', 'evil.net').mismatch).toBe(true)
+    expect(checkDomainMismatch('paypa​l.com', 'evil.net').textDomain).toBe('paypal.com')
+  })
+})

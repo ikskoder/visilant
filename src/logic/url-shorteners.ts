@@ -1,3 +1,4 @@
+import { readTextBounded } from './bounded-fetch'
 import { matchesDomainSet } from './domain-set'
 import { parseShortenerDomains, STORAGE_KEY_REMOTE_SHORTENERS } from './shortener-lists'
 
@@ -2669,15 +2670,31 @@ const MAX_REDIRECTS = 10
 const RESOLVE_TIMEOUT_MS = 10000
 
 /**
- * Follow redirect chain to resolve a URL to its final destination.
+ * How much of a shortener's own page is worth reading.
+ *
+ * Only ever read to look for a meta-refresh or a `window.location` in the first
+ * part of the document, and this is a page fetched from whatever URL somebody
+ * put in front of the user. `response.text()` on that reads the whole thing into
+ * memory first, however large it is.
+ */
+const MAX_HTML_BYTES = 512 * 1024
+
+/**
+ * Follow a short link to where it actually goes.
  *
  * Strategy:
  * 1. Primary: fetch with redirect:'follow' – browser follows all HTTP redirects,
  *    response.url gives the final URL. Works reliably in MV3 service workers.
- * 2. If the final URL is still on a known shortener (JS redirect), fetch HTML
- *    and parse meta-refresh / window.location patterns.
- * 3. Step-by-step chain building via sequential fetches with redirect:'follow'
- *    on each intermediate hop.
+ * 2. If the final URL is still on a known shortener (JS redirect), read the page
+ *    and look for a meta-refresh or a `window.location`.
+ *
+ * What `chain` holds is worth being precise about, because it is shown to the
+ * user. It is the list of addresses this code *saw*, not every hop the request
+ * made: `redirect: 'follow'` hands back only where it ended up, and a manual
+ * follow is not possible – a cross-origin redirect read that way comes back
+ * opaque, with no Location to read. So an ordinary HTTP redirect appears as one
+ * step from the start to the end, and only a hop this code had to make itself,
+ * by reading a page and finding a redirect in it, appears in between.
  */
 export async function resolveUrlChain(url: string): Promise<ResolvedUrlResult> {
   const chain: string[] = [url]
@@ -2708,13 +2725,18 @@ export async function resolveUrlChain(url: string): Promise<ResolvedUrlResult> {
       // If we landed on a known shortener, try to extract JS/meta redirect from HTML
       const currentHostname = getHostname(currentUrl)
       if (currentHostname && isShortenedUrl(currentHostname)) {
-        const html = await response.text()
+        const html = await readTextBounded(response, MAX_HTML_BYTES)
         const extractedUrl = extractRedirectFromHtml(html, currentUrl)
         if (extractedUrl && extractedUrl !== currentUrl) {
           chain.push(extractedUrl)
           currentUrl = extractedUrl
           continue // follow the extracted URL
         }
+      }
+      else {
+        // Nothing here is going to be read, so the transfer is stopped rather
+        // than left running for a body nobody wants
+        await response.body?.cancel().catch(() => {})
       }
 
       // Done – landed on a non-shortener or no more redirects found

@@ -412,6 +412,16 @@ onBeforeUnmount(() => {
               {{ data.shortUrl.resolvedUrl }}
             </div>
 
+            <!-- The destination gets the same reading as the address the user
+                 could see. It used to get a visit count and nothing else, so a
+                 short link to a lookalike or to a punycode name came out as
+                 "somewhere you have not been" and no more than that. -->
+            <div v-if="data.shortUrl.resolvedPunycode" class="tooltip-label mb-1" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
+              {{ t('linkTooltipPunycode') }}: {{ data.shortUrl.resolvedPunycode }}
+            </div>
+            <DomainMarkers :hostname="data.shortUrl.resolvedDomain" class="tooltip-label mb-1" />
+            <LookalikeNotice :hostname="data.shortUrl.resolvedDomain" class="tooltip-label mb-1" />
+
             <!-- Status + visit count -->
             <div class="flex items-center flex-wrap gap-1.5 mb-1">
               <span

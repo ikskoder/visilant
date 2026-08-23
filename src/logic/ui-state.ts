@@ -28,6 +28,15 @@ export interface ShortUrlInfo {
   /** The destination's own facts, for the same evidence line the link gets */
   resolvedStats: FamiliarityStats
   resolvedIsSafe: boolean
+  /**
+   * The destination's other spelling, when it has one.
+   *
+   * The whole point of resolving a short link is that the address the user could
+   * see said nothing. Handing back a visit count for the destination and nothing
+   * else means a link to a punycode lookalike arrives with none of the markers
+   * the same address would have got if it had been written out.
+   */
+  resolvedPunycode?: string | null
   chain: string[] // full redirect chain
   status: 'idle' | 'loading' | 'resolved' | 'error'
   error?: string

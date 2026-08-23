@@ -226,6 +226,15 @@ const resolvedIsSafe = computed(() => {
               {{ data.shortUrl.resolvedUrl }}
             </div>
 
+            <!-- The destination gets the same reading as an address written out
+                 in full. Resolving a short link is the one case where the user
+                 could not have looked at it themselves. -->
+            <div v-if="data.shortUrl.resolvedPunycode" class="dialog-label mb-1" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
+              {{ t('linkTooltipPunycode') }}: {{ data.shortUrl.resolvedPunycode }}
+            </div>
+            <DomainMarkers :hostname="data.shortUrl.resolvedDomain" class="dialog-label mb-1" />
+            <LookalikeNotice :hostname="data.shortUrl.resolvedDomain" class="dialog-label mb-1" />
+
             <div class="dialog-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
               <FamiliarityFacts v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)" :stats="data.shortUrl.resolvedStats">
                 <template #status>

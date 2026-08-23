@@ -38,7 +38,15 @@ export async function getManifest() {
       },
     },
     action: {
-      default_icon: 'assets/icon-default.png',
+      // Every size that ships, so the browser picks rather than scales. A single
+      // file left it resampling one bitmap for the toolbar, the overflow menu
+      // and a high-density display alike.
+      default_icon: {
+        16: 'assets/icon-default-16.png',
+        32: 'assets/icon-default-32.png',
+        48: 'assets/icon-default-48.png',
+        128: 'assets/icon-default-128.png',
+      },
       default_popup: 'dist/popup/index.html',
     },
     options_ui: {
@@ -59,6 +67,9 @@ export async function getManifest() {
         },
     icons: {
       16: 'assets/icon-default-16.png',
+      // 32 exists and ships either way – naming it here keeps the browser from
+      // scaling the 48 down for a display that wants exactly this size
+      32: 'assets/icon-default-32.png',
       48: 'assets/icon-default-48.png',
       128: 'assets/icon-default-128.png',
     },

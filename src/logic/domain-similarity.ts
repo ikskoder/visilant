@@ -442,9 +442,12 @@ function matchSameSkeleton(
       continue
     }
 
+    // `source` travels with every match, this one included. Without it a mail
+    // provider came out as an ordinary "site you know" with a visit count of
+    // zero, which reads as a contradiction and hides where the name came from.
     offer(isSameSpelling
-      ? { domain: entry.domain, visits: entry.visits, reason: 'same-name', evidence: label, severity: 'medium' }
-      : { domain: entry.domain, visits: entry.visits, reason: 'confusable', evidence: label, severity: 'high' })
+      ? { domain: entry.domain, visits: entry.visits, source: entry.source, reason: 'same-name', evidence: label, severity: 'medium' }
+      : { domain: entry.domain, visits: entry.visits, source: entry.source, reason: 'confusable', evidence: label, severity: 'high' })
   }
 }
 

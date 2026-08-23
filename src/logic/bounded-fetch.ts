@@ -94,6 +94,18 @@ async function readBounded(response: Response, maxBytes: number): Promise<Uint8A
   return merged
 }
 
+/**
+ * Read a response body that somebody else fetched, under the same byte cap.
+ *
+ * For the short-link resolver, which has to keep the response object itself to
+ * read `response.url`. It used to call `response.text()` on whatever came back
+ * from a URL a page put in front of the user, which is a page of unknown size
+ * read into memory whole before anything looks at it.
+ */
+export async function readTextBounded(response: Response, maxBytes = MAX_LIST_BYTES): Promise<string> {
+  return new TextDecoder().decode(await readBounded(response, maxBytes))
+}
+
 /** Fetch text, giving up on the deadline or the byte cap, whichever comes first. */
 export async function fetchTextBounded(url: string, options: BoundedOptions = {}): Promise<string> {
   const { response, maxBytes } = await boundedResponse(url, options)

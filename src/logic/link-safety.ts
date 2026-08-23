@@ -70,11 +70,19 @@ export function isMailtoHref(href: string): boolean {
 }
 
 /**
+ * Characters that take up no space and can be dropped without changing what a
+ * person reads. A name with one hidden inside it is still that name to the eye,
+ * so the comparison has to see it the same way - otherwise `paypa<ZWSP>l.com`
+ * simply fails to match the pattern and no mismatch is reported at all.
+ */
+const IGNORABLE = /[\u00AD\u061C\u180E\u200B-\u200F\u2028\u2029\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g
+
+/**
  * Extract a domain from text that looks like a URL.
  * Handles: "google.com", "https://google.com/path", "www.google.com"
  */
 export function extractDomainFromText(text: string): string | null {
-  const trimmed = text.trim()
+  const trimmed = text.replace(IGNORABLE, '').trim()
   if (!trimmed || trimmed.length > 500)
     return null
 
@@ -115,15 +123,34 @@ function canonicalHost(hostname: string): string {
 }
 
 /**
+ * Is one of these names the other one, or somewhere inside it?
+ *
+ * Written out here rather than taken from `domain-boundary`, which reaches for
+ * the public suffix list: this module is in the content script, injected into
+ * every page, and the list is a hundred kilobytes. The plain suffix test answers
+ * the question this check actually asks and costs nothing.
+ */
+function sameSiteOrBelow(a: string, b: string): boolean {
+  return a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`)
+}
+
+/**
  * Check if the visible link text shows a different domain than the actual href.
  * This is the #1 phishing trick: <a href="evil.com">paypal.com</a>
+ *
+ * Compared as sites rather than as exact hostnames. A link on a site's own page
+ * reading `example.com` and pointing at `login.example.com` was flagged in red,
+ * which is a false alarm on a pattern half the web uses - and a false alarm on a
+ * marker this loud costs more than the marker is worth. What the trick actually
+ * looks like still trips it: `paypal.com.evil.net` is not inside `paypal.com`
+ * and never was, and two tenants of one hosting platform are two sites.
  */
 export function checkDomainMismatch(linkText: string, hrefHostname: string): { mismatch: boolean, textDomain?: string } {
   const textDomain = extractDomainFromText(linkText)
   if (!textDomain)
     return { mismatch: false }
 
-  if (canonicalHost(textDomain) !== canonicalHost(hrefHostname))
+  if (!sameSiteOrBelow(canonicalHost(textDomain), canonicalHost(hrefHostname)))
     return { mismatch: true, textDomain }
 
   return { mismatch: false }

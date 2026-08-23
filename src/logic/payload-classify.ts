@@ -51,6 +51,33 @@ export function classifyPayload(payload: string): { kind: PayloadKind, value: st
 }
 
 /**
+ * What a QR payload turns out to be, wherever it was decoded.
+ *
+ * One answer for both doors. The long-press menu decoded an image and stopped at
+ * `classifyPayload`, while the check page ran the same payload through
+ * `extractCheckTarget` as well - so a bare `example.com` in a QR code was raw
+ * text through one door and a domain through the other, with two different
+ * screens to show for it.
+ *
+ * A scheme wins where there is one, because that is what the payload says it is.
+ * Everything else falls through to the fuzzy reading, which is what turns a bare
+ * name into a domain.
+ */
+export function classifyQrPayload(payload: string): { kind: PayloadKind, value: string } {
+  const classified = classifyPayload(payload)
+  if (classified.kind !== 'text')
+    return classified
+
+  const target = extractCheckTarget(payload)
+  if (!target)
+    return classified
+
+  return target.kind === 'domain'
+    ? { kind: 'url', value: `https://${target.value}` }
+    : { kind: target.kind, value: target.value }
+}
+
+/**
  * Fuzzy extraction of a checkable target from free-form text (context-menu
  * selection, popup input). Priority: email > URL > bare domain.
  */
