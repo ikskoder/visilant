@@ -24,3 +24,6 @@ test-results
 artifacts
 result
 result-*
+
+# Scratch space for audits, reports and other throwaway files
+.tmp/
