@@ -112,6 +112,12 @@ const payloadKind = computed(() => {
           {{ message }}
         </p>
 
+        <!-- The box is not part of the page the address bar names. That is the
+             fact worth reading before anything about visit counts. -->
+        <p v-if="data.inFrame" class="dialog-text mb-4 font-bold" :class="isDark ? 'text-yellow-400' : 'text-yellow-700'">
+          {{ t('pasteInterceptInFrame') }}
+        </p>
+
         <!-- The address is the point of the whole dialog, so it gets the weight.
              The facts under it are only shown once there are any: a dialog put up
              before the check finished has nothing to report but the name. -->
@@ -146,8 +152,10 @@ const payloadKind = computed(() => {
           <LookalikeNotice v-if="status !== 'checking'" :hostname="data.domain" class="dialog-label mt-2" />
         </div>
 
-        <!-- What is on the clipboard, described before it is shown -->
-        <div class="rounded-lg p-3 mb-4" :class="isDark ? 'bg-gray-800' : 'bg-gray-50 border border-gray-200'">
+        <!-- What is on the clipboard, described before it is shown. A paste
+             held in an iframe keeps its text there, so there is nothing to
+             describe and nothing worth sending across for the sake of it. -->
+        <div v-if="!data.inFrame" class="rounded-lg p-3 mb-4" :class="isDark ? 'bg-gray-800' : 'bg-gray-50 border border-gray-200'">
           <div class="flex items-center justify-between gap-2">
             <span class="dialog-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
               {{ payloadKind }}

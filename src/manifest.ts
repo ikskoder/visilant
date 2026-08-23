@@ -84,6 +84,26 @@ export async function getManifest() {
         ],
         run_at: 'document_start',
       },
+      // The guard inside an iframe. Events do not cross a frame boundary, so a
+      // login form served in one bypassed every warning the extension has. A
+      // bundle of its own because this runs in every advert on every page –
+      // see src/contentScripts/frame.ts for what it deliberately does not do.
+      {
+        matches: [
+          '<all_urls>',
+        ],
+        js: [
+          'dist/contentScripts/frame.global.js',
+        ],
+        all_frames: true,
+        // A frame the page wrote rather than fetched: `about:blank`, `srcdoc`,
+        // a blob. Its events do not reach the top document either, and it has
+        // no address of its own, so it is judged as the page that made it.
+        // Firefox reads the first key, Chrome needs the second for `srcdoc`.
+        match_about_blank: true,
+        ...(isFirefox ? {} : { match_origin_as_fallback: true }),
+        run_at: 'document_start',
+      },
     ],
     web_accessible_resources: [
       {

@@ -936,6 +936,11 @@ test('a reset takes the lookalike index down with the records', async ({ page, c
   // The index is a copy of the visit records held in the background's memory.
   // Deleting the records from the settings page left it answering questions from
   // that copy, and one write later it was back on disk.
+  //
+  // The install-time import has to be out of the way first: it writes the same
+  // records, and a reset landing in the middle of it waits for the batch that is
+  // already in flight before it can take the key.
+  await waitForAutoImport(context)
   await seedVisits(context, 'gmail.com', 50, { activeDays: 30 })
 
   const check = await context.newPage()
@@ -991,4 +996,79 @@ test('turning the link check off reaches a tab that is already open', async ({ p
   await page.locator('#external').click()
   await page.waitForTimeout(1500)
   expect(page.url()).toContain('elsewhere-entirely.test')
+})
+
+// ==========================================
+// Content script: the guard inside an iframe
+// ==========================================
+
+const FRAME_URL = 'https://embedded-form.test/'
+
+/** A page whose form lives in a frame belonging to somebody else. */
+async function serveFramedForm(page: any) {
+  await page.route(`${FRAME_URL}**`, (route: any) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: blankPage('embedded', '<input id="inner" type="text" style="width:200px">'),
+    }))
+  await serveSite(page, SITE_URL, blankPage('host page', `
+    <iframe id="frame" src="${FRAME_URL}" style="width:400px;height:200px;border:0"></iframe>
+  `))
+  await page.waitForTimeout(2500)
+}
+
+test('typing into a form inside an iframe is warned about', async ({ page }) => {
+  // Events do not cross a frame boundary, so the top document's listeners never
+  // saw this and a login form served in an iframe bypassed every warning
+  await serveFramedForm(page)
+
+  const inner = page.frameLocator('#frame').locator('#inner')
+  await inner.click()
+  await page.keyboard.type('hunter2')
+  await page.waitForTimeout(2000)
+
+  const warning = page.locator('body > div[style*="2147483647"]')
+  await expect(warning.first()).toBeAttached({ timeout: 5000 })
+})
+
+test('a paste into an iframe on an unfamiliar site is held', async ({ context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'https://tracked-site.test' })
+  await patchSettings(context, { blockPasteOnUnfamiliar: true })
+
+  const page = await context.newPage()
+  await serveFramedForm(page)
+  await page.evaluate(() => navigator.clipboard.writeText('correct-horse-battery-staple'))
+
+  const inner = page.frameLocator('#frame').locator('#inner')
+  await inner.click()
+  await page.waitForTimeout(500)
+  await page.keyboard.press('ControlOrMeta+V')
+  await page.waitForTimeout(2000)
+
+  // Nothing arrived in the box, and the top document is asking about it
+  await expect(inner).toHaveValue('')
+  const overlay = await page.evaluate(() => {
+    const el = document.elementFromPoint(8, 8) as HTMLElement | null
+    return Boolean(el?.style && el.style.getPropertyValue('z-index') === '2147483647')
+  })
+  expect(overlay).toBe(true)
+})
+
+test('CONTROL: with the guard off, a paste into a frame lands in the field', async ({ context }) => {
+  // The frame script runs in every advert on every page. If it interrupted
+  // anything the user did not ask it to, every held paste above proves nothing.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'https://tracked-site.test' })
+
+  const page = await context.newPage()
+  await serveFramedForm(page)
+  await page.evaluate(() => navigator.clipboard.writeText('ordinary text'))
+
+  const inner = page.frameLocator('#frame').locator('#inner')
+  await inner.click()
+  await page.waitForTimeout(500)
+  await page.keyboard.press('ControlOrMeta+V')
+  await page.waitForTimeout(1200)
+
+  await expect(inner).toHaveValue('ordinary text')
 })

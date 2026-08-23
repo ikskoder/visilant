@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { resolveTooltipTrigger } from '~/logic/platform'
 import { applySettingsSnapshot, defaultSettings, settings } from '~/logic/storage'
-import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
+import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, showWarning, warningFrameHost, warningType } from '~/logic/ui-state'
 import CheckPanel from './CheckPanel.vue'
 import InputWarning from './InputWarning.vue'
 import LinkInterceptDialog from './LinkInterceptDialog.vue'
@@ -197,6 +197,7 @@ onMounted(async () => {
       :safety-level="safetyLevel"
       :show="showWarning"
       :warning-type="warningType"
+      :frame-host="warningFrameHost"
       :is-dark="isDark"
       @close="showWarning = false"
       @ignore-site="ignoreSite"

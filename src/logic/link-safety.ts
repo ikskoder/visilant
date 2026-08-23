@@ -158,7 +158,32 @@ function parseDomainList(raw: string): string[] {
 }
 
 /**
- * Find the closest <a> element from an event target.
+ * Find the closest `<a>` element behind an event.
+ *
+ * Takes the event rather than its target on purpose. A link inside a custom
+ * element's shadow root retargets: `event.target` is the element that owns the
+ * shadow root, not the anchor inside it, and `closest('a')` from there finds
+ * nothing at all. `composedPath()` is the list of nodes the event actually
+ * travelled through, shadow boundaries included, so the anchor is in it.
+ *
+ * A closed shadow root does not appear in the path, and there is nothing to be
+ * done about that from a content script. It is a limitation, not an oversight.
+ */
+export function findAnchorFromEvent(event: Event): HTMLAnchorElement | null {
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+  for (const node of path) {
+    if (node instanceof Element && node.matches?.('a[href]'))
+      return node as HTMLAnchorElement
+  }
+
+  return findAnchorElement(event.target)
+}
+
+/**
+ * Find the closest `<a>` element from an event target.
+ *
+ * The fallback for a caller with no event to hand. Prefer `findAnchorFromEvent`,
+ * which also sees through an open shadow root.
  */
 export function findAnchorElement(target: EventTarget | null): HTMLAnchorElement | null {
   if (!target || !(target instanceof Element))

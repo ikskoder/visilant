@@ -875,6 +875,67 @@ async function handleResetVisits() {
   return { success: true, removed }
 }
 
+/**
+ * Answer an iframe about itself.
+ *
+ * A frame keeps nothing: no settings, no lists, no verdict. It asks once, when
+ * somebody first touches it, and this is the whole answer – see
+ * src/contentScripts/frame.ts for why it is kept that thin.
+ */
+async function handleFrameVerdict(url: string, tabUrl?: string) {
+  // A frame the page wrote rather than fetched – `about:blank`, `srcdoc`, a
+  // blob – has no address of its own and belongs to the page that made it. Its
+  // events still never reach the top document, so it is still guarded, and the
+  // page is what its verdict is about.
+  const own = getHostname(url)
+  const judged = own && !isInternalPage(own) ? url : (tabUrl ?? '')
+  const hostname = getHostname(judged)
+
+  if (!hostname || isInternalPage(hostname)) {
+    return {
+      isSafe: true,
+      ignored: false,
+      guardPaste: false,
+      warn: false,
+      hostname: '',
+    }
+  }
+
+  const record = await getVisitCountLogic(judged)
+  return {
+    isSafe: checkIfSiteIsSafe({ count: record.count, activeDays: record.activeDays, firstSeen: record.firstSeen }),
+    ignored: record.ignored,
+    guardPaste: Boolean(appSettings.value.blockPasteOnUnfamiliar),
+    warn: Boolean(appSettings.value.showWarningNotification),
+    hostname,
+  }
+}
+
+/**
+ * Hand something an iframe caught to the document the user can actually see.
+ *
+ * A dialog drawn inside the frame would be clipped to the frame's own box, which
+ * for an advert or a payment widget is a couple of hundred pixels. `frameId: 0`
+ * is the top document of the same tab, which owns the whole viewport.
+ */
+async function sendToTopFrame<T>(tabId: number | undefined, type: string, data: any): Promise<T | null> {
+  if (tabId == null)
+    return null
+  try {
+    return await browser.tabs.sendMessage(tabId, { type, data }, { frameId: 0 }) as T
+  }
+  catch {
+    return null
+  }
+}
+
+/** What a handler is told about where the message came from. */
+interface MessageContext {
+  tabId?: number
+  /** The tab's top-level URL, which a frame with no address of its own needs. */
+  tabUrl?: string
+}
+
 // Centralized message handlers map
 const messageHandlers = {
   'get-visit-count': (data: any) => getVisitCountLogic(data.url),
@@ -892,6 +953,12 @@ const messageHandlers = {
     return { success: true }
   },
   'ignore-site': (data: any) => handleIgnoreSite(data.hostname, data.ignored !== false),
+  // What an iframe asks about itself, and the two things it can ask for
+  'frame-verdict': (data: any, ctx?: MessageContext) => handleFrameVerdict(data.url, ctx?.tabUrl),
+  'frame-warning': (data: any, ctx?: MessageContext) =>
+    sendToTopFrame(ctx?.tabId, 'frame-warning', data),
+  'frame-paste-intercept': async (data: any, ctx?: MessageContext) =>
+    (await sendToTopFrame<{ allowed: boolean }>(ctx?.tabId, 'frame-paste-intercept', data)) ?? { allowed: false },
   // The settings page asks for this rather than emptying storage itself – see
   // `handleResetVisits` for what else has to go with the records
   'reset-visits': () => handleResetVisits(),
@@ -900,7 +967,7 @@ const messageHandlers = {
   // context that can answer this is the one that would create the menu
   'get-platform': async () => ({ contextMenus: hasContextMenus() }),
   'show-notification': (data: any) => handleShowNotification(data.warningType),
-  'tampering-detected': (data: any, ctx?: { tabId?: number }) => handleTampering(ctx?.tabId, data?.url),
+  'tampering-detected': (data: any, ctx?: MessageContext) => handleTampering(ctx?.tabId, data?.url),
   'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain),
   'resolve-short-url': async (data: any) => {
     const cached = getCachedResolvedUrl(data.url)
@@ -931,7 +998,7 @@ const messageHandlers = {
 Object.entries(messageHandlers).forEach(([type, handler]) => {
   onMessage(type, async ({ data, sender }: any) => {
     await backgroundReady
-    return handler(data, { tabId: sender?.tabId })
+    return (handler as (data: any, ctx?: MessageContext) => Promise<any>)(data, { tabId: sender?.tabId })
   })
 })
 
@@ -944,7 +1011,10 @@ browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
   const handler = messageHandlers[message.type as keyof typeof messageHandlers]
   if (handler) {
     backgroundReady
-      .then(() => handler(message.data, { tabId: sender.tab?.id }))
+      .then(() => (handler as (data: any, ctx?: MessageContext) => Promise<any>)(
+        message.data,
+        { tabId: sender.tab?.id, tabUrl: sender.tab?.url },
+      ))
       .then(sendResponse)
     return true
   }
@@ -1001,10 +1071,16 @@ async function setupContextMenu() {
   })
 }
 
-// Send a message to a tab without throwing when no content script is present
+/**
+ * Send a message to a tab without throwing when no content script is present.
+ *
+ * Addressed to the top document rather than broadcast. Every frame now runs a
+ * script of its own, and a broadcast would put the same tooltip or dialog up
+ * once per frame on the page.
+ */
 async function sendToTabSafe(tabId: number, message: { type: string, data: any }): Promise<boolean> {
   try {
-    await browser.tabs.sendMessage(tabId, message)
+    await browser.tabs.sendMessage(tabId, message, { frameId: 0 })
     return true
   }
   catch {

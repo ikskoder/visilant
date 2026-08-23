@@ -9,14 +9,14 @@ import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
-import { checkDomainMismatch, clearVisitCache, extractDomainFromText, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
+import { checkDomainMismatch, clearVisitCache, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
-import { describePastePayload, isEditableTarget, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
+import { describePastePayload, editableTargetOf, isEditableEventTarget, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { resolveTooltipTrigger } from '~/logic/platform'
 import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, settings, settingsReady } from '~/logic/storage'
 import { applyHostStyles, createTamperWatch } from '~/logic/tamper-watch'
-import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
+import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningFrameHost, warningType } from '~/logic/ui-state'
 import { addCustomShortener, isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
 import { isTrackableHostname } from '~/logic/visit-stats'
 import App from './views/App.vue'
@@ -275,8 +275,10 @@ async function handleKeydown(event: KeyboardEvent) {
     return
   }
 
-  // Skip triggering warnings for any keys pressed with modifiers (Ctrl or Alt)
-  if (event.ctrlKey || event.altKey) {
+  // Skip triggering warnings for any keys pressed with a modifier. Meta belongs
+  // here as much as the other two: on macOS it is the menu key, so Cmd+F,
+  // Cmd+L and Cmd+R were all reported as somebody typing into the page.
+  if (event.ctrlKey || event.altKey || event.metaKey) {
     return
   }
 
@@ -316,6 +318,13 @@ async function handleKeydown(event: KeyboardEvent) {
 
   // If the pressed key is in the ignored list, do nothing.
   if (ignoredKeys.includes(event.key)) {
+    return
+  }
+
+  // The warning is about text going into a field. A site's own single-key
+  // shortcuts – `j` and `k` to move down a list, `/` to open a search – are not
+  // that, and warning about them turned the whole feature into noise.
+  if (!isEditableEventTarget(event)) {
     return
   }
 
@@ -435,12 +444,12 @@ async function handlePaste(event: ClipboardEvent) {
     verdictKnown: safetyLevel.value !== null && bootstrapState !== 'error',
     ignored: isIgnored.value,
     hasText: text.length > 0,
-    targetIsEditable: isEditableTarget(event.target),
+    targetIsEditable: isEditableEventTarget(event),
     alreadyAllowed: pasteAllowedOnThisPage.value,
   })) {
     event.preventDefault()
     event.stopImmediatePropagation()
-    await interceptPaste(event.target as HTMLElement, text, true)
+    await interceptPaste(editableTargetOf(event) ?? event.target as HTMLElement, text, true)
     return
   }
 
@@ -449,7 +458,7 @@ async function handlePaste(event: ClipboardEvent) {
     siteIsSafe: safetyLevel.value,
     ignored: isIgnored.value,
     hasText: text.length > 0,
-    targetIsEditable: isEditableTarget(event.target),
+    targetIsEditable: isEditableEventTarget(event),
     alreadyAllowed: pasteAllowedOnThisPage.value,
   })) {
     // Stopping propagation as well as the default is the point: a page with its
@@ -457,7 +466,7 @@ async function handlePaste(event: ClipboardEvent) {
     // cancelling only the default would be theatre rather than protection
     event.preventDefault()
     event.stopImmediatePropagation()
-    await interceptPaste(event.target as HTMLElement, text)
+    await interceptPaste(editableTargetOf(event) ?? event.target as HTMLElement, text)
     return
   }
 
@@ -490,6 +499,11 @@ async function handleCopyCut() {
  */
 async function handleBeforeInput(event: Event) {
   const kind = (event as InputEvent).inputType || ''
+
+  // `beforeinput` only fires on something editable, but a page can dispatch its
+  // own, and the check costs a walk of a path that is already in hand
+  if (!isEditableEventTarget(event))
+    return
 
   // Taking text out is not putting any in, and neither is undo or redo
   if (kind.startsWith('delete') || kind === 'historyUndo' || kind === 'historyRedo')
@@ -539,6 +553,17 @@ setOnTooltipHoverLeave(() => {
     linkTooltipData.value = null
   }, 300)
 })
+
+/**
+ * Which tooltip request is the current one.
+ *
+ * Everything after the first `await` in the functions below used to belong to
+ * whichever request finished last. A slow answer for link A could open a tooltip
+ * after the pointer had left it, or land on top of link B carrying A's facts and
+ * A's rectangle - the one shape of bug where a security tool says something
+ * perfectly true about the wrong address.
+ */
+let tooltipRequest = 0
 
 async function fetchLinkData(href: string, hostname: string) {
   // Check cache first
@@ -657,7 +682,13 @@ async function showLinkTooltipByUrl(url: string, opts?: { force?: boolean }) {
   if (!opts?.force && !isExternalLink(url, currentHostname))
     return
 
+  // Asked for by name rather than by hovering, so it takes the slot: a hover
+  // still in flight must not land on top of what the user actually asked about
+  const request = ++tooltipRequest
+
   const visitData = await fetchLinkData(url, hostname)
+  if (request !== tooltipRequest)
+    return
   const punycodeResult = getPunycodeInfo(hostname)
 
   const anchorRect = syntheticAnchorRect()
@@ -767,16 +798,24 @@ async function buildEmailTooltipData(
 }
 
 async function showEmailTooltip(anchor: HTMLAnchorElement) {
+  const request = ++tooltipRequest
   const data = await buildEmailTooltipData(anchor.href, anchor.textContent, getAnchorRect(anchor))
-  if (!data)
+
+  // The pointer has moved on, or something else claimed the tooltip while the
+  // recipients were being looked up
+  if (!data || request !== tooltipRequest || currentHoveredAnchor !== anchor || !anchor.isConnected)
     return
+
+  // Measured now rather than before the lookup: the page may have scrolled
+  data.anchorRect = getAnchorRect(anchor)
   linkTooltipData.value = data
   linkTooltipVisible.value = true
 }
 
 async function showEmailTooltipByAddress(addrOrMailto: string) {
+  const request = ++tooltipRequest
   const data = await buildEmailTooltipData(addrOrMailto, null, syntheticAnchorRect())
-  if (!data)
+  if (!data || request !== tooltipRequest)
     return
   linkTooltipData.value = data
   linkTooltipVisible.value = true
@@ -1124,7 +1163,15 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
   if (!isExternalLink(href, currentHostname))
     return
 
+  const request = ++tooltipRequest
+  /** Still the link this was asked about, and still on the page? */
+  const stillCurrent = () => request === tooltipRequest
+    && currentHoveredAnchor === anchor
+    && anchor.isConnected
+
   const visitData = await fetchLinkData(href, hostname)
+  if (!stillCurrent())
+    return
 
   // Check for domain mismatch (link text vs href)
   const linkText = anchor.textContent || ''
@@ -1134,12 +1181,18 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
   let mismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null = null
   if (mismatchResult.mismatch && mismatchResult.textDomain) {
     const textDomainData = await fetchLinkData(`https://${mismatchResult.textDomain}`, mismatchResult.textDomain)
+    if (!stillCurrent())
+      return
     mismatch = { textDomain: mismatchResult.textDomain, textDomainStats: textDomainData.stats, textDomainIsSafe: textDomainData.isSafe }
   }
 
   // Check for punycode/unicode
   const punycodeResult = getPunycodeInfo(hostname)
 
+  // Measured here, immediately before the tooltip is placed. Taken before the
+  // awaits above, this would be where the link was when the pointer arrived
+  // rather than where it is now, and a page that scrolled in between put the
+  // tooltip somewhere the link no longer is.
   const anchorRect = getAnchorRect(anchor)
 
   const shortUrlMode = settings.value.linkSafety.shortUrlMode
@@ -1295,7 +1348,7 @@ function setupLinkSafety() {
     if (trigger !== 'hover')
       return
 
-    const anchor = findAnchorElement(event.target)
+    const anchor = findAnchorFromEvent(event)
     if (!anchor || !anchor.href)
       return
 
@@ -1339,7 +1392,7 @@ function setupLinkSafety() {
     if (trigger !== 'hover')
       return
 
-    const anchor = findAnchorElement(event.target)
+    const anchor = findAnchorFromEvent(event)
     if (!anchor)
       return
 
@@ -1364,7 +1417,7 @@ function setupLinkSafety() {
     if (trigger !== 'click-left' || event.button !== 0)
       return
 
-    const anchor = findAnchorElement(event.target)
+    const anchor = findAnchorFromEvent(event)
     if (!anchor || !anchor.href)
       return
 
@@ -1718,8 +1771,80 @@ async function ensureTooltipUiMounted() {
     await mount(true)
 }
 
+/**
+ * Show a warning an iframe on this page raised.
+ *
+ * The frame has no UI of its own – a dialog inside a payment widget would be
+ * clipped to the widget – so it hands the fact over and this document draws it.
+ * The name shown is the frame's, because that is the site the box belongs to and
+ * the one the address bar does not mention.
+ */
+async function showFrameWarning(kind: 'input' | 'copy', frameHost: string) {
+  if (hasNotifiedOnThisPage.value || isIgnored.value)
+    return
+  if (kind === 'input' && !settings.value.showInputWarning)
+    return
+  if (kind === 'copy' && !settings.value.showCopyWarning)
+    return
+
+  await ensureTooltipUiMounted()
+  warningType.value = kind
+  warningFrameHost.value = frameHost
+  hasNotifiedOnThisPage.value = true
+  showWarning.value = true
+}
+
+/**
+ * Hold a paste an iframe caught, and answer it.
+ *
+ * Same dialog as a paste into this document, drawn about the frame's own site.
+ * The answer travels back so the frame knows whether to stop asking.
+ */
+async function showFramePasteIntercept(data: { hostname: string, status: 'unfamiliar' | 'settled' }): Promise<{ allowed: boolean }> {
+  await ensureTooltipUiMounted()
+
+  const facts = await fetchLinkData(`https://${data.hostname}`, data.hostname).catch(() => null)
+  const punycodeResult = getPunycodeInfo(data.hostname)
+
+  // A second dialog over the first would leave the first paste unanswered
+  if (pasteInterceptVisible.value)
+    return { allowed: false }
+
+  const answer = new Promise<boolean>((resolve) => {
+    pasteInterceptResolve.value = resolve
+  })
+
+  pasteInterceptData.value = {
+    domain: data.hostname,
+    stats: facts?.stats ?? { count: 0 },
+    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    // The payload stays in the frame. Only its shape would be worth showing and
+    // sending the text across for that is not worth what it is.
+    payload: describePastePayload(''),
+    status: data.status === 'unfamiliar' ? 'unfamiliar' : 'safe',
+    inFrame: true,
+  }
+  pasteInterceptVisible.value = true
+
+  const allowed = await answer
+  pasteInterceptResolve.value = null
+  return { allowed }
+}
+
 // Listen for context menu requests from background
-browser.runtime.onMessage.addListener((message: any) => {
+browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse: (response?: any) => void) => {
+  // Raised by an iframe on this page, which has no UI of its own
+  if (message.type === 'frame-warning' && message.data?.hostname) {
+    void showFrameWarning(message.data.kind === 'copy' ? 'copy' : 'input', message.data.hostname)
+    return undefined
+  }
+  if (message.type === 'frame-paste-intercept' && message.data?.hostname) {
+    // The only message here that answers. The frame is holding a cancelled paste
+    // and cannot stop holding it until the user has said something.
+    showFramePasteIntercept(message.data).then(sendResponse, () => sendResponse({ allowed: false }))
+    return true
+  }
+
   // Keep this listener synchronous (returning a Promise here would hijack the
   // response channel of unrelated webext-bridge messages)
   if (message.type === 'show-link-tooltip-at-cursor' && message.data?.url) {

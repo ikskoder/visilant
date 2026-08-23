@@ -120,3 +120,35 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 
   return element.isContentEditable
 }
+
+/**
+ * The same question asked of an event rather than of its target.
+ *
+ * A field inside a custom element's shadow root retargets: `event.target` is the
+ * host element, which is not editable and has no value, so the paste guard saw
+ * an ordinary click target and let the paste through. `composedPath()` is the
+ * list of nodes the event really passed through, and the field is in it.
+ *
+ * A closed shadow root is not in that list. Nothing a content script can do
+ * reaches inside one, which is a limitation rather than an oversight.
+ */
+export function isEditableEventTarget(event: Event): boolean {
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+  for (const node of path) {
+    if (isEditableTarget(node))
+      return true
+  }
+
+  return isEditableTarget(event.target)
+}
+
+/** The element an event was actually typed into, shadow roots included. */
+export function editableTargetOf(event: Event): HTMLElement | null {
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+  for (const node of path) {
+    if (isEditableTarget(node))
+      return node as HTMLElement
+  }
+
+  return isEditableTarget(event.target) ? event.target as HTMLElement : null
+}

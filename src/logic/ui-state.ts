@@ -7,6 +7,15 @@ import { ref } from 'vue'
 
 export const showWarning = ref(false)
 export const warningType = ref<'input' | 'copy'>('input')
+
+/**
+ * The frame the warning is about, when it did not come from this document.
+ *
+ * A form served in an iframe belongs to a different site from the page around
+ * it, and that is the whole reason the warning is worth reading: the address bar
+ * says one thing and the box the user is typing into belongs to another.
+ */
+export const warningFrameHost = ref<string | null>(null)
 export const safetyLevel = ref<boolean | null>(null)
 export const isIgnored = ref(false)
 export const hasNotifiedOnThisPage = ref(false)
@@ -140,6 +149,13 @@ export interface PasteInterceptData {
   payload: PastePayloadInfo
   /** Absent means `unfamiliar`, which is what this dialog used to be only for. */
   status?: PasteInterceptStatus
+  /**
+   * Set when the paste happened inside an iframe rather than in this document.
+   *
+   * The domain above is then the frame's, not the page's, and the difference is
+   * the point: the address bar says one site and the box says another.
+   */
+  inFrame?: boolean
 }
 
 export const pasteInterceptVisible = ref(false)
