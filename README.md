@@ -139,9 +139,10 @@ The extension triggers alerts (if enabled) only during specific interactions tha
 Visilant is open-source and operates locally within your browser:
 
 - **All data remains on your computer.** Your visit counts, your history, and every check Visilant performs stay on your device. There is no server behind the extension, no account, and no telemetry. Every analysis described above – visit counts, structural markers, resemblance to sites you know – runs locally against data you already have.
-- **Nothing is requested on your behalf without you asking.** Two features can cause a network request, and neither happens on its own:
+- **Nothing is requested on your behalf without you asking.** Three features can cause a network request, and none of them happens on its own:
   - **External lookups** offer links to third-party services. They are ordinary links, not integrations – Visilant sends nothing, and no service learns anything unless you choose to open it. Whichever one you open will, like any site you visit, see the domain you asked about and your IP address.
-  - **Shortened link resolution** requests the shortened link itself to find out where it leads. On its default setting this happens only when you press the button in the tooltip, and you can disable it entirely or let it resolve automatically.
+  - **Shortened link resolution** requests the shortened link itself to find out where it leads. On its default setting this happens only when you press the button in the tooltip. You can turn it off entirely, or set it to resolve on its own – on that setting the request goes out as soon as the check appears, without a press, which is the trade the setting is for.
+  - **Reading a QR code from a picture on a page** downloads that picture, because the code is in the image and the image is on the site's server. It happens only when you pick Visilant from the long-press menu on it. A picture you drop on the check page or paste into it is never downloaded – it is already on your device.
 - **Remote lists** (URL shorteners, public email services, disposable mail domains) come with a maintained source filled in, and each is fetched only when you press Update in the settings. Clearing a field turns that source off, and any URL of your own can go in its place. Nothing is fetched on a schedule or in the background.
 - The extension requests only the permissions necessary for proper operation:
 
