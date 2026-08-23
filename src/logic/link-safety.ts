@@ -86,8 +86,12 @@ export function extractDomainFromText(text: string): string | null {
   if (!trimmed || trimmed.length > 500)
     return null
 
-  // Must look like it contains a domain (at least one dot with valid TLD-like suffix)
-  const urlPattern = /^(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF-]+(?:\.[a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF-]+)*\.[a-zA-Z]{2,})(?:[/:?#].*)?$/
+  // Must look like it contains a domain (at least one dot with a TLD-like
+  // suffix). The last label allows the `xn--` form as well as plain letters: an
+  // international TLD written in ASCII has digits and hyphens in it, so
+  // `почта.xn--p1ai` used to match nothing at all and go unchecked - which is
+  // exactly the shape of name worth checking.
+  const urlPattern = /^(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF-]+(?:\.[a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF-]+)*\.(?:[a-zA-Z]{2,}|xn--[a-z0-9-]{2,}))(?:[/:?#].*)?$/
   const match = trimmed.match(urlPattern)
   return match ? match[1].toLowerCase() : null
 }

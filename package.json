@@ -28,7 +28,7 @@
     "pack:zip": "esno scripts/pack.ts chrome",
     "pack:crx": "crx pack extension -o ./extension.crx",
     "pack:xpi": "esno scripts/pack.ts firefox",
-    "pack:src": "rimraf source.zip && git archive --format=zip --output=source.zip HEAD",
+    "pack:src": "bash scripts/pack-src.sh",
     "start:chromium": "web-ext run --source-dir ./extension --target=chromium",
     "start:firefox": "LD_LIBRARY_PATH= web-ext run --source-dir ./extension --target=firefox-desktop",
     "start:firefox-android": "LD_LIBRARY_PATH= web-ext run --source-dir ./extension --target=firefox-android",

@@ -12,8 +12,23 @@ import { defineConfig } from 'vite'
 import packageJson from './package.json'
 import { isDev, port, r } from './scripts/utils'
 
+/**
+ * The oldest browsers this build compiles for.
+ *
+ * Named rather than left to whatever Vite's default happens to be, for two
+ * reasons. It is the same pair of numbers the manifest declares - Chrome 119 as
+ * `minimum_chrome_version`, Firefox 140 as `strict_min_version` - so what is
+ * compiled and what is promised cannot drift apart. And it takes the output out
+ * of the hands of a Vite upgrade, which matters for a project whose releases
+ * have to rebuild byte for byte.
+ */
+export const BUILD_TARGET = ['chrome119', 'firefox140']
+
 export const sharedConfig: UserConfig = {
   root: r('src'),
+  build: {
+    target: BUILD_TARGET,
+  },
   resolve: {
     alias: {
       '~/': `${r('src')}/`,
@@ -90,6 +105,9 @@ export default defineConfig(({ command }) => ({
     origin: `http://127.0.0.1:${port}`,
   },
   build: {
+    // Named here too: this object replaces `sharedConfig.build` rather than
+    // merging with it. See `BUILD_TARGET`.
+    target: BUILD_TARGET,
     watch: isDev
       ? {}
       : undefined,

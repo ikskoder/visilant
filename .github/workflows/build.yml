@@ -32,6 +32,25 @@ jobs:
       - name: Check out
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.1
 
+      # A tag names a version, and every artifact is named from `package.json`.
+      # Tagging `v3.0.1` on a tree that still says `3.0.0` published a release
+      # called one thing containing files called another, and the reproduce
+      # workflow then looked for a hash under a name nothing had.
+      - name: The tag is the version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          # Both shapes this repository has used: 3.0 and v3.0
+          if [ "$TAG" != "$version" ] && [ "$TAG" != "v$version" ]; then
+            echo "Tag $TAG does not name version $version from package.json." >&2
+            echo "Either move the tag or bump the version, but do not publish both." >&2
+            exit 1
+          fi
+          echo "Tag $TAG matches package.json version $version"
+
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
         with:
@@ -142,6 +161,10 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.1
+        with:
+          # `git archive` below needs the commit itself, and a shallow checkout
+          # of a tag is enough for that
+          fetch-depth: 1
 
       - name: Download build artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
@@ -149,13 +172,23 @@ jobs:
           path: downloads
           merge-multiple: true
 
+      # AMO asks for the source, and it has to be the source these artifacts were
+      # built from. It used to be made by hand with `git archive HEAD` on
+      # whatever tree happened to be checked out, and it was never hashed
+      # alongside the rest - so nothing tied it to the release it belongs to.
+      - name: Pack the source
+        run: |
+          set -euo pipefail
+          git archive --format=zip --output=source.zip "$GITHUB_SHA"
+
       - name: Assemble checksums
         run: |
           set -euo pipefail
           mkdir -p release
           cp downloads/*.xpi downloads/*.zip release/ 2>/dev/null || true
           cp downloads/SHA256SUMS-unpacked-* release/
-          ( cd release && sha256sum *.xpi *.zip ) > release/SHA256SUMS
+          cp source.zip release/
+          ( cd release && sha256sum *.xpi *.zip source.zip ) > release/SHA256SUMS
           cat release/SHA256SUMS
 
       - name: Publish

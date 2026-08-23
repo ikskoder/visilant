@@ -147,3 +147,21 @@ describe('collectMailtoRecipients', () => {
     expect(collectMailtoRecipients(null)).toEqual([])
   })
 })
+
+describe('international names written in ascii', () => {
+  // `xn--p1ai` is letters, digits and hyphens, and the pattern only allowed
+  // letters - so an address at an international domain matched nothing at all
+  // and was never read as an address. That is exactly the shape worth reading.
+  it('finds an address at a punycode domain', () => {
+    expect(extractEmailFromText('ivan@xn--80a1acny.xn--p1ai')).toBe('ivan@xn--80a1acny.xn--p1ai')
+  })
+
+  it('still finds an ordinary one, and stops where it should', () => {
+    expect(extractEmailFromText('write to a@example.com now')).toBe('a@example.com')
+  })
+
+  it('analyses a punycode address as an address', () => {
+    const result = analyzeEmailAddress('ivan@xn--80a1acny.xn--p1ai')
+    expect(result?.domain).toBe('xn--80a1acny.xn--p1ai')
+  })
+})

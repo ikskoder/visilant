@@ -463,27 +463,43 @@ onUnmounted(() => {
   }
 })
 
-watch(customShortenersText, async (newVal) => {
-  const list = newVal.split(/\n/).map(d => d.trim().toLowerCase()).filter(Boolean)
-  await browser.storage.local.set({ customShorteners: list })
-})
+/**
+ * How long a list waits after the last keystroke before it is stored.
+ *
+ * Every one of these writes goes out to every context: the service worker and
+ * every open tab are watching the same keys, and each of them rebuilds the whole
+ * runtime set from the new value. Typing a domain a character at a time made
+ * that happen once per character.
+ *
+ * Short enough that pressing Update straight after typing still finds the list
+ * stored, long enough that a word typed at speed is one write.
+ */
+const LIST_WRITE_DELAY_MS = 400
 
-watch(customPublicProvidersText, async (newVal) => {
-  const list = newVal.split(/\n/).map(d => d.trim().toLowerCase()).filter(Boolean)
-  await browser.storage.local.set({ [STORAGE_KEY_CUSTOM_PUBLIC]: list })
-})
+function watchList(text: Ref<string>, key: string, parse: (raw: string) => string[]) {
+  let timer: ReturnType<typeof setTimeout> | null = null
 
-watch(customDisposableText, async (newVal) => {
-  const list = newVal.split(/\n/).map(d => d.trim().toLowerCase()).filter(Boolean)
-  await browser.storage.local.set({ [STORAGE_KEY_CUSTOM_DISPOSABLE]: list })
-})
+  watch(text, (newVal) => {
+    if (timer !== null)
+      clearTimeout(timer)
+
+    timer = setTimeout(() => {
+      timer = null
+      void browser.storage.local.set({ [key]: parse(newVal) })
+    }, LIST_WRITE_DELAY_MS)
+  })
+}
+
+const asDomainLines = (raw: string) => raw.split(/\n/).map(d => d.trim().toLowerCase()).filter(Boolean)
+
+watchList(customShortenersText, 'customShorteners', asDomainLines)
+watchList(customPublicProvidersText, STORAGE_KEY_CUSTOM_PUBLIC, asDomainLines)
+watchList(customDisposableText, STORAGE_KEY_CUSTOM_DISPOSABLE, asDomainLines)
 
 // Mapping lines are stored as typed, separator and all – the parser is the one
 // place that decides what a line means
-watch(customMailSitesText, async (newVal) => {
-  const list = newVal.split(/\n/).map(line => line.trim()).filter(Boolean)
-  await browser.storage.local.set({ [STORAGE_KEY_CUSTOM_MAIL_SITES]: list })
-})
+watchList(customMailSitesText, STORAGE_KEY_CUSTOM_MAIL_SITES, raw =>
+  raw.split(/\n/).map(line => line.trim()).filter(Boolean))
 
 const publicListUrls = computed(() => parseListUrls(settings.value.publicEmailListUrl || ''))
 const disposableListUrls = computed(() => parseListUrls(settings.value.disposableEmailListUrl || ''))

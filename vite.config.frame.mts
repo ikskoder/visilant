@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import packageJson from './package.json'
 import { isDev, r } from './scripts/utils'
-import { sharedConfig } from './vite.config.mjs'
+import { BUILD_TARGET, sharedConfig } from './vite.config.mjs'
 
 /**
  * The iframe guard, bundled on its own.
@@ -19,6 +19,9 @@ export default defineConfig({
     'process.env.NODE_ENV': JSON.stringify(isDev ? 'development' : 'production'),
   },
   build: {
+    // Named here too: a spread of `sharedConfig` is overwritten by this object,
+    // so the shared target would not reach this bundle. See `BUILD_TARGET`.
+    target: BUILD_TARGET,
     watch: isDev
       ? {}
       : undefined,

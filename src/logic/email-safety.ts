@@ -164,7 +164,10 @@ export function collectMailtoRecipients(parsed: { addresses: string[], params: {
   })
 }
 
-const EMAIL_IN_TEXT_PATTERN = /[^\s@<>,;:"'()[\]]+@[^\s@<>,;:"'()[\]]+\.\p{L}{2,}/u
+// The final label allows the `xn--` form as well as letters. An international
+// domain written in ASCII has digits and hyphens in its last label, so an
+// address at one used to match nothing here and was never read as an address.
+const EMAIL_IN_TEXT_PATTERN = /[^\s@<>,;:"'()[\]]+@[^\s@<>,;:"'()[\]]+\.(?:xn--[a-z0-9-]{2,}|\p{L}{2,})(?![\w-])/u
 
 /**
  * Find the first email-looking substring in free-form text.

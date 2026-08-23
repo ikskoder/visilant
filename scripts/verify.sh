@@ -62,10 +62,50 @@ else
   exit 2
 fi
 
-# unzip reads a CRX happily: it scans for the central directory and ignores the
-# signature header Chrome puts in front of it.
+# A CRX is a signature header with a zip behind it. `unzip` does find the central
+# directory anyway, but it says so with a warning and exit code 1 – and under
+# `set -e` that ended the script before a single file had been compared. So the
+# header is measured and the zip behind it is handed over on its own.
+crx_zip_offset() {
+  local file="$1"
+  [ "$(head -c 4 "$file")" = "Cr24" ] || { echo 0; return 0; }
+
+  local version
+  version=$(od -An -tu4 -j 4 -N 4 --endian=little "$file" | tr -d '[:space:]')
+  case "$version" in
+    3)
+      # Cr24, version, header length, then that many bytes of header
+      local header
+      header=$(od -An -tu4 -j 8 -N 4 --endian=little "$file" | tr -d '[:space:]')
+      echo $((12 + header))
+      ;;
+    2)
+      # Cr24, version, key length, signature length, then both
+      local keylen siglen
+      keylen=$(od -An -tu4 -j 8 -N 4 --endian=little "$file" | tr -d '[:space:]')
+      siglen=$(od -An -tu4 -j 12 -N 4 --endian=little "$file" | tr -d '[:space:]')
+      echo $((16 + keylen + siglen))
+      ;;
+    *)
+      echo "Unknown CRX version: $version" >&2
+      return 1
+      ;;
+  esac
+}
+
+archive="$package"
+offset=$(crx_zip_offset "$package")
+if [ "$offset" -gt 0 ]; then
+  echo "CRX container: skipping $offset byte(s) of signature header"
+  archive="$work/payload.zip"
+  tail -c "+$((offset + 1))" "$package" > "$archive"
+fi
+
 mkdir -p "$work/downloaded"
-unzip -qq -o "$package" -d "$work/downloaded"
+if ! unzip -qq -o "$archive" -d "$work/downloaded"; then
+  echo "Could not read $package as a zip archive." >&2
+  exit 2
+fi
 
 hash_tree() {
   ( cd "$1" && find . -type f | LC_ALL=C sort | xargs -r sha256sum ) \

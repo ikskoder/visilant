@@ -23,6 +23,10 @@ on:
       expected:
         description: sha256 of the published archive (optional – left empty, the release asset is fetched and compared)
         required: false
+      source_repository:
+        description: Where the published release lives. A fork has no releases of its own, so this has to name the original.
+        required: true
+        default: ikskoder/visilant
   schedule:
     # Weekly, so a build that stops reproducing is noticed without anyone
     # remembering to check.
@@ -43,11 +47,16 @@ jobs:
         id: target
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+          # Where the releases are. In a fork this is not the fork: it has no
+          # releases of its own, so every lookup used to come back empty - and
+          # with the error swallowed, the run went green having verified nothing.
+          # That is the one outcome this workflow must never have.
+          GH_REPO: ${{ inputs.source_repository || 'ikskoder/visilant' }}
           INPUT_REF: ${{ inputs.ref }}
           INPUT_TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
+          echo "Releases are read from $GH_REPO"
           ref="$INPUT_REF"
           if [ -z "$ref" ]; then
             ref=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
@@ -59,9 +68,7 @@ jobs:
           fi
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "target=${INPUT_TARGET:-firefox}" >> "$GITHUB_OUTPUT"
-          # A scheduled run exists to notice a build that stopped reproducing, so
-          # anything short of an actual comparison is a failure for it
-          echo "must_compare=${{ github.event_name == 'schedule' }}" >> "$GITHUB_OUTPUT"
+          echo "source_repo=$GH_REPO" >> "$GITHUB_OUTPUT"
 
       - name: Check out ${{ steps.target.outputs.ref }}
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.1
@@ -83,9 +90,9 @@ jobs:
       - name: Compare
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ steps.target.outputs.source_repo }}
           REF: ${{ steps.target.outputs.ref }}
           EXPECTED: ${{ inputs.expected }}
-          MUST_COMPARE: ${{ steps.target.outputs.must_compare }}
         run: |
           set -euo pipefail
           archive=$(find result/ -maxdepth 1 \( -name '*.xpi' -o -name '*.zip' \) | head -n1)
@@ -93,21 +100,33 @@ jobs:
           echo "Built $(basename "$archive")"
           echo "  sha256: $built"
 
+          # A tag is a released version, and a released version has a published
+          # hash. Failing to find one means the lookup went wrong, not that there
+          # is nothing to check - so it is an error rather than a shrug. The
+          # download error used to be swallowed entirely.
+          is_tag=false
+          if [ -n "$(git tag --list "$REF")" ]; then
+            is_tag=true
+          fi
+
           expected="$EXPECTED"
-          if [ -z "$expected" ] && [ -n "$(git tag --list "$REF")" ]; then
-            gh release download "$REF" --pattern SHA256SUMS --dir published || true
-            if [ -f published/SHA256SUMS ]; then
-              expected=$(awk -v f="$(basename "$archive")" '$2 == f { print $1 }' published/SHA256SUMS)
-              echo "Published sha256 for $REF: ${expected:-not listed}"
+          if [ -z "$expected" ] && [ "$is_tag" = "true" ]; then
+            if ! gh release download "$REF" --pattern SHA256SUMS --dir published; then
+              echo "Could not download SHA256SUMS for $REF from $GH_REPO." >&2
+              exit 1
             fi
+            expected=$(awk -v f="$(basename "$archive")" '$2 == f { print $1 }' published/SHA256SUMS)
+            echo "Published sha256 for $REF: ${expected:-not listed}"
           fi
 
           if [ -z "$expected" ]; then
-            if [ "$MUST_COMPARE" = "true" ]; then
-              echo "No published hash for $REF – nothing was verified." >&2
+            if [ "$is_tag" = "true" ]; then
+              echo "$REF is a released tag but no published hash names $(basename "$archive") – nothing was verified." >&2
               exit 1
             fi
-            echo "Nothing to compare against – recording the hash only."
+            # A branch or a bare commit has nothing published to compare with,
+            # which is the one case where recording the hash is the whole job
+            echo "$REF is not a released tag – recording the hash only."
             exit 0
           fi
 

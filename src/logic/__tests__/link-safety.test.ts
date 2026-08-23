@@ -373,3 +373,13 @@ describe('checkDomainMismatch and where one site ends', () => {
     expect(checkDomainMismatch('paypa​l.com', 'evil.net').textDomain).toBe('paypal.com')
   })
 })
+
+describe('a domain written in punycode', () => {
+  it('is extracted from text', () => {
+    expect(extractDomainFromText('xn--80a1acny.xn--p1ai')).toBe('xn--80a1acny.xn--p1ai')
+  })
+
+  it('is extracted from a full url', () => {
+    expect(extractDomainFromText('https://xn--80a1acny.xn--p1ai/path')).toBe('xn--80a1acny.xn--p1ai')
+  })
+})

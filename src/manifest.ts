@@ -37,6 +37,19 @@ export async function getManifest() {
         strict_min_version: '142.0',
       },
     },
+    // The oldest Chrome this build actually works on.
+    //
+    // Without it any MV3 Chrome installed the extension and then broke in
+    // places: `storage.session`, which the tampering alarm lives in, arrived in
+    // 102, `AbortSignal.timeout`, which every bounded fetch uses, in 103, and
+    // `match_origin_as_fallback` on the frame guard in 119. A browser that is
+    // told it is not compatible is a far better outcome than one that installs
+    // something half of which silently does nothing.
+    //
+    // Firefox is pinned in `browser_specific_settings` above, and the build
+    // target in `sharedConfig` is set to the same two numbers - so what is
+    // compiled and what is declared cannot drift apart.
+    ...(isFirefox ? {} : { minimum_chrome_version: '119' }),
     action: {
       // Every size that ships, so the browser picks rather than scales. A single
       // file left it resampling one bitmap for the toolbar, the overflow menu
