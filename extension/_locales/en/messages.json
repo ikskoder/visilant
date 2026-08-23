@@ -1574,5 +1574,33 @@
   "emailRecipientUnfamiliar": {
     "message": "not a site you know",
     "description": "Marker next to a mailto recipient whose domain fails the familiarity checks"
+  },
+  "pasteInterceptCheckingTitle": {
+    "message": "Checking this site",
+    "description": "Title of the paste dialog while the site check is still running"
+  },
+  "pasteInterceptCheckingMessage": {
+    "message": "Your paste is being held for a moment while this site is checked. Nothing has been inserted yet.",
+    "description": "Body of the paste dialog while the site check is still running"
+  },
+  "pasteInterceptSafeTitle": {
+    "message": "This site is one you know",
+    "description": "Title of the paste dialog when the check came back familiar"
+  },
+  "pasteInterceptSafeMessage": {
+    "message": "The paste was held while this site was checked, so nothing was inserted. Paste again to insert it.",
+    "description": "Body of the paste dialog when the check came back familiar"
+  },
+  "pasteInterceptErrorTitle": {
+    "message": "This site could not be checked",
+    "description": "Title of the paste dialog when the site check did not finish"
+  },
+  "pasteInterceptErrorMessage": {
+    "message": "Nothing was inserted. The extension could not reach its own background just now, so it has nothing to tell you about this site. Reload the page to try again, or paste anyway if you know where you are.",
+    "description": "Body of the paste dialog when the site check did not finish"
+  },
+  "pasteInterceptUnderstood": {
+    "message": "Got it",
+    "description": "Button that closes the paste dialog when there is nothing to decide"
   }
 }

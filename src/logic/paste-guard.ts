@@ -73,6 +73,36 @@ export function shouldInterceptPaste(options: {
     && options.targetIsEditable
 }
 
+/**
+ * Should this paste be held because there is no verdict yet?
+ *
+ * The verdict for a page arrives a moment after the page does, and a paste made
+ * in that moment used to go straight through: the guard asked for a strict
+ * `false` and got `null`. That is the opposite of what the setting says – it was
+ * switched on precisely to stop a secret going into a site the user has not
+ * looked at, and the seconds right after a page opens are when that happens.
+ *
+ * Holding costs a cancelled paste on a site that turns out to be familiar. The
+ * dialog says so and the user pastes again, which is the same thing they already
+ * do after confirming – nothing here ever inserts text.
+ */
+export function shouldHoldPasteUndecided(options: {
+  enabled: boolean
+  /** Whether the page has been judged at all – either verdict counts. */
+  verdictKnown: boolean
+  ignored: boolean
+  hasText: boolean
+  targetIsEditable: boolean
+  alreadyAllowed: boolean
+}): boolean {
+  return options.enabled
+    && !options.verdictKnown
+    && !options.alreadyAllowed
+    && !options.ignored
+    && options.hasText
+    && options.targetIsEditable
+}
+
 /** Can text be typed into this element at all? */
 export function isEditableTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null

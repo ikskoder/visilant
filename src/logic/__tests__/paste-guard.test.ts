@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describePastePayload, shouldInterceptPaste } from '../paste-guard'
+import { describePastePayload, shouldHoldPasteUndecided, shouldInterceptPaste } from '../paste-guard'
 
 describe('shouldInterceptPaste', () => {
   const base = {
@@ -75,5 +75,44 @@ describe('shouldInterceptPaste, once confirmed', () => {
       targetIsEditable: true,
       alreadyAllowed: true,
     })).toBe(false)
+  })
+})
+
+describe('shouldHoldPasteUndecided', () => {
+  const base = {
+    enabled: true,
+    verdictKnown: false,
+    ignored: false,
+    hasText: true,
+    targetIsEditable: true,
+    alreadyAllowed: false,
+  }
+
+  // The window this closes: a page opens, the verdict is still on its way, and
+  // the user pastes a password into it. The guard asked for a strict `false`
+  // and got `null`, so the paste went straight through.
+  it('holds a paste made before the page has been judged', () => {
+    expect(shouldHoldPasteUndecided(base)).toBe(true)
+  })
+
+  it('lets a paste through once there is a verdict, whichever it is', () => {
+    expect(shouldHoldPasteUndecided({ ...base, verdictKnown: true })).toBe(false)
+  })
+
+  it('does nothing when the guard is off', () => {
+    expect(shouldHoldPasteUndecided({ ...base, enabled: false })).toBe(false)
+  })
+
+  it('leaves an ignored site alone, which is the user decision', () => {
+    expect(shouldHoldPasteUndecided({ ...base, ignored: true })).toBe(false)
+  })
+
+  it('does not interrupt a paste that cannot leak anything', () => {
+    expect(shouldHoldPasteUndecided({ ...base, targetIsEditable: false })).toBe(false)
+    expect(shouldHoldPasteUndecided({ ...base, hasText: false })).toBe(false)
+  })
+
+  it('stops asking once the user has confirmed a paste on this page', () => {
+    expect(shouldHoldPasteUndecided({ ...base, alreadyAllowed: true })).toBe(false)
   })
 })

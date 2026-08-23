@@ -4,17 +4,17 @@ import type { Settings } from '~/logic/storage'
 import type { TamperWatch } from '~/logic/tamper-watch'
 import type { CheckPanelData, DomainFamilyInfo, EmailRecipientInfo, LinkTooltipData, RawPayloadInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
-import { createApp, watchEffect } from 'vue'
+import { createApp, watch, watchEffect } from 'vue'
 import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
-import { checkDomainMismatch, extractDomainFromText, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
+import { checkDomainMismatch, clearVisitCache, extractDomainFromText, findAnchorElement, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
-import { describePastePayload, isEditableTarget, shouldInterceptPaste } from '~/logic/paste-guard'
+import { describePastePayload, isEditableTarget, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { resolveTooltipTrigger } from '~/logic/platform'
-import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, settings } from '~/logic/storage'
+import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, settings, settingsReady } from '~/logic/storage'
 import { applyHostStyles, createTamperWatch } from '~/logic/tamper-watch'
 import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
 import { addCustomShortener, isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
@@ -76,8 +76,38 @@ function generateSecureId() {
   return id
 }
 
+/**
+ * How far this tab has got in working out where it is.
+ *
+ * `safetyLevel` alone could not say the difference between "not judged yet" and
+ * "will never be judged": both read as `null`, and every guard below treated
+ * that as nothing to warn about. A page that killed the bootstrap, or a
+ * background that would not wake, therefore looked exactly like a page that had
+ * just been checked and found familiar.
+ */
+type BootstrapState = 'initializing' | 'ready' | 'error'
+let bootstrapState: BootstrapState = 'initializing'
+
+/** Resolves once `safetyLevel` holds a verdict, or once it is known it never will. */
+let verdictSettled: Promise<void> = Promise.resolve()
+
+/**
+ * A keystroke or a copy that happened before this page had been judged.
+ *
+ * Typing cannot be held the way a paste can, so the warning it deserves is owed
+ * rather than lost: if the verdict turns out to be unfamiliar, it is raised as
+ * soon as the page is mounted. Without this, everything typed in the first
+ * moment of a page went unremarked and the warning only appeared if the user
+ * happened to type again afterwards.
+ */
+let warningOwedFor: 'input' | 'copy' | null = null
+
+function noteUndecidedActivity(type: 'input' | 'copy') {
+  warningOwedFor ??= type
+}
+
 // Check if site is safe based on visit count
-async function checkSiteSafety(url: string): Promise<boolean> {
+async function checkSiteSafety(url: string, settingsArrived?: Promise<void>): Promise<boolean> {
   // Dotless hostnames (localhost, intranet names) are deliberately never counted,
   // so their visit count is permanently 0. Reading that as "unfamiliar" would
   // warn about them forever with no way for the user to teach it otherwise, which
@@ -94,7 +124,11 @@ async function checkSiteSafety(url: string): Promise<boolean> {
     return true
   }
 
-  const response = await sendMessageSafe<VisitCountResponse>('get-visit-count', { url })
+  // Both halves of the verdict are asked for together. Waiting for the settings
+  // before even sending this doubled the window in which the page was loaded,
+  // the user was typing, and nothing had been judged yet.
+  const visits = sendMessageSafe<VisitCountResponse>('get-visit-count', { url })
+  const [response] = await Promise.all([visits, settingsArrived ?? Promise.resolve()])
   if (!response) {
     safetyLevel.value = true
     return true // Default to safe if no response
@@ -132,29 +166,40 @@ async function loadPlatformCapabilities() {
   }
 }
 
-// Load settings from storage
-async function loadSettings() {
+/**
+ * The settings, from the background if it answers and from storage if it does not.
+ *
+ * The background is asked first because it is the one context that has run the
+ * migrations. When it cannot be reached the ref reads `storage.sync` itself,
+ * which is the same value from the same place – so a background that will not
+ * wake costs the migrations, not the settings.
+ */
+async function loadSettingsSnapshot(): Promise<void> {
   try {
-    // Request settings from background script
     const settingsData = await sendMessageSafe<Settings>('get-settings', {})
     if (settingsData) {
       // Taken as a snapshot, not assigned: assigning would save it straight back
       applySettingsSnapshot(settingsData)
+      return
     }
-    // Load user-defined and remotely fetched shortener domains
-    await loadShortenersFromStorage()
-    // Load public/disposable email-domain lists for address classification
-    await loadEmailListsFromStorage()
-    // Answered before the link-safety setup below reads it
-    await loadPlatformCapabilities()
   }
   catch (error) {
-    console.error('Failed to load settings:', error)
+    console.error('Visilant: the background did not answer for the settings', error)
   }
-  // Ensure settings are initialized
+
+  await settingsReady()
   if (!settings.value)
     applySettingsSnapshot(defaultSettings)
-  return settings.value
+}
+
+/** The lists and the platform answer, none of which the verdict waits for. */
+async function loadClassifiers(): Promise<void> {
+  // Load user-defined and remotely fetched shortener domains
+  await loadShortenersFromStorage()
+  // Load public/disposable email-domain lists for address classification
+  await loadEmailListsFromStorage()
+  // Answered before the link-safety setup below reads it
+  await loadPlatformCapabilities()
 }
 
 // Show notifications based on user preferences
@@ -223,9 +268,10 @@ async function handleKeydown(event: KeyboardEvent) {
   // Check for copy/cut key combinations (Ctrl+C or Ctrl+X)
   if (event.ctrlKey && (event.key === 'c' || event.key === 'C' || event.key === 'x' || event.key === 'X')) {
     // For copy/cut operations, use the copy notification type instead of input
-    if (safetyLevel.value === false && settings.value?.showWarningNotification) {
+    if (safetyLevel.value === false && settings.value?.showWarningNotification)
       await showNotifications('copy')
-    }
+    else if (safetyLevel.value === null)
+      noteUndecidedActivity('copy')
     return
   }
 
@@ -274,9 +320,10 @@ async function handleKeydown(event: KeyboardEvent) {
   }
 
   // Trigger notification if conditions are met.
-  if (safetyLevel.value === false && settings.value?.showWarningNotification) {
+  if (safetyLevel.value === false && settings.value?.showWarningNotification)
     await showNotifications('input')
-  }
+  else if (safetyLevel.value === null)
+    noteUndecidedActivity('input')
 }
 
 /**
@@ -288,35 +335,114 @@ async function handleKeydown(event: KeyboardEvent) {
  * simply stops the blocking, and the user's next paste is an ordinary paste that
  * the extension does not touch at all.
  */
-async function interceptPaste(target: HTMLElement, text: string) {
+/**
+ * How long a held paste waits for a verdict before giving up on getting one.
+ *
+ * The paste is already cancelled by then, so this is not a deadline on the
+ * protection – it is the point at which the dialog stops saying "checking" and
+ * starts saying it could not check.
+ */
+const PASTE_VERDICT_TIMEOUT_MS = 5000
+
+async function interceptPaste(target: HTMLElement, text: string, undecided = false) {
   const hostname = window.location.hostname
-  const visits = await sendMessageSafe<VisitCountResponse>('get-visit-count', { url: window.location.href })
   const punycodeResult = getPunycodeInfo(hostname)
+  const punycode = punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null
+  const payload = describePastePayload(text)
 
   await ensureTooltipUiMounted()
-  pasteInterceptData.value = {
-    domain: hostname,
-    stats: { count: visits?.count || 0, activeDays: visits?.activeDays, firstSeen: visits?.firstSeen },
-    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
-    payload: describePastePayload(text),
-  }
 
-  const allowed = await new Promise<boolean>((resolve) => {
-    pasteInterceptResolve.value = resolve
-    pasteInterceptVisible.value = true
+  // One resolver, claimed before the dialog goes up. A second paste arriving
+  // mid-dialog used to overwrite it, leaving the first one waiting forever on a
+  // promise nobody could settle.
+  let answered = false
+  const answer = new Promise<boolean>((resolve) => {
+    pasteInterceptResolve.value = (allowed: boolean) => {
+      answered = true
+      resolve(allowed)
+    }
   })
 
-  if (allowed)
-    pasteAllowedOnThisPage.value = true
+  try {
+    if (undecided) {
+      // The paste has already been stopped, so the wait has to be on screen. A
+      // field that silently stays empty is the outcome this replaces.
+      pasteInterceptData.value = { domain: hostname, stats: { count: 0 }, punycode, payload, status: 'checking' }
+      pasteInterceptVisible.value = true
 
-  // Either way the user is done with the dialog and wants to be back in the field
-  target.focus({ preventScroll: true })
+      await Promise.race([
+        verdictSettled,
+        answer,
+        new Promise(resolve => setTimeout(resolve, PASTE_VERDICT_TIMEOUT_MS)),
+      ])
+    }
+
+    if (!answered) {
+      const visits = await sendMessageSafe<VisitCountResponse>('get-visit-count', { url: window.location.href })
+        .catch(() => null)
+
+      // Whatever the verdict turned out to be, the dialog says so rather than
+      // vanishing: the text was not inserted either way and the user has to know
+      const status = safetyLevel.value === false
+        ? 'unfamiliar'
+        : safetyLevel.value === true ? 'safe' : 'error'
+
+      pasteInterceptData.value = {
+        domain: hostname,
+        stats: { count: visits?.count || 0, activeDays: visits?.activeDays, firstSeen: visits?.firstSeen },
+        punycode,
+        payload,
+        status,
+      }
+      pasteInterceptVisible.value = true
+    }
+
+    const allowed = await answer
+    if (allowed)
+      pasteAllowedOnThisPage.value = true
+  }
+  catch (error) {
+    // Nothing here may end with the dialog gone and the paste unexplained
+    console.error('Visilant: the paste dialog failed', error)
+    pasteInterceptVisible.value = false
+  }
+  finally {
+    pasteInterceptResolve.value = null
+    // Either way the user is done with the dialog and wants to be back in the field
+    target.focus({ preventScroll: true })
+  }
 }
 
 // Handle paste event
 async function handlePaste(event: ClipboardEvent) {
   const current = settings.value || defaultSettings
   const text = event.clipboardData?.getData('text/plain') || ''
+
+  // A dialog is already up over an earlier paste. Cancelling this one keeps the
+  // two from racing for the same resolver, and it is the safe half of the race:
+  // the user is being asked about this very page.
+  if (pasteInterceptVisible.value && current.blockPasteOnUnfamiliar) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    return
+  }
+
+  // The guard is on and this page has not been judged. Held rather than let
+  // through: the whole point is the paste that happens seconds after the page
+  // loaded, which is exactly when the verdict is still in flight.
+  if (shouldHoldPasteUndecided({
+    enabled: Boolean(current.blockPasteOnUnfamiliar),
+    verdictKnown: safetyLevel.value !== null && bootstrapState !== 'error',
+    ignored: isIgnored.value,
+    hasText: text.length > 0,
+    targetIsEditable: isEditableTarget(event.target),
+    alreadyAllowed: pasteAllowedOnThisPage.value,
+  })) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    await interceptPaste(event.target as HTMLElement, text, true)
+    return
+  }
 
   if (shouldInterceptPaste({
     enabled: Boolean(current.blockPasteOnUnfamiliar),
@@ -343,6 +469,8 @@ async function handlePaste(event: ClipboardEvent) {
 async function handleCopyCut() {
   if (safetyLevel.value === false && settings.value?.showWarningNotification)
     await showNotifications('copy')
+  else if (safetyLevel.value === null)
+    noteUndecidedActivity('copy')
 }
 
 // Register listeners immediately with capture: true to prevent blocking
@@ -374,6 +502,8 @@ async function handleBeforeInput(event: Event) {
 
   if (safetyLevel.value === false && settings.value?.showWarningNotification)
     await showNotifications('input')
+  else if (safetyLevel.value === null)
+    noteUndecidedActivity('input')
 }
 
 window.addEventListener('keydown', handleKeydown, true)
@@ -1310,6 +1440,10 @@ function setupLinkSafety() {
 
 let app: ReturnType<typeof createApp> | null = null
 let container: HTMLElement | null = null
+// Kept so the tamper watch can be started or stopped after the fact, when the
+// exclusion list changes in a tab that is already open
+let shadowRoot: ShadowRoot | HTMLElement | null = null
+let guardedNodes: Element[] = []
 let tamperWatch: TamperWatch | null = null
 let stopUiVisibilityWatch: (() => void) | null = null
 let isMounting = false
@@ -1318,6 +1452,96 @@ let isMounting = false
 // that rips the container out in the moments before Vue finishes mounting is
 // exactly the page worth catching.
 let isSelfRemoving = false
+
+/**
+ * Start the tamper watch on the UI that is already there.
+ *
+ * Its own function rather than part of the mount, so taking a site out of the
+ * exclusion list reaches a tab that is already open. Before, the decision was
+ * made once at mount and the tab kept it until it was reloaded.
+ */
+function startTamperWatch() {
+  if (tamperWatch || !container || !shadowRoot)
+    return
+
+  tamperWatch = createTamperWatch({
+    container,
+    shadow: shadowRoot,
+    guardedNodes,
+    isSelfRemoving: () => isSelfRemoving,
+    onTamper: (reason) => {
+      sendMessageSafe('tampering-detected', { reason, url: window.location.href })
+    },
+  })
+}
+
+/** Follow the exclusion list, in this tab, now rather than after a reload. */
+function applyTamperingSetting() {
+  const excluded = isAntiTamperingExcluded(window.location.hostname)
+
+  if (excluded && tamperWatch) {
+    tamperWatch.stop()
+    tamperWatch = null
+    if (stopUiVisibilityWatch) {
+      stopUiVisibilityWatch()
+      stopUiVisibilityWatch = null
+    }
+    return
+  }
+
+  if (!excluded && !tamperWatch && container) {
+    startTamperWatch()
+    stopUiVisibilityWatch ??= watchEffect(() => {
+      const anythingShowing = showWarning.value
+        || linkTooltipVisible.value
+        || checkPanelVisible.value
+        || linkInterceptVisible.value
+        || pasteInterceptVisible.value
+      tamperWatch?.setUiVisible(anythingShowing)
+    })
+  }
+}
+
+/**
+ * Take a settings change into use without waiting for a reload.
+ *
+ * Every one of these used to be read once, at document start, and kept for the
+ * life of the tab: the trigger, the scope, the hover delay, the exclusion list
+ * and the familiarity rules the verdict was reached under. Turning the link
+ * check off left it intercepting clicks until the page was reloaded, and raising
+ * a threshold left the page and every cached tooltip on the old verdict while
+ * the settings page next door already showed the new one.
+ */
+async function applySettingsChange() {
+  // Every entry in it is a verdict reached under the rules as they were
+  clearVisitCache()
+
+  verdictSettled = checkSiteSafety(window.location.href)
+    .then(() => {
+      bootstrapState = 'ready'
+    })
+    .catch(() => {
+      bootstrapState = 'error'
+    })
+  await verdictSettled
+
+  // Anything on screen was drawn under the old rules too
+  if (linkTooltipVisible.value) {
+    linkTooltipVisible.value = false
+    linkTooltipData.value = null
+  }
+
+  if (container) {
+    linkSafetyCleanup?.()
+    linkSafetyCleanup = null
+    setupLinkSafety()
+    applyTamperingSetting()
+  }
+
+  // A page that skipped mounting may need the UI now – a warning that was off
+  // when this page loaded, or a link check that has just been switched on
+  await mount()
+}
 
 async function mount(force = false) {
   if (isMounting || container)
@@ -1376,21 +1600,15 @@ async function mount(force = false) {
     const shadowDOM = container.attachShadow?.({ mode: __DEV__ ? 'open' : 'closed' }) || container
     shadowDOM.appendChild(styleEl)
     shadowDOM.appendChild(root)
+    shadowRoot = shadowDOM
+    guardedNodes = [root, styleEl]
 
     const tamperingEnabled = !isAntiTamperingExcluded(hostname)
 
     if (tamperingEnabled) {
       // Start watching BEFORE appending, so a page that rips the container out
       // the instant it appears is caught along with the patient ones
-      tamperWatch = createTamperWatch({
-        container,
-        shadow: shadowDOM,
-        guardedNodes: [root, styleEl],
-        isSelfRemoving: () => isSelfRemoving,
-        onTamper: (reason) => {
-          sendMessageSafe('tampering-detected', { reason })
-        },
-      })
+      startTamperWatch()
     }
 
     document.body.appendChild(container)
@@ -1399,7 +1617,7 @@ async function mount(force = false) {
       // Immediate verification, in case the append itself was undone
       const problem = tamperWatch?.verify()
       if (problem)
-        sendMessageSafe('tampering-detected', { reason: problem })
+        sendMessageSafe('tampering-detected', { reason: problem, url: window.location.href })
     }
 
     app = createApp(App)
@@ -1409,7 +1627,7 @@ async function mount(force = false) {
     // The hit test for an element laid over our panel only makes sense while a
     // panel is on screen, and that is also the only time being covered matters
     if (tamperingEnabled) {
-      stopUiVisibilityWatch = watchEffect(() => {
+      stopUiVisibilityWatch ??= watchEffect(() => {
         const anythingShowing = showWarning.value
           || linkTooltipVisible.value
           || checkPanelVisible.value
@@ -1437,10 +1655,60 @@ async function mount(force = false) {
   // by the lists it started with until it is reloaded.
   watchListStorage()
 
-  // Initialize settings and check safety immediately
-  await loadSettings()
-  await checkSiteSafety(window.location.href)
+  // The verdict first, and its two inputs together. Everything else on this page
+  // waits for it, and the guards above have no honest answer until it lands.
+  const settingsArrived = loadSettingsSnapshot()
+
+  verdictSettled = checkSiteSafety(window.location.href, settingsArrived)
+    .then(() => {
+      bootstrapState = 'ready'
+    })
+    .catch((error) => {
+      // Said out loud and recorded. This used to leave the whole bootstrap
+      // half-done with no catch at all, so the page stayed unjudged until it was
+      // reloaded and every guard read that silence as "nothing to warn about".
+      console.error('Visilant: could not check this site', error)
+      bootstrapState = 'error'
+    })
+
+  await verdictSettled
+
+  // The lists and the platform answer. A failure here costs a classifier, not
+  // the verdict, so it is caught on its own rather than taking the mount with it.
+  try {
+    await loadClassifiers()
+  }
+  catch (error) {
+    console.error('Visilant: could not load the domain lists', error)
+  }
+
   await mount()
+
+  // Anything typed or copied while this page was still being judged. Raised now
+  // rather than never, since the answer has arrived and it is the bad one.
+  if (warningOwedFor && safetyLevel.value === false && settings.value?.showWarningNotification)
+    await showNotifications(warningOwedFor)
+
+  // Follow the settings for as long as this tab lives. The ref reads
+  // `storage.sync` itself, so this works whether the change came from the
+  // settings page, the popup or another device – and whether or not the
+  // background happens to be awake to tell us about it.
+  watch(
+    () => JSON.stringify({
+      linkSafety: settings.value?.linkSafety,
+      familiarity: settings.value?.familiarity,
+      antiTampering: settings.value?.antiTamperingExcludedDomains,
+      warnings: [
+        settings.value?.showWarningNotification,
+        settings.value?.showInputWarning,
+        settings.value?.showCopyWarning,
+        settings.value?.blockPasteOnUnfamiliar,
+      ],
+    }),
+    () => {
+      void applySettingsChange()
+    },
+  )
 })()
 
 // The Vue app is only mounted when the page needs a warning or link safety is
@@ -1472,6 +1740,20 @@ browser.runtime.onMessage.addListener((message: any) => {
       else
         showRawPayloadTooltip(text.trim().slice(0, 300), 'text')
     })
+    return undefined
+  }
+  // The records this tab's verdict was drawn from have changed – a history
+  // import finished, or the user wiped the visits. Both make everything this
+  // page believes about itself wrong, including the tooltips already cached.
+  if (message.type === 'visit-data-changed') {
+    clearVisitCache()
+    verdictSettled = checkSiteSafety(window.location.href)
+      .then(() => {
+        bootstrapState = 'ready'
+      })
+      .catch(() => {
+        bootstrapState = 'error'
+      })
     return undefined
   }
   if (message.type === 'show-qr-result' && message.data?.payload) {

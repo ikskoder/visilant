@@ -119,11 +119,27 @@ export const linkInterceptResolve = ref<((proceed: boolean) => void) | null>(nul
 // Paste intercept dialog state. Same await-the-user shape as the link intercept:
 // the paste event is already cancelled by the time this is shown, and answering
 // yes only lifts the block, leaving the user to paste again themselves.
+/**
+ * Why the paste is being held.
+ *
+ * `unfamiliar` is the case the feature was built for. The other three exist
+ * because a paste is cancelled before anything can be known about the page, and
+ * a cancelled paste that shows nothing is the worst of both: the text does not
+ * arrive and nobody is told why.
+ *
+ * `checking` – the verdict is still on its way.
+ * `safe` – it arrived and the site is one the user knows.
+ * `error` – it never arrived, so nothing can be said about this site.
+ */
+export type PasteInterceptStatus = 'unfamiliar' | 'checking' | 'safe' | 'error'
+
 export interface PasteInterceptData {
   domain: string
   stats: FamiliarityStats
   punycode: string | null
   payload: PastePayloadInfo
+  /** Absent means `unfamiliar`, which is what this dialog used to be only for. */
+  status?: PasteInterceptStatus
 }
 
 export const pasteInterceptVisible = ref(false)

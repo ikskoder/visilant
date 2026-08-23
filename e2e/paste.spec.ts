@@ -165,3 +165,42 @@ test('the guard can be turned on from the options page', async ({ context, exten
   await pasteInto(page, '#victim')
   await expect(page.locator('#victim')).toHaveValue('')
 })
+
+test('a second paste while the dialog is up does not slip through', async ({ context }) => {
+  // The dialog owns one resolver. A second paste used to overwrite it, which
+  // both stranded the first paste and, for the moment in between, was a paste
+  // the guard was no longer watching.
+  await patchSettings(context, { blockPasteOnUnfamiliar: true })
+  const page = await openSite(context)
+  await pasteInto(page, '#victim')
+  await expectOverlay(page)
+
+  // Straight into the field behind the dialog
+  await page.evaluate(() => (document.querySelector('#victim') as HTMLInputElement).focus())
+  await page.keyboard.press('ControlOrMeta+V')
+  await page.waitForTimeout(800)
+
+  await expect(page.locator('#victim')).toHaveValue('')
+  await expectOverlay(page)
+})
+
+test('a paste made before the verdict lands is held and then explained', async ({ context }) => {
+  // No wait after the navigation: the page is there, the verdict is not. This
+  // used to be the hole in the guard – a strict `false` was asked for, `null`
+  // was found, and the paste went in.
+  await patchSettings(context, { blockPasteOnUnfamiliar: true })
+
+  const page = await context.newPage()
+  await page.route(`${SITE_URL}**`, (route: any) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: SITE_HTML }))
+  // Loaded and pasted into without ever giving the check time to come back
+  await page.goto(SITE_URL)
+  await page.evaluate((text: string) => navigator.clipboard.writeText(text), SECRET)
+  await page.focus('#victim')
+  await page.keyboard.press('ControlOrMeta+V')
+
+  // Whatever the verdict turns out to be, nothing was inserted behind the user's
+  // back and the dialog is there to say so
+  await expectOverlay(page)
+  await expect(page.locator('#victim')).toHaveValue('')
+})

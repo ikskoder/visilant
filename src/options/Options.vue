@@ -10,13 +10,12 @@ import { useTheme } from '~/composables/useTheme'
 import { resolveBadgeContent } from '~/logic/badge'
 import { fetchRemoteDomainLists, parseListUrls, STORAGE_KEY_CUSTOM_DISPOSABLE, STORAGE_KEY_CUSTOM_PUBLIC, STORAGE_KEY_REMOTE_DISPOSABLE, STORAGE_KEY_REMOTE_PUBLIC, updateDisposableList, updatePublicList } from '~/logic/email-providers'
 import { enabledCriteria, FAMILIARITY_CRITERIA, normalizeFamiliarity, requiredMatches } from '~/logic/familiarity'
-import { describeImportHealth, readHistoryImportState, runHistoryImport } from '~/logic/history-import'
+import { describeImportHealth, HISTORY_IMPORT_STATE_KEY, newImportRunId, readHistoryImportState, runHistoryImport } from '~/logic/history-import'
 import { fetchRemoteMailSiteLists, STORAGE_KEY_CUSTOM_MAIL_SITES, STORAGE_KEY_REMOTE_MAIL_SITES, updateRemoteMailSites } from '~/logic/mail-sites'
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { hasContextMenus, hasHistoryApi, isAndroidBrowser, supportsHover } from '~/logic/platform'
 import { fetchRemoteShortenerLists, STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
 import { defaultSettings, settings, settingsReady, settingsWriteError } from '~/logic/storage'
-import { visitKeysToRemove } from '~/logic/visit-reset'
 import SectionNav from './SectionNav.vue'
 import SectionReset from './SectionReset.vue'
 
@@ -381,6 +380,30 @@ async function resetSection(id: string) {
 
 // Last import of any kind, including the automatic one at install
 const lastImport = ref<HistoryImportState | null>(null)
+
+/**
+ * A clock the import status can depend on.
+ *
+ * `describeImportHealth` needs the time to tell a run that is still ticking from
+ * one that was killed, and a computed that reads `Date.now()` never recomputes –
+ * so a run that died stayed on screen as "running" until the page was reloaded.
+ */
+const now = ref(Date.now())
+let clock: ReturnType<typeof setInterval> | null = null
+
+/**
+ * Follow the import wherever it is running.
+ *
+ * The automatic import runs in the background, and this page used to read its
+ * state once on mount. A user who opened the settings while an import was going
+ * saw a frozen number, and one who opened them just before it finished was told
+ * it had never run.
+ */
+function watchImportState(changes: Record<string, { newValue?: unknown }>) {
+  if (!(HISTORY_IMPORT_STATE_KEY in changes))
+    return
+  lastImport.value = (changes[HISTORY_IMPORT_STATE_KEY].newValue as HistoryImportState | undefined) ?? null
+}
 const lastImportLabel = computed(() => {
   const state = lastImport.value
   if (!state || !state.finishedAt || !state.domains)
@@ -425,6 +448,19 @@ onMounted(async () => {
 
   lastImport.value = await readHistoryImportState()
   await readStatsCoverage()
+
+  browser.storage.onChanged.addListener(watchImportState)
+  clock = setInterval(() => {
+    now.value = Date.now()
+  }, 5000)
+})
+
+onUnmounted(() => {
+  browser.storage.onChanged.removeListener(watchImportState)
+  if (clock !== null) {
+    clearInterval(clock)
+    clock = null
+  }
 })
 
 watch(customShortenersText, async (newVal) => {
@@ -567,7 +603,7 @@ const pointerCanHover = supportsHover()
 const canRightClick = pointerCanHover && hasContextMenus()
 
 const importHealth = computed<ImportHealth>(() => canImportHistory
-  ? describeImportHealth(lastImport.value, Date.now(), isImporting.value)
+  ? describeImportHealth(lastImport.value, now.value, isImporting.value)
   : 'unsupported')
 const importStatusText = computed(() => translations.value[`importStatus${
   importHealth.value.charAt(0).toUpperCase()}${importHealth.value.slice(1)}`])
@@ -841,20 +877,40 @@ async function importHistory() {
       importProgress.value = { current: state.current, total: state.total }
     }
 
+    // One name for both passes, so the two of them are one run as far as
+    // everybody else is concerned – and so a background resume that is still
+    // going can be seen for what it is rather than overwritten
+    const runId = newImportRunId()
+
     const quick = await runHistoryImport({
       mode: 'quick',
       onProgress: progress,
       shouldStop: () => importCancelled.value,
+      runId,
+      stage: 'quick-running',
+      nextStage: 'full-pending',
     })
+
+    // Somebody else's run is in flight and this one never started. Say so rather
+    // than reporting their progress as this button's result.
+    if (quick.runId !== runId) {
+      lastImport.value = quick
+      return
+    }
 
     // Cancelled or unsupported: the slow pass would only fail the same way, and
     // a cancel means the user is done waiting
     const result = quick.status === 'done'
       ? await runHistoryImport({
         mode: 'full',
+        // A Re-import pressed by hand rescans everything. `resume` only
+        // continues a run of the same name, which the quick pass above just
+        // started – so this picks up that pass and nothing older.
         resume: true,
         onProgress: progress,
         shouldStop: () => importCancelled.value,
+        runId,
+        stage: 'full-running',
       })
       : quick
 
@@ -883,11 +939,11 @@ async function resetSelected() {
   showResetConfirm.value = false
 
   if (resetSelections.value.visits) {
-    // Picked by shape, not by exclusion: the same storage area holds the lists
-    // the user typed, the lists they fetched and the migration flags, and a
-    // checkbox that names visit information may not reach any of them.
-    const result = await browser.storage.local.get(null)
-    await browser.storage.local.remove(visitKeysToRemove(result))
+    // Asked of the background rather than done here. The records are only half
+    // of it: a running import is still writing them, the lookalike index is a
+    // copy of them held in memory, and every badge and open tab is showing a
+    // verdict drawn from them. Only the background can put all of that down.
+    await browser.runtime.sendMessage({ type: 'reset-visits', data: {} })
 
     // The import state was one of those keys, and the paragraph above still
     // reports the import that has just been wiped. Re-read rather than listen:

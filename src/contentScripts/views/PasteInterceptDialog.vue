@@ -34,6 +34,34 @@ watch(() => props.visible, () => {
   dontAskAgain.value = false
 })
 
+/**
+ * What the dialog is for right now.
+ *
+ * A held paste has to say something even before there is a verdict, and again
+ * when the verdict turns out to be "this site is fine" or "no idea". Absent
+ * means the case this dialog started life as: an unfamiliar site.
+ */
+const status = computed(() => props.data?.status ?? 'unfamiliar')
+const isDecision = computed(() => status.value === 'unfamiliar' || status.value === 'error')
+
+const title = computed(() => {
+  switch (status.value) {
+    case 'checking': return t.value('pasteInterceptCheckingTitle')
+    case 'safe': return t.value('pasteInterceptSafeTitle')
+    case 'error': return t.value('pasteInterceptErrorTitle')
+    default: return t.value('pasteInterceptTitle')
+  }
+})
+
+const message = computed(() => {
+  switch (status.value) {
+    case 'checking': return t.value('pasteInterceptCheckingMessage')
+    case 'safe': return t.value('pasteInterceptSafeMessage')
+    case 'error': return t.value('pasteInterceptErrorMessage')
+    default: return t.value('pasteInterceptMessage')
+  }
+})
+
 const payloadKind = computed(() => {
   const kind = props.data?.payload.kind
   return kind ? t.value(`pasteInterceptKind${kind.charAt(0).toUpperCase()}${kind.slice(1)}`) : ''
@@ -58,11 +86,16 @@ const payloadKind = computed(() => {
       >
         <!-- Warning icon + title + close -->
         <div class="flex items-center gap-2 mb-3">
-          <svg class="w-5 h-5 text-yellow-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          <svg
+            class="w-5 h-5 flex-shrink-0"
+            :class="status === 'safe' ? 'text-green-500' : 'text-yellow-500'"
+            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path v-if="status === 'safe'" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
           <h2 class="dialog-title font-bold flex-1" :class="isDark ? 'text-white' : 'text-gray-900'">
-            {{ t('pasteInterceptTitle') }}
+            {{ title }}
           </h2>
           <button
             class="close-x w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors"
@@ -76,18 +109,23 @@ const payloadKind = computed(() => {
         </div>
 
         <p class="dialog-text mb-4" :class="isDark ? 'text-gray-300' : 'text-gray-600'">
-          {{ t('pasteInterceptMessage') }}
+          {{ message }}
         </p>
 
-        <!-- The address is the point of the whole dialog, so it gets the weight -->
+        <!-- The address is the point of the whole dialog, so it gets the weight.
+             The facts under it are only shown once there are any: a dialog put up
+             before the check finished has nothing to report but the name. -->
         <div class="rounded-lg p-3 mb-4" :class="isDark ? 'bg-gray-800' : 'bg-gray-50 border border-gray-200'">
-          <div class="flex items-center gap-2 mb-2">
-            <span class="inline-block w-3 h-3 rounded-full flex-shrink-0 bg-red-500" />
+          <div class="flex items-center gap-2" :class="status === 'unfamiliar' ? 'mb-2' : ''">
+            <span
+              class="inline-block w-3 h-3 rounded-full flex-shrink-0"
+              :class="status === 'safe' ? 'bg-green-500' : (status === 'unfamiliar' ? 'bg-red-500' : 'bg-gray-400')"
+            />
             <span class="dialog-domain font-medium" :class="isDark ? 'text-white' : 'text-gray-900'">
               <SecureText :text="data.domain" :force-highlight="true" :danger-only="true" />
             </span>
           </div>
-          <div class="dialog-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+          <div v-if="status === 'unfamiliar'" class="dialog-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
             <FamiliarityFacts :stats="data.stats">
               <template #status>
                 <span :class="statusLabel(false, data.stats.count).class">
@@ -102,9 +140,10 @@ const payloadKind = computed(() => {
             {{ t('linkTooltipPunycode') }}: {{ data.punycode }}
           </div>
 
-          <!-- Structural markers -->
+          <!-- Structural markers. These read the name itself, so they are worth
+               showing even when the visit history could not be reached. -->
           <DomainMarkers :hostname="data.domain" class="dialog-label mt-2" />
-          <LookalikeNotice :hostname="data.domain" class="dialog-label mt-2" />
+          <LookalikeNotice v-if="status !== 'checking'" :hostname="data.domain" class="dialog-label mt-2" />
         </div>
 
         <!-- What is on the clipboard, described before it is shown -->
@@ -136,13 +175,13 @@ const payloadKind = computed(() => {
 
         <!-- Said before the button is pressed, so the paste not happening on its
              own reads as the design rather than as a bug -->
-        <p class="dialog-label mb-3" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+        <p v-if="status === 'unfamiliar'" class="dialog-label mb-3" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
           {{ t('pasteInterceptRepeatHint') }}
         </p>
 
         <!-- Applies to whichever button is pressed: it is about the site, not
-             about this one paste -->
-        <label class="flex items-start gap-2 mb-4 cursor-pointer">
+             about this one paste. Nothing to turn off while there is no verdict. -->
+        <label v-if="status === 'unfamiliar'" class="flex items-start gap-2 mb-4 cursor-pointer">
           <input
             v-model="dontAskAgain"
             type="checkbox"
@@ -158,13 +197,25 @@ const payloadKind = computed(() => {
              this dialog interrupts a real action, so the way out of it has to be
              as obvious as the way through. -->
         <button
+          v-if="status !== 'checking'"
           class="w-full px-4 py-2.5 mb-3 rounded-lg border transition-colors dialog-button"
           :class="isDark ? 'bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 border-gray-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300'"
           @click="emit('details', data.domain)"
         >
           {{ t('linkInterceptDomainInfo') }}
         </button>
-        <div class="flex gap-3">
+
+        <!-- One button where there is nothing to weigh up: the paste is already
+             cancelled either way, and the only thing left is to say so -->
+        <button
+          v-if="status === 'safe'"
+          class="w-full px-4 py-2.5 rounded-lg border transition-colors dialog-button"
+          :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
+          @click="emit('allow', false)"
+        >
+          {{ t('pasteInterceptUnderstood') }}
+        </button>
+        <div v-else-if="isDecision" class="flex gap-3">
           <button
             class="flex-1 px-4 py-2.5 rounded-lg border transition-colors dialog-button"
             :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
@@ -180,6 +231,14 @@ const payloadKind = computed(() => {
             {{ t('pasteInterceptAllow') }}
           </button>
         </div>
+        <button
+          v-else
+          class="w-full px-4 py-2.5 rounded-lg border transition-colors dialog-button"
+          :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
+          @click="emit('cancel', false)"
+        >
+          {{ t('pasteInterceptCancel') }}
+        </button>
       </div>
     </div>
   </Transition>

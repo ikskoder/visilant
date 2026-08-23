@@ -24,9 +24,20 @@ export type TamperReason
     | 'shadow-stripped'
 
 /**
- * Inline styles that keep the host on top and visible. Set with `important`, so
- * a page stylesheet cannot outrank them and the page has to touch the attribute
- * itself, which is exactly what the attribute watch below is for.
+ * Inline styles that keep the host on top and visible.
+ *
+ * Set with `important`, which is the top of the cascade – above any page
+ * stylesheet, and above animations and transitions too. So a page cannot take
+ * any of these away with CSS: it has to reach for the style attribute itself,
+ * and that is what the attribute watch below is for.
+ *
+ * The list is longer than "is it displayed". `display`, `visibility` and
+ * `opacity` are only the obvious ways to make an element stop being seen, and a
+ * page that knew which three were being checked could use any of the others:
+ * `transform` to push it off the screen, `clip-path` or `contain: paint` to cut
+ * it away, `filter` to wash it out, `content-visibility` to skip rendering it
+ * altogether, and `translate` / `rotate` / `scale`, which do what `transform`
+ * does without touching the property of that name.
  */
 export const HOST_STYLES: Record<string, string> = {
   'position': 'fixed',
@@ -40,6 +51,40 @@ export const HOST_STYLES: Record<string, string> = {
   'display': 'block',
   'visibility': 'visible',
   'opacity': '1',
+  'transform': 'none',
+  'translate': 'none',
+  'rotate': 'none',
+  'scale': 'none',
+  'filter': 'none',
+  'clip-path': 'none',
+  'mask': 'none',
+  'content-visibility': 'visible',
+  'contain': 'none',
+  'mix-blend-mode': 'normal',
+  'isolation': 'auto',
+}
+
+/**
+ * The properties above that this browser actually understands.
+ *
+ * A property it does not know is dropped on the floor: setting it does nothing
+ * and reading it back gives an empty string. Checking those would fail forever
+ * on an older browser and report tampering on every page.
+ */
+let supportedProps: string[] | null = null
+
+function hostStyleProps(doc: Document): string[] {
+  if (supportedProps)
+    return supportedProps
+
+  const probe = doc.createElement('div')
+  supportedProps = Object.entries(HOST_STYLES)
+    .filter(([prop, value]) => {
+      probe.style.setProperty(prop, value, 'important')
+      return probe.style.getPropertyValue(prop) === value
+    })
+    .map(([prop]) => prop)
+  return supportedProps
 }
 
 export function applyHostStyles(container: HTMLElement) {
@@ -49,7 +94,7 @@ export function applyHostStyles(container: HTMLElement) {
 
 /** Does the container still carry the styles that make it render at all? */
 export function isHostStyleIntact(container: HTMLElement): boolean {
-  for (const prop of ['display', 'visibility', 'opacity', 'position', 'z-index']) {
+  for (const prop of hostStyleProps(container.ownerDocument)) {
     if (container.style.getPropertyValue(prop) !== HOST_STYLES[prop])
       return false
     if (container.style.getPropertyPriority(prop) !== 'important')
@@ -64,14 +109,75 @@ export function isHostStyleIntact(container: HTMLElement): boolean {
  * Deliberately not a size check: the host is 0x0 by design and everything with
  * a size lives inside the shadow root.
  */
+/**
+ * Is this computed opacity a real, deliberate zero?
+ *
+ * `Number('')` is 0, and an engine that has no opinion about a property reports
+ * an empty string – so the obvious comparison reads "no answer" as "invisible"
+ * and declares every page tampered with.
+ */
+function isTransparent(opacity: string): boolean {
+  const value = Number.parseFloat(opacity)
+  return Number.isFinite(value) && value === 0
+}
+
 export function isVisuallyHidden(container: HTMLElement): boolean {
-  const style = container.ownerDocument.defaultView?.getComputedStyle(container)
-  if (!style)
+  const view = container.ownerDocument.defaultView
+  const style = view?.getComputedStyle(container)
+  if (!style || !view)
     return false
-  return style.display === 'none'
+
+  if (style.display === 'none'
     || style.visibility === 'hidden'
     || style.visibility === 'collapse'
-    || Number(style.opacity) === 0
+    || isTransparent(style.opacity)) {
+    return true
+  }
+
+  // An ancestor can hide us without touching our own styles at all. Only the
+  // three that mean "not rendered" are read here – a transform or a clip on the
+  // body is an everyday thing on real sites, and where those actually matter is
+  // whether the panel ends up on the screen, which `isPanelOffScreen` asks
+  // directly rather than by guessing from a property.
+  for (let node = container.parentElement; node; node = node.parentElement) {
+    const parent = view.getComputedStyle(node)
+    if (parent.display === 'none' || parent.visibility === 'hidden' || isTransparent(parent.opacity))
+      return true
+  }
+
+  return false
+}
+
+/**
+ * Is the panel that is supposed to be showing actually on the screen?
+ *
+ * Asked of the geometry rather than of any one property, because there are far
+ * too many ways to move something out of sight to check them one at a time: a
+ * transform on the body, which becomes the containing block for our fixed
+ * position, a clip-path or `contain: paint` on an ancestor, a scale of zero.
+ * Whatever was used, the panel is either where the user can see it or it is not.
+ *
+ * Only asked while one of our own panels is on screen. With nothing showing
+ * there is no rect to judge and nothing being hidden.
+ */
+export function isPanelOffScreen(
+  container: HTMLElement,
+  shadow: ShadowRoot | HTMLElement,
+): boolean {
+  const view = container.ownerDocument.defaultView
+  const rect = largestRenderedRect(shadow)
+  if (!view || !rect)
+    return false
+
+  const visibleWidth = Math.max(0, Math.min(rect.right, view.innerWidth) - Math.max(rect.left, 0))
+  const visibleHeight = Math.max(0, Math.min(rect.bottom, view.innerHeight) - Math.max(rect.top, 0))
+  const area = rect.width * rect.height
+  if (area <= 0)
+    return true
+
+  // Half of it has to be inside the window. A dialog three quarters off the
+  // edge is not something anybody is going to read.
+  return (visibleWidth * visibleHeight) / area < 0.5
 }
 
 /** The largest thing our shadow root is currently rendering, if anything is. */
@@ -90,9 +196,10 @@ function largestRenderedRect(shadow: ShadowRoot | HTMLElement): DOMRect | null {
 /**
  * Is something of the page's painted over our panel?
  *
- * Point sampling rather than a full geometry check: a hit test at the middle of
- * the panel answers the only question that matters, which is whether the user
- * would be clicking us or something else if they aimed at it.
+ * Five points rather than one. The centre alone answers for a sheet laid over
+ * the whole dialog and for nothing else: a page that covers only the corner
+ * where the buttons are leaves the middle of the panel perfectly visible, and
+ * the user still cannot press anything.
  */
 export function findCoveringElement(
   container: HTMLElement,
@@ -103,16 +210,33 @@ export function findCoveringElement(
     return null
 
   const doc = container.ownerDocument
-  const x = Math.round(rect.left + rect.width / 2)
-  const y = Math.round(rect.top + rect.height / 2)
-  if (x < 0 || y < 0 || x > (doc.defaultView?.innerWidth ?? 0) || y > (doc.defaultView?.innerHeight ?? 0))
-    return null
+  const width = doc.defaultView?.innerWidth ?? 0
+  const height = doc.defaultView?.innerHeight ?? 0
 
-  // Shadow content retargets to the host, so a healthy hit gives the container
-  const hit = doc.elementFromPoint(x, y)
-  if (!hit || hit === container || container.contains(hit))
-    return null
-  return hit
+  // The centre, and a point well inside each corner – far enough in to stay
+  // clear of the panel's own rounded edges and shadow
+  const inset = 0.15
+  const points: [number, number][] = [
+    [rect.left + rect.width / 2, rect.top + rect.height / 2],
+    [rect.left + rect.width * inset, rect.top + rect.height * inset],
+    [rect.right - rect.width * inset, rect.top + rect.height * inset],
+    [rect.left + rect.width * inset, rect.bottom - rect.height * inset],
+    [rect.right - rect.width * inset, rect.bottom - rect.height * inset],
+  ]
+
+  for (const [rawX, rawY] of points) {
+    const x = Math.round(rawX)
+    const y = Math.round(rawY)
+    if (x < 0 || y < 0 || x > width || y > height)
+      continue
+
+    // Shadow content retargets to the host, so a healthy hit gives the container
+    const hit = doc.elementFromPoint(x, y)
+    if (hit && hit !== container && !container.contains(hit))
+      return hit
+  }
+
+  return null
 }
 
 export interface TamperWatchOptions {
@@ -137,6 +261,9 @@ export interface TamperWatch {
 
 const DEFAULT_VISIBLE_CHECK_INTERVAL = 1000
 
+/** One alarm per page strike, rather than one per mutation it makes. */
+const REPORT_COOLDOWN_MS = 5000
+
 export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
   const { container, shadow, guardedNodes, onTamper, isSelfRemoving } = options
   const doc = container.ownerDocument
@@ -145,12 +272,25 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
   // does not read back as the page having touched it
   let selfWriting = false
   let timer: ReturnType<typeof setInterval> | null = null
+  let lastReportAt = 0
 
+  /**
+   * Say something, and keep watching.
+   *
+   * The first report used to be the last: the watch shut itself down, so a page
+   * that hid the panel once was free to do anything it liked afterwards. It
+   * carries on now, with a quiet period so a page that keeps striking produces
+   * one alarm rather than a notification every frame.
+   */
   function report(reason: TamperReason) {
     if (stopped || isSelfRemoving())
       return
-    stopped = true
-    stopObservers()
+
+    const now = Date.now()
+    if (now - lastReportAt < REPORT_COOLDOWN_MS)
+      return
+    lastReportAt = now
+
     onTamper(reason)
   }
 
@@ -196,7 +336,11 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
   const attributeObserver = new MutationObserver(() => {
     if (selfWriting || stopped)
       return
-    if (checkAppearance()) {
+
+    // Only the inline guard is repairable from here. Restoring it when the panel
+    // is hidden by something else – a rule further up the tree – would put the
+    // same styles back on every mutation the restore itself produces, forever.
+    if (!isHostStyleIntact(container) || container.hasAttribute('hidden')) {
       // Put the panel back before saying anything: the warning is worth more
       // when the thing it is warning about is visible again
       selfWriting = true
@@ -204,7 +348,11 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
       container.removeAttribute('hidden')
       selfWriting = false
       report('hidden')
+      return
     }
+
+    if (isVisuallyHidden(container))
+      report('hidden')
   })
 
   // Gutting the shadow tree, which is only reachable in dev builds where the
@@ -253,7 +401,9 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
       const check = () => {
         if (stopped)
           return
-        const problem = verify() ?? (findCoveringElement(container, shadow) ? 'covered' : null)
+        const problem = verify()
+          ?? (isPanelOffScreen(container, shadow) ? 'hidden' : null)
+          ?? (findCoveringElement(container, shadow) ? 'covered' : null)
         if (problem)
           report(problem)
       }

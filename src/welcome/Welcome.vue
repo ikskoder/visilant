@@ -15,7 +15,16 @@ useTheme()
 const state = ref<HistoryImportState | null>(null)
 const retrying = ref(false)
 
-const status = computed(() => state.value?.status ?? 'running')
+/**
+ * What the import is doing, as far as this page can tell.
+ *
+ * A missing state used to read as `running`, which is the one thing it cannot
+ * mean: nothing has published anything, so either the import has not started or
+ * somebody has just wiped it. Waiting is honest only until the state has been
+ * read once – after that, no state means no import.
+ */
+const stateRead = ref(false)
+const status = computed(() => state.value?.status ?? (stateRead.value ? 'never' : 'running'))
 const isRunning = computed(() => status.value === 'running' || retrying.value)
 
 /**
@@ -119,11 +128,18 @@ const runningLabel = computed(() => {
 function onStorageChanged(changes: Record<string, { newValue?: unknown }>, area: string) {
   if (area !== 'local')
     return
+  if (!(HISTORY_IMPORT_STATE_KEY in changes))
+    return
+
+  // A removal is a change too. Read as truthy-only, wiping the visits from the
+  // settings page left this screen showing the import it had just deleted.
   const change = changes[HISTORY_IMPORT_STATE_KEY]
-  if (change?.newValue) {
-    state.value = change.newValue as HistoryImportState
+  state.value = (change.newValue as HistoryImportState | undefined) ?? null
+  stateRead.value = true
+  if (state.value)
     rememberIfDone(state.value)
-  }
+  else
+    doneStats.value = null
 }
 
 onMounted(async () => {
@@ -131,6 +147,7 @@ onMounted(async () => {
   isolatePageZoom()
 
   state.value = await readHistoryImportState()
+  stateRead.value = true
   rememberIfDone(state.value)
   browser.storage.onChanged.addListener(onStorageChanged)
   document.addEventListener('visibilitychange', onVisibilityChange)

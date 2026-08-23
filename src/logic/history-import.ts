@@ -1,6 +1,7 @@
 import type { SiteVisitData } from './storage'
 import { hasHistoryApi } from './platform'
 import { dayKey, isTrackableHostname } from './visit-stats'
+import { updateVisitRecords, visitGeneration } from './visit-store'
 
 export interface ImportedDomainStats {
   count: number
@@ -159,6 +160,22 @@ export type HistoryImportStatus = 'running' | 'done' | 'cancelled' | 'failed' | 
  */
 export type HistoryImportPhase = 'reading' | 'scanning' | 'saving'
 
+/**
+ * Where a run has got to in the two-pass chain, and what a resume should do.
+ *
+ * `status` alone could not say this. The quick pass finishes by publishing
+ * `done`, the rebuild that follows takes a while, and only then does the full
+ * pass publish `running` – so a worker torn down in that gap left a state that
+ * said the import was finished, and the full pass, with every first-visit date
+ * in it, was lost for good. The stage is written before each step rather than
+ * after it, so an interrupted chain always names the step it never finished.
+ */
+export type HistoryImportStage
+  = | 'quick-running'
+    | 'full-pending'
+    | 'full-running'
+    | 'done'
+
 export interface HistoryImportState {
   status: HistoryImportStatus
   mode: 'quick' | 'full'
@@ -185,6 +202,26 @@ export interface HistoryImportState {
    * when they are sitting in storage.
    */
   fullDoneAt: number
+  /**
+   * Who is writing this state.
+   *
+   * There is one import state key and there used to be nothing stopping two runs
+   * from writing it: a background resume and a Re-import pressed on the settings
+   * page would each overwrite the other's progress, and Cancel would stop
+   * whichever one happened to be reading the flag rather than the one on screen.
+   */
+  runId: string
+  /** See `HistoryImportStage`. */
+  stage: HistoryImportStage
+  /**
+   * The last hostname a full pass finished, in the order it walks them.
+   *
+   * A resume continues after this rather than guessing from the records. The
+   * guess was that a hostname with an `activeDays` had already been scanned –
+   * but every record written by an ordinary visit has one, so a host imported
+   * once was excluded from every later Re-import as well.
+   */
+  cursor: string
 }
 
 /** A running import that stopped publishing for this long was killed. */
@@ -242,15 +279,20 @@ const IMPORT_PUBLISH_EVERY = 200
  */
 const IMPORT_CHECKPOINT_URLS = 2000
 
+/** A name for one run, so two of them cannot be mistaken for each other. */
+export function newImportRunId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 /**
- * Does this hostname still need the slow per-visit pass?
+ * Is somebody else's run in flight right now?
  *
- * `activeDays` can only come from reading individual visits, so its presence is
- * the record saying so itself – which is what makes an interrupted full import
- * resumable without a separate cursor to keep in sync.
+ * Checked before starting and again on every heartbeat. A run that finds the
+ * state has been taken over stops rather than fighting for the key: the other
+ * one is the one the user is watching.
  */
-export function needsDetailPass(record: SiteVisitData | undefined): boolean {
-  return typeof record?.activeDays !== 'number'
+export function isHeldByAnother(state: HistoryImportState | null, runId: string, now: number): boolean {
+  return Boolean(state) && state!.runId !== runId && isImportAlive(state, now)
 }
 
 /**
@@ -278,13 +320,42 @@ export async function runHistoryImport(options: {
   mode: 'quick' | 'full'
   onProgress?: (state: HistoryImportState) => void
   shouldStop?: () => boolean
-  /** Skip hostnames a previous full pass already finished. */
+  /** Continue a full pass after the hostname it last finished. */
   resume?: boolean
   /** Mark the state as resumable by the background. */
   auto?: boolean
   attempts?: number
+  /** The run this pass belongs to. One id for a whole quick-then-full chain. */
+  runId?: string
+  /** Where this pass sits in that chain – see `HistoryImportStage`. */
+  stage?: HistoryImportStage
+  /** The stage to leave behind on success. `full-pending` keeps a chain alive. */
+  nextStage?: HistoryImportStage
 }): Promise<HistoryImportState> {
-  const { mode, onProgress, shouldStop, resume, auto = false, attempts = 0 } = options
+  const {
+    mode,
+    onProgress,
+    shouldStop,
+    resume,
+    auto = false,
+    attempts = 0,
+    runId = newImportRunId(),
+    stage = mode === 'quick' ? 'quick-running' : 'full-running',
+    nextStage = 'done',
+  } = options
+
+  // Everything this run writes belongs to the records as they are now. A reset
+  // moves the generation on, and the writes still queued behind it are dropped
+  // instead of putting back what the user asked to be gone.
+  const startedAtGeneration = visitGeneration()
+
+  const previous = await readHistoryImportState()
+
+  // One state key, one writer. A background resume and a Re-import pressed on
+  // the settings page used to overwrite each other's progress, and Cancel then
+  // stopped whichever of them read the flag rather than the one on screen.
+  if (isHeldByAnother(previous, runId, Date.now()))
+    return { ...previous! }
 
   const state: HistoryImportState = {
     status: 'running',
@@ -299,12 +370,30 @@ export async function runHistoryImport(options: {
     updatedAt: Date.now(),
     attempts,
     // Whatever an earlier run achieved is still in storage, so it survives here too
-    fullDoneAt: (await readHistoryImportState())?.fullDoneAt || 0,
+    fullDoneAt: previous?.fullDoneAt || 0,
+    runId,
+    stage,
+    // Only a resume of the same run continues where it left off. An ordinary
+    // Re-import starts at the beginning and rescans every hostname, which is
+    // what "re-import" means.
+    cursor: resume && previous?.runId === runId ? (previous?.cursor || '') : '',
   }
+
+  /** Set when somebody else takes the state over mid-run. */
+  let lost = false
 
   const publish = async () => {
     state.updatedAt = Date.now()
     onProgress?.({ ...state })
+
+    // The lease, checked as it is renewed. A run that has been taken over stops
+    // rather than fighting for the key – the other one is the one on screen.
+    const current = await readHistoryImportState()
+    if (isHeldByAnother(current, runId, Date.now())) {
+      lost = true
+      return
+    }
+
     await browser.storage.local.set({ [HISTORY_IMPORT_STATE_KEY]: { ...state } })
   }
 
@@ -313,6 +402,10 @@ export async function runHistoryImport(options: {
     state.finishedAt = Date.now()
     if (status === 'done' && mode === 'full')
       state.fullDoneAt = state.finishedAt
+    // The stage is what a resume reads. `done` only when the whole chain is
+    // done – a quick pass with a full one still to come leaves `full-pending`.
+    if (status === 'done')
+      state.stage = nextStage
     await publish()
     return { ...state }
   }
@@ -323,7 +416,14 @@ export async function runHistoryImport(options: {
   if (!hasHistoryApi())
     return finish('unsupported')
 
-  /** Fold a batch of finished hostnames into what is already stored. */
+  /**
+   * Fold a batch of finished hostnames into what is already stored.
+   *
+   * Through the shared writer, so the merge sees the record as it is at the
+   * moment of the write. Reading a batch and writing it back separately meant a
+   * navigation or an ignore landing in between was undone by this, and a record
+   * a reset had just deleted could be written back by a batch still in flight.
+   */
   const writeHostnames = async (
     hostnames: string[],
     stats: Map<string, ImportedDomainStats>,
@@ -331,17 +431,13 @@ export async function runHistoryImport(options: {
   ) => {
     for (let offset = 0; offset < hostnames.length; offset += IMPORT_WRITE_BATCH) {
       const chunk = hostnames.slice(offset, offset + IMPORT_WRITE_BATCH)
-      const existing = await browser.storage.local.get(chunk)
-      const payload: Record<string, SiteVisitData> = {}
 
-      for (const hostname of chunk) {
-        payload[hostname] = mergeImportedStats(
-          existing[hostname] as SiteVisitData | undefined,
-          stats.get(hostname)!,
-        )
-      }
+      await updateVisitRecords(
+        chunk,
+        (hostname, existing) => mergeImportedStats(existing, stats.get(hostname)!),
+        { generation: startedAtGeneration },
+      )
 
-      await browser.storage.local.set(payload)
       await onBatch?.(Math.min(offset + chunk.length, hostnames.length))
     }
   }
@@ -383,23 +479,22 @@ export async function runHistoryImport(options: {
       let hostnames = [...urlsByHostname.keys()].sort()
 
       // Hostnames an earlier run already finished, and what they hold, so the
-      // totals a resumed run reports still describe the whole history
+      // totals a resumed run reports still describe the whole history.
+      //
+      // Read off this run's own checkpoint, not off the records. The records
+      // were asked whether they had an `activeDays` – and every record an
+      // ordinary visit writes has one, so a host imported once was skipped by
+      // every later Re-import too, and its dates never improved again.
       let carriedDomains = 0
       let carriedVisits = 0
-      if (resume) {
-        const stored = await browser.storage.local.get(hostnames)
-        const pending: string[] = []
-        for (const hostname of hostnames) {
-          const record = stored[hostname] as SiteVisitData | undefined
-          if (needsDetailPass(record)) {
-            pending.push(hostname)
-          }
-          else {
-            carriedDomains++
-            carriedVisits += record?.count || 0
-          }
+      if (state.cursor) {
+        const finished = hostnames.filter(hostname => hostname <= state.cursor)
+        const stored = await browser.storage.local.get(finished)
+        for (const hostname of finished) {
+          carriedDomains++
+          carriedVisits += (stored[hostname] as SiteVisitData | undefined)?.count || 0
         }
-        hostnames = pending
+        hostnames = hostnames.filter(hostname => hostname > state.cursor)
       }
 
       state.phase = 'scanning'
@@ -410,7 +505,7 @@ export async function runHistoryImport(options: {
       let sincePublish = 0
       let cursor = 0
       while (cursor < hostnames.length) {
-        if (shouldStop?.())
+        if (shouldStop?.() || lost)
           return await finish('cancelled')
 
         // One checkpoint's worth of whole hostnames
@@ -463,7 +558,7 @@ export async function runHistoryImport(options: {
           shouldStop,
         )
 
-        if (shouldStop?.())
+        if (shouldStop?.() || lost)
           return await finish('cancelled')
 
         // Every URL of these hostnames has been read, so their day counts are final
@@ -473,6 +568,9 @@ export async function runHistoryImport(options: {
         await writeHostnames([...stats.keys()], stats)
         state.domains += stats.size
         state.visits += [...stats.values()].reduce((sum, entry) => sum + entry.count, 0)
+        // Recorded only after the write: the checkpoint is the promise that
+        // everything up to here is in storage, and a resume starts after it
+        state.cursor = checkpoint[checkpoint.length - 1]
         await publish()
       }
 

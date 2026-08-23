@@ -10,14 +10,17 @@ import { getProviderReferenceDomains } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, parseMailtoUrl } from '~/logic/email-safety'
 import { applyVisitToFamiliar, collectFamiliarDomains, FAMILIAR_INDEX_KEY } from '~/logic/familiar-index'
 import { aggregateFamiliarityStats, familiaritySignature, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
-import { HISTORY_AUTO_IMPORT_KEY, HISTORY_IMPORT_STATE_KEY, isImportAlive, readHistoryImportState, runHistoryImport, shouldAutoImport } from '~/logic/history-import'
+import { HISTORY_AUTO_IMPORT_KEY, HISTORY_IMPORT_STATE_KEY, isImportAlive, newImportRunId, readHistoryImportState, runHistoryImport, shouldAutoImport } from '~/logic/history-import'
 import { watchListStorage } from '~/logic/list-sync'
 import { collectMailSiteFamilies, loadMailSitesFromRecords } from '~/logic/mail-sites'
 import { hasContextMenus } from '~/logic/platform'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings as appSettings, parseStoredSettings, settingsReady } from '~/logic/storage'
+import { clearAllTamperAlarms, clearTamperAlarm, hasTamperAlarm, raiseTamperAlarm } from '~/logic/tamper-alarms'
 import { addCustomShortener, getCachedResolvedUrl, loadShortenersFromStorage, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
+import { visitKeysToRemove } from '~/logic/visit-reset'
 import { applyVisit, isTrackableHostname } from '~/logic/visit-stats'
+import { removeVisitRecords, updateVisitRecord, visitGeneration } from '~/logic/visit-store'
 
 // Load user-defined and remotely fetched shortener domains on service worker start
 loadShortenersFromStorage()
@@ -143,31 +146,31 @@ function isInternalPage(hostname: string): boolean {
 // Function to increment visit count for a URL (storage only – does NOT touch badge)
 async function incrementVisitCount(url: string) {
   const hostname = getHostname(url)
-  const result = await browser.storage.local.get(hostname)
-  const existingData = result[hostname] as SiteVisitData | undefined
-  const updated = applyVisit(existingData, Date.now())
 
-  await browser.storage.local.set({ [hostname]: updated })
+  // Read and written as one step. Read separately, this raced the ignore command
+  // and the history import for the same record, and the loser's field was put
+  // back to whatever the winner had read a moment earlier.
+  let counted = false
+  const updated = await updateVisitRecord(hostname, (existing) => {
+    const next = applyVisit(existing, Date.now())
+    counted = next.count !== (existing?.count ?? 0)
+    return next
+  })
+  if (!updated)
+    return
+
   // Whether this was a visit or a reload inside the debounce window – the same
   // question the counter above just answered, and the index has to give the
   // same answer or the two drift apart
-  await noteVisitForFamiliarIndex(hostname, updated, updated.count !== (existingData?.count ?? 0))
+  await noteVisitForFamiliarIndex(hostname, updated, counted)
 }
-
-/**
- * Tabs where a page was caught removing or hiding our UI.
- *
- * The tampering badge has to outlast the ordinary badge refreshes, or the alarm
- * is undone by the next page-load event or by the user switching tabs and back.
- * Cleared when the tab starts loading something else, since that is a new page
- * and it has done nothing yet.
- */
-const tamperedTabs = new Set<number>()
 
 // Function to update badge for current URL
 async function updateBadge(hostname: string, tabId?: number) {
-  // Never paint over a tampering alarm with a routine visit count
-  if (tabId != null && tamperedTabs.has(tabId))
+  // Never paint over a tampering alarm with a routine visit count. Kept in
+  // `storage.session`, because this worker is stopped between the alarm and the
+  // next badge refresh far more often than not – see logic/tamper-alarms.ts
+  if (tabId != null && await hasTamperAlarm(tabId))
     return
 
   if (isInternalPage(hostname)) {
@@ -213,17 +216,30 @@ async function updateBadge(hostname: string, tabId?: number) {
 const WELCOME_PAGE = 'dist/welcome/index.html'
 
 /**
+ * Bring every open tab up to date after the visit records changed underneath it.
+ *
+ * The badge is drawn from a record and the content script holds a verdict drawn
+ * from one, so both are wrong the moment an import or a reset lands. The tabs
+ * are told rather than left to find out on the next navigation, which for a tab
+ * somebody is looking at may be never.
+ */
+async function refreshOpenTabs() {
+  const tabs = await browser.tabs.query({})
+  for (const tab of tabs) {
+    if (!tab.url || tab.id == null)
+      continue
+    await updateBadge(getHostname(tab.url), tab.id)
+    await sendToTabSafe(tab.id, { type: 'visit-data-changed', data: {} })
+  }
+}
+
+/**
  * Take a finished import into use: thousands of domains just crossed the
  * familiarity threshold at once, and every open tab is showing a stale badge.
  */
 async function applyImportedHistory() {
   await rebuildFamiliarIndex()
-
-  const tabs = await browser.tabs.query({})
-  for (const tab of tabs) {
-    if (tab.url && tab.id != null)
-      await updateBadge(getHostname(tab.url), tab.id)
-  }
+  await refreshOpenTabs()
 }
 
 /**
@@ -237,15 +253,48 @@ async function applyImportedHistory() {
  * then the extension is already behaving correctly. Merging folds by min/max,
  * so the slow pass cannot disturb what the fast one wrote.
  */
-export async function runAutoHistoryImport(attempts = 0): Promise<void> {
-  await browser.storage.local.set({ [HISTORY_AUTO_IMPORT_KEY]: true })
+/**
+ * Stop an import the moment the records it is writing are declared gone.
+ *
+ * A reset moves the generation on, so the writes are dropped either way – this
+ * is what stops the run from carrying on for another few thousand hostnames and
+ * then reporting a number of domains it never wrote.
+ */
+function stopOnReset(startedAt: number) {
+  return () => visitGeneration() !== startedAt
+}
 
-  const quick = await runHistoryImport({ mode: 'quick', auto: true, attempts })
+export async function runAutoHistoryImport(attempts = 0, existingRunId?: string): Promise<void> {
+  await browser.storage.local.set({ [HISTORY_AUTO_IMPORT_KEY]: true })
+  const shouldStop = stopOnReset(visitGeneration())
+  const runId = existingRunId ?? newImportRunId()
+
+  // The quick pass leaves `full-pending` behind rather than `done`. The rebuild
+  // below takes a while, and a worker torn down during it used to leave a state
+  // that said the whole import had finished – losing the full pass, and with it
+  // every first-visit date, for good.
+  const quick = await runHistoryImport({
+    mode: 'quick',
+    auto: true,
+    attempts,
+    shouldStop,
+    runId,
+    stage: 'quick-running',
+    nextStage: 'full-pending',
+  })
   if (quick.status !== 'done')
     return
   await applyImportedHistory()
 
-  const full = await runHistoryImport({ mode: 'full', auto: true, attempts, resume: true })
+  const full = await runHistoryImport({
+    mode: 'full',
+    auto: true,
+    attempts,
+    resume: true,
+    shouldStop,
+    runId,
+    stage: 'full-running',
+  })
   if (full.status === 'done')
     await applyImportedHistory()
 }
@@ -268,10 +317,29 @@ async function resumeInterruptedImport(): Promise<void> {
   await backgroundReady
 
   const state = await readHistoryImportState()
-  if (!state || state.status !== 'running')
+  if (!state)
     return
   if (isImportAlive(state, Date.now()))
     return
+
+  // A chain that stopped between its two passes. The quick pass finished and
+  // said so, which is why the status is not `running` – but the stage says the
+  // full pass never started, and that is the one with the dates in it.
+  if (state.status !== 'running') {
+    if (state.stage === 'full-pending' && state.auto) {
+      const full = await runHistoryImport({
+        mode: 'full',
+        auto: true,
+        resume: true,
+        shouldStop: stopOnReset(visitGeneration()),
+        runId: state.runId,
+        stage: 'full-running',
+      })
+      if (full.status === 'done')
+        await applyImportedHistory()
+    }
+    return
+  }
 
   // An import driven by the options page dies with its tab and is nobody's to
   // restart. Just stop the UI from showing it as forever running.
@@ -294,18 +362,32 @@ async function resumeInterruptedImport(): Promise<void> {
   }
 
   if (state.mode === 'full') {
-    const full = await runHistoryImport({ mode: 'full', auto: true, attempts, resume: true })
+    const full = await runHistoryImport({
+      mode: 'full',
+      auto: true,
+      attempts,
+      resume: true,
+      shouldStop: stopOnReset(visitGeneration()),
+      runId: state.runId,
+      stage: 'full-running',
+    })
     if (full.status === 'done')
       await applyImportedHistory()
     return
   }
 
-  await runAutoHistoryImport(attempts)
+  await runAutoHistoryImport(attempts, state.runId)
 }
 
 // Both hooks are wanted: onStartup covers the browser being closed and reopened,
 // the bare call covers a service worker that was killed while the browser stayed up
-browser.runtime.onStartup.addListener(() => resumeInterruptedImport())
+browser.runtime.onStartup.addListener(async () => {
+  // An alarm is about a page that is on screen now. A browser that has just
+  // started has no such page – and where `storage.session` is missing, nothing
+  // else would ever clear these.
+  await clearAllTamperAlarms()
+  await resumeInterruptedImport()
+})
 resumeInterruptedImport()
 
 browser.runtime.onInstalled.addListener(async (details): Promise<void> => {
@@ -362,7 +444,7 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // one has not done anything yet. Cleared on 'loading' so an alarm raised by
   // the new page, which arrives afterwards, is the one that survives.
   if (status === 'loading')
-    tamperedTabs.delete(tabId)
+    await clearTamperAlarm(tabId)
 
   // Only increment the visit count once per navigation, on complete.
   // Always count the visit, even if the tab is in the background.
@@ -382,7 +464,7 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // without the loading-phase update the badge briefly falls back to the
   // global default or another tab's state until 'complete' arrives. Firefox
   // preserves per-tab state across navigations, so it doesn't need this.
-  if (isInternalPage(hostname) && !tamperedTabs.has(tabId)) {
+  if (isInternalPage(hostname) && !await hasTamperAlarm(tabId)) {
     await browser.action.setBadgeText({ text: '', tabId })
     await browser.action.setIcon({
       path: getIconPaths('icon-default'),
@@ -395,14 +477,14 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 })
 
 // A closed tab's id can be handed out again, so let go of it
-browser.tabs.onRemoved.addListener((tabId) => {
-  tamperedTabs.delete(tabId)
+browser.tabs.onRemoved.addListener(async (tabId) => {
+  await clearTamperAlarm(tabId)
 })
 
 // Update badge when switching tabs
 browser.tabs.onActivated.addListener(async ({ tabId }) => {
   // Switching away and back must not quietly clear a tampering alarm
-  if (tamperedTabs.has(tabId))
+  if (await hasTamperAlarm(tabId))
     return
 
   await backgroundReady
@@ -644,23 +726,20 @@ async function findLookalikesLogic(hostname: string, context?: 'email') {
 }
 
 // Handle ignore site requests
-async function handleIgnoreSite(hostname: string) {
+async function handleIgnoreSite(hostname: string, ignored = true) {
   if (!hostname)
     return 'Error: No hostname provided'
 
-  // Get current site data
-  const result = await browser.storage.local.get(hostname)
-  const siteData = result[hostname] || { count: 0, lastSeen: 0, ignored: false }
+  // The flag is set on the record as it stands, not on a copy read earlier: a
+  // navigation writing its own count in between used to carry the old flag back
+  await updateVisitRecord(hostname, existing => ({
+    count: 0,
+    lastSeen: 0,
+    ...existing,
+    ignored,
+  }))
 
-  // Update ignored status
-  await browser.storage.local.set({
-    [hostname]: {
-      ...siteData,
-      ignored: true,
-    },
-  })
-
-  return 'Site ignored successfully'
+  return ignored ? 'Site ignored successfully' : 'Site un-ignored successfully'
 }
 
 // Add message handler to get settings
@@ -717,23 +796,30 @@ async function handleShowNotification(warningType: 'input' | 'copy') {
 }
 
 // Handle tampering detection
-async function handleTampering(tabId?: number) {
-  // Marked before anything is awaited: a page that strikes mid-load would
+async function handleTampering(tabId?: number, url?: string) {
+  // The page watcher keeps going after its first report now, so a page that
+  // strikes repeatedly reports repeatedly. The alarm and the badge are worth
+  // re-asserting every time – the notification is worth showing once.
+  const alreadyAlarmed = tabId != null && await hasTamperAlarm(tabId)
+
+  // Marked before anything else is awaited: a page that strikes mid-load would
   // otherwise have its alarm painted over by the load's own badge refresh
   if (tabId != null)
-    tamperedTabs.add(tabId)
+    await raiseTamperAlarm(tabId, url ?? '')
 
-  const title = await loadTranslation('securityWarning')
-  const message = await loadTranslation('tamperingMessage')
+  if (!alreadyAlarmed) {
+    const title = await loadTranslation('securityWarning')
+    const message = await loadTranslation('tamperingMessage')
 
-  // Show high-priority notification
-  await browser.notifications.create({
-    type: 'basic',
-    title,
-    message,
-    iconUrl: browser.runtime.getURL('assets/site-danger-48.png'),
-    priority: 2,
-  })
+    // Show high-priority notification
+    await browser.notifications.create({
+      type: 'basic',
+      title,
+      message,
+      iconUrl: browser.runtime.getURL('assets/site-danger-48.png'),
+      priority: 2,
+    })
+  }
 
   // Update badge to show error state (per-tab if available)
   await browser.action.setBadgeText({ text: '!!!', ...(tabId != null && { tabId }) })
@@ -764,6 +850,31 @@ async function handleOpenPopupTab(domain: string) {
   return 'Popup tab opened'
 }
 
+/**
+ * Throw away the visit records, and everything derived from them.
+ *
+ * One command in the background rather than a storage wipe from the settings
+ * page. The page could delete the records, but not the copies: the familiar
+ * index went on answering lookalike questions from memory and could be written
+ * back out, a running import kept writing records the user had just deleted, and
+ * every badge and every open tab carried on showing a verdict about data that
+ * was no longer there.
+ */
+async function handleResetVisits() {
+  // The scan and the delete are one step, and the generation moves with them, so
+  // an import batch queued behind this is dropped and one queued ahead of it has
+  // its records swept up rather than surviving a wipe that missed them
+  const removed = await removeVisitRecords(visitKeysToRemove)
+
+  // The derived copies, none of which mean anything now
+  invalidateFamiliarIndex()
+  emailIndex = null
+  emailIndexBuiltFrom = null
+
+  await refreshOpenTabs()
+  return { success: true, removed }
+}
+
 // Centralized message handlers map
 const messageHandlers = {
   'get-visit-count': (data: any) => getVisitCountLogic(data.url),
@@ -780,13 +891,16 @@ const messageHandlers = {
     await runAutoHistoryImport()
     return { success: true }
   },
-  'ignore-site': (data: any) => handleIgnoreSite(data.hostname),
+  'ignore-site': (data: any) => handleIgnoreSite(data.hostname, data.ignored !== false),
+  // The settings page asks for this rather than emptying storage itself – see
+  // `handleResetVisits` for what else has to go with the records
+  'reset-visits': () => handleResetVisits(),
   'get-settings': () => getSettingsLogic(),
   // The menus namespace is not exposed to content scripts anywhere, so the one
   // context that can answer this is the one that would create the menu
   'get-platform': async () => ({ contextMenus: hasContextMenus() }),
   'show-notification': (data: any) => handleShowNotification(data.warningType),
-  'tampering-detected': (_data: any, ctx?: { tabId?: number }) => handleTampering(ctx?.tabId),
+  'tampering-detected': (data: any, ctx?: { tabId?: number }) => handleTampering(ctx?.tabId, data?.url),
   'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain),
   'resolve-short-url': async (data: any) => {
     const cached = getCachedResolvedUrl(data.url)

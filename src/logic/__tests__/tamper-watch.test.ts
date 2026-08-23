@@ -5,7 +5,7 @@
  */
 import type { TamperReason } from '../tamper-watch'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { applyHostStyles, createTamperWatch, isHostStyleIntact, isVisuallyHidden } from '../tamper-watch'
+import { applyHostStyles, createTamperWatch, HOST_STYLES, isHostStyleIntact, isVisuallyHidden } from '../tamper-watch'
 
 function settle() {
   return new Promise(resolve => setTimeout(resolve, 0))
@@ -176,5 +176,74 @@ describe('host style checks', () => {
     applyHostStyles(el)
     el.setAttribute('hidden', '')
     expect(isHostStyleIntact(el)).toBe(false)
+  })
+})
+
+describe('the ways a page can hide a panel without hiding it', () => {
+  // Every property here neutralises the panel without touching `display`,
+  // `visibility` or `opacity` – which used to be the whole check. They are held
+  // at their neutral value by an inline `!important`, so the page has to strip
+  // the guard to use any of them, and stripping it is what gets caught.
+  it.each([
+    'transform',
+    'filter',
+    'clip-path',
+    'content-visibility',
+    'contain',
+    'translate',
+    'scale',
+    'rotate',
+  ])('pins %s, so a page rule cannot reach the host', (prop) => {
+    expect(Object.keys(HOST_STYLES)).toContain(prop)
+  })
+
+  it('reads an unset opacity as unset rather than as invisible', () => {
+    // `Number('')` is 0. Reading a property the engine has no answer for as a
+    // deliberate zero declares every page on the web to be hiding the panel.
+    const container = document.createElement('div')
+    applyHostStyles(container)
+    document.body.appendChild(container)
+
+    expect(isVisuallyHidden(container)).toBe(false)
+  })
+})
+
+describe('the watch after it has said something', () => {
+  let onTamper: (reason: TamperReason) => void
+
+  beforeEach(() => {
+    document.documentElement.innerHTML = '<head></head><body></body>'
+    onTamper = vi.fn()
+  })
+
+  function watchWith(container: HTMLElement, shadow: HTMLElement) {
+    return createTamperWatch({
+      container,
+      shadow,
+      guardedNodes: [],
+      onTamper,
+      isSelfRemoving: () => false,
+    })
+  }
+
+  // The first report used to be the last: the watch shut itself down, so a page
+  // only had to trip it once to be left alone for the rest of the visit
+  it('keeps repairing the guard after the first report', async () => {
+    const container = document.createElement('div')
+    applyHostStyles(container)
+    const shadow = document.createElement('div')
+    container.appendChild(shadow)
+    document.body.appendChild(container)
+    watchWith(container, shadow)
+
+    container.removeAttribute('style')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(onTamper).toHaveBeenCalledWith('hidden')
+    expect(isHostStyleIntact(container)).toBe(true)
+
+    // Second strike, well after the first
+    container.setAttribute('style', 'display:none')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(isHostStyleIntact(container)).toBe(true)
   })
 })

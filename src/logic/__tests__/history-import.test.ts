@@ -1,6 +1,6 @@
 import type { ImportedDomainStats } from '../history-import'
 import { describe, expect, it } from 'vitest'
-import { addVisitTimes, describeImportHealth, hasVisitRecords, hostnameFromHistoryUrl, mapWithConcurrency, mergeImportedStats, needsDetailPass, shouldAutoImport } from '../history-import'
+import { addVisitTimes, describeImportHealth, hasVisitRecords, hostnameFromHistoryUrl, isHeldByAnother, mapWithConcurrency, mergeImportedStats, newImportRunId, shouldAutoImport } from '../history-import'
 
 function at(year: number, month: number, day: number, hour = 12) {
   return new Date(year, month - 1, day, hour).getTime()
@@ -207,21 +207,50 @@ describe('shouldAutoImport', () => {
   })
 })
 
-describe('needsDetailPass', () => {
-  it('wants the slow pass for a record only the quick import wrote', () => {
-    expect(needsDetailPass({ count: 12, lastSeen: 1, ignored: false })).toBe(true)
+describe('import ownership', () => {
+  const base = {
+    status: 'running' as const,
+    mode: 'full' as const,
+    phase: 'scanning' as const,
+    current: 0,
+    total: 0,
+    domains: 0,
+    visits: 0,
+    finishedAt: 0,
+    auto: true,
+    attempts: 0,
+    fullDoneAt: 0,
+    stage: 'full-running' as const,
+    cursor: '',
+  }
+
+  it('gives every run a name of its own', () => {
+    expect(newImportRunId()).not.toBe(newImportRunId())
   })
 
-  it('wants it for a hostname that has never been seen', () => {
-    expect(needsDetailPass(undefined)).toBe(true)
+  // Two runs, one state key. A background resume and a Re-import from the
+  // settings page used to overwrite each other's progress, and Cancel then
+  // stopped whichever of them happened to read the flag.
+  it('sees a live run belonging to somebody else', () => {
+    const now = 1_000_000
+    const theirs = { ...base, runId: 'theirs', updatedAt: now - 1000 }
+    expect(isHeldByAnother(theirs, 'mine', now)).toBe(true)
   })
 
-  it('skips a hostname a checkpoint already finished', () => {
-    expect(needsDetailPass({ count: 12, lastSeen: 1, ignored: false, activeDays: 4 })).toBe(false)
+  it('does not read a run as somebody else once it has stopped ticking', () => {
+    const now = 1_000_000
+    const dead = { ...base, runId: 'theirs', updatedAt: now - 10 * 60 * 1000 }
+    expect(isHeldByAnother(dead, 'mine', now)).toBe(false)
   })
 
-  it('counts zero active days as finished, not as missing', () => {
-    expect(needsDetailPass({ count: 1, lastSeen: 1, ignored: false, activeDays: 0 })).toBe(false)
+  it('is never held by itself', () => {
+    const now = 1_000_000
+    const mine = { ...base, runId: 'mine', updatedAt: now }
+    expect(isHeldByAnother(mine, 'mine', now)).toBe(false)
+  })
+
+  it('has nothing to yield to when there is no state at all', () => {
+    expect(isHeldByAnother(null, 'mine', 1_000_000)).toBe(false)
   })
 })
 
@@ -230,6 +259,9 @@ describe('describeImportHealth', () => {
   const base = {
     mode: 'full' as const,
     phase: 'scanning' as const,
+    runId: 'test-run',
+    stage: 'full-running' as const,
+    cursor: '',
     current: 0,
     total: 0,
     domains: 0,

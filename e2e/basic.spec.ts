@@ -931,3 +931,64 @@ test('the import button offers a first run before it offers a re-run', async ({ 
   // Nothing to re-do is only true until something has been done
   await expect(button).toHaveText('Re-import history', { timeout: 20000 })
 })
+
+test('a reset takes the lookalike index down with the records', async ({ page, context, extensionId }) => {
+  // The index is a copy of the visit records held in the background's memory.
+  // Deleting the records from the settings page left it answering questions from
+  // that copy, and one write later it was back on disk.
+  await seedVisits(context, 'gmail.com', 50, { activeDays: 30 })
+
+  const check = await context.newPage()
+  await check.goto(`chrome-extension://${extensionId}/dist/popup/index.html?check=1`)
+  await check.waitForTimeout(1200)
+  await check.evaluate(async () => chrome.runtime.sendMessage({ type: 'rebuild-familiar-index', data: {} }))
+
+  const lookalikesFor = (target: any) => target.evaluate(async () =>
+    chrome.runtime.sendMessage({ type: 'find-lookalikes', data: { hostname: 'gmal.com' } }))
+
+  expect((await lookalikesFor(check)).length).toBeGreaterThan(0)
+
+  await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await page.waitForTimeout(1500)
+  await page.locator('label', { hasText: 'All information about site visits' }).locator('input').check()
+  await page.locator('button', { hasText: 'Reset selected data' }).click()
+  await page.locator('.btn-danger', { hasText: 'Reset' }).last().click()
+  await page.waitForTimeout(1500)
+
+  // Nothing left to resemble
+  expect(await lookalikesFor(check)).toEqual([])
+})
+
+test('turning the link check off reaches a tab that is already open', async ({ page, context }) => {
+  // Every one of these used to be read once at document start and kept for the
+  // life of the tab, so switching the trigger off left it intercepting clicks
+  // until the page was reloaded.
+  await patchSettings(context, {
+    linkSafety: { enabled: true, tooltipTrigger: 'click-left', hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
+  })
+
+  await serveSite(page, SITE_URL, blankPage('links', `
+    <a id="external" href="https://elsewhere-entirely.test/landed"
+       style="position:fixed;top:50px;left:50px;font-size:20px;z-index:9999">External Link</a>
+  `))
+  await page.route('https://elsewhere-entirely.test/**', (route: any) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: blankPage('landed') }))
+  await page.waitForTimeout(2500)
+
+  // Held back, which is what the trigger is for
+  await page.locator('#external').click()
+  await page.waitForTimeout(1000)
+  expect(page.url()).toBe(SITE_URL)
+
+  // Escape the dialog, then turn the whole feature off from elsewhere
+  await page.keyboard.press('Escape')
+  await patchSettings(context, {
+    linkSafety: { enabled: false, tooltipTrigger: 'click-left', hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
+  })
+  await page.waitForTimeout(1500)
+
+  // The same tab, never reloaded, now lets the link do what links do
+  await page.locator('#external').click()
+  await page.waitForTimeout(1500)
+  expect(page.url()).toContain('elsewhere-entirely.test')
+})

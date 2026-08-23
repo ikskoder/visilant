@@ -30,6 +30,18 @@ export function setCachedVisitCount(hostname: string, data: VisitFacts) {
 }
 
 /**
+ * Throw the cached verdicts away.
+ *
+ * Every entry here is a verdict, not a fact: it was reached under the rules and
+ * the visit records as they stood. A reset, an import or a change to the rules
+ * makes all of them wrong at once, and a tab that stays open would go on showing
+ * them for the rest of its life.
+ */
+export function clearVisitCache() {
+  visitCountCache.clear()
+}
+
+/**
  * Check if a link points to a different domain than the current page
  */
 export function isExternalLink(href: string, currentHostname: string): boolean {
