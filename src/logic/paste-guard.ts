@@ -118,7 +118,10 @@ export function isEditableTarget(target: EventTarget | null): boolean {
     return !input.readOnly && !input.disabled && !/^(?:button|checkbox|radio|submit|reset|file|image|range|color)$/i.test(input.type)
   }
 
-  return element.isContentEditable
+  // Coerced rather than returned as it comes: an element type the engine has no
+  // opinion about answers `undefined` here, and a function whose type says
+  // boolean should not hand one out
+  return Boolean(element.isContentEditable)
 }
 
 /**

@@ -9,7 +9,7 @@ import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
-import { checkDomainMismatch, clearVisitCache, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, getPunycodeInfo, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
+import { alternateSpelling, checkDomainMismatch, clearVisitCache, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
 import { describePastePayload, editableTargetOf, isEditableEventTarget, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
@@ -355,8 +355,7 @@ const PASTE_VERDICT_TIMEOUT_MS = 5000
 
 async function interceptPaste(target: HTMLElement, text: string, undecided = false) {
   const hostname = window.location.hostname
-  const punycodeResult = getPunycodeInfo(hostname)
-  const punycode = punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null
+  const punycode = alternateSpelling(hostname)
   const payload = describePastePayload(text)
 
   await ensureTooltipUiMounted()
@@ -601,7 +600,6 @@ async function showLinkInterceptByUrl(url: string) {
     return
 
   const visitData = await fetchLinkData(url, hostname)
-  const punycodeResult = getPunycodeInfo(hostname)
 
   // Handle shortened URLs
   const shortUrlMode = settings.value.linkSafety.shortUrlMode
@@ -651,7 +649,7 @@ async function showLinkInterceptByUrl(url: string) {
     stats: visitData.stats,
     isSafe: visitData.isSafe,
     mismatch: null,
-    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    punycode: alternateSpelling(hostname),
     shortUrl: shortUrlInfo,
   }
   linkInterceptVisible.value = true
@@ -689,7 +687,6 @@ async function showLinkTooltipByUrl(url: string, opts?: { force?: boolean }) {
   const visitData = await fetchLinkData(url, hostname)
   if (request !== tooltipRequest)
     return
-  const punycodeResult = getPunycodeInfo(hostname)
 
   const anchorRect = syntheticAnchorRect()
 
@@ -704,7 +701,7 @@ async function showLinkTooltipByUrl(url: string, opts?: { force?: boolean }) {
     stats: visitData.stats,
     isSafe: visitData.isSafe,
     mismatch: null, // No text to compare from context menu
-    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    punycode: alternateSpelling(hostname),
     shortUrl: shouldShowShortUrl
       ? { originalUrl: url, resolvedUrl: '', resolvedDomain: '', resolvedStats: { count: 0 }, resolvedIsSafe: false, chain: [], status: shouldAutoResolve ? 'loading' : 'idle', isKnownShortener }
       : null,
@@ -842,7 +839,6 @@ async function showCheckPanelForTarget(target: { kind: 'email' | 'url' | 'domain
     hostname = parsedHostname
   }
 
-  const punycodeResult = getPunycodeInfo(hostname)
   let family: DomainFamilyInfo | null = null
   try {
     family = await sendMessageSafe<DomainFamilyInfo>('get-domain-family', { hostname })
@@ -854,7 +850,7 @@ async function showCheckPanelForTarget(target: { kind: 'email' | 'url' | 'domain
   checkPanelData.value = {
     kind: email ? 'email' : 'domain',
     hostname,
-    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    punycode: alternateSpelling(hostname),
     email,
     family: family || { baseDomain: hostname, entries: [], total: 0 },
   }
@@ -882,7 +878,7 @@ function showRawPayloadTooltip(payload: string, payloadKind: RawPayloadInfo['pay
  * Resolve a shortened URL and update the current tooltip data.
  * Called automatically (auto mode) or on button click (button mode).
  */
-async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
+async function resolveAndUpdateTooltip(url: string, originalHostname: string, retry = false) {
   // Set loading state
   if (linkTooltipData.value && linkTooltipData.value.href === url && linkTooltipData.value.shortUrl) {
     linkTooltipData.value = {
@@ -892,7 +888,7 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
   }
 
   try {
-    const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url })
+    const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url, retry })
     if (!linkTooltipData.value || linkTooltipData.value.href !== url)
       return // tooltip already dismissed or changed
 
@@ -949,7 +945,9 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
 ;(window as any).__visilant_resolveTooltipUrl = () => {
   const data = linkTooltipData.value
   if (data?.shortUrl && (data.shortUrl.status === 'idle' || data.shortUrl.status === 'error')) {
-    resolveAndUpdateTooltip(data.href, data.domain)
+    // Pressing it after an error is a retry, and a retry has to reach past
+    // whatever the last attempt left behind
+    resolveAndUpdateTooltip(data.href, data.domain, data.shortUrl.status === 'error')
   }
 }
 
@@ -1014,7 +1012,7 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string) {
 }
 
 // Core intercept resolve logic (shared by button click and resolve-once)
-async function resolveAndUpdateIntercept() {
+async function resolveAndUpdateIntercept(retry = false) {
   const data = linkInterceptData.value
   if (!data?.shortUrl)
     return
@@ -1023,7 +1021,7 @@ async function resolveAndUpdateIntercept() {
   const isKnownShortener = data.shortUrl.isKnownShortener
 
   try {
-    const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url })
+    const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url, retry })
     if (!linkInterceptData.value || linkInterceptData.value.url !== url)
       return
 
@@ -1088,13 +1086,17 @@ async function resolveAndUpdateIntercept() {
   if (!data?.shortUrl || (data.shortUrl.status !== 'idle' && data.shortUrl.status !== 'error'))
     return
 
+  // Pressed after an error, this is a retry, and a retry has to reach past
+  // whatever the last attempt left behind
+  const retry = data.shortUrl.status === 'error'
+
   // Set loading state
   linkInterceptData.value = {
     ...data,
     shortUrl: { ...data.shortUrl, status: 'loading' },
   }
 
-  await resolveAndUpdateIntercept()
+  await resolveAndUpdateIntercept(retry)
 }
 
 // Expose function to resolve once in intercept without marking domain as shortener
@@ -1186,9 +1188,6 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
     mismatch = { textDomain: mismatchResult.textDomain, textDomainStats: textDomainData.stats, textDomainIsSafe: textDomainData.isSafe }
   }
 
-  // Check for punycode/unicode
-  const punycodeResult = getPunycodeInfo(hostname)
-
   // Measured here, immediately before the tooltip is placed. Taken before the
   // awaits above, this would be where the link was when the pointer arrived
   // rather than where it is now, and a page that scrolled in between put the
@@ -1206,7 +1205,7 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
     stats: visitData.stats,
     isSafe: visitData.isSafe,
     mismatch,
-    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    punycode: alternateSpelling(hostname),
     shortUrl: shouldShowShortUrl
       ? { originalUrl: href, resolvedUrl: '', resolvedDomain: '', resolvedStats: { count: 0 }, resolvedIsSafe: false, chain: [], status: shouldAutoResolve ? 'loading' : 'idle', isKnownShortener }
       : null,
@@ -1299,7 +1298,6 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
   // Check for mismatch and punycode
   const linkText = anchor.textContent || ''
   const mismatchResult = checkDomainMismatch(linkText, hostname)
-  const punycodeResult = getPunycodeInfo(hostname)
 
   // Fetch textDomain visit data if mismatch
   let interceptMismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null = null
@@ -1315,7 +1313,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
     stats: visitData.stats,
     isSafe: visitData.isSafe,
     mismatch: interceptMismatch,
-    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    punycode: alternateSpelling(hostname),
     shortUrl: shortUrlInfo,
   }
   linkInterceptVisible.value = true
@@ -1804,7 +1802,6 @@ async function showFramePasteIntercept(data: { hostname: string, status: 'unfami
   await ensureTooltipUiMounted()
 
   const facts = await fetchLinkData(`https://${data.hostname}`, data.hostname).catch(() => null)
-  const punycodeResult = getPunycodeInfo(data.hostname)
 
   // A second dialog over the first would leave the first paste unanswered
   if (pasteInterceptVisible.value)
@@ -1817,7 +1814,7 @@ async function showFramePasteIntercept(data: { hostname: string, status: 'unfami
   pasteInterceptData.value = {
     domain: data.hostname,
     stats: facts?.stats ?? { count: 0 },
-    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    punycode: alternateSpelling(data.hostname),
     // The payload stays in the frame. Only its shape would be worth showing and
     // sending the text across for that is not worth what it is.
     payload: describePastePayload(''),

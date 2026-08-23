@@ -954,11 +954,30 @@ async function resetSelected() {
   }
 
   if (resetSelections.value.settings) {
-    // Reset settings to defaults
-    settings.value = { ...defaultSettings }
-    // Custom shorteners are part of settings UI, reset them too
-    await browser.storage.local.remove('customShorteners')
-    customShortenersText.value = ''
+    // Deep-cloned, not spread. A shallow copy shares `familiarity` and
+    // `linkSafety` with the shipped defaults, and the next nested `v-model` on
+    // this page then edits the defaults themselves - so "is this section at its
+    // defaults" started answering yes to whatever the user had just typed.
+    settings.value = structuredClone(defaultSettings)
+
+    // Every list this page owns, not just the one it happened to remember. The
+    // custom mail sites, the two custom email lists and every fetched cache are
+    // all settings the user made on this page, and a reset that left the fetched
+    // lists in place carried on classifying by a source that had just been put
+    // back to its default.
+    for (const texts of Object.values(SECTION_TEXTS)) {
+      for (const text of texts)
+        text.value = ''
+    }
+
+    for (const caches of Object.values(SECTION_REMOTE)) {
+      for (const cache of caches) {
+        await browser.storage.local.remove(cache.key)
+        cache.clear?.()
+        cache.info.value = null
+        cache.status.value = 'idle'
+      }
+    }
   }
 
   // Reset selections

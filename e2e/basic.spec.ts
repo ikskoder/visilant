@@ -1072,3 +1072,65 @@ test('CONTROL: with the guard off, a paste into a frame lands in the field', asy
 
   await expect(inner).toHaveValue('ordinary text')
 })
+
+test('a link inside a custom element is checked like any other', async ({ page }) => {
+  // A link in an open shadow root retargets: the event's target is the host
+  // element, and `closest('a')` from there finds nothing. The link check simply
+  // never ran on it.
+  await serveSite(page, SITE_URL, blankPage('shadow', `
+    <link-card id="card"></link-card>
+    <script>
+      class LinkCard extends HTMLElement {
+        connectedCallback() {
+          const root = this.attachShadow({ mode: 'open' })
+          root.innerHTML = '<a id="inner" href="https://elsewhere-shadow.test/landing" style="font-size:20px">Open</a>'
+        }
+      }
+      customElements.define('link-card', LinkCard)
+    </script>
+  `))
+  await page.waitForTimeout(2500)
+
+  // Hovering the host, because that is all the page exposes to a pointer
+  await page.locator('#card').hover()
+  await page.waitForTimeout(2500)
+
+  const tooltipHost = page.locator('body > div[style*="2147483647"]')
+  await expect(tooltipHost.first()).toBeAttached({ timeout: 5000 })
+})
+
+/**
+ * Is the in-page warning on screen?
+ *
+ * It sits in the top right corner and takes pointer events, so a hit test there
+ * retargets to the shadow host - which carries the inline maximum z-index. The
+ * container itself is mounted on every page for the link check, so its mere
+ * presence proves nothing.
+ */
+function warningShowing(page: any): Promise<boolean> {
+  return page.evaluate(() => {
+    const el = document.elementFromPoint(window.innerWidth - 30, 30) as HTMLElement | null
+    return Boolean(el?.style && el.style.getPropertyValue('z-index') === '2147483647')
+  })
+}
+
+test('a site shortcut is not reported as typing, but typing into a field is', async ({ page }) => {
+  // A single key with no field under it is the site's own shortcut - `j` to move
+  // down a list, `/` to open a search. Warning about those turned the feature
+  // into noise on every keyboard-driven site.
+  await serveSite(page, SITE_URL, blankPage('shortcuts', `
+    <div style="height:200px">no field here</div>
+    <input id="field" type="text" style="width:300px">
+  `))
+  await page.waitForTimeout(2500)
+
+  await page.click('body', { position: { x: 20, y: 20 } })
+  await page.keyboard.press('j')
+  await page.waitForTimeout(1500)
+  expect(await warningShowing(page)).toBe(false)
+
+  // ...and the control: the same key, in a field, is exactly what this warns about
+  await page.click('#field')
+  await page.keyboard.press('j')
+  await expect.poll(() => warningShowing(page), { timeout: 10000, intervals: [250] }).toBe(true)
+})

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describePastePayload, shouldHoldPasteUndecided, shouldInterceptPaste } from '../paste-guard'
+import { describePastePayload, editableTargetOf, isEditableEventTarget, isEditableTarget, shouldHoldPasteUndecided, shouldInterceptPaste } from '../paste-guard'
 
 describe('shouldInterceptPaste', () => {
   const base = {
@@ -114,5 +114,44 @@ describe('shouldHoldPasteUndecided', () => {
 
   it('stops asking once the user has confirmed a paste on this page', () => {
     expect(shouldHoldPasteUndecided({ ...base, alreadyAllowed: true })).toBe(false)
+  })
+})
+
+describe('isEditableEventTarget', () => {
+  // A field inside a custom element's shadow root retargets: the event's target
+  // is the host element, which is not editable and has no value. The paste guard
+  // saw an ordinary click target and let the paste straight through.
+  function eventWithPath(path: EventTarget[]): Event {
+    return { target: path[path.length - 1], composedPath: () => path } as unknown as Event
+  }
+
+  it('finds a field the event was retargeted away from', () => {
+    const input = document.createElement('input')
+    const host = document.createElement('my-widget')
+
+    expect(isEditableTarget(host)).toBe(false)
+    expect(isEditableEventTarget(eventWithPath([input, host]))).toBe(true)
+  })
+
+  it('still answers for an ordinary field with no shadow root in the way', () => {
+    const input = document.createElement('input')
+    expect(isEditableEventTarget(eventWithPath([input]))).toBe(true)
+  })
+
+  it('says no when nothing in the path can be typed into', () => {
+    const div = document.createElement('div')
+    const button = document.createElement('button')
+    expect(isEditableEventTarget(eventWithPath([button, div]))).toBe(false)
+  })
+
+  it('falls back to the target where there is no composed path', () => {
+    const input = document.createElement('input')
+    expect(isEditableEventTarget({ target: input } as unknown as Event)).toBe(true)
+  })
+
+  it('hands back the field itself, so focus can be put back into it', () => {
+    const input = document.createElement('input')
+    const host = document.createElement('my-widget')
+    expect(editableTargetOf(eventWithPath([input, host]))).toBe(input)
   })
 })

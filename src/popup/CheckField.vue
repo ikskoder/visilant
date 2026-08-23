@@ -6,7 +6,7 @@ import type { MailSiteFamily } from '~/logic/mail-sites'
 import type { SiteVisitData } from '~/logic/storage'
 import type { EmailRecipientInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import AddressCompare from '~/components/AddressCompare.vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailBreakdown from '~/components/EmailBreakdown.vue'
@@ -22,12 +22,13 @@ import { belongsToSite, siteDomainOrSelf } from '~/logic/domain-boundary'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
-import { getHostnameFromHref, getPunycodeInfo } from '~/logic/link-safety'
+import { alternateSpelling, getHostnameFromHref } from '~/logic/link-safety'
+import { watchListStorage } from '~/logic/list-sync'
 import { collectMailSiteFamilies, loadMailSitesFromRecords } from '~/logic/mail-sites'
 import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings } from '~/logic/storage'
-import { isShortenedUrl } from '~/logic/url-shorteners'
+import { isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
 import { isTrackableHostname } from '~/logic/visit-stats'
 
 const props = defineProps<{
@@ -62,8 +63,22 @@ const inputText = ref('')
 const result = ref<CheckResult | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
+/** Set once the lists this page classifies by have actually been read. */
+let stopWatchingLists: (() => void) | null = null
+
 onMounted(async () => {
-  await loadEmailListsFromStorage()
+  // Both lists, and awaited. The shortener lists were never loaded here at all,
+  // so a domain the user had added by hand was flagged as a shortener in a
+  // tooltip and not on this page – and the email lists were started and left to
+  // land whenever, so the first check ran against whatever was ready.
+  await Promise.all([
+    loadEmailListsFromStorage(),
+    loadShortenersFromStorage(),
+  ])
+
+  // ...and followed, so an edit made in the settings next door reaches a check
+  // page that is already open
+  stopWatchingLists = watchListStorage()
 
   // Opened about something – a mailto with several recipients, most often.
   // Run after the lists are in, or the first check would classify without them.
@@ -72,6 +87,28 @@ onMounted(async () => {
     await runCheck(props.initial)
   }
 })
+
+onUnmounted(() => {
+  stopWatchingLists?.()
+  stopWatchingLists = null
+})
+
+/**
+ * Which check is the current one.
+ *
+ * Decoding a QR image, reading a domain family out of storage and resolving a
+ * short link all take a moment, and nothing tied them together: a slow QR image
+ * dropped on the page could publish its result over the answer to a question the
+ * user typed afterwards. Every path through the checker takes a number, and only
+ * the newest one is allowed to say anything.
+ */
+let checkGeneration = 0
+
+/** The number a new check takes, so the one before it stops publishing. */
+function nextCheck(): number {
+  checkGeneration += 1
+  return checkGeneration
+}
 
 // Visits are stored per exact hostname, but "have I been here" should count the
 // whole domain family (gmail.com visits may live under www.gmail.com etc.)
@@ -97,20 +134,23 @@ async function getVisitData(hostname: string): Promise<{ stats: FamiliarityStats
   }
 }
 
-async function checkUrl(url: string) {
+async function checkUrl(url: string, generation = nextCheck()) {
   const hostname = getHostnameFromHref(url)
   if (!hostname) {
     result.value = { type: 'invalid' }
     return
   }
   const visitData = await getVisitData(hostname)
-  const punycodeResult = getPunycodeInfo(hostname)
+  // Something newer has been asked about while this was being read
+  if (generation !== checkGeneration)
+    return
+
   result.value = {
     type: 'url',
     url,
     hostname,
     baseDomain: siteDomainOrSelf(hostname),
-    punycode: punycodeResult.hasUnicode ? (punycodeResult.ascii || null) : null,
+    punycode: alternateSpelling(hostname),
     stats: visitData.stats,
     isSafe: visitData.isSafe,
     isShortener: isShortenedUrl(hostname),
@@ -120,7 +160,7 @@ async function checkUrl(url: string) {
   emit('checkedDomain', hostname)
 }
 
-async function checkEmail(addrOrMailto: string) {
+async function checkEmail(addrOrMailto: string, generation = nextCheck()) {
   const isMailto = /^mailto:/i.test(addrOrMailto)
   const parsed = isMailto ? parseMailtoUrl(addrOrMailto) : null
   const address = isMailto ? parsed?.addresses[0] : addrOrMailto
@@ -150,6 +190,9 @@ async function checkEmail(addrOrMailto: string) {
     })
   }
 
+  if (generation !== checkGeneration)
+    return
+
   result.value = {
     type: 'email',
     analysis,
@@ -165,6 +208,7 @@ async function checkEmail(addrOrMailto: string) {
 }
 
 async function runCheck(rawText: string) {
+  const generation = nextCheck()
   const trimmed = rawText.trim()
   if (!trimmed) {
     result.value = null
@@ -173,26 +217,29 @@ async function runCheck(rawText: string) {
 
   const { kind, value } = classifyPayload(trimmed)
   if (kind === 'url') {
-    await checkUrl(value)
+    await checkUrl(value, generation)
   }
   else if (kind === 'email') {
     // Keep the full mailto: string so params get parsed and shown
-    await checkEmail(/^mailto:/i.test(trimmed) ? trimmed : value)
+    await checkEmail(/^mailto:/i.test(trimmed) ? trimmed : value, generation)
   }
   else if (kind !== 'text') {
-    result.value = { type: 'raw', payloadKind: kind, payload: trimmed }
+    if (generation === checkGeneration)
+      result.value = { type: 'raw', payloadKind: kind, payload: trimmed }
   }
   else {
     // Free-form text: try to extract an email / URL / bare domain
     const target = extractCheckTarget(trimmed)
+    if (generation !== checkGeneration)
+      return
     if (!target)
       result.value = { type: 'invalid' }
     else if (target.kind === 'email')
-      await checkEmail(target.value)
+      await checkEmail(target.value, generation)
     else if (target.kind === 'url')
-      await checkUrl(target.value)
+      await checkUrl(target.value, generation)
     else
-      await checkUrl(`https://${target.value}`)
+      await checkUrl(`https://${target.value}`, generation)
   }
 }
 
@@ -204,9 +251,15 @@ async function expandUrl() {
   if (result.value?.type !== 'url' || result.value.resolve.status === 'loading')
     return
   const checked = result.value
+  // Read before the loading state overwrites it. Pressed again after an error,
+  // this is a retry, and a retry must not hand back the error it just showed.
+  const retry = checked.resolve.status === 'error'
   checked.resolve = { status: 'loading' }
   try {
-    const resolved = await browser.runtime.sendMessage({ type: 'resolve-short-url', data: { url: checked.url } }) as ResolvedUrlResult
+    const resolved = await browser.runtime.sendMessage({
+      type: 'resolve-short-url',
+      data: { url: checked.url, retry },
+    }) as ResolvedUrlResult
     if (result.value !== checked)
       return // a new check replaced this result meanwhile
     if (resolved && resolved.status === 'resolved' && resolved.finalHostname) {
@@ -235,8 +288,13 @@ async function expandUrl() {
 // --- QR image intake: clipboard paste / drag-drop / file picker ---
 
 async function handleImage(blob: Blob) {
+  // Claimed before the decode, which is the slow part. A large image dropped on
+  // the page used to publish its answer over a question typed after it.
+  const generation = nextCheck()
   try {
     const payload = await decodeQrFromImageBitmapSource(blob)
+    if (generation !== checkGeneration)
+      return
     if (!payload) {
       result.value = { type: 'qr-error' }
       return
@@ -245,7 +303,8 @@ async function handleImage(blob: Blob) {
     await runCheck(payload)
   }
   catch {
-    result.value = { type: 'qr-error' }
+    if (generation === checkGeneration)
+      result.value = { type: 'qr-error' }
   }
 }
 

@@ -844,8 +844,8 @@
     "description": "Prefix for the actual destination domain"
   },
   "linkTooltipPunycode": {
-    "message": "ASCII",
-    "description": "Label for punycode/ASCII domain display"
+    "message": "Also written",
+    "description": "Label before the other spelling of an international name, which may be the ASCII xn-- form or the readable one depending on which is on screen"
   },
   "domainMarkerUserinfo": {
     "message": "Decoy name before @, ignore it",
@@ -1614,5 +1614,9 @@
   "pasteInterceptInFrame": {
     "message": "This box belongs to another site, loaded inside the page you are on.",
     "description": "Line added to the paste dialog when the paste was made inside an iframe"
+  },
+  "antiTamperingParentRule": {
+    "message": "turned off by a rule for",
+    "description": "Precedes the parent domain whose exclusion rule covers the current host"
   }
 }

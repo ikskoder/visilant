@@ -17,7 +17,7 @@ import { hasContextMenus } from '~/logic/platform'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings as appSettings, parseStoredSettings, settingsReady } from '~/logic/storage'
 import { clearAllTamperAlarms, clearTamperAlarm, hasTamperAlarm, raiseTamperAlarm } from '~/logic/tamper-alarms'
-import { addCustomShortener, getCachedResolvedUrl, loadShortenersFromStorage, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
+import { addCustomShortener, clearCachedResolvedUrl, getCachedResolvedUrl, loadShortenersFromStorage, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
 import { visitKeysToRemove } from '~/logic/visit-reset'
 import { applyVisit, isTrackableHostname } from '~/logic/visit-stats'
 import { removeVisitRecords, updateVisitRecord, visitGeneration } from '~/logic/visit-store'
@@ -970,6 +970,11 @@ const messageHandlers = {
   'tampering-detected': (data: any, ctx?: MessageContext) => handleTampering(ctx?.tabId, data?.url),
   'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain),
   'resolve-short-url': async (data: any) => {
+    // A retry is the user saying the answer they were given is not good enough.
+    // Answering it from the same cache is the one thing this must not do.
+    if (data.retry)
+      clearCachedResolvedUrl(data.url)
+
     const cached = getCachedResolvedUrl(data.url)
     if (cached)
       return cached

@@ -1,4 +1,4 @@
-import { getPunycodeInfo } from './link-safety'
+import { alternateSpelling } from './link-safety'
 
 export interface EmailPartInfo {
   hasUnicode: boolean
@@ -63,8 +63,6 @@ export function analyzeEmailAddress(raw: string): EmailAnalysis | null {
   if (!domain.includes('.'))
     return null
 
-  const punycodeInfo = getPunycodeInfo(domain)
-
   return {
     raw: trimmed,
     localPart,
@@ -72,7 +70,8 @@ export function analyzeEmailAddress(raw: string): EmailAnalysis | null {
     local: analyzePart(localPart, '._+-'),
     domainInfo: {
       ...analyzePart(domain, '.-'),
-      punycode: punycodeInfo.hasUnicode && punycodeInfo.ascii ? punycodeInfo.ascii : null,
+      // The other spelling of whatever is on screen – see `alternateSpelling`
+      punycode: alternateSpelling(domain),
     },
     suspiciousPattern: findEmbeddedTld(domain),
   }

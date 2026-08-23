@@ -59,6 +59,7 @@ function updateTranslations() {
     'settings',
     'antiTamperingProtected',
     'antiTamperingNotProtected',
+    'antiTamperingParentRule',
     'antiTamperingDisableForSite',
     'antiTamperingEnableForSite',
     'antiTamperingTooltipWhat',
@@ -343,34 +344,52 @@ async function openOptionsPage() {
   leaveForOpenedTab()
 }
 
-const isAntiTamperingExcluded = computed(() => {
-  const hostname = currentHostname.value
+function excludedDomains(): string[] {
+  return (settings.value.antiTamperingExcludedDomains || '')
+    .split(/\n/)
+    .map(d => d.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+/**
+ * The line in the exclusion list that this host is off by, if any.
+ *
+ * Kept as the rule rather than as a yes or no, because that is what the switch
+ * has to remove. `sub.example.com` is excluded by a line reading `example.com`,
+ * and Enable used to look for a line reading `sub.example.com` – which is not
+ * there. Nothing was removed, the switch flipped back, and the site stayed
+ * unprotected with no way to say otherwise from here.
+ */
+const antiTamperingRule = computed(() => {
+  const hostname = currentHostname.value?.toLowerCase()
   if (!hostname)
-    return false
-  const excludedStr = settings.value.antiTamperingExcludedDomains || ''
-  if (!excludedStr)
-    return false
-  const excluded = excludedStr.split(/\n/).map(d => d.trim().toLowerCase()).filter(Boolean)
-  const lowerHostname = hostname.toLowerCase()
-  return excluded.some(domain => lowerHostname === domain || lowerHostname.endsWith(`.${domain}`))
+    return null
+
+  return excludedDomains().find(domain => hostname === domain || hostname.endsWith(`.${domain}`)) ?? null
 })
+
+const isAntiTamperingExcluded = computed(() => antiTamperingRule.value !== null)
+
+/** Whether the rule that covers this host is a parent domain rather than the host. */
+const antiTamperingRuleIsParent = computed(() =>
+  antiTamperingRule.value !== null && antiTamperingRule.value !== currentHostname.value?.toLowerCase())
 
 function toggleAntiTampering() {
   const hostname = currentHostname.value
   if (!hostname)
     return
 
-  const excludedStr = settings.value.antiTamperingExcludedDomains || ''
-  const excluded = excludedStr.split(/\n/).map(d => d.trim().toLowerCase()).filter(Boolean)
+  const excluded = excludedDomains()
   const lowerHostname = hostname.toLowerCase()
+  const rule = antiTamperingRule.value
 
-  if (isAntiTamperingExcluded.value) {
-    // Remove from exclusion list
-    const filtered = excluded.filter(d => d !== lowerHostname)
-    settings.value.antiTamperingExcludedDomains = filtered.join('\n')
+  if (rule) {
+    // The line that actually covers this host, which for a subdomain is the
+    // parent's. Removing it puts protection back on every host under it, and
+    // the line below the switch says so before it is pressed.
+    settings.value.antiTamperingExcludedDomains = excluded.filter(d => d !== rule).join('\n')
   }
   else {
-    // Add to exclusion list
     excluded.push(lowerHostname)
     settings.value.antiTamperingExcludedDomains = excluded.join('\n')
   }
@@ -705,6 +724,11 @@ onMounted(async () => {
               />
               <span style="font-size: 0.8em;" :class="isAntiTamperingExcluded ? 'text-amber-600' : 'text-gray-400'">
                 {{ isAntiTamperingExcluded ? translations.antiTamperingNotProtected : translations.antiTamperingProtected }}
+                <!-- Named, because the switch removes this line and that puts
+                     protection back on every host under it, not just this one -->
+                <template v-if="antiTamperingRuleIsParent">
+                  – {{ translations.antiTamperingParentRule }} <span class="break-all">{{ antiTamperingRule }}</span>
+                </template>
               </span>
             </div>
             <button

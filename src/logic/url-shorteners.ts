@@ -2822,19 +2822,56 @@ function getHostname(url: string): string | null {
   }
 }
 
-// In-memory cache for resolved URLs
+/**
+ * Where a short link was found to go, kept for a while.
+ *
+ * A success is worth five minutes: the destination of a shortened link does not
+ * usually move, and the same link often appears several times on a page.
+ *
+ * A failure is worth ten seconds and no more. A network blip used to be
+ * remembered for the same five minutes, so the Retry button handed back the
+ * error it had just been shown - which, for a button whose entire purpose is to
+ * try again, is the one thing it must never do.
+ *
+ * Bounded, because a long-lived Firefox background page can meet a great many
+ * links, and an entry costs a URL and a chain of them.
+ */
 const resolvedUrlCache = new Map<string, { result: ResolvedUrlResult, timestamp: number }>()
 const RESOLVE_CACHE_TTL_MS = 300_000 // 5 minutes
+const RESOLVE_FAILURE_TTL_MS = 10_000
+const RESOLVE_CACHE_MAX_ENTRIES = 500
+
+function cacheLifetime(result: ResolvedUrlResult): number {
+  return result.status === 'resolved' ? RESOLVE_CACHE_TTL_MS : RESOLVE_FAILURE_TTL_MS
+}
 
 export function getCachedResolvedUrl(url: string): ResolvedUrlResult | null {
   const cached = resolvedUrlCache.get(url)
-  if (cached && Date.now() - cached.timestamp < RESOLVE_CACHE_TTL_MS)
+  if (!cached)
+    return null
+
+  if (Date.now() - cached.timestamp < cacheLifetime(cached.result))
     return cached.result
+
+  // Dropped on the way past rather than left to sit until the same URL is asked
+  // about again, which for most of them is never
+  resolvedUrlCache.delete(url)
   return null
 }
 
 export function setCachedResolvedUrl(url: string, result: ResolvedUrlResult): void {
+  // Oldest first, which is insertion order for a Map that deletes on expiry
+  if (resolvedUrlCache.size >= RESOLVE_CACHE_MAX_ENTRIES) {
+    const oldest = resolvedUrlCache.keys().next()
+    if (!oldest.done)
+      resolvedUrlCache.delete(oldest.value)
+  }
   resolvedUrlCache.set(url, { result, timestamp: Date.now() })
+}
+
+/** Forget what is known about one URL, so the next ask really asks. */
+export function clearCachedResolvedUrl(url: string): void {
+  resolvedUrlCache.delete(url)
 }
 
 /**

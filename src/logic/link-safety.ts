@@ -85,6 +85,36 @@ export function extractDomainFromText(text: string): string | null {
 }
 
 /**
+ * One spelling of a hostname, so two of them can be held against each other.
+ *
+ * The two sides of this comparison arrive in different alphabets. `URL.hostname`
+ * has already been put through IDNA by the browser and comes back as punycode,
+ * while the text on the page is whatever the author typed - usually Unicode. So
+ * `<a href="https://münich.example">münich.example</a>`, which goes exactly
+ * where it says, came out as a red mismatch: `münich.example` against
+ * `xn--mnich-kva.example`.
+ *
+ * Both sides go through the same conversion before anything is compared, and
+ * ASCII is the side to land on because that is the name the browser will
+ * actually resolve.
+ */
+function canonicalHost(hostname: string): string {
+  const trimmed = hostname.trim().toLowerCase().replace(/\.$/, '').replace(/^www\./, '')
+  if (!trimmed)
+    return ''
+
+  try {
+    // The URL parser is the IDNA implementation the browser itself uses, so this
+    // is the same answer it would reach on the way to the network
+    const parsed = new URL(`http://${trimmed}`).hostname
+    return parsed.replace(/^www\./, '')
+  }
+  catch {
+    return trimmed
+  }
+}
+
+/**
  * Check if the visible link text shows a different domain than the actual href.
  * This is the #1 phishing trick: <a href="evil.com">paypal.com</a>
  */
@@ -93,11 +123,7 @@ export function checkDomainMismatch(linkText: string, hrefHostname: string): { m
   if (!textDomain)
     return { mismatch: false }
 
-  // Normalize: strip www. from both for comparison
-  const normalizedText = textDomain.replace(/^www\./, '')
-  const normalizedHref = hrefHostname.replace(/^www\./, '')
-
-  if (normalizedText !== normalizedHref)
+  if (canonicalHost(textDomain) !== canonicalHost(hrefHostname))
     return { mismatch: true, textDomain }
 
   return { mismatch: false }
@@ -111,6 +137,29 @@ export function checkDomainMismatch(linkText: string, hrefHostname: string): { m
  * user still holds the Unicode form. Checking only for non-ASCII characters would
  * therefore miss every link on a page, which is why the `xn--` form is tested too.
  */
+/**
+ * The other way this name can be written, or null when there is only one.
+ *
+ * A hostname with an international name in it has two spellings: the Unicode one
+ * a person reads, and the ASCII `xn--` one the browser resolves. Showing both is
+ * the point - a name that looks like `paypal` in one and like a string of
+ * gibberish in the other is exactly what the check is for.
+ *
+ * Which of the two to show depends on which one is already on screen, and that
+ * is what this answers. The callers used to keep the ASCII form regardless, and
+ * every one of them displays the ASCII form as the name - so the alternate was
+ * identical to the name above it, and every surface hid it as a duplicate. The
+ * pair was claimed and never shown.
+ */
+export function alternateSpelling(displayed: string): string | null {
+  const info = getPunycodeInfo(displayed)
+  if (!info.hasUnicode)
+    return null
+
+  const other = displayed.toLowerCase() === info.ascii?.toLowerCase() ? info.unicode : info.ascii
+  return other && other.toLowerCase() !== displayed.toLowerCase() ? other : null
+}
+
 export function getPunycodeInfo(hostname: string): { hasUnicode: boolean, ascii?: string, unicode?: string } {
   const hasNonAscii = Array.from(hostname).some(char => (char.codePointAt(0) ?? 0) > 0x7F)
   const hasPunycodeLabel = hostname.toLowerCase().split('.').some(label => label.startsWith('xn--'))

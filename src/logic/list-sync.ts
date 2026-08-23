@@ -63,11 +63,19 @@ export function applyListChanges(changes: Record<string, { newValue?: unknown }>
     APPLIERS[key]?.(change.newValue)
 }
 
-/** Register the watcher. Call once per context, next to the startup load. */
-export function watchListStorage(): void {
-  browser.storage.onChanged.addListener((changes, area) => {
+/**
+ * Register the watcher. Call once per context, next to the startup load.
+ *
+ * Returns the way to stop watching, for a context that does not live as long as
+ * the extension does – a popup is opened and closed again all day.
+ */
+export function watchListStorage(): () => void {
+  const listener = (changes: Record<string, unknown>, area: string) => {
     if (area !== 'local')
       return
     applyListChanges(changes as Record<string, { newValue?: unknown }>)
-  })
+  }
+
+  browser.storage.onChanged.addListener(listener)
+  return () => browser.storage.onChanged.removeListener(listener)
 }

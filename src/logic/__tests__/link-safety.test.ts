@@ -1,9 +1,11 @@
 import type { LinkSafetySettings } from '../storage'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  alternateSpelling,
   checkDomainMismatch,
   extractDomainFromText,
   findAnchorElement,
+  findAnchorFromEvent,
   getCachedVisitCount,
   getHostnameFromHref,
   getPunycodeInfo,
@@ -267,5 +269,81 @@ describe('visit count cache', () => {
     expect(getCachedVisitCount('expired.com')).toBeNull()
 
     vi.useRealTimers()
+  })
+})
+
+describe('findAnchorFromEvent', () => {
+  // A link inside a custom element's shadow root retargets: `event.target` is
+  // the host element and `closest('a')` from there finds nothing, so the link
+  // check simply never ran on it.
+  function eventWithPath(path: EventTarget[]): Event {
+    return { target: path[path.length - 1], composedPath: () => path } as unknown as Event
+  }
+
+  it('finds a link the event was retargeted away from', () => {
+    const anchor = document.createElement('a')
+    anchor.href = 'https://example.com/'
+    const host = document.createElement('my-card')
+
+    expect(findAnchorElement(host)).toBeNull()
+    expect(findAnchorFromEvent(eventWithPath([anchor, host]))).toBe(anchor)
+  })
+
+  it('ignores an anchor with no href, which goes nowhere', () => {
+    const anchor = document.createElement('a')
+    expect(findAnchorFromEvent(eventWithPath([anchor]))).toBeNull()
+  })
+
+  it('falls back to walking up from the target where there is no path', () => {
+    const anchor = document.createElement('a')
+    anchor.href = 'https://example.com/'
+    const span = document.createElement('span')
+    anchor.appendChild(span)
+
+    expect(findAnchorFromEvent({ target: span } as unknown as Event)).toBe(anchor)
+  })
+})
+
+describe('checkDomainMismatch and international names', () => {
+  // The two sides arrive in different alphabets: `URL.hostname` is punycode by
+  // the time it reaches here, the text on the page is what the author typed
+  it('does not call an honest unicode link a mismatch', () => {
+    const result = checkDomainMismatch('münich.example', 'xn--mnich-kva.example')
+    expect(result.mismatch).toBe(false)
+  })
+
+  it('still catches a unicode name pointing somewhere else', () => {
+    const result = checkDomainMismatch('münich.example', 'evil.example')
+    expect(result.mismatch).toBe(true)
+    expect(result.textDomain).toBe('münich.example')
+  })
+
+  it('reads the two spellings of the same name as the same name', () => {
+    expect(checkDomainMismatch('xn--mnich-kva.example', 'xn--mnich-kva.example').mismatch).toBe(false)
+  })
+
+  it('ignores a trailing dot and a www', () => {
+    expect(checkDomainMismatch('www.example.com', 'example.com').mismatch).toBe(false)
+  })
+
+  it('control: the trick it exists for still trips it', () => {
+    expect(checkDomainMismatch('paypal.com', 'evil.com').mismatch).toBe(true)
+  })
+})
+
+describe('alternateSpelling', () => {
+  // Every surface shows the ASCII form as the name, and every caller used to
+  // keep the ASCII form as the alternate too - so the pair was claimed, found
+  // to be a duplicate, and hidden. It was never once on screen for a link.
+  it('answers with the readable form when the ascii one is shown', () => {
+    expect(alternateSpelling('xn--mnich-kva.example')).toBe('münich.example')
+  })
+
+  it('answers with the ascii form when the readable one is shown', () => {
+    expect(alternateSpelling('münich.example')).toBe('xn--mnich-kva.example')
+  })
+
+  it('has no alternate for a name with only one spelling', () => {
+    expect(alternateSpelling('example.com')).toBeNull()
   })
 })
