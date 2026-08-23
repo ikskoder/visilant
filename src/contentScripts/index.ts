@@ -14,7 +14,7 @@ import { watchListStorage } from '~/logic/list-sync'
 import { describePastePayload, isEditableTarget, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { resolveTooltipTrigger } from '~/logic/platform'
-import { defaultSettings, settings } from '~/logic/storage'
+import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, settings } from '~/logic/storage'
 import { applyHostStyles, createTamperWatch } from '~/logic/tamper-watch'
 import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
 import { addCustomShortener, isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
@@ -30,6 +30,16 @@ interface VisitCountResponse {
   activeDays?: number
   firstSeen?: number
 }
+
+/**
+ * A tab shows what the settings say, it does not decide what they are.
+ *
+ * Said before anything reads them. Every open document holds its own copy of the
+ * same blob, so a document allowed to write is a document that can put its copy
+ * back over a newer one – and there is no edit in a tab worth that risk. The
+ * settings page and the popup are the writers.
+ */
+makeSettingsReadOnly()
 
 // Helper to send message safely (fallback to runtime.sendMessage)
 async function sendMessageSafe<T = any>(id: string, data: any): Promise<T> {
@@ -128,8 +138,8 @@ async function loadSettings() {
     // Request settings from background script
     const settingsData = await sendMessageSafe<Settings>('get-settings', {})
     if (settingsData) {
-      // Update settings with values from storage
-      settings.value = settingsData
+      // Taken as a snapshot, not assigned: assigning would save it straight back
+      applySettingsSnapshot(settingsData)
     }
     // Load user-defined and remotely fetched shortener domains
     await loadShortenersFromStorage()
@@ -142,18 +152,16 @@ async function loadSettings() {
     console.error('Failed to load settings:', error)
   }
   // Ensure settings are initialized
-  if (!settings.value) {
-    settings.value = defaultSettings
-  }
+  if (!settings.value)
+    applySettingsSnapshot(defaultSettings)
   return settings.value
 }
 
 // Show notifications based on user preferences
 async function showNotifications(type: 'input' | 'copy') {
   // Ensure settings are initialized
-  if (!settings.value) {
-    settings.value = defaultSettings
-  }
+  if (!settings.value)
+    applySettingsSnapshot(defaultSettings)
 
   // Check if this site is ignored
   if (isIgnored.value) {

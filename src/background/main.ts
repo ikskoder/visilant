@@ -15,7 +15,7 @@ import { watchListStorage } from '~/logic/list-sync'
 import { collectMailSiteFamilies, loadMailSitesFromRecords } from '~/logic/mail-sites'
 import { hasContextMenus } from '~/logic/platform'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
-import { settings as appSettings, migrateFamiliarityOnce, parseStoredSettings, seedShortenerSourceOnce, seedTextDefaultsOnce } from '~/logic/storage'
+import { settings as appSettings, parseStoredSettings, settingsReady } from '~/logic/storage'
 import { addCustomShortener, getCachedResolvedUrl, loadShortenersFromStorage, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
 import { applyVisit, isTrackableHostname } from '~/logic/visit-stats'
 
@@ -26,10 +26,19 @@ loadShortenersFromStorage()
 // is already running rather than waiting for the next time it is torn down
 watchListStorage()
 
-// A profile updated from a version that only had a visit threshold keeps the
-// number the user set. Done on startup rather than only on install, so a browser
-// that skipped the install event still gets it before anything reads the rules.
-migrateFamiliarityOnce()
+/**
+ * The settings, read and migrated, before this worker answers for them.
+ *
+ * A service worker is started by the event it has to handle, so there is always
+ * a first navigation, a first message or a first badge refresh that arrives
+ * while `storage.sync` is still being read. Until this resolves the settings ref
+ * holds the shipped defaults, and handing those out as the user's choice is how
+ * a threshold of 25 becomes 10 and stays there. Everything below waits for it.
+ *
+ * Migrations run here too, and only here: one context, once, before anything
+ * else can write the blob they are rewriting.
+ */
+const backgroundReady = settingsReady({ migrate: true })
 
 // The locales this build actually ships. Russian and Ukrainian were dropped
 // rather than kept half-checked, so the picking machinery stays and the list is
@@ -254,6 +263,10 @@ const MAX_IMPORT_ATTEMPTS = 5
  * that had not been written yet.
  */
 async function resumeInterruptedImport(): Promise<void> {
+  // An import decides what counts as familiar as it writes, so it may not start
+  // on a threshold that is only the shipped default
+  await backgroundReady
+
   const state = await readHistoryImportState()
   if (!state || state.status !== 'running')
     return
@@ -296,6 +309,10 @@ browser.runtime.onStartup.addListener(() => resumeInterruptedImport())
 resumeInterruptedImport()
 
 browser.runtime.onInstalled.addListener(async (details): Promise<void> => {
+  // Settings first: the language below is written into them, and an update
+  // arrives while the migrations are still running
+  await backgroundReady
+
   if (details.reason === 'install') {
     // Get the best matching language
     const detectedLang = await getBestMatchingLanguage()
@@ -306,9 +323,6 @@ browser.runtime.onInstalled.addListener(async (details): Promise<void> => {
       selectedLanguage: detectedLang,
     }
   }
-  // Fills in links and list sources for profiles whose settings predate them
-  await seedTextDefaultsOnce()
-  await seedShortenerSourceOnce()
 
   const records = await browser.storage.local.get(null)
   if (!shouldAutoImport({
@@ -331,6 +345,10 @@ browser.runtime.onInstalled.addListener(async (details): Promise<void> => {
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!tab.url)
     return
+
+  // The badge and the icon are the settings made visible, so neither may be
+  // drawn from the defaults while the real ones are still being read
+  await backgroundReady
 
   // We act on status changes only (loading or complete). url-only updates,
   // favicon-only updates, etc. are ignored.
@@ -386,6 +404,8 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
   // Switching away and back must not quietly clear a tampering alarm
   if (tamperedTabs.has(tabId))
     return
+
+  await backgroundReady
 
   const tab = await browser.tabs.get(tabId)
   if (tab.url) {
@@ -763,9 +783,14 @@ const messageHandlers = {
   },
 }
 
-// Register webext-bridge handlers
+// Registered synchronously, answered only once the settings are real. A worker
+// woken by the message cannot register its listeners after an await – the event
+// would be gone – so the wait belongs inside the handler, not around it.
 Object.entries(messageHandlers).forEach(([type, handler]) => {
-  onMessage(type, async ({ data, sender }: any) => handler(data, { tabId: sender?.tabId }))
+  onMessage(type, async ({ data, sender }: any) => {
+    await backgroundReady
+    return handler(data, { tabId: sender?.tabId })
+  })
 })
 
 // Add native runtime.onMessage listener for fallback (bfcache support)
@@ -776,7 +801,9 @@ browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
 
   const handler = messageHandlers[message.type as keyof typeof messageHandlers]
   if (handler) {
-    handler(message.data, { tabId: sender.tab?.id }).then(sendResponse)
+    backgroundReady
+      .then(() => handler(message.data, { tabId: sender.tab?.id }))
+      .then(sendResponse)
     return true
   }
 })
@@ -892,6 +919,7 @@ async function handleQrImageCheck(srcUrl: string, tabId?: number) {
 
 // Create context menu on install
 browser.runtime.onInstalled.addListener(async () => {
+  await backgroundReady
   await setupContextMenu()
 })
 
@@ -938,6 +966,8 @@ if (hasContextMenus()) {
 // Listen for changes in storage
 browser.storage.onChanged.addListener(async (changes) => {
   if (changes.settings) {
+    await backgroundReady
+
     // Parsed rather than cast: the stored value is a JSON string, and reading
     // fields straight off it yields `undefined` for every one of them – which
     // makes the comparison below always equal and the icon check below always true

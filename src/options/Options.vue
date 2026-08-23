@@ -15,13 +15,26 @@ import { fetchRemoteMailSiteLists, STORAGE_KEY_CUSTOM_MAIL_SITES, STORAGE_KEY_RE
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { hasContextMenus, hasHistoryApi, isAndroidBrowser, supportsHover } from '~/logic/platform'
 import { fetchRemoteShortenerLists, STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
-import { defaultSettings, settings } from '~/logic/storage'
+import { defaultSettings, settings, settingsReady, settingsWriteError } from '~/logic/storage'
 import { visitKeysToRemove } from '~/logic/visit-reset'
 import SectionNav from './SectionNav.vue'
 import SectionReset from './SectionReset.vue'
 
 const { t, setLanguage, currentLanguage, isLoaded } = useI18n()
 useTheme()
+
+/**
+ * Whether the stored settings have arrived.
+ *
+ * The page is bound straight to the settings ref, which starts on the shipped
+ * defaults and fills in a moment later. Drawing the controls before then shows
+ * values nobody chose, and a switch flipped in that moment is overwritten by the
+ * value that was still on its way.
+ */
+const settingsLoaded = ref(false)
+settingsReady().then(() => {
+  settingsLoaded.value = true
+})
 
 // Reactive translations
 const translations = ref<Record<string, string>>({})
@@ -70,6 +83,7 @@ function updateTranslations() {
     'familiarityNoImportText',
     'familiarityNeedsImportText',
     'familiarityNeedsImportLink',
+    'settingsNotSaved',
     'displaySettings',
     'displaySettingsPinNote',
     'displaySettingsPinNoteAndroid',
@@ -985,11 +999,17 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
        block opt out, which meant a new description was centred until somebody
        noticed – so the two things that really are centred say so themselves. -->
   <main class="px-4 py-10 text-left text-gray-700 dark:text-gray-200" :class="{ 'hints-hidden': !settings.verboseOptions }">
-    <div v-if="!isLoaded" class="flex justify-center items-center h-screen">
+    <div v-if="!isLoaded || !settingsLoaded" class="flex justify-center items-center h-screen">
       <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
     </div>
 
     <div v-else>
+      <!-- A setting that looks changed but was never stored is the one failure
+           this page must not keep to the console -->
+      <div v-if="settingsWriteError" class="max-w-md mx-auto mb-6 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200">
+        {{ translations.settingsNotSaved }}
+      </div>
+
       <Logo style="max-width: 300px;" class="mx-auto" />
       <div class="text-xl font-bold mb-6 text-center">
         {{ translations.settings }}

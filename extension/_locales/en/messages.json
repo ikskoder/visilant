@@ -1546,5 +1546,9 @@
   "familiarityNoImportText": {
     "message": "sites have no active-day count and no first-visit date. This browser keeps its history to itself, so there is no import that could fill them in and those two checks will keep failing for them. Only the visit count still speaks for these sites. Everything you visit from now on records both from its first visit.",
     "description": "Body of the missing-dates card on a browser with no history API, such as Firefox for Android"
+  },
+  "settingsNotSaved": {
+    "message": "This change was not saved. Your browser refused to store it, most likely because the synced settings are full. Try again, and if it keeps happening, shorten one of the lists below.",
+    "description": "Shown on the settings page when writing to storage failed"
   }
 }

@@ -3,7 +3,7 @@
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { resolveTooltipTrigger } from '~/logic/platform'
-import { defaultSettings, settings } from '~/logic/storage'
+import { applySettingsSnapshot, defaultSettings, settings } from '~/logic/storage'
 import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
 import CheckPanel from './CheckPanel.vue'
 import InputWarning from './InputWarning.vue'
@@ -55,8 +55,10 @@ async function sendMessageSafe<T = any>(id: string, data: any): Promise<T> {
 
 const hostname = ref('')
 
-// Initialize settings
-settings.value = settings.value || defaultSettings
+// Initialize settings. Applied rather than assigned: a content script is a
+// read-only consumer of the settings – see `makeSettingsReadOnly`
+if (!settings.value)
+  applySettingsSnapshot(defaultSettings)
 
 // Check site safety and update UI
 async function checkSiteSafety() {
@@ -172,9 +174,8 @@ function handleResolveInterceptUrl() {
 
 onMounted(async () => {
   // Initialize settings
-  if (!settings.value) {
-    settings.value = defaultSettings
-  }
+  if (!settings.value)
+    applySettingsSnapshot(defaultSettings)
 
   await checkSiteSafety()
 })

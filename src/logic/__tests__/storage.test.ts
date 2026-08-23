@@ -1,7 +1,7 @@
 import type { Settings, SiteVisitData } from '../storage'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import browser from 'webextension-polyfill'
-import { DEFAULT_SHORTENER_LIST_URL, defaultSettings, migrateFamiliarityOnce, parseStoredSettings, seedShortenerSourceOnce } from '../storage'
+import { DEFAULT_SHORTENER_LIST_URL, defaultSettings, parseStoredSettings, runSettingsMigrations } from '../storage'
 
 describe('defaultSettings', () => {
   it('ships all three checks on, visits at ten', () => {
@@ -160,73 +160,139 @@ describe('parseStoredSettings', () => {
   })
 })
 
-describe('migrateFamiliarityOnce', () => {
-  beforeEach(() => {
-    vi.mocked(browser.storage.local.get).mockResolvedValue({})
-    vi.mocked(browser.storage.sync.set).mockClear()
+describe('runSettingsMigrations', () => {
+  // A fake that actually holds what was written, because the pipeline reads its
+  // own write back before it will record a migration as done
+  let sync: Record<string, unknown>
+  let local: Record<string, unknown>
+
+  beforeEach(async () => {
+    // The module-level settings ref reads storage when this file is imported and
+    // seeds the defaults if it finds nothing. Let that finish before counting.
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    sync = {}
+    local = {}
+    vi.mocked(browser.storage.sync.get).mockReset()
+    vi.mocked(browser.storage.sync.set).mockReset()
+    vi.mocked(browser.storage.local.get).mockReset()
+    vi.mocked(browser.storage.local.set).mockReset()
+    vi.mocked(browser.storage.sync.get).mockImplementation(async (keys: any) => {
+      const wanted = typeof keys === 'string' ? [keys] : keys
+      return Object.fromEntries(wanted.filter((k: string) => k in sync).map((k: string) => [k, sync[k]]))
+    })
+    vi.mocked(browser.storage.sync.set).mockImplementation(async (items: any) => {
+      Object.assign(sync, items)
+    })
+    vi.mocked(browser.storage.local.get).mockImplementation(async (keys: any) => {
+      const wanted = typeof keys === 'string' ? [keys] : keys
+      return Object.fromEntries(wanted.filter((k: string) => k in local).map((k: string) => [k, local[k]]))
+    })
+    vi.mocked(browser.storage.local.set).mockImplementation(async (items: any) => {
+      Object.assign(local, items)
+    })
   })
+
+  const stored = () => JSON.parse(sync.settings as string) as Settings
 
   it('carries a hand-set threshold over and leaves the two newer checks off', async () => {
-    vi.mocked(browser.storage.sync.get).mockResolvedValue({ settings: JSON.stringify({ safety: 25 }) })
+    sync.settings = JSON.stringify({ safety: 25, linkSafety: { enabled: true, shortUrlListUpdateUrl: 'x' }, lookupServices: 'a', disposableEmailListUrl: 'b', publicEmailListUrl: 'c' })
 
-    await migrateFamiliarityOnce()
+    await runSettingsMigrations()
 
-    const written = JSON.parse(vi.mocked(browser.storage.sync.set).mock.calls[0][0].settings as string) as Settings
-    expect(written.familiarity.visits).toEqual({ enabled: true, min: 25 })
+    expect(stored().familiarity.visits).toEqual({ enabled: true, min: 25 })
     // The records this profile already has cannot answer either of them, and an
     // unanswered check fails – so an update must not switch them on
-    expect(written.familiarity.activeDays.enabled).toBe(false)
-    expect(written.familiarity.age.enabled).toBe(false)
+    expect(stored().familiarity.activeDays.enabled).toBe(false)
+    expect(stored().familiarity.age.enabled).toBe(false)
+    expect(local.familiarityMigrated).toBe(true)
   })
 
-  it('does not run twice', async () => {
-    vi.mocked(browser.storage.local.get).mockResolvedValue({ familiarityMigrated: true })
-    vi.mocked(browser.storage.sync.get).mockResolvedValue({ settings: JSON.stringify({ safety: 25 }) })
+  it('reads the raw blob, so a merged default cannot pass for the user choice', async () => {
+    // What the hydrated ref would look like: the shipped rules merged in over a
+    // profile that never stored any. Reading that, the migration would decide
+    // there was nothing to carry over and mark itself done on threshold 10.
+    sync.settings = JSON.stringify({ safety: 25 })
 
-    await migrateFamiliarityOnce()
+    await runSettingsMigrations()
 
-    expect(browser.storage.sync.set).not.toHaveBeenCalled()
-  })
-})
-
-describe('seedShortenerSourceOnce', () => {
-  beforeEach(() => {
-    vi.mocked(browser.storage.local.get).mockResolvedValue({})
-    vi.mocked(browser.storage.sync.set).mockClear()
+    expect(stored().familiarity.visits.min).toBe(25)
   })
 
-  const written = () => JSON.parse(vi.mocked(browser.storage.sync.set).mock.calls[0][0].settings as string) as Settings
+  it('applies every pending pass in one write', async () => {
+    sync.settings = JSON.stringify({ safety: 25, linkSafety: { enabled: true } })
 
-  it('gives a profile that predates the field the shipped source', async () => {
-    vi.mocked(browser.storage.sync.get).mockResolvedValue({
-      settings: JSON.stringify({ linkSafety: { enabled: true } }),
-    })
+    await runSettingsMigrations()
 
-    await seedShortenerSourceOnce()
-
-    expect(written().linkSafety.shortUrlListUpdateUrl).toBe(DEFAULT_SHORTENER_LIST_URL)
-    // Nothing else in there is touched
-    expect(written().linkSafety.enabled).toBe(true)
-  })
-
-  it('leaves a source the user has already set', async () => {
-    vi.mocked(browser.storage.sync.get).mockResolvedValue({
-      settings: JSON.stringify({ linkSafety: { shortUrlListUpdateUrl: 'https://example.com/mine.txt' } }),
-    })
-
-    await seedShortenerSourceOnce()
-
-    expect(browser.storage.sync.set).not.toHaveBeenCalled()
+    // One commit, not three racing read-modify-writes of the same blob
+    expect(vi.mocked(browser.storage.sync.set)).toHaveBeenCalledTimes(1)
+    expect(stored().familiarity.visits.min).toBe(25)
+    expect(stored().linkSafety.shortUrlListUpdateUrl).toBe(DEFAULT_SHORTENER_LIST_URL)
+    expect(stored().lookupServices).toBe(defaultSettings.lookupServices)
   })
 
   it('does not run twice, so a cleared field stays cleared', async () => {
-    vi.mocked(browser.storage.local.get).mockResolvedValue({ shortenerSourceSeeded: true })
-    vi.mocked(browser.storage.sync.get).mockResolvedValue({
-      settings: JSON.stringify({ linkSafety: { shortUrlListUpdateUrl: '' } }),
-    })
+    local.textDefaultsSeeded = true
+    local.shortenerSourceSeeded = true
+    local.familiarityMigrated = true
+    sync.settings = JSON.stringify({ linkSafety: { shortUrlListUpdateUrl: '' }, lookupServices: '' })
 
-    await seedShortenerSourceOnce()
+    await runSettingsMigrations()
 
     expect(browser.storage.sync.set).not.toHaveBeenCalled()
+  })
+
+  it('leaves a source the user has already set', async () => {
+    local.textDefaultsSeeded = true
+    local.familiarityMigrated = true
+    sync.settings = JSON.stringify({ linkSafety: { shortUrlListUpdateUrl: 'https://example.com/mine.txt' } })
+
+    await runSettingsMigrations()
+
+    expect(browser.storage.sync.set).not.toHaveBeenCalled()
+    expect(local.shortenerSourceSeeded).toBe(true)
+  })
+
+  it('keeps the flag down when the write fails, so the next start retries', async () => {
+    sync.settings = JSON.stringify({ safety: 25 })
+    vi.mocked(browser.storage.sync.set).mockRejectedValueOnce(new Error('QUOTA_BYTES quota exceeded'))
+
+    await runSettingsMigrations()
+
+    expect(local.familiarityMigrated).toBeUndefined()
+
+    // ...and the retry lands
+    await runSettingsMigrations()
+    expect(stored().familiarity.visits.min).toBe(25)
+    expect(local.familiarityMigrated).toBe(true)
+  })
+
+  it('keeps the flag down when something else overwrote the blob first', async () => {
+    sync.settings = JSON.stringify({ safety: 25 })
+    vi.mocked(browser.storage.sync.set).mockImplementationOnce(async () => {
+      sync.settings = JSON.stringify({ safety: 10 })
+    })
+
+    await runSettingsMigrations()
+
+    expect(local.familiarityMigrated).toBeUndefined()
+  })
+
+  it('marks a fresh profile done without writing anything', async () => {
+    await runSettingsMigrations()
+
+    expect(browser.storage.sync.set).not.toHaveBeenCalled()
+    expect(local.familiarityMigrated).toBe(true)
+    expect(local.textDefaultsSeeded).toBe(true)
+    expect(local.shortenerSourceSeeded).toBe(true)
+  })
+
+  it('leaves an unreadable blob alone and records nothing', async () => {
+    sync.settings = 'not json'
+
+    await runSettingsMigrations()
+
+    expect(browser.storage.sync.set).not.toHaveBeenCalled()
+    expect(local.familiarityMigrated).toBeUndefined()
   })
 })

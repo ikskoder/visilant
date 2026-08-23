@@ -1,6 +1,6 @@
 import type { BadgeContent } from './badge'
 import type { FamiliaritySettings } from './familiarity'
-import { useWebExtensionStorage } from '~/composables/useWebExtensionStorage'
+import { createWebExtensionStorage } from '~/composables/useWebExtensionStorage'
 import { defaultFamiliaritySettings } from './familiarity'
 import { DEFAULT_LOOKUP_SERVICES, serializeLookupServices } from './lookup-services'
 
@@ -229,13 +229,62 @@ export const defaultSettings: Settings = {
   },
 }
 
-export const settings = useWebExtensionStorage<Settings>(
+const settingsStorage = createWebExtensionStorage<Settings>(
   'settings',
   defaultSettings,
   {
     mergeDefaults: true,
   },
 )
+
+export const settings = settingsStorage.data
+
+/** The last save that did not happen, so the settings page can say so. */
+export const settingsWriteError = settingsStorage.writeError
+
+/**
+ * Take a settings object handed over by another context.
+ *
+ * Assigning to `settings.value` would look identical and would also save the
+ * value straight back – which is how a context holding a stale copy used to
+ * overwrite the real one. This puts it in the ref and stops there.
+ */
+export function applySettingsSnapshot(value: Settings): void {
+  settingsStorage.applyExternal(value)
+}
+
+/**
+ * Give up the right to write settings.
+ *
+ * Called by every context that only shows what the settings say. One writer for
+ * one blob – see the note on `setWritable`.
+ */
+export function makeSettingsReadOnly(): void {
+  settingsStorage.setWritable(false)
+}
+
+/**
+ * Settings as they are actually stored, migrations included.
+ *
+ * Whoever answers questions about the settings – the background above all – has
+ * to await this before answering the first one. Until it resolves the ref still
+ * holds the shipped defaults, and a default handed out as the user's choice is
+ * both a wrong answer and, one write later, a wrong setting.
+ */
+let settingsReadyPromise: Promise<void> | null = null
+
+export function settingsReady(options: { migrate?: boolean } = {}): Promise<void> {
+  settingsReadyPromise ??= (async () => {
+    await settingsStorage.ready
+    if (options.migrate) {
+      await runSettingsMigrations()
+      // The migration wrote the stored blob behind the ref's back, on purpose:
+      // it works on the raw value, before defaults are merged over it
+      await settingsStorage.hydrate()
+    }
+  })()
+  return settingsReadyPromise
+}
 
 /**
  * Read a settings value the way it actually sits in storage.
@@ -260,20 +309,21 @@ export function parseStoredSettings(value: unknown): Settings | undefined {
   return typeof value === 'object' && value !== null ? value as Settings : undefined
 }
 
-/**
- * Record a one-off pass as done – after it has actually been done.
- *
- * These all used to set their flag first and do the work second, which is one
- * torn-down service worker away from a migration that is marked complete and
- * never ran. Marked at the end, the worst case is running twice, and every one
- * of them is written to be a no-op the second time.
- */
-async function markDone(key: string): Promise<void> {
-  await browser.storage.local.set({ [key]: true })
-}
-
 /** Marks that the shipped text defaults have been put into the settings once. */
 const TEXT_DEFAULTS_SEEDED_KEY = 'textDefaultsSeeded'
+
+/** Marks that the shortener source has been offered to an existing profile once. */
+const SHORTENER_SOURCE_SEEDED_KEY = 'shortenerSourceSeeded'
+
+/** Marks that the old single-threshold setting has been carried over. */
+const FAMILIARITY_MIGRATED_KEY = 'familiarityMigrated'
+
+/** Every one-off pass over the stored settings, in the order they are applied. */
+const MIGRATION_KEYS = [
+  TEXT_DEFAULTS_SEEDED_KEY,
+  SHORTENER_SOURCE_SEEDED_KEY,
+  FAMILIARITY_MIGRATED_KEY,
+] as const
 
 /** Fields whose default is content the user is meant to see and may delete. */
 const SEEDED_TEXT_FIELDS = [
@@ -291,38 +341,16 @@ const SEEDED_TEXT_FIELDS = [
  * value cannot simply be treated as missing. The flag draws the line instead:
  * seed once, then never touch these fields again, so a later clear stays clear.
  */
-export async function seedTextDefaultsOnce(): Promise<void> {
-  const flag = await browser.storage.local.get(TEXT_DEFAULTS_SEEDED_KEY)
-  if (flag[TEXT_DEFAULTS_SEEDED_KEY])
-    return
-
-  const stored = (await browser.storage.sync.get('settings')).settings
-  // Nothing stored yet: the defaults already carry these values
-  if (typeof stored === 'string') {
-    try {
-      const parsed = JSON.parse(stored) as Partial<Settings>
-
-      let changed = false
-      for (const field of SEEDED_TEXT_FIELDS) {
-        if (parsed && !parsed[field]) {
-          parsed[field] = defaultSettings[field]
-          changed = true
-        }
-      }
-
-      if (changed)
-        await browser.storage.sync.set({ settings: JSON.stringify(parsed) })
-    }
-    catch {
-      // Unreadable settings blob – leave it alone, the storage layer will reset it
+function seedTextDefaults(draft: Partial<Settings>): boolean {
+  let changed = false
+  for (const field of SEEDED_TEXT_FIELDS) {
+    if (!draft[field]) {
+      draft[field] = defaultSettings[field]
+      changed = true
     }
   }
-
-  await markDone(TEXT_DEFAULTS_SEEDED_KEY)
+  return changed
 }
-
-/** Marks that the shortener source has been offered to an existing profile once. */
-const SHORTENER_SOURCE_SEEDED_KEY = 'shortenerSourceSeeded'
 
 /**
  * Give an existing profile the shortener source it never shipped with.
@@ -334,34 +362,16 @@ const SHORTENER_SOURCE_SEEDED_KEY = 'shortenerSourceSeeded'
  * one. Empty stays empty after this runs, the same as for the other sources: it
  * is a deliberate "no remote list", not a value that went missing.
  */
-export async function seedShortenerSourceOnce(): Promise<void> {
-  const flag = await browser.storage.local.get(SHORTENER_SOURCE_SEEDED_KEY)
-  if (flag[SHORTENER_SOURCE_SEEDED_KEY])
-    return
+function seedShortenerSource(draft: Partial<Settings>): boolean {
+  if (!draft.linkSafety || draft.linkSafety.shortUrlListUpdateUrl)
+    return false
 
-  const stored = (await browser.storage.sync.get('settings')).settings
-  // Nothing stored yet: a new profile starts on the defaults anyway
-  if (typeof stored === 'string') {
-    try {
-      const parsed = JSON.parse(stored) as Partial<Settings>
-      if (parsed?.linkSafety && !parsed.linkSafety.shortUrlListUpdateUrl) {
-        parsed.linkSafety = {
-          ...parsed.linkSafety,
-          shortUrlListUpdateUrl: DEFAULT_SHORTENER_LIST_URL,
-        }
-        await browser.storage.sync.set({ settings: JSON.stringify(parsed) })
-      }
-    }
-    catch {
-      // Unreadable settings blob – leave it alone, the storage layer will reset it
-    }
+  draft.linkSafety = {
+    ...draft.linkSafety,
+    shortUrlListUpdateUrl: DEFAULT_SHORTENER_LIST_URL,
   }
-
-  await markDone(SHORTENER_SOURCE_SEEDED_KEY)
+  return true
 }
-
-/** Marks that the old single-threshold setting has been carried over. */
-const FAMILIARITY_MIGRATED_KEY = 'familiarityMigrated'
 
 /**
  * Carry a hand-set visit threshold into the new familiarity rules, once.
@@ -372,50 +382,104 @@ const FAMILIARITY_MIGRATED_KEY = 'familiarityMigrated'
  * then the merged object is a complete, valid rule set with nothing missing to
  * fall back from. So it is copied across explicitly, before anything reads it,
  * and the flag makes sure a later edit down to 10 is not undone next startup.
+ *
+ * Reads the raw stored blob, never the hydrated ref: the ref has the defaults
+ * merged into it, so `familiarity` is always present there and this would decide
+ * there was nothing to carry over every single time.
  */
-export async function migrateFamiliarityOnce(): Promise<void> {
-  const flag = await browser.storage.local.get(FAMILIARITY_MIGRATED_KEY)
-  if (flag[FAMILIARITY_MIGRATED_KEY])
+function migrateFamiliarity(draft: Partial<Settings>): boolean {
+  // Already on the new rules, so there is nothing to carry over
+  if (draft.familiarity)
+    return false
+
+  const legacy = Math.floor(Number(draft.safety))
+  draft.familiarity = {
+    ...defaultFamiliaritySettings,
+    visits: {
+      enabled: true,
+      min: Number.isFinite(legacy) && legacy > 0 ? legacy : defaultFamiliaritySettings.visits.min,
+    },
+    // Off for a profile that is only arriving here now, whatever a new profile
+    // starts with. Its records were written before active days and first-visit
+    // dates existed, and a criterion whose fact was never recorded fails – so
+    // switching these on during an update would declare every site the user
+    // has ever known unfamiliar, all at once.
+    activeDays: { ...defaultFamiliaritySettings.activeDays, enabled: false },
+    age: { ...defaultFamiliaritySettings.age, enabled: false },
+  }
+  return true
+}
+
+/**
+ * Every one-off pass over the stored settings, as one read and one write.
+ *
+ * They used to run as three independent fire-and-forget passes, each doing its
+ * own read-modify-write of the same JSON blob while the settings ref was
+ * hydrating alongside them. Whichever write landed last was the whole value, so
+ * one pass could undo another – and each had already recorded itself as done, so
+ * nothing ever ran again to put it right. One snapshot, one commit, and the
+ * flags go up only once storage has been read back and agrees.
+ *
+ * Safe to run twice: every pass above is a no-op the second time.
+ */
+export async function runSettingsMigrations(): Promise<void> {
+  const flags = await browser.storage.local.get(MIGRATION_KEYS as unknown as string[])
+  const pending = MIGRATION_KEYS.filter(migrationKey => !flags[migrationKey])
+  if (!pending.length)
     return
+
+  const markDone = async () => {
+    await browser.storage.local.set(Object.fromEntries(pending.map(migrationKey => [migrationKey, true])))
+  }
 
   const stored = (await browser.storage.sync.get('settings')).settings
-  // Nothing stored yet: a new profile starts on the defaults anyway
-  if (typeof stored !== 'string') {
-    await markDone(FAMILIARITY_MIGRATED_KEY)
+  // Nothing stored yet: a new profile starts on the defaults, which already
+  // carry everything these passes would have added
+  if (stored === undefined) {
+    await markDone()
     return
   }
 
-  try {
-    const parsed = JSON.parse(stored) as Partial<Settings>
-    // Already on the new rules, or nothing worth carrying over
-    if (!parsed || parsed.familiarity) {
-      await markDone(FAMILIARITY_MIGRATED_KEY)
-      return
-    }
+  const parsed = parseStoredSettings(stored)
+  if (!parsed) {
+    // Unreadable settings blob – leave it alone, the storage layer will reset
+    // it. No flag goes up: nothing was carried over, and a readable blob later
+    // still gets its migration.
+    return
+  }
 
-    const legacy = Math.floor(Number(parsed.safety))
-    parsed.familiarity = {
-      ...defaultFamiliaritySettings,
-      visits: {
-        enabled: true,
-        min: Number.isFinite(legacy) && legacy > 0 ? legacy : defaultFamiliaritySettings.visits.min,
-      },
-      // Off for a profile that is only arriving here now, whatever a new profile
-      // starts with. Its records were written before active days and first-visit
-      // dates existed, and a criterion whose fact was never recorded fails – so
-      // switching these on during an update would declare every site the user
-      // has ever known unfamiliar, all at once.
-      activeDays: { ...defaultFamiliaritySettings.activeDays, enabled: false },
-      age: { ...defaultFamiliaritySettings.age, enabled: false },
-    }
-    await browser.storage.sync.set({ settings: JSON.stringify(parsed) })
-    await markDone(FAMILIARITY_MIGRATED_KEY)
+  const draft: Partial<Settings> = { ...parsed }
+  let changed = false
+  if (pending.includes(TEXT_DEFAULTS_SEEDED_KEY))
+    changed = seedTextDefaults(draft) || changed
+  if (pending.includes(SHORTENER_SOURCE_SEEDED_KEY))
+    changed = seedShortenerSource(draft) || changed
+  if (pending.includes(FAMILIARITY_MIGRATED_KEY))
+    changed = migrateFamiliarity(draft) || changed
+
+  if (!changed) {
+    await markDone()
+    return
+  }
+
+  const written = JSON.stringify(draft)
+  try {
+    await browser.storage.sync.set({ settings: written })
   }
   catch {
-    // Unreadable settings blob – leave it alone, the storage layer will reset it.
-    // The flag stays unset: nothing was carried over, so there is nothing to
-    // record as done, and a readable blob later still gets its migration.
+    // Quota or a transient failure. The flag stays down so the next startup
+    // tries again rather than recording a migration that never landed.
+    return
   }
+
+  // Read back before believing it. A write that resolved but stored something
+  // else – or was overwritten before this line – must not be recorded as done:
+  // the flag would forbid the retry that would put it right. Not marking it
+  // costs one repeat of a pass that is a no-op the second time.
+  if ((await browser.storage.sync.get('settings')).settings !== written)
+    return
+
+  await markDone()
 }
 
 // Define the site visit data structure
