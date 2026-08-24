@@ -3,6 +3,7 @@ import type { FamiliaritySettings } from './familiarity'
 import { createWebExtensionStorage } from '~/composables/useWebExtensionStorage'
 import { defaultFamiliaritySettings } from './familiarity'
 import { DEFAULT_LOOKUP_SERVICES, serializeLookupServices } from './lookup-services'
+import { isMessageError } from './message-error'
 
 export interface Settings {
   /**
@@ -261,6 +262,54 @@ export function applySettingsSnapshot(value: Settings): void {
  */
 export function makeSettingsReadOnly(): void {
   settingsStorage.setWritable(false)
+}
+
+/**
+ * The settings keys where two objects disagree, as a patch of the first.
+ *
+ * Built out of the serialized form on purpose. The value handed in is the
+ * reactive one every control is bound to, and a message is structured-cloned on
+ * its way to the background: a reactive proxy cannot be cloned, so a patch
+ * carrying one would fail to send at all and no setting would ever save.
+ */
+export function settingsPatch(next: Settings, stored: Settings | null): Partial<Settings> {
+  const plain = JSON.parse(JSON.stringify(next)) as Settings
+  const patch: Partial<Settings> = {}
+  for (const key of Object.keys(plain) as (keyof Settings)[]) {
+    const before = stored ? stored[key] : undefined
+    if (stored === null || JSON.stringify(before) !== JSON.stringify(plain[key]))
+      (patch as Record<string, unknown>)[key] = plain[key]
+  }
+  return patch
+}
+
+/**
+ * Edit the settings by asking the background to, rather than by writing them.
+ *
+ * Called by every page that edits them: the settings page and the popup, both of
+ * which can be open at the same moment. They used to save the whole blob each,
+ * having each read it separately - so two edits made seconds apart, to two
+ * unrelated settings, ended with whichever page wrote last deciding the value of
+ * both. Losing a sort order that way is a nuisance. Losing the paste guard,
+ * because the popup still held the copy it read before the guard was switched
+ * on, is the same mechanism taking a protection off.
+ *
+ * Only the keys this page changed travel, and the background merges them into
+ * what is stored now. The value comes back the ordinary way, through the change
+ * event every context already listens to.
+ */
+export function editSettingsThroughBackground(): void {
+  settingsStorage.setCommit(async (next, stored) => {
+    const patch = settingsPatch(next, stored)
+    if (!Object.keys(patch).length)
+      return
+
+    const answer = await browser.runtime.sendMessage({ type: 'patch-settings', data: { patch } })
+    if (isMessageError(answer))
+      throw new Error(answer.error)
+    if (!(answer as { success?: boolean })?.success)
+      throw new Error('the settings were not saved')
+  })
 }
 
 /**

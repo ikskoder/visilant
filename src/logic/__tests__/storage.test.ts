@@ -1,7 +1,8 @@
 import type { Settings, SiteVisitData } from '../storage'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { reactive } from 'vue'
 import browser from 'webextension-polyfill'
-import { DEFAULT_SHORTENER_LIST_URL, defaultSettings, parseStoredSettings, runSettingsMigrations } from '../storage'
+import { DEFAULT_SHORTENER_LIST_URL, defaultSettings, parseStoredSettings, runSettingsMigrations, settingsPatch } from '../storage'
 
 describe('defaultSettings', () => {
   it('ships all three checks on, visits at ten', () => {
@@ -294,5 +295,39 @@ describe('runSettingsMigrations', () => {
 
     expect(browser.storage.sync.set).not.toHaveBeenCalled()
     expect(local.familiarityMigrated).toBeUndefined()
+  })
+})
+
+describe('settingsPatch', () => {
+  it('holds only what changed', () => {
+    const stored = { ...defaultSettings }
+    const next = { ...defaultSettings, blockPasteOnUnfamiliar: true }
+
+    expect(settingsPatch(next, stored)).toEqual({ blockPasteOnUnfamiliar: true })
+  })
+
+  it('holds everything when there is nothing stored to compare with', () => {
+    const patch = settingsPatch({ ...defaultSettings }, null)
+
+    expect(Object.keys(patch).length).toBe(Object.keys(defaultSettings).length)
+  })
+
+  it('sees a change inside a nested setting', () => {
+    const stored = { ...defaultSettings }
+    const next = JSON.parse(JSON.stringify(defaultSettings)) as Settings
+    next.familiarity.visits.min = 25
+
+    expect(settingsPatch(next, stored)).toEqual({ familiarity: next.familiarity })
+  })
+
+  // A message is structured-cloned on its way to the background, and a reactive
+  // proxy cannot be cloned: a patch carrying one would never arrive, so nothing
+  // would ever save
+  it('hands back something a message can carry', () => {
+    const next = reactive(JSON.parse(JSON.stringify(defaultSettings)) as Settings)
+    next.familiarity.visits.min = 25
+
+    const patch = settingsPatch(next, { ...defaultSettings })
+    expect(() => structuredClone(patch)).not.toThrow()
   })
 })

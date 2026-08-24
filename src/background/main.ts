@@ -1,6 +1,6 @@
 import type { FamiliarDomain, FamiliarIndex } from '~/logic/domain-similarity'
 import type { FamiliarityStats } from '~/logic/familiarity'
-import type { SiteVisitData } from '~/logic/storage'
+import type { Settings, SiteVisitData } from '~/logic/storage'
 import { onMessage } from 'webext-bridge/background'
 import { badgeText } from '~/logic/badge'
 import { fetchBlobBounded } from '~/logic/bounded-fetch'
@@ -346,6 +346,38 @@ async function runAutoHistoryImportUnlocked(attempts = 0, existingRunId?: string
 let manualImportCancelled = false
 
 /**
+ * The one place the settings are written.
+ *
+ * Every page that edits them sends what it changed here instead of saving the
+ * whole blob itself. Storage has no compare-and-set, so two documents that each
+ * read, edited and wrote used to end with the later write holding the whole
+ * value and the other document's unrelated change gone - the popup could put
+ * the paste guard back to what it was when it opened, simply by changing a sort
+ * order. One writer, and each patch read and written in turn, is what the blob
+ * needed and never had.
+ */
+let settingsWriteChain: Promise<void> = Promise.resolve()
+
+async function applySettingsPatch(patch: Partial<Settings>): Promise<{ success: boolean }> {
+  if (!patch || typeof patch !== 'object')
+    return { success: false }
+
+  const write = settingsWriteChain.then(async () => {
+    // Read here, inside the chain, so it is the value as it stands after
+    // whatever patch went before this one
+    const stored = parseStoredSettings((await browser.storage.sync.get('settings')).settings)
+    const next = { ...(stored ?? appSettings.value), ...patch }
+    await browser.storage.sync.set({ settings: JSON.stringify(next) })
+  })
+
+  // The chain must survive a failed patch, or every later one waits on a
+  // rejection that never had anything to do with it
+  settingsWriteChain = write.catch(() => undefined)
+  await write
+  return { success: true }
+}
+
+/**
  * Set for as long as an import of any kind is in flight, checked without an await.
  *
  * The lease in `history-import` is read, checked and written with awaits in
@@ -544,11 +576,8 @@ browser.runtime.onInstalled.addListener(async (details): Promise<void> => {
     // Get the best matching language
     const detectedLang = await getBestMatchingLanguage()
 
-    // Set the detected language in the settings
-    appSettings.value = {
-      ...appSettings.value,
-      selectedLanguage: detectedLang,
-    }
+    // Through the one writer, the same as every page's edit
+    await applySettingsPatch({ selectedLanguage: detectedLang })
   }
 
   const records = await browser.storage.local.get(null)
@@ -1209,6 +1238,8 @@ const messageHandlers = {
     manualImportCancelled = true
     return { success: true }
   },
+  // What a page changed, for the one context allowed to store it
+  'patch-settings': (data: any) => applySettingsPatch(data?.patch),
   'ignore-site': (data: any) => handleIgnoreSite(data.hostname, data.ignored !== false),
   // What an iframe asks about itself, and the two things it can ask for
   'frame-verdict': (data: any, ctx?: MessageContext) => handleFrameVerdict(data.url, ctx),

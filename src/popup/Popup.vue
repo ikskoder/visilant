@@ -10,7 +10,7 @@ import { belongsToSite, siteDomainOrSelf } from '~/logic/domain-boundary'
 import { aggregateFamiliarityStats, evaluateFamiliarity, normalizeFamiliarity } from '~/logic/familiarity'
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { popupWidthCap } from '~/logic/platform'
-import { settings } from '~/logic/storage'
+import { editSettingsThroughBackground, settings } from '~/logic/storage'
 import { isTrackableHostname } from '~/logic/visit-stats'
 import Logo from '../components/Logo.vue'
 import SecureText from '../components/SecureText.vue'
@@ -19,6 +19,12 @@ import CheckField from './CheckField.vue'
 const { t, isLoaded, loadedTranslations } = useI18n()
 const { factsFor, withThresholds } = useFamiliarityFacts()
 const { isDark } = useTheme()
+
+// The sort order, the case of the names, the punycode toggle: small edits, sent
+// to the background like every other. Written from here they carried the rest of
+// the settings as this window read them, which for a window left open is a copy
+// from before whatever was changed in the settings page since.
+editSettingsThroughBackground()
 // Shared components read the theme through this key, because inside the
 // content script's shadow DOM the `dark` class on <html> does not reach them
 provide('isDark', isDark)

@@ -15,12 +15,17 @@ import { fetchRemoteMailSiteLists, STORAGE_KEY_CUSTOM_MAIL_SITES, STORAGE_KEY_RE
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { hasContextMenus, hasHistoryApi, isAndroidBrowser, supportsHover } from '~/logic/platform'
 import { fetchRemoteShortenerLists, STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
-import { defaultSettings, settings, settingsReady, settingsWriteError } from '~/logic/storage'
+import { defaultSettings, editSettingsThroughBackground, settings, settingsReady, settingsWriteError } from '~/logic/storage'
 import SectionNav from './SectionNav.vue'
 import SectionReset from './SectionReset.vue'
 
 const { t, setLanguage, currentLanguage, isLoaded } = useI18n()
 useTheme()
+
+// Edits are sent to the background rather than written here. This page and the
+// popup can both be open, and each writing the whole blob is how one of them
+// puts back a setting the other had just changed.
+editSettingsThroughBackground()
 
 /**
  * Whether the stored settings have arrived.

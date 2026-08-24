@@ -196,3 +196,70 @@ describe('the defaults object', () => {
     expect(defaults.label).toBe('default')
   })
 })
+
+describe('saving through somebody else', () => {
+  let store: Record<string, unknown>
+
+  beforeEach(() => {
+    store = {}
+    vi.mocked(browser.storage.sync.get).mockReset()
+    vi.mocked(browser.storage.sync.set).mockReset()
+    vi.mocked(browser.storage.sync.get).mockImplementation(async (keys: any) => {
+      const wanted = typeof keys === 'string' ? [keys] : keys
+      return Object.fromEntries(wanted.filter((k: string) => k in store).map((k: string) => [k, store[k]]))
+    })
+    vi.mocked(browser.storage.sync.set).mockImplementation(async (items: any) => {
+      Object.assign(store, items)
+    })
+  })
+
+  it('hands the edit to the installed writer and stores nothing itself', async () => {
+    store.prefs = JSON.stringify({ threshold: 25, label: 'stored' })
+    const handle = createWebExtensionStorage<Prefs>('prefs', defaults, { mergeDefaults: true })
+    await handle.ready
+    vi.mocked(browser.storage.sync.set).mockClear()
+
+    const seen: { next: Prefs, stored: Prefs | null }[] = []
+    handle.setCommit(async (next, stored) => {
+      seen.push({ next, stored })
+    })
+
+    handle.data.value.threshold = 40
+    await settle()
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0].next.threshold).toBe(40)
+    // The value as storage had it, so the writer can see which keys changed
+    expect(seen[0].stored?.threshold).toBe(25)
+    expect(browser.storage.sync.set).not.toHaveBeenCalled()
+  })
+
+  // The value comes back through the change event, and until it does nothing may
+  // be recorded as stored - the writer elsewhere decides what it becomes
+  it('sends the next edit even when the first has not come back yet', async () => {
+    store.prefs = JSON.stringify({ threshold: 25 })
+    const handle = createWebExtensionStorage<Prefs>('prefs', defaults, { mergeDefaults: true })
+    await handle.ready
+
+    const sent: Prefs[] = []
+    handle.setCommit(async (next) => {
+      sent.push({ ...next })
+    })
+
+    handle.data.value.threshold = 40
+    await settle()
+    handle.data.value.threshold = 41
+    await settle()
+
+    expect(sent.map(value => value.threshold)).toEqual([40, 41])
+  })
+
+  it('does not seed the defaults on a profile where nothing is stored', async () => {
+    const handle = createWebExtensionStorage<Prefs>('prefs', defaults, { mergeDefaults: true })
+    handle.setCommit(async () => {})
+    await handle.ready
+    await settle()
+
+    expect(browser.storage.sync.set).not.toHaveBeenCalled()
+  })
+})

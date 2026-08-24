@@ -77,6 +77,16 @@ export interface WebExtensionStorageHandle<T> {
    * same blob, and one of them holding a stale copy is enough to undo an edit.
    */
   setWritable: (writable: boolean) => void
+  /**
+   * Save through something other than storage.
+   *
+   * Storage has no compare-and-set: a read, an edit and a write from two
+   * documents at once end with whichever wrote last holding the whole value,
+   * and the other document's unrelated change gone. A context that hands its
+   * saving to a single writer elsewhere installs it here - the value still
+   * comes back the ordinary way, through the change event.
+   */
+  setCommit: (commit: ((next: T, stored: T | null) => Promise<void>) | null) => void
   /** The last write that failed, so a page can say the save did not happen. */
   writeError: Ref<unknown>
 }
@@ -125,6 +135,8 @@ export function createWebExtensionStorage<T>(
    */
   let settled: string | null = null
   let writable = true
+  /** Set when saving belongs to somebody else – see `setCommit`. */
+  let commitVia: ((next: T, stored: T | null) => Promise<void>) | null = null
 
   /**
    * A copy of the defaults, never the defaults themselves.
@@ -153,7 +165,9 @@ export function createWebExtensionStorage<T>(
         settled = null
         // Only a context that owns the value seeds it. Nothing is lost if none
         // does: every reader merges the defaults in memory anyway.
-        if (writeDefaults && writable && rawInit !== null) {
+        // Not where the saving belongs to somebody else: seeding the defaults
+        // is a write like any other, and this context does not do those.
+        if (writeDefaults && writable && !commitVia && rawInit !== null) {
           const serialized = await serializer.write(rawInit)
           await storageInterface.setItem(key, serialized)
           // Recorded only once it is actually stored: claiming it beforehand
@@ -211,6 +225,16 @@ export function createWebExtensionStorage<T>(
       // Nothing changed – most often this is a hydration coming back round
       if (serialized === settled)
         return
+
+      if (commitVia) {
+        // The writer elsewhere decides what the stored value becomes, so
+        // nothing is recorded as settled here: the change event brings back
+        // what was actually stored, this context's edit merged into it.
+        const stored = settled === null ? null : await serializer.read(settled) as T
+        await commitVia(data.value, stored)
+        writeError.value = null
+        return
+      }
 
       settled = serialized
       await storageInterface.setItem(key, serialized)
@@ -295,6 +319,9 @@ export function createWebExtensionStorage<T>(
     applyExternal,
     setWritable: (next: boolean) => {
       writable = next
+    },
+    setCommit: (commit) => {
+      commitVia = commit
     },
     writeError,
   }
