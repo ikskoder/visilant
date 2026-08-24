@@ -159,6 +159,17 @@ const currentDomainCount = computed(() => {
   return visits.value[currentHostname.value]?.count || 0
 })
 
+/**
+ * The count above, coloured by itself.
+ *
+ * It used to be coloured by `currentStats`, which falls back to the family where
+ * this exact address has no record of its own - so a brand new `example.com`
+ * showed a green 0 on the strength of a familiar `www.example.com`. The number
+ * and its colour have to come from the same fact. The family's own facts are
+ * shown below it, marked as the family's.
+ */
+const currentCountStats = computed(() => ({ count: currentDomainCount.value }))
+
 // Hostnames without a dot (localhost, a machine name on the local network) are
 // never counted, so their zero is not a fact about the user. Showing it as a red
 // 0 would accuse a machine on their own desk of being unfamiliar, and no amount
@@ -668,7 +679,7 @@ onMounted(async () => {
             >
               –
             </div>
-            <div v-else class="font-mono font-bold" style="font-size: 1.3em;" :class="getCountColor(currentStats)">
+            <div v-else class="font-mono font-bold" style="font-size: 1.3em;" :class="getCountColor(currentCountStats)">
               {{ currentDomainCount }}
             </div>
           </div>
