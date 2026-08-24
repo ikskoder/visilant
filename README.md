@@ -150,7 +150,7 @@ Visilant is open-source and operates locally within your browser:
 
   **Required permissions:**
   - **Tabs**: To detect the current website you're visiting and update the extension icon with visit count.
-  - **Storage**: To save your visit history, settings, and preferences locally.
+  - **Storage**: To keep your visit history on this device and your settings where the browser keeps preferences, which is the sync storage described above.
   - **ActiveTab**: To interact with the currently active tab when you click the extension icon.
   - **Notifications**: To display system alerts when anti-tampering protection detects malicious interference.
   - **Context Menus**: To add a "Check link safety" option to the right-click menu for links.
