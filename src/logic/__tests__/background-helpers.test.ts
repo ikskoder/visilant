@@ -24,10 +24,6 @@ function checkIfSiteIsSafe(count: number, safetyThreshold: number): boolean {
   return count >= safetyThreshold
 }
 
-function getBadgeColor(isSiteSafe: boolean): string {
-  return isSiteSafe ? '#00C851' : '#ff4444'
-}
-
 function getBadgeText(count: number): string {
   return count >= 1000 ? '>1K' : count.toString()
 }
@@ -82,16 +78,6 @@ describe('checkIfSiteIsSafe', () => {
   it('works with threshold of 1', () => {
     expect(checkIfSiteIsSafe(0, 1)).toBe(false)
     expect(checkIfSiteIsSafe(1, 1)).toBe(true)
-  })
-})
-
-describe('getBadgeColor', () => {
-  it('returns green for safe sites', () => {
-    expect(getBadgeColor(true)).toBe('#00C851')
-  })
-
-  it('returns red for unsafe sites', () => {
-    expect(getBadgeColor(false)).toBe('#ff4444')
   })
 })
 

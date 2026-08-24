@@ -1,8 +1,9 @@
+import type { ToolbarLook } from '~/logic/badge'
 import type { FamiliarDomain, FamiliarIndex } from '~/logic/domain-similarity'
 import type { FamiliarityStats } from '~/logic/familiarity'
 import type { Settings, SiteVisitData } from '~/logic/storage'
 import { onMessage } from 'webext-bridge/background'
-import { badgeText } from '~/logic/badge'
+import { ACTION_ICONS, BADGE_COLORS, badgeText, toolbarLook } from '~/logic/badge'
 import { fetchBlobBounded } from '~/logic/bounded-fetch'
 import { belongsToSite, siteDomain, siteDomainOrSelf } from '~/logic/domain-boundary'
 import { buildFamiliarIndex, findLookalikes } from '~/logic/domain-similarity'
@@ -101,13 +102,8 @@ function checkIfSiteIsSafe(stats: FamiliarityStats): IsSafe {
   return isFamiliar(stats, currentFamiliarityRules())
 }
 
-// Function to get badge color based on safety level
-function getBadgeColor(isSiteSafe: IsSafe): string {
-  return isSiteSafe ? '#00C851' : '#ff4444'
-}
-
 // Function to update extension icon based on safety level
-async function updateExtensionIcon(stats: FamiliarityStats, tabId?: number) {
+async function updateExtensionIcon(look: ToolbarLook, tabId?: number) {
   if (!appSettings.value.changeIcon) {
     // Set default icon when colors are disabled
     await browser.action.setIcon({
@@ -117,10 +113,8 @@ async function updateExtensionIcon(stats: FamiliarityStats, tabId?: number) {
     return
   }
 
-  const isSiteSafe = checkIfSiteIsSafe(stats)
-  const iconType = isSiteSafe ? 'icon-default' : 'site-danger'
   await browser.action.setIcon({
-    path: getIconPaths(iconType),
+    path: getIconPaths(ACTION_ICONS[look]),
     ...(tabId != null && { tabId }),
   })
 }
@@ -202,6 +196,10 @@ async function updateBadge(hostname: string, tabId?: number) {
     firstSeen: siteData?.firstSeen,
   }
 
+  // A site the user silenced still gets its verdict drawn, in grey rather than
+  // red – see `toolbarLook`. The flag lives on the record this read returned
+  const look = toolbarLook(checkIfSiteIsSafe(stats), siteData?.ignored === true)
+
   if (appSettings.value.showBadge) {
     // One number is all the badge holds, and which one is the user's choice. Its
     // colour is the full verdict either way, so a site can read as unfamiliar
@@ -210,15 +208,13 @@ async function updateBadge(hostname: string, tabId?: number) {
       text: badgeText(stats, currentFamiliarityRules(), appSettings.value.badgeContent),
       ...(tabId != null && { tabId }),
     })
-    const isSiteSafe = checkIfSiteIsSafe(stats)
-    const color = getBadgeColor(isSiteSafe)
-    await browser.action.setBadgeBackgroundColor({ color, ...(tabId != null && { tabId }) })
+    await browser.action.setBadgeBackgroundColor({ color: BADGE_COLORS[look], ...(tabId != null && { tabId }) })
   }
   else {
     await browser.action.setBadgeText({ text: '', ...(tabId != null && { tabId }) })
   }
 
-  await updateExtensionIcon(stats, tabId)
+  await updateExtensionIcon(look, tabId)
 }
 
 // ==========================================

@@ -60,3 +60,36 @@ export function badgeText(
   const verdict = evaluateFamiliarity(stats, rules, now)
   return `${verdict.met}/${verdict.criteria.length}`
 }
+
+/**
+ * The three things the toolbar can say about the site in front of it.
+ *
+ * `silenced` is a site the user told the extension to stop warning about. The
+ * site is still unfamiliar and the badge still says so, but a red icon over a
+ * page that will not warn about anything promises a guard that was stood down –
+ * so the same verdict is drawn in grey. Familiar is never dressed down: turning
+ * warnings off does not make a site less known, and there was no warning on a
+ * familiar site to turn off in the first place.
+ */
+export type ToolbarLook = 'familiar' | 'unfamiliar' | 'silenced'
+
+export function toolbarLook(isFamiliar: boolean, silenced: boolean): ToolbarLook {
+  if (isFamiliar)
+    return 'familiar'
+
+  return silenced ? 'silenced' : 'unfamiliar'
+}
+
+/** Badge background per look. The browser picks the text colour to match. */
+export const BADGE_COLORS: Record<ToolbarLook, string> = {
+  familiar: '#00C851',
+  unfamiliar: '#ff4444',
+  silenced: '#808080',
+}
+
+/** Base name of the toolbar icon per look – see `getIconPaths` in the background. */
+export const ACTION_ICONS: Record<ToolbarLook, string> = {
+  familiar: 'icon-default',
+  unfamiliar: 'site-danger',
+  silenced: 'site-muted',
+}

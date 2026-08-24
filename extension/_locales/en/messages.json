@@ -196,7 +196,7 @@
     "description": "Label for dynamic icon toggle"
   },
   "dynamicIconDesc": {
-    "message": "The icon turns red on unfamiliar sites",
+    "message": "The icon turns red on unfamiliar sites, and grey on the unfamiliar sites you told it to stop warning about",
     "description": "Description for dynamic icon setting"
   },
   "showBadge": {
@@ -208,7 +208,7 @@
     "description": "Label of the select that picks the number drawn on the icon"
   },
   "badgeContentDesc": {
-    "message": "Only the number inside the badge – its colour is the whole familiarity verdict either way. The list holds the checks you judge sites by, so switching one off in the familiarity rules takes it out of here too.",
+    "message": "Only the number inside the badge – its colour is the whole familiarity verdict either way. It turns grey on an unfamiliar site you told Visilant to stop warning about. The list holds the checks you judge sites by, so switching one off in the familiarity rules takes it out of here too.",
     "description": "Description of the badge content select"
   },
   "badgeContentVisits": {

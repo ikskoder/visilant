@@ -31,7 +31,8 @@ export interface Settings {
 
   /**
    * Which number the badge draws – see logic/badge.ts. The colour is the whole
-   * familiarity verdict either way.
+   * familiarity verdict either way, drawn in grey rather than red on a site
+   * whose warnings the user switched off.
    */
   badgeContent: BadgeContent
   changeIcon: boolean

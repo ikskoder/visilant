@@ -1,3 +1,4 @@
+import { ACTION_ICONS } from '../src/logic/badge'
 import { expect, test } from './fixtures'
 import { blankPage, inWorker, patchSettings, seedVisits, serveSite, waitForAutoImport } from './helpers'
 
@@ -783,6 +784,87 @@ test('the badge draws whichever number the settings ask for', async ({ page, con
     },
   })
   await badgeShows('checks', String(record.count))
+})
+
+test('a silenced site keeps its verdict and loses the alarm colour', async ({ page, context, extensionId }) => {
+  await waitForAutoImport(context)
+  // Two of the three shipped checks fail on this record – one visit against ten,
+  // one active day against five – so under `all` the site is unfamiliar and
+  // there is a warning here to silence in the first place. The third check, age,
+  // passes: the seed dates the first visit to the start of the epoch
+  await seedVisits(context, SITE_HOST, 1)
+  await serveSite(page, SITE_URL)
+  await page.bringToFront()
+
+  // Same reasoning as the badge-text test above: the tab is found by address,
+  // and the colour is polled because the background paints it after the load
+  const badgeColor = () => inWorker(context, async (host: string) => {
+    const [tab] = await chrome.tabs.query({ url: `*://${host}/*` })
+    if (!tab)
+      return 'no tab'
+    const rgba = await chrome.action.getBadgeBackgroundColor({ tabId: tab.id })
+    return rgba.slice(0, 3).join(',')
+  }, SITE_HOST)
+
+  const expectColor = (rgb: string) =>
+    expect.poll(badgeColor, { timeout: 15000, intervals: [300] }).toBe(rgb)
+
+  await expectColor('255,68,68')
+
+  // Sent the way the popup sends it. A message posted from inside the worker
+  // never reaches the worker's own listener, so it goes from an extension page
+  const silence = async (ignored: boolean) => {
+    const ui = await context.newPage()
+    await ui.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+    await ui.evaluate(async ({ host, off }: any) => {
+      await (globalThis as any).chrome.runtime.sendMessage({ type: 'ignore-site', data: { hostname: host, ignored: off } })
+    }, { host: SITE_HOST, off: ignored })
+    await ui.close()
+    await page.bringToFront()
+  }
+
+  // No reload of the site. Coming back to the tab repaints it as well, so this
+  // says the colour follows the flag, not which of the two paths drew it
+  await silence(true)
+  await expectColor('128,128,128')
+
+  // And the badge still says how unfamiliar the site is. Read from the record
+  // rather than from the seed – the navigation counted a visit of its own
+  const counted = await inWorker<number>(context, async (host: string) => {
+    const stored = await chrome.storage.local.get(host)
+    return stored[host].count
+  }, SITE_HOST)
+  await expect.poll(() => inWorker(context, async (host: string) => {
+    const [tab] = await chrome.tabs.query({ url: `*://${host}/*` })
+    return tab ? chrome.action.getBadgeText({ tabId: tab.id }) : 'no tab'
+  }, SITE_HOST), { timeout: 15000, intervals: [300] }).toBe(String(counted))
+
+  // The grey shield the dynamic icon switches to has to be in the package: a
+  // missing size makes setIcon reject, and the toolbar keeps the red one. There
+  // is no API for reading back the icon in use, so this proves the files ship
+  // and not that they were picked – the name comes from the same constant the
+  // background draws from, so a typo cannot pass here and fail there
+  expect(await inWorker(context, async (base: string) => {
+    try {
+      await chrome.action.setIcon({
+        path: Object.fromEntries([16, 32, 48, 128].map(size =>
+          [size, chrome.runtime.getURL(`assets/${base}-${size}.png`)])),
+      })
+      return 'ok'
+    }
+    catch (error) {
+      return String(error)
+    }
+  }, ACTION_ICONS.silenced)).toBe('ok')
+
+  await silence(false)
+  await expectColor('255,68,68')
+
+  // A familiar site is never dressed down. Silencing does not make it less
+  // known, and there was no warning here to silence in the first place
+  await seedVisits(context, SITE_HOST, 90, { activeDays: 30, firstSeen: Date.now() - 90 * 24 * 60 * 60 * 1000 })
+  await silence(true)
+  await expectColor('0,200,81')
 })
 
 test('the counter list holds only the checks the user judges sites by', async ({ page, extensionId }) => {

@@ -92,7 +92,7 @@ Visilant implements multiple layers of protection to ensure reliable operation e
    - **Toolbar icon**:
 
      - Choose whether the icon carries a counter, and what that counter shows: any one of the checks you have switched on, or how many of them the site passes. With a single check in use there is nothing to choose between, so the question is not asked.
-     - Enable/disable icon color change to red for "unfamiliar" sites.
+     - Enable/disable icon color change to red for "unfamiliar" sites. On a site whose warnings you turned off, the same verdict comes in grey instead – the site is still unfamiliar, you have only asked not to be told about it. Anti-tampering is a separate switch and keeps working there.
 
    - **Link safety**:
 

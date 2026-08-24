@@ -1,6 +1,6 @@
 import type { FamiliaritySettings } from '../familiarity'
 import { describe, expect, it } from 'vitest'
-import { badgeText } from '../badge'
+import { ACTION_ICONS, BADGE_COLORS, badgeText, toolbarLook } from '../badge'
 import { defaultFamiliaritySettings } from '../familiarity'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -70,5 +70,29 @@ describe('badgeText', () => {
     expect(badgeText({ count: 999 }, rules(), 'visits', NOW)).toBe('999')
     expect(badgeText({ count: 1000 }, rules(), 'visits', NOW)).toBe('>1K')
     expect(badgeText({ count: 0, firstSeen: 1 }, rules(), 'age', NOW)).toBe('>1K')
+  })
+})
+
+describe('toolbarLook', () => {
+  it('draws an unfamiliar site in red', () => {
+    expect(toolbarLook(false, false)).toBe('unfamiliar')
+    expect(BADGE_COLORS.unfamiliar).toBe('#ff4444')
+    expect(ACTION_ICONS.unfamiliar).toBe('site-danger')
+  })
+
+  it('drops an unfamiliar site to grey once the user silenced it', () => {
+    // Red over a page that will warn about nothing promises a guard that is not
+    // on duty. The verdict is still shown, only not as an alarm
+    expect(toolbarLook(false, true)).toBe('silenced')
+    expect(BADGE_COLORS.silenced).toBe('#808080')
+    expect(ACTION_ICONS.silenced).toBe('site-muted')
+  })
+
+  it('leaves a familiar site green whatever the site was told to do', () => {
+    // Silencing warnings does not make a site less known, and there was no
+    // warning here to silence
+    expect(toolbarLook(true, false)).toBe('familiar')
+    expect(toolbarLook(true, true)).toBe('familiar')
+    expect(BADGE_COLORS.familiar).toBe('#00C851')
   })
 })
