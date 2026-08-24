@@ -163,20 +163,33 @@ function canonicalHost(hostname: string): string {
  * as, and neither was looked at either.
  */
 export function anchorLabel(anchor: Element | null): string {
+  return anchorLabels(anchor)[0] ?? ''
+}
+
+/**
+ * Every name this link goes by, most likely first.
+ *
+ * A link has more than one, and picking a single one always picks wrong for
+ * somebody. `aria-label` is what a screen reader announces and it overrides the
+ * text for that reader, while the text is what everybody else sees - so
+ * `<a aria-label="paypal.com">Click here</a>` and `<a href="evil">paypal.com</a>`
+ * are the same trick told to two different audiences. Both are read, and a name
+ * that disagrees with the destination is a mismatch whichever of them it was.
+ */
+export function anchorLabels(anchor: Element | null): string[] {
   if (!anchor)
-    return ''
+    return []
 
-  const text = (anchor.textContent || '').trim()
-  if (text)
-    return text
+  // The text first, because that is the name on screen and the one every other
+  // surface shows. The rest are read too, but none of them displaces it.
+  const names = [
+    (anchor.textContent || '').trim(),
+    ...Array.from(anchor.querySelectorAll('img')).map(image => (image.getAttribute('alt') || '').trim()),
+    (anchor.getAttribute('aria-label') || '').trim(),
+    (anchor.getAttribute('title') || '').trim(),
+  ]
 
-  for (const image of Array.from(anchor.querySelectorAll('img'))) {
-    const alt = (image.getAttribute('alt') || '').trim()
-    if (alt)
-      return alt
-  }
-
-  return (anchor.getAttribute('aria-label') || anchor.getAttribute('title') || '').trim()
+  return [...new Set(names.filter(Boolean))]
 }
 
 /**
@@ -211,6 +224,16 @@ function sameSiteOrBelow(a: string, b: string): boolean {
  * looks like still trips it: `paypal.com.evil.net` is not inside `paypal.com`
  * and never was, and two tenants of one hosting platform are two sites.
  */
+export function checkAnchorMismatch(anchor: Element | null, hrefHostname: string): { mismatch: boolean, textDomain?: string } {
+  for (const name of anchorLabels(anchor)) {
+    const result = checkDomainMismatch(name, hrefHostname)
+    if (result.mismatch)
+      return result
+  }
+
+  return { mismatch: false }
+}
+
 export function checkDomainMismatch(linkText: string, hrefHostname: string): { mismatch: boolean, textDomain?: string } {
   const textDomain = extractDomainFromText(linkText)
   if (!textDomain)

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   alternateSpelling,
   anchorLabel,
+  checkAnchorMismatch,
   checkDomainMismatch,
   clearVisitCache,
   extractDomainFromText,
@@ -417,6 +418,41 @@ describe('anchorLabel', () => {
   it('has nothing to say about a link with nothing in it', () => {
     expect(anchorLabel(anchor(''))).toBe('')
     expect(anchorLabel(null)).toBe('')
+  })
+})
+
+describe('checkAnchorMismatch', () => {
+  function anchor(html: string, attributes: Record<string, string> = {}): HTMLAnchorElement {
+    const element = document.createElement('a')
+    element.href = 'https://evil.example/'
+    element.innerHTML = html
+    for (const [name, value] of Object.entries(attributes))
+      element.setAttribute(name, value)
+    return element
+  }
+
+  it('reads the text, the same as before', () => {
+    expect(checkAnchorMismatch(anchor('paypal.com'), 'evil.example')).toEqual({ mismatch: true, textDomain: 'paypal.com' })
+  })
+
+  // The name a screen reader announces. It overrides the text for that reader,
+  // so a link reading "Click here" can still claim to be paypal.com out loud.
+  it('reads the aria-label even when there is text', () => {
+    const labelled = anchor('Click here', { 'aria-label': 'paypal.com' })
+    expect(checkAnchorMismatch(labelled, 'evil.example')).toEqual({ mismatch: true, textDomain: 'paypal.com' })
+  })
+
+  it('reads the alt of a picture inside the link', () => {
+    expect(checkAnchorMismatch(anchor('<img src="x.png" alt="paypal.com">'), 'evil.example')).toEqual({ mismatch: true, textDomain: 'paypal.com' })
+  })
+
+  it('says nothing when every name agrees with where the link goes', () => {
+    const agreeing = anchor('evil.example', { 'aria-label': 'evil.example', 'title': 'evil.example' })
+    expect(checkAnchorMismatch(agreeing, 'evil.example')).toEqual({ mismatch: false })
+  })
+
+  it('says nothing about a link whose names hold no domain at all', () => {
+    expect(checkAnchorMismatch(anchor('Click here', { 'aria-label': 'Sign in' }), 'evil.example')).toEqual({ mismatch: false })
   })
 })
 
