@@ -9,8 +9,9 @@ import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
-import { alternateSpelling, anchorLabel, checkDomainMismatch, clearVisitCache, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
+import { alternateSpelling, anchorLabel, checkAnchorMismatch, clearVisitCache, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
+import { isMessageError } from '~/logic/message-error'
 import { describePastePayload, editableTargetOf, isEditableEventTarget, isPasteSink, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyQrPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { resolveTooltipTrigger } from '~/logic/platform'
@@ -44,7 +45,12 @@ makeSettingsReadOnly()
 // Helper to send message safely (fallback to runtime.sendMessage)
 async function sendMessageSafe<T = any>(id: string, data: any): Promise<T> {
   // Always use runtime.sendMessage to avoid long-lived ports that cause bfcache issues
-  return await browser.runtime.sendMessage({ type: id, data }) as T
+  const answer = await browser.runtime.sendMessage({ type: id, data })
+  // A handler that failed answers with a reason rather than with nothing, and
+  // the reason is raised here so no caller can read it as data
+  if (isMessageError(answer))
+    throw new Error(answer.error)
+  return answer as T
 }
 
 // Function to check if a hostname is an internal page (no dots in hostname)
@@ -127,11 +133,16 @@ async function checkSiteSafety(url: string, settingsArrived?: Promise<void>): Pr
   // Both halves of the verdict are asked for together. Waiting for the settings
   // before even sending this doubled the window in which the page was loaded,
   // the user was typing, and nothing had been judged yet.
-  const visits = sendMessageSafe<VisitCountResponse>('get-visit-count', { url })
+  const visits = sendMessageSafe<VisitCountResponse>('get-visit-count', { url }).catch(() => null)
   const [response] = await Promise.all([visits, settingsArrived ?? Promise.resolve()])
   if (!response) {
-    safetyLevel.value = true
-    return true // Default to safe if no response
+    // Nothing came back, so nothing is known. This used to record the page as
+    // safe, which is the one answer it certainly could not give: a background
+    // that fails to answer is exactly the case the guards exist for. Left
+    // undecided, the paste guard holds and asks, and no warning is raised about
+    // a page nobody has judged.
+    safetyLevel.value = null
+    return false
   }
 
   const visitData = response
@@ -1228,9 +1239,8 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
   if (!stillCurrent())
     return
 
-  // Check for domain mismatch (link text vs href)
-  const linkText = anchorLabel(anchor)
-  const mismatchResult = checkDomainMismatch(linkText, hostname)
+  // Check for domain mismatch (link text vs href), whichever name it wears
+  const mismatchResult = checkAnchorMismatch(anchor, hostname)
 
   // Fetch textDomain visit data if mismatch
   let mismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null = null
@@ -1313,8 +1323,36 @@ function followLink(anchor: HTMLAnchorElement, openInNewTab: boolean, confirmed?
   if (openInNewTab) {
     const rel = anchor.rel?.toLowerCase() ?? ''
     const features = rel.includes('noreferrer') ? 'noopener,noreferrer' : 'noopener'
-    window.open(anchor.href, '_blank', features)
+    // The address that was agreed to, where there was one. Read off the element
+    // it would be whatever the element says by now.
+    window.open(confirmed ?? anchor.href, '_blank', features)
     return
+  }
+
+  /**
+   * The last look at the address, after the page's handlers and before the
+   * browser acts on the click.
+   *
+   * Checking before the dispatch is not enough: the click runs the page's own
+   * handlers first, and one of them can point the anchor somewhere else while
+   * the browser is still on its way to following it. This runs at the end of
+   * the bubble, which is the last moment anything can, and sends the user where
+   * the dialog said rather than where the element now points.
+   */
+  let lastWord: ((event: Event) => void) | null = null
+  if (confirmed !== undefined) {
+    let acted = false
+    lastWord = (event: Event) => {
+      if (acted || anchor.href === confirmed)
+        return
+      acted = true
+      event.preventDefault()
+      window.location.href = confirmed
+    }
+    // Both, because a page handler that stops the click at the anchor would
+    // keep it from ever reaching the window
+    anchor.addEventListener('click', lastWord)
+    window.addEventListener('click', lastWord)
   }
 
   replayingClick = anchor
@@ -1328,6 +1366,10 @@ function followLink(anchor: HTMLAnchorElement, openInNewTab: boolean, confirmed?
   }
   finally {
     replayingClick = null
+    if (lastWord) {
+      anchor.removeEventListener('click', lastWord)
+      window.removeEventListener('click', lastWord)
+    }
   }
 }
 
@@ -1403,8 +1445,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
   }
 
   // Check for mismatch and punycode
-  const linkText = anchorLabel(anchor)
-  const mismatchResult = checkDomainMismatch(linkText, hostname)
+  const mismatchResult = checkAnchorMismatch(anchor, hostname)
 
   // Fetch textDomain visit data if mismatch
   let interceptMismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null = null
@@ -1972,7 +2013,7 @@ async function showFrameWarning(kind: 'input' | 'copy', frameHost: string) {
  * Same dialog as a paste into this document, drawn about the frame's own site.
  * The answer travels back so the frame knows whether to stop asking.
  */
-async function showFramePasteIntercept(data: { hostname: string, status: 'unfamiliar' | 'settled' }): Promise<{ allowed: boolean }> {
+async function showFramePasteIntercept(data: { hostname: string, status: 'unfamiliar' | 'settled' | 'error' }): Promise<{ allowed: boolean }> {
   // The frame is holding a cancelled paste and is waiting on this answer. With
   // no dialog to answer from, saying no now is what stops it waiting.
   if (!await ensureTooltipUiMounted())
@@ -1995,7 +2036,9 @@ async function showFramePasteIntercept(data: { hostname: string, status: 'unfami
     // The payload stays in the frame. Only its shape would be worth showing and
     // sending the text across for that is not worth what it is.
     payload: describePastePayload(''),
-    status: data.status === 'unfamiliar' ? 'unfamiliar' : 'safe',
+    // Three answers, not two: a frame nobody could get a verdict about is not
+    // a frame that came back safe, and the dialog has a wording for that
+    status: data.status === 'unfamiliar' ? 'unfamiliar' : (data.status === 'error' ? 'error' : 'safe'),
     inFrame: true,
   }
   pasteInterceptVisible.value = true

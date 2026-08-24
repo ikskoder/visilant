@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
+import { isMessageError } from '~/logic/message-error'
 import { resolveTooltipTrigger } from '~/logic/platform'
 import { applySettingsSnapshot, defaultSettings, settings } from '~/logic/storage'
 import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, showWarning, warningFrameHost, warningType } from '~/logic/ui-state'
@@ -49,9 +50,12 @@ onBeforeUnmount(() => {
 provide('isDark', computed(() => isDark.value))
 
 // Helper to send message safely (fallback to runtime.sendMessage)
-async function sendMessageSafe<T = any>(id: string, data: any): Promise<T> {
+async function sendMessageSafe<T = any>(id: string, data: any): Promise<T | null> {
   // Always use runtime.sendMessage to avoid long-lived ports that cause bfcache issues
-  return await browser.runtime.sendMessage({ type: id, data }) as T
+  const answer = await browser.runtime.sendMessage({ type: id, data })
+  // A handler that failed answers with a reason. Nothing here may read that as
+  // a verdict about the page - it says the opposite.
+  return isMessageError(answer) ? null : answer as T
 }
 
 const hostname = ref('')

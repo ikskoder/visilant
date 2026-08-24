@@ -22,7 +22,8 @@
  * would be clipped to nothing.
  */
 
-import { isPasteSink, shouldInterceptPaste } from '~/logic/paste-guard'
+import { isMessageError } from '~/logic/message-error'
+import { isEditableEventTarget, isPasteSink, shouldInterceptPaste } from '~/logic/paste-guard'
 import { parseStoredSettings } from '~/logic/storage'
 import { isTrackableHostname } from '~/logic/visit-stats'
 
@@ -82,8 +83,13 @@ const IGNORED_KEYS = new Set([
   'F12',
 ])
 
-function send<T>(type: string, data: unknown): Promise<T> {
-  return browser.runtime.sendMessage({ type, data }) as Promise<T>
+async function send<T>(type: string, data: unknown): Promise<T> {
+  const answer = await browser.runtime.sendMessage({ type, data })
+  // A background that failed says so. Read as an answer it would be read as
+  // "nothing to guard against here", which is the opposite of what it means.
+  if (isMessageError(answer))
+    throw new Error(answer.error)
+  return answer as T
 }
 
 function install() {
@@ -118,10 +124,11 @@ function install() {
       guardPaste = Boolean(parseStoredSettings(stored.settings)?.blockPasteOnUnfamiliar)
     }
     catch {
-      // Nothing was read, so nothing is claimed. Off is what the setting ships
-      // as, and holding a paste for a feature nobody asked for is the worse of
-      // the two mistakes.
-      guardPaste = false
+      // Nothing was read, so nothing is claimed and nothing is remembered. Off
+      // is how this paste is treated, because holding one for a feature nobody
+      // asked for is the worse of the two mistakes - but the next one asks
+      // again rather than inheriting a failure from minutes ago.
+      guardPaste = null
     }
   }
 
@@ -142,7 +149,14 @@ function install() {
 
     pending ??= send<FrameVerdict>('frame-verdict', { url: window.location.href })
       .then((answer) => {
-        settled = answer ?? UNKNOWN
+        // An empty answer is not a verdict either. Kept as one, it left the
+        // frame believing nothing was known - and `UNKNOWN` holds nothing to
+        // guard against - for the life of the document.
+        if (!answer) {
+          pending = null
+          return UNKNOWN
+        }
+        settled = answer
         return settled
       })
       .catch(() => {
@@ -213,10 +227,20 @@ function install() {
       return
     if (IGNORED_KEYS.has(event.key))
       return
+    // Only where the key puts text somewhere. A site's single-key shortcuts land
+    // on whatever has the focus, and warning about those is noise about nothing
+    // being entered - the top document has asked this since the beginning.
+    if (!isEditableEventTarget(event))
+      return
     void warn('input')
   }, true)
 
   window.addEventListener('beforeinput', (event) => {
+    // `beforeinput` only fires on something editable, but a page can raise one
+    // of its own and this walks a path that is already in hand
+    if (!isEditableEventTarget(event))
+      return
+
     const kind = (event as InputEvent).inputType || ''
     if (kind.startsWith('delete') || kind === 'historyUndo' || kind === 'historyRedo')
       return
@@ -242,8 +266,14 @@ function install() {
       // Held before the answer was in, and the answer turned out to be that
       // there was nothing to hold for. The paste is already cancelled, so the
       // user is told rather than left looking at an empty field.
+      //
+      // No verdict at all is its own outcome. Shown as "settled" it read as a
+      // site that had been checked and found familiar, which is a claim about a
+      // frame nobody managed to check.
       const shown = status === 'checking'
-        ? (answer.isSafe === false && !answer.ignored ? 'unfamiliar' : 'settled')
+        ? (answer.isSafe === null
+            ? 'error'
+            : (answer.isSafe === false && !answer.ignored ? 'unfamiliar' : 'settled'))
         : 'unfamiliar'
 
       // Raced against a deadline. Without one, a top document that took the

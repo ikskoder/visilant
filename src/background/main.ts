@@ -40,8 +40,20 @@ watchListStorage()
  *
  * Migrations run here too, and only here: one context, once, before anything
  * else can write the blob they are rewriting.
+ *
+ * A function rather than one promise held in a variable: the read can fail, and
+ * a failed read that is remembered answers every later question with the same
+ * failure. Asking again is the whole point of calling this per question.
  */
-const backgroundReady = settingsReady({ migrate: true })
+function backgroundReady(): Promise<void> {
+  return settingsReady({ migrate: true })
+}
+
+// Started as soon as the worker is, rather than on the first question: the read
+// and the migrations take a moment, and everything below would spend it waiting.
+// A failure here is only reported, never kept - the call above hands the next
+// caller a fresh attempt.
+void backgroundReady().catch(error => console.error('Visilant: the settings could not be read', error))
 
 // The locales this build actually ships. Russian and Ukrainian were dropped
 // rather than kept half-checked, so the picking machinery stays and the list is
@@ -284,6 +296,11 @@ function stopOnReset(startedAt: number) {
 }
 
 export async function runAutoHistoryImport(attempts = 0, existingRunId?: string): Promise<void> {
+  await withImportLock(() => runAutoHistoryImportUnlocked(attempts, existingRunId))
+}
+
+/** The pass itself. Only ever called with the lock above already held. */
+async function runAutoHistoryImportUnlocked(attempts = 0, existingRunId?: string): Promise<void> {
   await browser.storage.local.set({ [HISTORY_AUTO_IMPORT_KEY]: true })
   const shouldStop = stopOnReset(visitGeneration())
   const runId = existingRunId ?? newImportRunId()
@@ -329,15 +346,41 @@ export async function runAutoHistoryImport(attempts = 0, existingRunId?: string)
 let manualImportCancelled = false
 
 /**
- * Set for as long as one is in flight, and checked without awaiting anything.
+ * Set for as long as an import of any kind is in flight, checked without an await.
  *
  * The lease in `history-import` is read, checked and written with awaits in
  * between, so two runs starting at the same moment both got past the check and
  * both took the key. The second one wins it, the first stops itself at its next
  * renewal - after both have written. Two presses of Re-import is all it takes,
- * and this is the one context they can both arrive in.
+ * and this is the one context they can all arrive in.
+ *
+ * All of them, not only the manual one. There are four ways in - the settings
+ * page, the welcome page's retry, the resume on worker start and the resume on
+ * browser start - and guarding only the first left the other three free to run
+ * over one another and over it: two passes reading the same history, fighting
+ * for one progress key, with Cancel stopping whichever had it last.
  */
-let manualImportRunning = false
+let importRunning = false
+
+/**
+ * Run an import unless one is already running.
+ *
+ * Answers whether it ran, so a caller with something to say about being turned
+ * away can say it.
+ */
+async function withImportLock(run: () => Promise<void>): Promise<boolean> {
+  if (importRunning)
+    return false
+
+  importRunning = true
+  try {
+    await run()
+    return true
+  }
+  finally {
+    importRunning = false
+  }
+}
 
 /**
  * Run the two passes by hand, on the user's say-so.
@@ -347,10 +390,10 @@ let manualImportRunning = false
  * the published state, which it watches anyway.
  */
 async function runManualHistoryImport() {
-  if (manualImportRunning)
+  if (importRunning)
     return { success: false, state: await readHistoryImportState() }
 
-  manualImportRunning = true
+  importRunning = true
   manualImportCancelled = false
   const runId = newImportRunId()
   const startedAt = visitGeneration()
@@ -389,7 +432,7 @@ async function runManualHistoryImport() {
     return { success: true, state: result }
   }
   finally {
-    manualImportRunning = false
+    importRunning = false
     manualImportCancelled = false
   }
 }
@@ -409,8 +452,15 @@ const MAX_IMPORT_ATTEMPTS = 5
 async function resumeInterruptedImport(): Promise<void> {
   // An import decides what counts as familiar as it writes, so it may not start
   // on a threshold that is only the shipped default
-  await backgroundReady
+  await backgroundReady()
 
+  // Called from two places - the bare call below and the browser's own startup
+  // hook - and a browser starting up fires both. Only one of them resumes.
+  await withImportLock(resumeInterruptedImportUnlocked)
+}
+
+/** The resume itself. Only ever called with the import lock already held. */
+async function resumeInterruptedImportUnlocked(): Promise<void> {
   const state = await readHistoryImportState()
   if (!state)
     return
@@ -471,7 +521,7 @@ async function resumeInterruptedImport(): Promise<void> {
     return
   }
 
-  await runAutoHistoryImport(attempts, state.runId)
+  await runAutoHistoryImportUnlocked(attempts, state.runId)
 }
 
 // Both hooks are wanted: onStartup covers the browser being closed and reopened,
@@ -488,7 +538,7 @@ resumeInterruptedImport()
 browser.runtime.onInstalled.addListener(async (details): Promise<void> => {
   // Settings first: the language below is written into them, and an update
   // arrives while the migrations are still running
-  await backgroundReady
+  await backgroundReady()
 
   if (details.reason === 'install') {
     // Get the best matching language
@@ -525,7 +575,7 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
   // The badge and the icon are the settings made visible, so neither may be
   // drawn from the defaults while the real ones are still being read
-  await backgroundReady
+  await backgroundReady()
 
   // We act on status changes only (loading or complete). url-only updates,
   // favicon-only updates, etc. are ignored.
@@ -582,7 +632,7 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
   if (await hasTamperAlarm(tabId))
     return
 
-  await backgroundReady
+  await backgroundReady()
 
   const tab = await browser.tabs.get(tabId)
   if (tab.url) {
@@ -1209,7 +1259,7 @@ const messageHandlers = {
 // would be gone – so the wait belongs inside the handler, not around it.
 Object.entries(messageHandlers).forEach(([type, handler]) => {
   onMessage(type, async ({ data, sender }: any) => {
-    await backgroundReady
+    await backgroundReady()
     return (handler as (data: any, ctx?: MessageContext) => Promise<any>)(data, {
       tabId: sender?.tabId,
       // A frame with no address of its own is judged as the page around it, and
@@ -1232,7 +1282,7 @@ browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
     // lives. A content script waiting on `get-visit-count` never reaches a
     // verdict, and with the paste guard on that means every paste on the page
     // is held with nothing to explain it. An error is an answer.
-    backgroundReady
+    backgroundReady()
       .then(() => (handler as (data: any, ctx?: MessageContext) => Promise<any>)(
         message.data,
         {
@@ -1246,7 +1296,12 @@ browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
       ))
       .then(sendResponse, (error) => {
         console.error(`Visilant: ${message.type} failed`, error)
-        sendResponse(undefined)
+        // Said as a failure, not as an empty answer. A content script reading
+        // `undefined` had no way to tell a background that could not read its
+        // own settings from a page there was nothing to say about, so a moment's
+        // storage error read as "this site is fine" and took the warnings and
+        // the paste guard down with it.
+        sendResponse({ error: String((error as Error)?.message || error) })
       })
     return true
   }
@@ -1371,7 +1426,7 @@ async function handleQrImageCheck(srcUrl: string, tabId?: number) {
 
 // Create context menu on install
 browser.runtime.onInstalled.addListener(async () => {
-  await backgroundReady
+  await backgroundReady()
   await setupContextMenu()
 })
 
@@ -1382,7 +1437,7 @@ if (hasContextMenus()) {
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
     // The menus outlive the worker, so a click here is exactly the kind of event
     // that wakes a cold one - and everything below reads the settings
-    await backgroundReady
+    await backgroundReady()
 
     if (info.menuItemId === CONTEXT_MENU_DOMAIN_ID && info.linkUrl) {
       if (/^mailto:/i.test(info.linkUrl)) {
@@ -1429,7 +1484,7 @@ if (hasContextMenus()) {
 // Listen for changes in storage
 browser.storage.onChanged.addListener(async (changes) => {
   if (changes.settings) {
-    await backgroundReady
+    await backgroundReady()
 
     // Parsed rather than cast: the stored value is a JSON string, and reading
     // fields straight off it yields `undefined` for every one of them – which

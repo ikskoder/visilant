@@ -282,7 +282,15 @@ export function settingsReady(options: { migrate?: boolean } = {}): Promise<void
       // it works on the raw value, before defaults are merged over it
       await settingsStorage.hydrate()
     }
-  })()
+  })().catch((error) => {
+    // A failure is not an answer, so it is not kept as one. Remembering the
+    // rejected promise meant one storage error at startup - the kind that comes
+    // of a disk being busy for a moment - left every later question about the
+    // settings failing too, for as long as the worker lived. Forgetting it here
+    // is what lets the next caller try again.
+    settingsReadyPromise = null
+    throw error
+  })
   return settingsReadyPromise
 }
 
