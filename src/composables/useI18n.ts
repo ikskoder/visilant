@@ -1,5 +1,5 @@
 import { computed, ref, triggerRef } from 'vue'
-import { storage } from 'webextension-polyfill'
+import { runtime, storage } from 'webextension-polyfill'
 
 // Type for message format
 interface Message {
@@ -164,12 +164,12 @@ export function useI18n() {
     // Update translations immediately for responsive UI
     await applyLanguage(lang)
 
-    // Persist to storage - this triggers storage.onChanged for other contexts
-    await storage.sync.get('settings').then(async (data) => {
-      const parsed = parseSettings(data) || {}
-      parsed.selectedLanguage = lang
-      await storage.sync.set({ settings: JSON.stringify(parsed) })
-    })
+    // Through the one writer, like every other settings edit. This used to read
+    // the whole blob, put the language in it and write all of it back - the
+    // read-modify-write from a second context that the background writer exists
+    // to do away with. Storing it still reaches every context, through the
+    // change event.
+    await runtime.sendMessage({ type: 'patch-settings', data: { patch: { selectedLanguage: lang } } })
   }
 
   // Initialize on first use (singleton pattern)
