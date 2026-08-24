@@ -14,7 +14,7 @@ import { watchListStorage } from '~/logic/list-sync'
 import { describePastePayload, editableTargetOf, isEditableEventTarget, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyQrPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { resolveTooltipTrigger } from '~/logic/platform'
-import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, settings, settingsReady } from '~/logic/storage'
+import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, parseStoredSettings, settings, settingsReady } from '~/logic/storage'
 import { applyHostStyles, createTamperWatch } from '~/logic/tamper-watch'
 import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningFrameHost, warningType } from '~/logic/ui-state'
 import { addCustomShortener, isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
@@ -168,6 +168,39 @@ async function loadPlatformCapabilities() {
 }
 
 /**
+ * Whether pastes are to be held, read straight from storage at document start.
+ *
+ * The listeners go up at `document_start` and the settings arrive later: they
+ * are asked of the background, which may be asleep and take a moment to wake.
+ * Until they land the ref holds the defaults, where the guard is off - so the
+ * first paste on the page, which is exactly the paste this feature exists for,
+ * was let through for somebody who had switched the guard on.
+ *
+ * One storage read in this document answers the one question that cannot wait.
+ * The rest of the verdict still comes from the background, and `interceptPaste`
+ * already knows how to hold a paste while it is on its way.
+ */
+let earlyGuardPaste: boolean | null = null
+let settingsHydrated = false
+
+void browser.storage.sync.get('settings')
+  .then((stored) => {
+    earlyGuardPaste = Boolean(parseStoredSettings(stored.settings)?.blockPasteOnUnfamiliar)
+  })
+  .catch(() => {
+    // Nothing was read, so nothing is claimed. Off is what the setting ships as,
+    // and holding a paste for a feature nobody asked for is the worse mistake.
+    earlyGuardPaste = false
+  })
+
+/** The setting as it stands, from whichever source has it first. */
+function pasteGuardOn(current: Settings): boolean {
+  if (settingsHydrated)
+    return Boolean(current.blockPasteOnUnfamiliar)
+  return earlyGuardPaste ?? Boolean(current.blockPasteOnUnfamiliar)
+}
+
+/**
  * The settings, from the background if it answers and from storage if it does not.
  *
  * The background is asked first because it is the one context that has run the
@@ -181,6 +214,7 @@ async function loadSettingsSnapshot(): Promise<void> {
     if (settingsData) {
       // Taken as a snapshot, not assigned: assigning would save it straight back
       applySettingsSnapshot(settingsData)
+      settingsHydrated = true
       return
     }
   }
@@ -191,6 +225,7 @@ async function loadSettingsSnapshot(): Promise<void> {
   await settingsReady()
   if (!settings.value)
     applySettingsSnapshot(defaultSettings)
+  settingsHydrated = true
 }
 
 /** The lists and the platform answer, none of which the verdict waits for. */
@@ -359,8 +394,6 @@ async function interceptPaste(target: HTMLElement, text: string, undecided = fal
   const punycode = alternateSpelling(hostname)
   const payload = describePastePayload(text)
 
-  await ensureTooltipUiMounted()
-
   // One resolver, claimed before the dialog goes up. A second paste arriving
   // mid-dialog used to overwrite it, leaving the first one waiting forever on a
   // promise nobody could settle.
@@ -373,6 +406,13 @@ async function interceptPaste(target: HTMLElement, text: string, undecided = fal
   })
 
   try {
+    // Inside the try, and its answer is looked at. The paste was cancelled
+    // before this function was called, so a mount that throws - or that comes
+    // back with nothing in the page - used to end with the field empty, no
+    // dialog, and nothing said about either.
+    if (!await ensureTooltipUiMounted())
+      throw new Error('the in-page dialog could not be mounted')
+
     if (undecided) {
       // The paste has already been stopped, so the wait has to be on screen. A
       // field that silently stays empty is the outcome this replaces.
@@ -425,12 +465,13 @@ async function interceptPaste(target: HTMLElement, text: string, undecided = fal
 // Handle paste event
 async function handlePaste(event: ClipboardEvent) {
   const current = settings.value || defaultSettings
+  const guardOn = pasteGuardOn(current)
   const text = event.clipboardData?.getData('text/plain') || ''
 
   // A dialog is already up over an earlier paste. Cancelling this one keeps the
   // two from racing for the same resolver, and it is the safe half of the race:
   // the user is being asked about this very page.
-  if (pasteInterceptVisible.value && current.blockPasteOnUnfamiliar) {
+  if (pasteInterceptVisible.value && guardOn) {
     event.preventDefault()
     event.stopImmediatePropagation()
     return
@@ -440,7 +481,7 @@ async function handlePaste(event: ClipboardEvent) {
   // through: the whole point is the paste that happens seconds after the page
   // loaded, which is exactly when the verdict is still in flight.
   if (shouldHoldPasteUndecided({
-    enabled: Boolean(current.blockPasteOnUnfamiliar),
+    enabled: guardOn,
     verdictKnown: safetyLevel.value !== null && bootstrapState !== 'error',
     ignored: isIgnored.value,
     hasText: text.length > 0,
@@ -454,7 +495,7 @@ async function handlePaste(event: ClipboardEvent) {
   }
 
   if (shouldInterceptPaste({
-    enabled: Boolean(current.blockPasteOnUnfamiliar),
+    enabled: guardOn,
     siteIsSafe: safetyLevel.value,
     ignored: isIgnored.value,
     hasText: text.length > 0,
@@ -1893,9 +1934,13 @@ async function mount(force = false) {
 
 // The Vue app is only mounted when the page needs a warning or link safety is
 // on, so message-triggered tooltips (context menu, QR) must force-mount it first
-async function ensureTooltipUiMounted() {
+async function ensureTooltipUiMounted(): Promise<boolean> {
   if (!container)
     await mount(true)
+  // Answered rather than assumed. A mount that fails and a mount that returns
+  // with nothing in the page look the same to a caller that only awaits it, and
+  // one of the callers has already cancelled a paste by the time it asks.
+  return Boolean(container)
 }
 
 /**
@@ -1928,7 +1973,10 @@ async function showFrameWarning(kind: 'input' | 'copy', frameHost: string) {
  * The answer travels back so the frame knows whether to stop asking.
  */
 async function showFramePasteIntercept(data: { hostname: string, status: 'unfamiliar' | 'settled' }): Promise<{ allowed: boolean }> {
-  await ensureTooltipUiMounted()
+  // The frame is holding a cancelled paste and is waiting on this answer. With
+  // no dialog to answer from, saying no now is what stops it waiting.
+  if (!await ensureTooltipUiMounted())
+    return { allowed: false }
 
   const facts = await fetchLinkData(`https://${data.hostname}`, data.hostname).catch(() => null)
 
