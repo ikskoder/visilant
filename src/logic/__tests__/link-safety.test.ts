@@ -4,6 +4,7 @@ import {
   alternateSpelling,
   anchorLabel,
   checkDomainMismatch,
+  clearVisitCache,
   extractDomainFromText,
   findAnchorElement,
   findAnchorFromEvent,
@@ -416,5 +417,32 @@ describe('anchorLabel', () => {
   it('has nothing to say about a link with nothing in it', () => {
     expect(anchorLabel(anchor(''))).toBe('')
     expect(anchorLabel(null)).toBe('')
+  })
+})
+
+describe('the visit cache', () => {
+  it('forgets the oldest hostname rather than growing without end', () => {
+    clearVisitCache()
+    for (let i = 0; i < 600; i++)
+      setCachedVisitCount(`host-${i}.example`, { stats: { count: i }, isSafe: false, ignored: false })
+
+    // The first ones went out as the later ones came in, and the recent ones stayed
+    expect(getCachedVisitCount('host-0.example')).toBeNull()
+    expect(getCachedVisitCount('host-599.example')?.stats.count).toBe(599)
+  })
+
+  it('drops an entry that has expired instead of stepping over it', () => {
+    clearVisitCache()
+    vi.useFakeTimers()
+    try {
+      setCachedVisitCount('one.example', { stats: { count: 1 }, isSafe: true, ignored: false })
+      vi.advanceTimersByTime(31_000)
+      expect(getCachedVisitCount('one.example')).toBeNull()
+      // Asked twice, because the first miss is what has to have removed it
+      expect(getCachedVisitCount('one.example')).toBeNull()
+    }
+    finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -17,15 +17,42 @@ export interface VisitFacts {
 
 const visitCountCache = new Map<string, VisitFacts & { timestamp: number }>()
 const CACHE_TTL_MS = 30_000 // 30 seconds
+/**
+ * How many hostnames this remembers at once.
+ *
+ * A page writes its own links, so it decides how many hostnames get looked up
+ * on it, and nothing here ever let go of one: an expired entry was stepped over
+ * rather than dropped, so a long-lived tab on a page that keeps adding links
+ * grew this for as long as it stayed open.
+ */
+const CACHE_MAX_ENTRIES = 500
 
 export function getCachedVisitCount(hostname: string): VisitFacts | null {
   const cached = visitCountCache.get(hostname)
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS)
+  if (!cached)
+    return null
+
+  if (Date.now() - cached.timestamp < CACHE_TTL_MS)
     return cached
+
+  // Out on the way past. It is already known to be worthless, and the lookup
+  // that follows will write a fresh one under the same key anyway.
+  visitCountCache.delete(hostname)
   return null
 }
 
 export function setCachedVisitCount(hostname: string, data: VisitFacts) {
+  // Deleted first so a hostname that is looked up again moves to the back of the
+  // queue: a Map hands its keys back in insertion order, which makes the first
+  // one the entry that has been sitting here longest.
+  visitCountCache.delete(hostname)
+
+  if (visitCountCache.size >= CACHE_MAX_ENTRIES) {
+    const oldest = visitCountCache.keys().next().value
+    if (oldest !== undefined)
+      visitCountCache.delete(oldest)
+  }
+
   visitCountCache.set(hostname, { ...data, timestamp: Date.now() })
 }
 
