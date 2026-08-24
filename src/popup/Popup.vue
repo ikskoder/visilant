@@ -7,7 +7,7 @@ import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
 import { belongsToSite, siteDomainOrSelf } from '~/logic/domain-boundary'
-import { aggregateFamiliarityStats, evaluateFamiliarity, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
+import { aggregateFamiliarityStats, evaluateFamiliarity, normalizeFamiliarity } from '~/logic/familiarity'
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { popupWidthCap } from '~/logic/platform'
 import { settings } from '~/logic/storage'
@@ -420,10 +420,28 @@ function toggleAntiTampering() {
   }
 }
 
-// Green means "familiar" under the user's rules, which visits alone no longer
-// decide once active days or age are switched on
+/**
+ * The colour a visit count carries.
+ *
+ * Its own check, not the whole verdict. This used to be `isFamiliar`, which is
+ * the answer to a different question and reads as a lie next to the number it
+ * is painting: under "at least 2 of 3", three visits against a bar of ten came
+ * out green because the two date checks passed, and under "all", fifty visits
+ * came out red because the site was first seen yesterday. Two rows further down
+ * the same panel, active days and first visit are each coloured by their own
+ * check - so one number in the grid answered a different question from its
+ * neighbours, and the one it answered was already on screen as the status word.
+ *
+ * Uncoloured when the visits check is switched off, the same as every other
+ * fact the user has taken out of the verdict.
+ */
 function getCountColor(stats: FamiliarityStats | undefined) {
-  return isFamiliar(stats ?? { count: 0 }, familiarityRules.value)
+  const verdict = evaluateFamiliarity(stats ?? { count: 0 }, familiarityRules.value)
+  const outcome = verdict.criteria.find(entry => entry.id === 'visits')
+  if (!outcome)
+    return ''
+
+  return outcome.met
     ? 'text-green-600 dark:text-green-400'
     : 'text-red-500 dark:text-red-400'
 }

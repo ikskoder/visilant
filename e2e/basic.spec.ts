@@ -1140,3 +1140,90 @@ test('a site shortcut is not reported as typing, but typing into a field is', as
   await page.keyboard.press('j')
   await expect.poll(() => warningShowing(page), { timeout: 10000, intervals: [250] }).toBe(true)
 })
+
+/** The colour class on the big visit count at the top of the popup. */
+async function countColour(page: any): Promise<string> {
+  return page.evaluate(() => {
+    const el = document.querySelector('.font-mono.font-bold')
+    const cls = el?.className ?? ''
+    if (cls.includes('text-green'))
+      return 'green'
+    if (cls.includes('text-red'))
+      return 'red'
+    return 'none'
+  })
+}
+
+test('the visit count is coloured by its own check, not by the whole verdict', async ({ context, extensionId }) => {
+  // Three checks, two of which have to pass. The visit count fails its own bar
+  // and the two dates clear theirs, so the site is familiar overall - and the
+  // count used to be painted green on the strength of that, sitting next to an
+  // active-day count that was correctly painted by its own check.
+  await patchSettings(context, {
+    familiarity: {
+      visits: { enabled: true, min: 10 },
+      activeDays: { enabled: true, min: 5 },
+      age: { enabled: true, min: 10 },
+      mode: 'atLeast',
+      atLeast: 2,
+    },
+  })
+  await seedVisits(context, 'partly.test', 3, {
+    activeDays: 30,
+    firstSeen: Date.now() - 400 * 24 * 60 * 60 * 1000,
+  })
+
+  const page = await context.newPage()
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=partly.test`)
+  await page.waitForTimeout(1800)
+
+  expect(await countColour(page)).toBe('red')
+  await page.close()
+})
+
+test('a visit count that clears its bar stays green when another check fails', async ({ context, extensionId }) => {
+  // The same mistake the other way round: every check has to pass, the site was
+  // first seen today, and fifty visits against a bar of ten came out red.
+  await patchSettings(context, {
+    familiarity: {
+      visits: { enabled: true, min: 10 },
+      activeDays: { enabled: true, min: 5 },
+      age: { enabled: true, min: 10 },
+      mode: 'all',
+      atLeast: 2,
+    },
+  })
+  await seedVisits(context, 'freshly.test', 50, { activeDays: 30, firstSeen: Date.now() })
+
+  const page = await context.newPage()
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=freshly.test`)
+  await page.waitForTimeout(1800)
+
+  expect(await countColour(page)).toBe('green')
+  await page.close()
+})
+
+test('a visit count nobody judges by carries no colour at all', async ({ context, extensionId }) => {
+  // Switched off, the count has no say in the verdict - the same as the two
+  // dates, which the grid already leaves uncoloured when they are off
+  await patchSettings(context, {
+    familiarity: {
+      visits: { enabled: false, min: 10 },
+      activeDays: { enabled: true, min: 5 },
+      age: { enabled: true, min: 10 },
+      mode: 'all',
+      atLeast: 2,
+    },
+  })
+  await seedVisits(context, 'unjudged.test', 3, {
+    activeDays: 30,
+    firstSeen: Date.now() - 400 * 24 * 60 * 60 * 1000,
+  })
+
+  const page = await context.newPage()
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=unjudged.test`)
+  await page.waitForTimeout(1800)
+
+  expect(await countColour(page)).toBe('none')
+  await page.close()
+})
