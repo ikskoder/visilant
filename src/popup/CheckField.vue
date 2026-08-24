@@ -66,15 +66,26 @@ const fileInput = ref<HTMLInputElement | null>(null)
 /** Set once the lists this page classifies by have actually been read. */
 let stopWatchingLists: (() => void) | null = null
 
+/**
+ * The lists, on their way in, so a check can wait for them.
+ *
+ * The field is usable the moment the page draws, which is before the lists have
+ * been read: a domain typed straight away was classified without the user's own
+ * shorteners and mail providers, and answered a question about lists it had not
+ * seen yet.
+ */
+let listsReady: Promise<unknown> = Promise.resolve()
+
 onMounted(async () => {
   // Both lists, and awaited. The shortener lists were never loaded here at all,
   // so a domain the user had added by hand was flagged as a shortener in a
   // tooltip and not on this page – and the email lists were started and left to
   // land whenever, so the first check ran against whatever was ready.
-  await Promise.all([
+  listsReady = Promise.all([
     loadEmailListsFromStorage(),
     loadShortenersFromStorage(),
   ])
+  await listsReady
 
   // ...and followed, so an edit made in the settings next door reaches a check
   // page that is already open
@@ -216,6 +227,12 @@ async function runCheck(rawText: string) {
     return
   }
 
+  // Nothing is classified before the lists are in. A check started in the first
+  // moment of the page waits for them rather than answering without them.
+  await listsReady
+  if (generation !== checkGeneration)
+    return
+
   // The same reading the long-press menu gives a QR payload, which is the point
   // of it being one function: a bare `example.com` is a domain through both
   const { kind, value } = classifyQrPayload(trimmed)
@@ -256,6 +273,12 @@ async function expandUrl() {
       return // a new check replaced this result meanwhile
     if (resolved && resolved.status === 'resolved' && resolved.finalHostname) {
       const visitData = await getVisitData(resolved.finalHostname)
+      // Asked again after the second wait, not only after the first. A check
+      // started while the visits were being read would otherwise have this
+      // older answer written over it, and the dashboard sent to a domain the
+      // user had already moved on from.
+      if (result.value !== checked)
+        return
       checked.resolve = {
         status: 'resolved',
         finalHostname: resolved.finalHostname,
