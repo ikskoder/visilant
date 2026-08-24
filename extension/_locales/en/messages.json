@@ -1311,6 +1311,10 @@
     "message": "Visilant check",
     "description": "Header of the in-page check panel"
   },
+  "closeDialog": {
+    "message": "Close",
+    "description": "Name of the cross that closes a dialog or panel, for a screen reader"
+  },
   "emailAccountName": {
     "message": "Account name",
     "description": "Label for the email local part (before @)"

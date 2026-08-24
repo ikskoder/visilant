@@ -156,6 +156,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
           </span>
           <button
             ref="closeButton"
+            :aria-label="t('closeDialog')"
             class="w-6 h-6 flex items-center justify-center rounded-full transition-colors"
             :class="isDark ? 'text-gray-400 hover:text-white hover:bg-gray-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'"
             @click="emit('close')"

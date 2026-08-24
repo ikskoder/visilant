@@ -78,11 +78,26 @@ export function useModalDialog(options: {
     }
   }
 
+  /**
+   * Whatever had the focus, on whichever side of the shadow boundary it was.
+   *
+   * These dialogs live in a shadow root of the extension's own, and a shadow
+   * root only reports focus that is inside it. Asking it alone gave `null` for
+   * every dialog opened from the page - which is all of them, since the link or
+   * the field the user was working in belongs to the page - and closing the
+   * dialog then put focus nowhere. The document knows the host element, the
+   * root knows which element inside it, and the deepest of the two is the one
+   * the user was actually on.
+   */
+  const focusedNow = (): HTMLElement | null => {
+    const root = options.container()?.getRootNode()
+    const inRoot = root instanceof ShadowRoot ? root.activeElement as HTMLElement | null : null
+    return inRoot ?? document.activeElement as HTMLElement | null
+  }
+
   watch(options.visible, (open) => {
     if (open) {
-      const root = options.container()
-      const doc = (root?.getRootNode() as Document | ShadowRoot | null) ?? document
-      previouslyFocused.value = (doc as Document).activeElement as HTMLElement | null
+      previouslyFocused.value = focusedNow()
       window.addEventListener('keydown', onKeydown, true)
       // After the transition has put the element in the tree
       nextTick(() => options.initialFocus()?.focus())

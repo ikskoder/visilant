@@ -98,6 +98,7 @@ const resolvedIsSafe = computed(() => {
           </h2>
           <button
             ref="closeButton"
+            :aria-label="t('closeDialog')"
             class="close-x w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors"
             :class="isDark ? 'text-gray-500 hover:text-white hover:bg-gray-700/50' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200/50'"
             @click="emit('cancel')"
