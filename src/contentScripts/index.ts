@@ -11,7 +11,7 @@ import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, MAX
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { alternateSpelling, anchorLabel, checkDomainMismatch, clearVisitCache, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
-import { describePastePayload, editableTargetOf, isEditableEventTarget, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
+import { describePastePayload, editableTargetOf, isEditableEventTarget, isPasteSink, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyQrPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { resolveTooltipTrigger } from '~/logic/platform'
 import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, parseStoredSettings, settings, settingsReady } from '~/logic/storage'
@@ -485,7 +485,7 @@ async function handlePaste(event: ClipboardEvent) {
     verdictKnown: safetyLevel.value !== null && bootstrapState !== 'error',
     ignored: isIgnored.value,
     hasText: text.length > 0,
-    targetIsEditable: isEditableEventTarget(event),
+    targetIsEditable: isPasteSink(event),
     alreadyAllowed: pasteAllowedOnThisPage.value,
   })) {
     event.preventDefault()
@@ -499,7 +499,7 @@ async function handlePaste(event: ClipboardEvent) {
     siteIsSafe: safetyLevel.value,
     ignored: isIgnored.value,
     hasText: text.length > 0,
-    targetIsEditable: isEditableEventTarget(event),
+    targetIsEditable: isPasteSink(event),
     alreadyAllowed: pasteAllowedOnThisPage.value,
   })) {
     // Stopping propagation as well as the default is the point: a page with its

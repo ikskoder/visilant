@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describePastePayload, editableTargetOf, isEditableEventTarget, isEditableTarget, shouldHoldPasteUndecided, shouldInterceptPaste } from '../paste-guard'
+import { describePastePayload, editableTargetOf, isEditableEventTarget, isEditableTarget, isPasteSink, shouldHoldPasteUndecided, shouldInterceptPaste } from '../paste-guard'
 
 describe('shouldInterceptPaste', () => {
   const base = {
@@ -153,5 +153,36 @@ describe('isEditableEventTarget', () => {
     const input = document.createElement('input')
     const host = document.createElement('my-widget')
     expect(editableTargetOf(eventWithPath([input, host]))).toBe(input)
+  })
+})
+
+describe('isPasteSink', () => {
+  function pasteOn(target: Element, path?: EventTarget[]): Event {
+    const event = new Event('paste')
+    Object.defineProperty(event, 'target', { value: target })
+    Object.defineProperty(event, 'composedPath', { value: () => path ?? [target] })
+    return event
+  }
+
+  it('takes a custom element at its word, since a closed root hides its field', () => {
+    const host = document.createElement('my-login')
+    expect(isPasteSink(pasteOn(host))).toBe(true)
+  })
+
+  it('says nothing about an ordinary element with nothing editable in it', () => {
+    const div = document.createElement('div')
+    expect(isPasteSink(pasteOn(div))).toBe(false)
+  })
+
+  // The read-only field is still not a sink, which is the case this must not undo
+  it('leaves a read-only field alone', () => {
+    const input = document.createElement('input')
+    input.readOnly = true
+    expect(isPasteSink(pasteOn(input))).toBe(false)
+  })
+
+  it('still finds a real field the ordinary way', () => {
+    const input = document.createElement('input')
+    expect(isPasteSink(pasteOn(input))).toBe(true)
   })
 })

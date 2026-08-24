@@ -145,6 +145,36 @@ export function isEditableEventTarget(event: Event): boolean {
   return isEditableTarget(event.target)
 }
 
+/**
+ * Whether a paste lands somewhere that takes the text.
+ *
+ * The same question as above with one more answer allowed, and only pastes ask
+ * it. A field inside a *closed* shadow root is in no `composedPath()` and no
+ * content script can reach it: what is left at the end of the path is the host,
+ * which has no value and is not editable, so the guard saw an ordinary element
+ * and let the paste through. A custom element - the tag with a hyphen in it,
+ * which is what a component with a closed root is - is taken at its word here.
+ *
+ * A trusted paste event is itself most of the evidence: it means somebody hit
+ * paste while that element had the focus. Keystrokes cannot be read the same
+ * way, because a site's single-key shortcuts land on whatever has the focus and
+ * warning about those turned the whole feature into noise.
+ */
+export function isPasteSink(event: Event): boolean {
+  if (isEditableEventTarget(event))
+    return true
+
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+  const deepest = (path[0] ?? event.target) as Element | null
+  if (!deepest || deepest.nodeType !== 1)
+    return false
+
+  // `shadowRoot` is null for a closed root and for no root at all. An open one
+  // would have put its field in the path above, so anything still here either
+  // hides its root or has none, and only the first of those is worth guarding.
+  return deepest.tagName.includes('-') && deepest.shadowRoot === null
+}
+
 /** The element an event was actually typed into, shadow roots included. */
 export function editableTargetOf(event: Event): HTMLElement | null {
   const path = typeof event.composedPath === 'function' ? event.composedPath() : []

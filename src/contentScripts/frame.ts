@@ -22,7 +22,7 @@
  * would be clipped to nothing.
  */
 
-import { isEditableEventTarget, shouldInterceptPaste } from '~/logic/paste-guard'
+import { isPasteSink, shouldInterceptPaste } from '~/logic/paste-guard'
 import { parseStoredSettings } from '~/logic/storage'
 import { isTrackableHostname } from '~/logic/visit-stats'
 
@@ -272,7 +272,7 @@ function install() {
 
   window.addEventListener('paste', (event) => {
     const text = event.clipboardData?.getData('text/plain') || ''
-    if (!text || allowed || !isEditableEventTarget(event))
+    if (!text || allowed || !isPasteSink(event))
       return
 
     // A dialog about this frame is already up. Cancelling is the safe half of

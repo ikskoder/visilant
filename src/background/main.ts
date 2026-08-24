@@ -329,6 +329,17 @@ export async function runAutoHistoryImport(attempts = 0, existingRunId?: string)
 let manualImportCancelled = false
 
 /**
+ * Set for as long as one is in flight, and checked without awaiting anything.
+ *
+ * The lease in `history-import` is read, checked and written with awaits in
+ * between, so two runs starting at the same moment both got past the check and
+ * both took the key. The second one wins it, the first stops itself at its next
+ * renewal - after both have written. Two presses of Re-import is all it takes,
+ * and this is the one context they can both arrive in.
+ */
+let manualImportRunning = false
+
+/**
  * Run the two passes by hand, on the user's say-so.
  *
  * The same chain the automatic import runs, in the background where the visit
@@ -336,6 +347,10 @@ let manualImportCancelled = false
  * the published state, which it watches anyway.
  */
 async function runManualHistoryImport() {
+  if (manualImportRunning)
+    return { success: false, state: await readHistoryImportState() }
+
+  manualImportRunning = true
   manualImportCancelled = false
   const runId = newImportRunId()
   const startedAt = visitGeneration()
@@ -374,6 +389,7 @@ async function runManualHistoryImport() {
     return { success: true, state: result }
   }
   finally {
+    manualImportRunning = false
     manualImportCancelled = false
   }
 }
