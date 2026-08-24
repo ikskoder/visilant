@@ -157,16 +157,34 @@ describe('isEditableEventTarget', () => {
 })
 
 describe('isPasteSink', () => {
-  function pasteOn(target: Element, path?: EventTarget[]): Event {
-    const event = new Event('paste')
-    Object.defineProperty(event, 'target', { value: target })
-    Object.defineProperty(event, 'composedPath', { value: () => path ?? [target] })
-    return event
+  // A plain stand-in rather than a real `Event`: jsdom will not let `isTrusted`
+  // be redefined on one, and this function reads nothing else off the event.
+  function pasteOn(target: Element, path?: EventTarget[], trusted = true): Event {
+    return {
+      target,
+      isTrusted: trusted,
+      composedPath: () => path ?? [target],
+    } as unknown as Event
   }
 
   it('takes a custom element at its word, since a closed root hides its field', () => {
     const host = document.createElement('my-login')
     expect(isPasteSink(pasteOn(host))).toBe(true)
+  })
+
+  // The guess costs the page a cancelled paste and a dialog, so only the browser
+  // may ask for it. A page dispatching its own paste at a custom element of its
+  // own could otherwise put that dialog up whenever it liked.
+  it('does not guess for an event the page raised itself', () => {
+    const host = document.createElement('my-login')
+    expect(isPasteSink(pasteOn(host, undefined, false))).toBe(false)
+  })
+
+  // A real field is a real field however the event was made: the guess is what
+  // needs the browser's word, not the field
+  it('still finds a real field in a synthetic event', () => {
+    const input = document.createElement('input')
+    expect(isPasteSink(pasteOn(input, undefined, false))).toBe(true)
   })
 
   it('says nothing about an ordinary element with nothing editable in it', () => {

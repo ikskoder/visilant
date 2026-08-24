@@ -159,10 +159,18 @@ export function isEditableEventTarget(event: Event): boolean {
  * paste while that element had the focus. Keystrokes cannot be read the same
  * way, because a site's single-key shortcuts land on whatever has the focus and
  * warning about those turned the whole feature into noise.
+ *
+ * Trusted is the word that has to be checked, not assumed. The whole argument
+ * for guessing here is that the browser itself raised the event, and a page can
+ * raise one of its own on any element it likes: without this, a site could
+ * cancel its visitors' pastes and put a dialog on screen whenever it wanted to.
  */
 export function isPasteSink(event: Event): boolean {
   if (isEditableEventTarget(event))
     return true
+
+  if (!event.isTrusted)
+    return false
 
   const path = typeof event.composedPath === 'function' ? event.composedPath() : []
   const deepest = (path[0] ?? event.target) as Element | null
