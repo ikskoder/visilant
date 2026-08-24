@@ -136,10 +136,11 @@ async function checkSiteSafety(url: string, settingsArrived?: Promise<void>): Pr
 
   const visitData = response
 
-  // Update ignored state
-  if (visitData.ignored) {
-    isIgnored.value = true
-  }
+  // Assigned either way. Only ever set to true, it was a door that opened once:
+  // Resume warnings in the popup cleared the flag on the record, told the page
+  // its records had changed, and the page read the new answer and went on
+  // believing the old one until it was reloaded.
+  isIgnored.value = Boolean(visitData.ignored)
 
   // Visits, active days and age, in whatever combination the user asked for
   const isSafe = isFamiliar(visitData, normalizeFamiliarity(settings.value.familiarity))
@@ -1250,7 +1251,24 @@ let replayingClick: HTMLAnchorElement | null = null
  * event it produced itself, so a middle or ctrl click is opened by hand and
  * loses the rest.
  */
-function followLink(anchor: HTMLAnchorElement, openInNewTab: boolean) {
+function followLink(anchor: HTMLAnchorElement, openInNewTab: boolean, confirmed?: string) {
+  // The address that was on screen when the user said yes, checked again right
+  // before the browser is sent anywhere. A dialog stays open for as long as it
+  // takes somebody to read it, and the page owns the anchor the whole time: it
+  // can point the same element somewhere else, and a click dispatched afterwards
+  // follows the element as it stands rather than the link that was approved.
+  // The same goes for an element the page has since taken out of the document,
+  // where dispatching a click does nothing at all and the link dies silently.
+  if (confirmed !== undefined && (anchor.href !== confirmed || !anchor.isConnected)) {
+    // Not the link that was agreed to any more, so it is not the one asked to do
+    // the navigating. The address the user actually read is opened directly.
+    if (openInNewTab)
+      window.open(confirmed, '_blank', 'noopener,noreferrer')
+    else
+      window.location.href = confirmed
+    return
+  }
+
   if (openInNewTab) {
     const rel = anchor.rel?.toLowerCase() ?? ''
     const features = rel.includes('noreferrer') ? 'noopener,noreferrer' : 'noopener'
@@ -1314,7 +1332,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
         }
         // Use resolved domain's safety for intercept decision
         if (resolvedVisitData.isSafe) {
-          followLink(anchor, openInNewTab)
+          followLink(anchor, openInNewTab, href)
           return false
         }
       }
@@ -1339,7 +1357,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
 
   // Safe site – allow navigation (only if we didn't auto-resolve, which was handled above)
   if (!shouldResolve && visitData.isSafe) {
-    followLink(anchor, openInNewTab)
+    followLink(anchor, openInNewTab, href)
     return false
   }
 
@@ -1373,7 +1391,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
   })
 
   if (proceed)
-    followLink(anchor, openInNewTab)
+    followLink(anchor, openInNewTab, href)
 
   return proceed
 }
@@ -1507,9 +1525,13 @@ function setupLinkSafety() {
 
     // Cancelled, so this must end in a navigation or a dialog. Failing silently
     // leaves a link that does nothing at all when it is clicked.
+    // Captured before the check runs, for the same reason the dialog captures
+    // it: this ends in a navigation either way, and it has to be the one that
+    // was read off the page rather than whatever the anchor says by then
+    const intended = anchor.href
     handleLinkIntercept(anchor, event.ctrlKey || event.metaKey).catch((error) => {
       console.error('Visilant: could not check this link', error)
-      followLink(anchor, event.ctrlKey || event.metaKey)
+      followLink(anchor, event.ctrlKey || event.metaKey, intended)
     })
   }
 

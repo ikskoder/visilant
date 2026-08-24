@@ -158,6 +158,42 @@ function install() {
   /** Raised at most once per frame, the same as the top document's warning. */
   let warned = false
 
+  /**
+   * Forget what was worked out about this frame, so the next event asks again.
+   *
+   * The verdict was asked for once and kept for the life of the document, and a
+   * document in an iframe outlives a great many changes. A frame somebody had
+   * already touched never learned that the paste guard had just been switched
+   * on, that the visits had been wiped or imported, or that the site had been
+   * taken off the ignore list – it went on answering from a verdict reached
+   * before any of that, which for the guard means answering "let it through".
+   */
+  function forget() {
+    settled = null
+    pending = null
+    warned = false
+  }
+
+  // Storage says all of this without a single message: the change is delivered
+  // to the frame, and nothing is asked of the background until the next time
+  // somebody touches this frame – which is the whole rule this file lives by.
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'sync' && changes.settings) {
+      guardPaste = Boolean(parseStoredSettings(changes.settings.newValue)?.blockPasteOnUnfamiliar)
+      forget()
+      return
+    }
+
+    // The visit records are keyed by hostname, and a change to somebody else's
+    // record says nothing about this frame. A wipe reports the key as removed,
+    // which is a change to it like any other.
+    if (area === 'local') {
+      const host = settled?.hostname || own
+      if (host && Object.prototype.hasOwnProperty.call(changes, host))
+        forget()
+    }
+  })
+
   async function warn(kind: 'input' | 'copy') {
     if (warned)
       return
