@@ -163,18 +163,19 @@ async function checkUrl(url: string, generation = nextCheck()) {
 async function checkEmail(addrOrMailto: string, generation = nextCheck()) {
   const isMailto = /^mailto:/i.test(addrOrMailto)
   const parsed = isMailto ? parseMailtoUrl(addrOrMailto) : null
-  const address = isMailto ? parsed?.addresses[0] : addrOrMailto
-  const analysis = address ? analyzeEmailAddress(address) : null
+
+  // Everyone the message would reach. `cc` and `bcc` are recipients too, and
+  // checking only the first address let the rest travel unexamined. The heading
+  // comes from the same list rather than from the part before the question
+  // mark, which `mailto:?bcc=attacker@evil.example` leaves empty.
+  const allRecipients = isMailto ? collectMailtoRecipients(parsed) : [{ field: 'to' as const, address: addrOrMailto }]
+  const checked = allRecipients.slice(0, MAX_MAILTO_RECIPIENTS)
+  const analysis = checked.map(recipient => analyzeEmailAddress(recipient.address)).find(Boolean) ?? null
   if (!analysis) {
     result.value = { type: 'invalid' }
     return
   }
   const visitData = await getVisitData(analysis.domain)
-
-  // Everyone the message would reach. `cc` and `bcc` are recipients too, and
-  // checking only the first address let the rest travel unexamined.
-  const allRecipients = isMailto ? collectMailtoRecipients(parsed) : [{ field: 'to' as const, address: address! }]
-  const checked = allRecipients.slice(0, MAX_MAILTO_RECIPIENTS)
   const recipients: EmailRecipientInfo[] = []
   for (const recipient of checked) {
     const recipientAnalysis = analyzeEmailAddress(recipient.address)

@@ -2,6 +2,7 @@ import type { LinkSafetySettings } from '../storage'
 import { describe, expect, it, vi } from 'vitest'
 import {
   alternateSpelling,
+  anchorLabel,
   checkDomainMismatch,
   extractDomainFromText,
   findAnchorElement,
@@ -381,5 +382,39 @@ describe('a domain written in punycode', () => {
 
   it('is extracted from a full url', () => {
     expect(extractDomainFromText('https://xn--80a1acny.xn--p1ai/path')).toBe('xn--80a1acny.xn--p1ai')
+  })
+})
+
+describe('anchorLabel', () => {
+  function anchor(html: string): HTMLAnchorElement {
+    const element = document.createElement('a')
+    element.href = 'https://example.com/'
+    element.innerHTML = html
+    return element
+  }
+
+  it('is the link text where there is any', () => {
+    expect(anchorLabel(anchor('  paypal.com  '))).toBe('paypal.com')
+  })
+
+  // A link whose whole content is a picture has no text at all, and the name on
+  // the button is in the picture's `alt`
+  it('falls back to the alt of an image inside it', () => {
+    expect(anchorLabel(anchor('<img src="x.png" alt="paypal.com">'))).toBe('paypal.com')
+  })
+
+  it('falls back to aria-label, then to title', () => {
+    const labelled = anchor('<img src="x.png">')
+    labelled.setAttribute('aria-label', 'Sign in at paypal.com')
+    expect(anchorLabel(labelled)).toBe('Sign in at paypal.com')
+
+    const titled = anchor('<img src="x.png">')
+    titled.setAttribute('title', 'paypal.com')
+    expect(anchorLabel(titled)).toBe('paypal.com')
+  })
+
+  it('has nothing to say about a link with nothing in it', () => {
+    expect(anchorLabel(anchor(''))).toBe('')
+    expect(anchorLabel(null)).toBe('')
   })
 })

@@ -214,10 +214,10 @@ onBeforeUnmount(() => {
               ⚠ {{ t('emailTooltipMismatchWarning') }}
             </div>
             <div class="tooltip-label" :class="isDark ? 'text-gray-300' : 'text-gray-700'">
-              {{ t('emailTooltipShownAddress') }}: <SecureText :text="data.email.mismatch.textAddress" :force-highlight="true" :danger-only="true" />
+              {{ t('emailTooltipShownAddress') }}: <SecureText :text="data.email.mismatch.textAddress" :force-highlight="true" :danger-only="true" :preserve-case="true" />
             </div>
             <div class="tooltip-label" :class="isDark ? 'text-gray-300' : 'text-gray-700'">
-              {{ t('emailTooltipActualAddress') }}: <SecureText :text="data.email.analysis.raw" :force-highlight="true" :danger-only="true" />
+              {{ t('emailTooltipActualAddress') }}: <SecureText :text="data.email.analysis.raw" :force-highlight="true" :danger-only="true" :preserve-case="true" />
             </div>
           </div>
 

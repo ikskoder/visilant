@@ -9,7 +9,7 @@ import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
-import { alternateSpelling, checkDomainMismatch, clearVisitCache, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
+import { alternateSpelling, anchorLabel, checkDomainMismatch, clearVisitCache, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
 import { describePastePayload, editableTargetOf, isEditableEventTarget, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyQrPayload, extractCheckTarget } from '~/logic/payload-classify'
@@ -725,24 +725,28 @@ async function buildEmailTooltipData(
 ): Promise<LinkTooltipData | null> {
   const isMailto = /^mailto:/i.test(addrOrMailto.trim())
   const parsed = isMailto ? parseMailtoUrl(addrOrMailto) : null
-  const address = isMailto ? parsed?.addresses[0] : addrOrMailto
-  if (!address)
-    return null
 
-  const analysis = analyzeEmailAddress(address)
-  if (!analysis)
-    return null
-
-  const visitData = await fetchLinkData(`https://${analysis.domain}`, analysis.domain)
-
-  // Everyone the message would reach, not only the name at the front of it
+  // Everyone the message would reach, worked out before anything is headed with
+  // one of them. It used to start from `addresses[0]`, the part before the
+  // question mark, and `mailto:?bcc=attacker@evil.example` has nothing there –
+  // so the one link that hides its recipient was the one that got no tooltip.
   const allRecipients = isMailto
     ? collectMailtoRecipients(parsed)
-    : [{ field: 'to' as const, address }]
+    : [{ field: 'to' as const, address: addrOrMailto }]
   const checked = allRecipients.slice(0, MAX_MAILTO_RECIPIENTS)
   const analysed = checked
     .map(recipient => ({ recipient, analysis: analyzeEmailAddress(recipient.address) }))
     .filter((entry): entry is { recipient: typeof checked[number], analysis: NonNullable<ReturnType<typeof analyzeEmailAddress>> } => entry.analysis !== null)
+
+  // The first address that reads as one, whichever box it sits in
+  const primary = analysed[0]
+  if (!primary)
+    return null
+
+  const address = primary.recipient.address
+  const analysis = primary.analysis
+
+  const visitData = await fetchLinkData(`https://${analysis.domain}`, analysis.domain)
 
   // All at once, not one after another. Twenty-five round trips in a row, each
   // of which may have to wake a sleeping service worker, is seconds of a tooltip
@@ -801,7 +805,7 @@ async function buildEmailTooltipData(
 
 async function showEmailTooltip(anchor: HTMLAnchorElement) {
   const request = ++tooltipRequest
-  const data = await buildEmailTooltipData(anchor.href, anchor.textContent, getAnchorRect(anchor))
+  const data = await buildEmailTooltipData(anchor.href, anchorLabel(anchor), getAnchorRect(anchor))
 
   // The pointer has moved on, or something else claimed the tooltip while the
   // recipients were being looked up
@@ -1183,7 +1187,7 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
     return
 
   // Check for domain mismatch (link text vs href)
-  const linkText = anchor.textContent || ''
+  const linkText = anchorLabel(anchor)
   const mismatchResult = checkDomainMismatch(linkText, hostname)
 
   // Fetch textDomain visit data if mismatch
@@ -1340,7 +1344,7 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
   }
 
   // Check for mismatch and punycode
-  const linkText = anchor.textContent || ''
+  const linkText = anchorLabel(anchor)
   const mismatchResult = checkDomainMismatch(linkText, hostname)
 
   // Fetch textDomain visit data if mismatch

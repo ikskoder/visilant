@@ -77,10 +77,26 @@ export function analyzeEmailAddress(raw: string): EmailAnalysis | null {
   }
 }
 
+/** Percent-decoding that keeps the raw text when the escaping is malformed. */
+function decodePart(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  }
+  catch {
+    return value
+  }
+}
+
 /**
  * Parse a mailto: URL manually. `new URL('mailto:...')` behaves inconsistently
- * across engines (empty hostname, quirky pathname), so only the query part
- * goes through URLSearchParams.
+ * across engines (empty hostname, quirky pathname), and the query is taken
+ * apart by hand as well.
+ *
+ * `URLSearchParams` reads a query as an HTML form, where `+` means a space. A
+ * mailto: query is not a form – RFC 6068 says percent-encoding and nothing
+ * else, so the `+` in `?bcc=finance+invoices@example.com` is a plus. Handed to
+ * `URLSearchParams` it came back as a space, which is not a valid address, and
+ * the recipient was dropped without even being counted as unread.
  */
 export function parseMailtoUrl(href: string): { addresses: string[], params: { key: string, value: string }[] } | null {
   if (!/^mailto:/i.test(href.trim()))
@@ -91,13 +107,7 @@ export function parseMailtoUrl(href: string): { addresses: string[], params: { k
   const addressPart = queryIndex === -1 ? rest : rest.slice(0, queryIndex)
   const queryPart = queryIndex === -1 ? '' : rest.slice(queryIndex + 1)
 
-  let decodedAddresses = addressPart
-  try {
-    decodedAddresses = decodeURIComponent(addressPart)
-  }
-  catch {
-    // keep raw on malformed percent-encoding
-  }
+  const decodedAddresses = decodePart(addressPart)
 
   const addresses = decodedAddresses
     .split(',')
@@ -105,9 +115,13 @@ export function parseMailtoUrl(href: string): { addresses: string[], params: { k
     .filter(a => a.length > 0)
 
   const params: { key: string, value: string }[] = []
-  if (queryPart) {
-    for (const [key, value] of new URLSearchParams(queryPart))
-      params.push({ key, value })
+  for (const pair of queryPart ? queryPart.split('&') : []) {
+    if (!pair)
+      continue
+    const eq = pair.indexOf('=')
+    const key = eq === -1 ? pair : pair.slice(0, eq)
+    const value = eq === -1 ? '' : pair.slice(eq + 1)
+    params.push({ key: decodePart(key), value: decodePart(value) })
   }
 
   return { addresses, params }
@@ -148,7 +162,10 @@ export function collectMailtoRecipients(parsed: { addresses: string[], params: {
   const collected: MailtoRecipient[] = parsed.addresses.map(address => ({ field: 'to' as const, address }))
   for (const { key, value } of parsed.params) {
     const field = key.trim().toLowerCase()
-    if (field === 'cc' || field === 'bcc')
+    // `to` belongs here as much as the other two: RFC 6068 allows the whole
+    // recipient list to live in the query, and a `mailto:?to=...` with nothing
+    // before the question mark is a perfectly ordinary link
+    if (field === 'to' || field === 'cc' || field === 'bcc')
       collected.push(...split(value).map(address => ({ field: field as MailtoField, address })))
   }
 

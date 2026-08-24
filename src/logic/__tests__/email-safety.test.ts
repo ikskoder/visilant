@@ -165,3 +165,29 @@ describe('international names written in ascii', () => {
     expect(result?.domain).toBe('xn--80a1acny.xn--p1ai')
   })
 })
+
+describe('recipients that hide in the query', () => {
+  it('reads a link whose only recipient is a bcc', () => {
+    const parsed = parseMailtoUrl('mailto:?bcc=attacker@evil.example')
+    expect(parsed!.addresses).toEqual([])
+    expect(collectMailtoRecipients(parsed)).toEqual([{ field: 'bcc', address: 'attacker@evil.example' }])
+  })
+
+  it('reads a recipient list written entirely as `to`', () => {
+    const parsed = parseMailtoUrl('mailto:?to=a@one.example,b@two.example')
+    expect(collectMailtoRecipients(parsed).map(r => r.address)).toEqual(['a@one.example', 'b@two.example'])
+  })
+
+  // A mailto query is not an HTML form. `URLSearchParams` turned this `+` into a
+  // space, and the address then read as no address at all.
+  it('keeps a plus in an address', () => {
+    const parsed = parseMailtoUrl('mailto:?bcc=finance+invoices@evil.example')
+    expect(collectMailtoRecipients(parsed)[0].address).toBe('finance+invoices@evil.example')
+  })
+
+  it('still decodes what is percent-encoded', () => {
+    const parsed = parseMailtoUrl('mailto:?subject=one%20two&cc=b%40two.example')
+    expect(parsed!.params.find(p => p.key === 'subject')!.value).toBe('one two')
+    expect(collectMailtoRecipients(parsed).map(r => r.address)).toEqual(['b@two.example'])
+  })
+})

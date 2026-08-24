@@ -127,6 +127,32 @@ function canonicalHost(hostname: string): string {
 }
 
 /**
+ * What a link says it points at, to somebody looking at the page.
+ *
+ * Its text where it has any. A link whose whole content is an image has none,
+ * and the name on that image is in its `alt` – which is where a button reading
+ * `paypal.com` sits when the check only ever read text. `aria-label` and
+ * `title` come last for the same reason: both are what the link is announced
+ * as, and neither was looked at either.
+ */
+export function anchorLabel(anchor: Element | null): string {
+  if (!anchor)
+    return ''
+
+  const text = (anchor.textContent || '').trim()
+  if (text)
+    return text
+
+  for (const image of Array.from(anchor.querySelectorAll('img'))) {
+    const alt = (image.getAttribute('alt') || '').trim()
+    if (alt)
+      return alt
+  }
+
+  return (anchor.getAttribute('aria-label') || anchor.getAttribute('title') || '').trim()
+}
+
+/**
  * Is one of these names the other one, or somewhere inside it?
  *
  * Written out here rather than taken from `domain-boundary`, which reaches for
