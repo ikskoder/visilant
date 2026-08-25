@@ -183,7 +183,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
             {{ t('emailAccountName') }}
           </div>
           <div class="panel-address font-bold">
-            <SecureText :text="data.email.analysis.localPart" :highlight-override="localHighlight" :preserve-case="true" />
+            <SecureText :text="data.email.analysis.localPart" :highlight-override="localHighlight" account-name />
           </div>
           <div class="panel-label uppercase tracking-wider mt-1.5 mb-0.5" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
             {{ t('emailDomainLabel') }}

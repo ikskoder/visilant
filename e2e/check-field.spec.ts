@@ -303,7 +303,7 @@ test('an email check says what it cannot tell you', async ({ context, extensionI
 
   await check(page, 'someone@example.org')
 
-  const caveat = page.locator('text=Got a message that worried you')
+  const caveat = page.locator('text=Checking this because an email looked suspicious')
   await expect(caveat).toBeVisible({ timeout: 5000 })
 
   // Folded away until asked for: four paragraphs on every check would be noise

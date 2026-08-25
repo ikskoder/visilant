@@ -4,6 +4,7 @@ import type { EmailAnalysis } from '~/logic/email-safety'
 import { computed } from 'vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
+import { settings } from '~/logic/storage'
 
 const props = defineProps<{
   analysis: EmailAnalysis
@@ -11,9 +12,45 @@ const props = defineProps<{
   isDark: boolean
   compact?: boolean
   providerKind?: EmailProviderKind
+  /**
+   * Offer the control that decides how the account name is cased.
+   *
+   * Only where the two halves are named, and only from a surface that can write
+   * settings – the popup and the check page. The tooltip in a page draws the
+   * address as one line with no labels, and it has nowhere to put a control the
+   * reader would have to aim at through a shadow root.
+   */
+  caseControl?: boolean
 }>()
 
 const { t } = useI18n()
+
+/**
+ * Three positions, not two: a domain reads the same in either case, while the
+ * capitals in a name are part of how somebody wrote it down. Left as typed
+ * until asked otherwise. The button shows where it stands and its tooltip names
+ * the next position, which is the order pressing moves through.
+ */
+const ACCOUNT_CASES = ['as-typed', 'lower', 'upper'] as const
+
+const accountCaseLabel = computed(() => {
+  const mode = settings.value.accountNameCase
+  return mode === 'upper' ? 'AA' : mode === 'lower' ? 'aa' : 'Aa'
+})
+
+const accountCaseTitle = computed(() => {
+  const mode = settings.value.accountNameCase
+  if (mode === 'as-typed')
+    return t.value('accountCaseToLower')
+  if (mode === 'lower')
+    return t.value('accountCaseToUpper')
+  return t.value('accountCaseAsTyped')
+})
+
+function cycleAccountNameCase() {
+  const at = ACCOUNT_CASES.indexOf(settings.value.accountNameCase)
+  settings.value.accountNameCase = ACCOUNT_CASES[(at + 1) % ACCOUNT_CASES.length]
+}
 
 const MAX_PARAM_VALUE_LENGTH = 200
 
@@ -28,7 +65,7 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
     <!-- Full address with per-char highlighting, @ kept neutral. Only where a
          two-row breakdown would not fit – the link tooltip is one line wide. -->
     <div v-if="compact" class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
-      <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" :preserve-case="true" /><span :class="isDark ? 'text-gray-400' : 'text-gray-500'">@</span><SecureText :text="analysis.domain" :force-highlight="true" :danger-only="true" />
+      <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" account-name /><span :class="isDark ? 'text-gray-400' : 'text-gray-500'">@</span><SecureText :text="analysis.domain" :force-highlight="true" :danger-only="true" />
     </div>
 
     <!--
@@ -39,11 +76,22 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
       letter-spaced characters is the mistake this check exists to prevent.
     -->
     <template v-else>
-      <div class="email-label uppercase tracking-wider" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
+      <div class="email-label uppercase tracking-wider flex items-center gap-1.5" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
         {{ t('emailAccountName') }}
+        <!-- Beside the name it acts on, rather than up in the header where it
+             read as a control for the whole page -->
+        <button
+          v-if="caseControl"
+          class="btn-ghost btn-sm !rounded normal-case leading-none px-1 py-0.5"
+          :title="accountCaseTitle"
+          :aria-label="accountCaseTitle"
+          @click="cycleAccountNameCase"
+        >
+          {{ accountCaseLabel }}
+        </button>
       </div>
       <div class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
-        <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" :preserve-case="true" />
+        <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" account-name />
       </div>
       <div class="email-label uppercase tracking-wider mt-1" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
         {{ t('emailDomainLabel') }}

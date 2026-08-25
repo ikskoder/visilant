@@ -7,6 +7,7 @@ import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
 import { belongsToSite, siteDomainOrSelf } from '~/logic/domain-boundary'
+import { displayDomain } from '~/logic/domain-display'
 import { aggregateFamiliarityStats, evaluateFamiliarity, normalizeFamiliarity } from '~/logic/familiarity'
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { popupWidthCap } from '~/logic/platform'
@@ -48,13 +49,6 @@ function updateTranslations() {
     'sortByVisits',
     'sortOrderToAsc',
     'sortOrderToDesc',
-    'caseToUpper',
-    'caseToLower',
-    'highlightingTurnOn',
-    'highlightingTurnOff',
-    'highlightingLegend',
-    'punycodeShowAscii',
-    'punycodeShowUnicode',
     'domainOriginal',
     'domainPunycode',
     'punycodeHelpTitle',
@@ -344,21 +338,6 @@ const sortOrderTitle = computed(() => settings.value.sortOrder === 'asc'
   ? translations.value.sortOrderToDesc
   : translations.value.sortOrderToAsc)
 
-const caseTitle = computed(() => settings.value.domainCase === 'upper'
-  ? translations.value.caseToLower
-  : translations.value.caseToUpper)
-
-const highlightingTitle = computed(() => {
-  const action = settings.value.domainHighlighting
-    ? translations.value.highlightingTurnOff
-    : translations.value.highlightingTurnOn
-  return `${action}\n\n${translations.value.highlightingLegend}`
-})
-
-const punycodeTitle = computed(() => settings.value.punycodeListMode === 'unicode'
-  ? translations.value.punycodeShowAscii
-  : translations.value.punycodeShowUnicode)
-
 function toggleSortOrder() {
   settings.value.sortOrder = settings.value.sortOrder === 'asc' ? 'desc' : 'asc'
 }
@@ -461,24 +440,6 @@ function getCountColor(stats: FamiliarityStats | undefined) {
   return outcome.met
     ? 'text-green-600 dark:text-green-400'
     : 'text-red-500 dark:text-red-400'
-}
-
-function toggleDomainCase() {
-  settings.value.domainCase = settings.value.domainCase === 'upper' ? 'lower' : 'upper'
-}
-
-function toggleHighlighting() {
-  settings.value.domainHighlighting = !settings.value.domainHighlighting
-}
-
-function togglePunycodeListMode() {
-  settings.value.punycodeListMode = settings.value.punycodeListMode === 'unicode' ? 'ascii' : 'unicode'
-}
-
-function displayDomain(domain: string) {
-  if (settings.value.punycodeListMode === 'ascii')
-    return domain
-  return punycode.toUnicode(domain)
 }
 
 async function loadDomainData(hostname: string) {
@@ -606,6 +567,11 @@ onMounted(async () => {
       <div class="flex justify-between items-center mb-4">
         <Logo class="h-8 w-auto" />
         <div class="flex items-center gap-2">
+          <!-- How an address is drawn. Here rather than in the subdomain list,
+               which is not on screen at all until a site has visits – and the
+               check page, where somebody is reading an address they do not
+               know, is exactly where the three are worth reaching -->
+          <DomainDisplayToggles />
           <!-- Font size controls -->
           <div class="flex items-center gap-1 text-gray-400 dark:text-gray-500">
             <button
@@ -706,9 +672,9 @@ onMounted(async () => {
           <!-- Structural markers and resemblance to a domain the user knows -->
           <DomainMarkers :hostname="currentHostname" class="mt-2" style="font-size: 0.85em;" />
           <LookalikeNotice :hostname="currentHostname" style="font-size: 0.85em;" />
-          <!-- Not scaled down like the two above it: the same control appears in
-               the check card as well, and one screen showing it at two sizes
-               reads as two different things -->
+          <!-- Not scaled down like the two above it: this is the one place the
+               lookup links are offered for the checked name, and a control the
+               reader is meant to press does not want the size of a footnote -->
           <ExternalLookups :hostname="currentHostname" />
 
           <!-- Visit history facts. firstSeen/activeDays stay empty until a full
@@ -855,34 +821,6 @@ onMounted(async () => {
               @click="toggleSortOrder"
             >
               {{ settings.sortOrder === 'asc' ? '↑' : '↓' }}
-            </button>
-            <button
-              class="btn-ghost btn-sm !rounded w-6 flex items-center justify-center"
-              :title="caseTitle"
-              :aria-label="caseTitle"
-              @click="toggleDomainCase"
-            >
-              {{ settings.domainCase === 'upper' ? 'AA' : 'aa' }}
-            </button>
-            <!-- Highlighting leaves plain Latin addresses untouched, so the button
-                 has to show its own state or it reads as broken -->
-            <button
-              class="btn-ghost btn-sm !rounded w-6 flex items-center justify-center"
-              :class="settings.domainHighlighting ? '!bg-blue-100 !border-blue-200 dark:!bg-blue-900/40 dark:!border-blue-700' : 'grayscale opacity-60'"
-              :title="highlightingTitle"
-              :aria-label="highlightingTitle"
-              :aria-pressed="settings.domainHighlighting"
-              @click="toggleHighlighting"
-            >
-              🌈
-            </button>
-            <button
-              class="btn-ghost btn-sm !rounded w-6 flex items-center justify-center font-bold"
-              :title="punycodeTitle"
-              :aria-label="punycodeTitle"
-              @click="togglePunycodeListMode"
-            >
-              {{ settings.punycodeListMode === 'unicode' ? 'O' : 'P' }}
             </button>
           </div>
 

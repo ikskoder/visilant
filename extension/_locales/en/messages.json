@@ -575,6 +575,18 @@
     "message": "Show lowercase – currently uppercase",
     "description": "Case button tooltip while showing uppercase"
   },
+  "accountCaseToLower": {
+    "message": "Show the account name in lowercase – currently as typed",
+    "description": "Account name case button tooltip while the name is left as typed"
+  },
+  "accountCaseToUpper": {
+    "message": "Show the account name in uppercase – currently lowercase",
+    "description": "Account name case button tooltip while showing lowercase"
+  },
+  "accountCaseAsTyped": {
+    "message": "Show the account name as typed – currently uppercase",
+    "description": "Account name case button tooltip while showing uppercase"
+  },
   "highlightingTurnOn": {
     "message": "Turn highlighting on – currently off",
     "description": "Highlighting button tooltip while highlighting is off"
@@ -1196,7 +1208,7 @@
     "description": "Hint for disposable addresses"
   },
   "emailCaveatTitle": {
-    "message": "Got a message that worried you? Read this first",
+    "message": "Checking this because an email looked suspicious? Read this first",
     "description": "Toggle for the note about what to do with a suspicious message, and what this check cannot settle"
   },
   "emailCaveatNoMailbox": {

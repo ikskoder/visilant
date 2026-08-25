@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { settings } from '~/logic/storage'
 import SecureText from '../SecureText.vue'
 
 describe('secureText component', () => {
@@ -182,9 +183,8 @@ describe('characters that cannot be seen', () => {
 })
 
 describe('preserveCase', () => {
-  // The case setting is about domain names. An email account name, a username
-  // and a Wi-Fi password are not those, and for the last one lower-casing it is
-  // not a display choice at all.
+  // The raw text of a QR code and a Wi-Fi password are not domain names, and for
+  // the second one lower-casing it is not a display choice at all.
   it('leaves the letters alone when asked to', () => {
     const wrapper = mount(SecureText, { props: { text: 'John.Doe', preserveCase: true } })
     expect(wrapper.text()).toBe('John.Doe')
@@ -193,5 +193,42 @@ describe('preserveCase', () => {
   it('still follows the case setting for a domain', () => {
     const wrapper = mount(SecureText, { props: { text: 'Example.COM', caseOverride: 'lower' } })
     expect(wrapper.text()).toBe('example.com')
+  })
+})
+
+// The half before the @ has a control of its own, because the capitals somebody
+// chose for their own name are part of how it was written down – while a domain
+// reads the same either way.
+describe('accountNameCase', () => {
+  const domainCase = settings.value.domainCase
+  const accountCase = settings.value.accountNameCase
+
+  afterEach(() => {
+    settings.value.domainCase = domainCase
+    settings.value.accountNameCase = accountCase
+  })
+
+  it('leaves the name as it was typed by default', () => {
+    const wrapper = mount(SecureText, { props: { text: 'John.Doe', accountName: true } })
+    expect(wrapper.text()).toBe('John.Doe')
+  })
+
+  it('follows its own setting once that is moved', () => {
+    settings.value.accountNameCase = 'upper'
+    const wrapper = mount(SecureText, { props: { text: 'John.Doe', accountName: true } })
+    expect(wrapper.text()).toBe('JOHN.DOE')
+  })
+
+  it('does not follow the domain setting', () => {
+    settings.value.domainCase = 'upper'
+    const wrapper = mount(SecureText, { props: { text: 'John.Doe', accountName: true } })
+    expect(wrapper.text()).toBe('John.Doe')
+  })
+
+  it('leaves the domain to the domain setting', () => {
+    settings.value.domainCase = 'upper'
+    settings.value.accountNameCase = 'lower'
+    const wrapper = mount(SecureText, { props: { text: 'Example.com' } })
+    expect(wrapper.text()).toBe('EXAMPLE.COM')
   })
 })

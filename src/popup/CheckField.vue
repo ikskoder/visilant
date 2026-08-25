@@ -457,11 +457,14 @@ function payloadTypeLabel(payloadKind: string) {
           <FamiliarityFacts :stats="result.stats" />
         </div>
 
-        <!-- Structural markers and resemblance to a domain the user knows -->
+        <!-- Structural markers and resemblance to a domain the user knows.
+             No lookup links here: the checked-domain card below carries them for
+             this very name, and one screen offering the same control twice reads
+             as two different things. A mail site further down keeps its own,
+             because that is a different name. -->
         <div>
           <DomainMarkers :hostname="result.hostname" :url="result.url" />
           <LookalikeNotice :hostname="result.hostname" />
-          <ExternalLookups :hostname="result.hostname" />
         </div>
 
         <!-- Nobody opens an address domain, so a zero of its own says nothing.
@@ -544,7 +547,7 @@ function payloadTypeLabel(payloadKind: string) {
             {{ statusText(result.isSafe, result.stats.count, result.analysis.domain).text.toLowerCase() }}
           </span>
         </div>
-        <EmailBreakdown :analysis="result.analysis" :params="result.params" :provider-kind="result.providerKind" :is-dark="isDark" />
+        <EmailBreakdown :analysis="result.analysis" :params="result.params" :provider-kind="result.providerKind" :is-dark="isDark" case-control />
 
         <!-- A mailto carries a list, cc and bcc included -->
         <MailRecipients :recipients="result.recipients" :not-checked="result.recipientsNotChecked" :is-dark="isDark" />
@@ -553,11 +556,12 @@ function payloadTypeLabel(payloadKind: string) {
         </div>
 
         <!-- The part after the @ is a domain like any other, and an address one
-             letter off a provider the user knows is the whole point of checking -->
+             letter off a provider the user knows is the whole point of checking.
+             The lookup links for this name live in the checked-domain card
+             below, once, rather than here as well. -->
         <div class="mt-1">
           <DomainMarkers :hostname="result.analysis.domain" />
           <LookalikeNotice :hostname="result.analysis.domain" context="email" />
-          <ExternalLookups :hostname="result.analysis.domain" />
         </div>
 
         <!-- Nobody opens an address domain, so a zero of its own says nothing.

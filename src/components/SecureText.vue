@@ -16,13 +16,27 @@ const props = withDefaults(defineProps<{
    */
   markWraps?: boolean
   /**
+   * This text is the account name of an email address, the half before the @.
+   *
+   * It follows `settings.accountNameCase` rather than the domain setting, and
+   * that one has a third position which leaves the name as it was written. A
+   * domain reads the same in either case, a name somebody chose does not.
+   */
+  accountName?: boolean
+  /**
    * Leave the letters exactly as they are.
    *
-   * The case setting is about domain names, where upper and lower mean the same
-   * thing. This component is also handed things where they do not: the name half
-   * of an email address, a username, the raw text out of a QR code, a Wi-Fi
-   * password. Lower-casing those is not a display choice, it is changing the
-   * evidence - and for a password it is changing the value.
+   * The case setting is about names an address is read by, where upper and lower
+   * mean the same thing to the reader. This component is also handed text where
+   * they do not: the raw output of a QR code, a Wi-Fi password, and the two
+   * halves of an address mismatch, which are on screen precisely so the reader
+   * can hold one against the other character by character. Changing the case of
+   * those is not a display choice, it is changing the evidence - and for a
+   * password it is changing the value.
+   *
+   * The account name is not on that list any more. It has a control of its own,
+   * `accountName` above, which defaults to leaving the name alone and can be
+   * moved without touching the domains.
    */
   preserveCase?: boolean
 }>(), {
@@ -104,11 +118,13 @@ const segments = computed(() => {
   function transform(char: string): string {
     if (props.preserveCase)
       return char
-    const mode = props.caseOverride ?? settings.value.domainCase
+    const mode = props.caseOverride
+      ?? (props.accountName ? settings.value.accountNameCase : settings.value.domainCase)
     if (mode === 'upper')
       return char.toUpperCase()
     if (mode === 'lower')
       return char.toLowerCase()
+    // `as-typed`, which only the account name setting has
     return char
   }
 
