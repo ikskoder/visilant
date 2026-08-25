@@ -1,5 +1,36 @@
 # Visilant Browser Extension
 
+<p align="center">
+  <a href="https://chromewebstore.google.com/detail/visilant/cangpjiaklckllaeppbdhhpcmhjambak"><img alt="For Chromium-based browsers: Chrome Web Store" src="docs/badge-chrome-web-store.svg" height="64"></a>
+  <a href="https://addons.mozilla.org/en-GB/firefox/addon/visilant/"><img alt="For Firefox-based browsers: Firefox Add-ons" src="docs/badge-firefox-add-ons.svg" height="64"></a>
+</p>
+
+<p align="center">
+  <sub><b>Chromium-based</b>, for example Chrome, Edge, Brave, Opera, Vivaldi.<br>
+  <b>Firefox-based</b>, for example Firefox on desktop and on Android, LibreWolf, Waterfox, Zen, Floorp.<br>
+  Those are the best-known ones rather than a full list. Whether any particular browser takes the package is up to its own extension policy.</sub>
+</p>
+
+## Contents
+
+- [What is Visilant?](#what-is-visilant)
+- [Real-Life Example: How Visilant Could Stop a Phishing Attack](#real-life-example-how-visilant-could-stop-a-phishing-attack)
+- [Key Features](#key-features)
+  - [Link Safety – Proactive Link Analysis](#link-safety--proactive-link-analysis)
+  - [Address Analysis](#address-analysis)
+  - [Email Addresses](#email-addresses)
+  - [Advanced Homograph Protection](#advanced-homograph-protection)
+  - [Interactive Popup Dashboard](#interactive-popup-dashboard)
+  - [Theming & Responsive UI](#theming--responsive-ui)
+  - [Smart Detection](#smart-detection)
+  - [Hardened Security](#hardened-security)
+- [Getting Started](#getting-started)
+  - [Notification Triggers](#notification-triggers)
+- [Privacy Considerations](#privacy-considerations)
+- [Reproducible Builds](#reproducible-builds)
+- [Limitations](#limitations)
+- [Contributing & Feedback](#contributing--feedback)
+
 ## What is Visilant?
 
 Visilant is a lightweight, cross-browser extension designed primarily to protect you from phishing sites that aim to steal your credentials by tricking you into voluntarily entering them, typically through visual similarity to legitimate websites.
@@ -8,11 +39,11 @@ The core idea is simple: most phishing websites are those you have never visited
 
 Visilant counts your visits to all websites and provides two layers of protection: **proactive** – analyzing links on the page before you click them, detecting URL mismatches and suspicious domains – and **reactive** – alerting you when you interact with an unfamiliar site (interaction types are customizable).
 
-Note that the extension does not block any content. Its effectiveness relies entirely on your awareness and response to its visual cues.
+Visilant does not block websites, downloads or navigation outright. Its alerts are advisory, and the optional paste guard can delay a paste on an unfamiliar site until you review the warning.
 
 ## Real-Life Example: How Visilant Could Stop a Phishing Attack
 
-Imagine you're exhausted after a long flight or simply distracted by everyday demands. You click on a link that seems to be from a trusted service. Without Visilant, you might inadvertently enter your credentials on a visually convincing fake site, unknowingly handing them over to attackers – just as cybersecurity expert Troy Hunt (creator of the [Have I Been Pwned](https://haveibeenpwned.com/) service) experienced in a recent [incident](https://www.troyhunt.com/a-sneaky-phish-just-grabbed-my-mailchimp-mailing-list). Even if you’ve successfully identified phishing attempts in the past, a single moment of inattention can lead to a compromise – exactly why having a companion like Visilant is so vital. While Troy noted that his incident could have been prevented using passkeys, that solution depends on websites implementing passkey technology first – something many have yet to do. By contrast, Visilant provides immediate protection on any site without waiting for vendors to adopt new authentication methods. Its visual alerts serve as a critical prompt, helping you pause, reconsider, and verify a site’s authenticity, ultimately safeguarding your credentials.
+Imagine you're exhausted after a long flight or simply distracted by everyday demands. You click on a link that seems to be from a trusted service. Without Visilant, you might inadvertently enter your credentials on a visually convincing fake site, unknowingly handing them over to attackers – as cybersecurity expert Troy Hunt (creator of [Have I Been Pwned](https://haveibeenpwned.com/)) described after a [2025 phishing incident](https://www.troyhunt.com/a-sneaky-phish-just-grabbed-my-mailchimp-mailing-list). Even if you’ve successfully identified phishing attempts in the past, a single moment of inattention can lead to a compromise. Phishing-resistant authentication, such as passkeys where a service supports them, is an important complementary defence. Visilant instead provides a visual prompt to pause, reconsider and verify the address before you enter credentials.
 
 ## Key Features
 
@@ -21,12 +52,12 @@ Visilant can analyze links on a page before you navigate, giving you visibility 
 
 This is a significant step up over the original reactive-only approach: instead of warning you after you've already landed on an unfamiliar site and started typing, Visilant now surfaces the destination domain and its familiarity status *before* you click, so you can compare the link text against the actual target and catch impersonation attempts up front.
 
-- **Link Tooltip**: Hovering over (or clicking, depending on your settings) any external link (i.e. pointing to a different domain than the current page) shows a compact tooltip with the destination domain, the facts its familiarity verdict was drawn from – visits, active days and how long the site has been known, whichever of those you judge by – and a familiarity indicator (familiar / unfamiliar / never visited). The tooltip trigger is configurable: hover (default) or click (prevents navigation until you choose to proceed – the safest option).
+- **Link Tooltip**: Checking an external link (one pointing to a different host than the current page) shows a compact tooltip with the destination domain, the facts its familiarity verdict was drawn from – visits, active days and how long the site has been known, whichever of those you judge by – and a familiarity indicator (familiar / unfamiliar / never visited). The trigger is configurable: right-click is the default, hover waits for a chosen delay, and left-click prevents navigation until you choose to proceed – the safest option.
 - **URL Mismatch Detection**: A classic phishing trick is making a link's visible text look like one domain (e.g. `paypal.com`) while the actual destination is completely different. Visilant detects this and shows a side-by-side comparison table with the familiarity status and every familiarity fact for both domains, check by check.
 - **Punycode / Unicode Detection**: Domains containing non-Latin characters that visually resemble Latin ones (homograph attacks) are flagged, with the ASCII (punycode) representation displayed.
 - **Shortened URL Detection**: Shortened links (bit.ly, t.co, etc.) hide the real destination – a classic trick in clone phishing. Visilant can resolve them to reveal where they actually lead. Three modes: off, on-demand (button in tooltip), or automatic. You can also display the full redirect chain, resolve arbitrary URLs (not just known shorteners), maintain your own list of shortener domains (marking any domain as a shortener on the fly), or configure remote shortener lists to augment the built-in list.
 - **Navigation Intercept** (opt-in): When enabled, clicking a link to an unfamiliar site triggers a full-screen confirmation dialog before navigation proceeds. The dialog shows the destination domain, your visit history with it, any mismatch or punycode warnings, and the resolved real destination if the link uses a shortener. You can go back or continue at your discretion.
-- **Context Menu Integration**: Right-clicking a link offers "Check domain safety", which opens the dashboard for that domain in a new tab, and "Check link safety", which shows the full dialog on the spot when the right-click trigger is the one you chose. Selected text has "Check selected text with Visilant", and an image has "Scan QR code with Visilant". The domain check is there whether or not Link Safety is enabled in settings.
+- **Context Menu Integration**: Where the browser supports extension context menus, right-clicking a link offers "Check domain safety", which opens the dashboard for that domain in a new tab, and "Check link safety", which shows the full dialog on the spot when the right-click trigger is the one you chose. Selected text has "Check selected text with Visilant", and an image has "Scan QR code with Visilant". The domain check is there whether or not Link Safety is enabled in settings.
 - **Scope Control**: Link Safety can be active on all websites, only on specific domains (e.g. your email client), or everywhere except certain domains (e.g. your intranet).
 
 ### Address Analysis
@@ -67,18 +98,18 @@ Clicking the extension icon reveals a dashboard where you can:
 
 ### Hardened Security
 Visilant implements multiple layers of protection to ensure reliable operation even on malicious sites:
-- **Early Injection**: Content scripts load at `document_start`, before any page scripts can interfere.
-- **Event Capturing**: All keyboard and clipboard events are intercepted in the capture phase, preventing malicious scripts from blocking them.
-- **Anti-Tampering Protection**: A MutationObserver monitors the extension's DOM presence. If a malicious page attempts to remove Visilant's components, you'll receive an immediate system notification. The check can be disabled per-site (from the popup or via an exclusion list in settings) for trusted sites that heavily rebuild their page (e.g. some SPAs) and trigger false alarms.
+- **Early Injection**: Content scripts load at `document_start`, so protection starts early in the page load.
+- **Event Capturing**: Keyboard, input and clipboard listeners are registered in the capture phase so the extension can handle them early in the event flow.
+- **Anti-Tampering Protection**: A MutationObserver watches the extension's in-page UI. If it detects removal or concealment, Visilant raises an alarm and system notification. The check can be disabled per-site (from the popup or via an exclusion list in settings) for trusted sites that heavily rebuild their page (e.g. some SPAs) and trigger false alarms.
 - **Randomized DOM Footprint**: The extension container uses a randomly generated ID for each page load, making it harder for malicious scripts to detect Visilant's presence by querying specific element IDs.
-- **Overlay Protection**: In-page warnings use maximum z-index and fixed positioning to prevent being hidden by page overlays.
+- **Overlay Protection**: In-page warnings use maximum z-index and fixed positioning, and while a panel is on screen the tamper watcher also checks whether the page is covering it.
 
 ## Getting Started:
 
 1. **Install Visilant from your preferred browser's extension store:**
 
-   - [Visilant for Chrome](https://chromewebstore.google.com/detail/visilant/cangpjiaklckllaeppbdhhpcmhjambak)
-   - [Visilant for Firefox](https://addons.mozilla.org/en-GB/firefox/addon/visilant/)
+   - [Visilant for Chromium-based browsers](https://chromewebstore.google.com/detail/visilant/cangpjiaklckllaeppbdhhpcmhjambak) – Chrome, Edge, Brave, Opera, Vivaldi and the rest.
+   - [Visilant for Firefox-based browsers](https://addons.mozilla.org/en-GB/firefox/addon/visilant/) – Firefox, LibreWolf, Waterfox, Zen, Floorp, and Firefox for Android.
 
 2. Pin the Visilant icon to your browser toolbar for constant visibility (recommended due to [Script Injection Limitations](#limitations)). On Firefox for Android there is no toolbar to pin to – the icon, its colour and its counter are all there, under **Extensions** in the browser menu.
 
@@ -86,7 +117,7 @@ Visilant implements multiple layers of protection to ensure reliable operation e
 
 4. Click the Settings icon (gear) in the popup to open the full configuration page. Configure the extension according to your preferences:
 
-   - **Familiarity rules**: Decide what makes a site "familiar", in a section of its own. Three checks are on offer, each with its own threshold: the number of **visits** (on by default, at 10), the number of **active days** – separate days you were there, which a single afternoon of clicking cannot fake – and how long the site has been **known**, counted in days since your first recorded visit. Switch on the ones you want and choose how many have to pass: all of them, any one of them, or a set number, such as two of three. Everything else the extension does follows from this one verdict.
+   - **Familiarity rules**: Decide what makes a site "familiar", in a section of its own. Three checks are available, and all are enabled by default: **visits** (10), **active days** (5) – separate days you were there, which a single afternoon of clicking cannot fake – and how long the site has been **known**, counted in days since your first recorded visit (10 days). Switch on the ones you want and choose how many have to pass: all of them, any one of them, or a set number, such as two of three. Everything else the extension does follows from this one verdict.
      - Every check surface – the link tooltip, both confirmation dialogs, the comparison table, the in-page panel and the popup's check field – lists the facts behind its verdict, and only the checks you have switched on. **Show what each check needs** decides how: off, the facts come one per line, as `Visits: 3`, with the bar one hover away, on, they come as a small table of check, value, bar and a pass mark, which takes more room and leaves nothing to remember.
      - **_Note:_** Active days and first-visit dates only exist for sites recorded since those fields were added, and a site without them cannot pass those checks. A history import fills them in for every site the browser still remembers – for anything older than that, or removed by a clearing of history, there is nothing left to read, and the settings page says which case you are in. On Firefox for Android there is no history to read at all, so the older records keep only their visit count and everything visited from now on carries both dates from its first visit.
    - **Toolbar icon**:
@@ -128,7 +159,7 @@ Visilant implements multiple layers of protection to ensure reliable operation e
 
 The extension triggers alerts (if enabled) only during specific interactions that phishing sites commonly exploit:
 
-- **Keyboard Input or Content Paste**: Alerts trigger when credentials are typed or pasted into fields. Initially restricted to inputs, alpha testing showed many unconventional site implementations. Therefore, the extension now triggers alerts on any keystroke (excluding hotkeys) or paste event, striking a balance between intrusiveness and effectiveness.
+- **Keyboard Input or Content Paste**: Alerts trigger when text is entered or pasted into editable fields. The extension listens for ordinary typing as well as for text arriving another way, such as an IME, dictation, a phone's suggestion bar or autofill. Keyboard shortcuts and navigation keys do not trigger an input alert.
 
 - **Content Cutting or Copying**: Although less common in phishing attacks, this trigger was added after viewing YouTube [video](https://www.youtube.com/watch?v=Wm0kqSlyEjE) demonstrating a phishing exploit involving clipboard manipulation ([reCAPTCHA Phish](https://github.com/JohnHammond/recaptcha-phish)).
 
@@ -141,7 +172,7 @@ Visilant is open-source and operates locally within your browser:
 - **There is no server behind Visilant**, no account and no telemetry. Every analysis described above – visit counts, structural markers, resemblance to sites you know – runs in your browser against data you already have.
 - **Your visit records never leave the device.** The counts, the dates and the imported history are kept in the browser's local storage, which nothing syncs and nothing uploads.
 - **Your settings are kept in the browser's sync storage**, the same place any extension keeps its preferences. If you have browser sync switched on, your browser copies them to your other browsers through your browser account – Mozilla's or Google's, not ours. That includes the lists you type into the settings: the sites the link check is limited to, the sites left out of the anti-tampering watch, and any list address of your own. Switch browser sync off and they stay on this machine.
-- **Nothing is requested on your behalf without you asking for it.** Three features can cause a network request, and none of them starts without a setting or a press of yours:
+- **Nothing is requested on your behalf without you asking for it.** The following optional features can cause a network request:
   - **External lookups** offer links to third-party services. They are ordinary links, not integrations – Visilant sends nothing, and no service learns anything unless you choose to open it. Whichever one you open will, like any site you visit, see the domain you asked about and your IP address.
   - **Shortened link resolution** requests the shortened link itself to find out where it leads. On its default setting this happens only when you press the button in the tooltip. You can turn it off entirely, or set it to resolve on its own – on that setting the request goes out as soon as the check appears, without a press, which is the trade the setting is for.
   - **Reading a QR code from a picture on a page** downloads that picture, because the code is in the image and the image is on the site's server. It happens only when you pick Visilant from the long-press menu on it. A picture you drop on the check page or paste into it is never downloaded – it is already on your device.
@@ -153,7 +184,7 @@ Visilant is open-source and operates locally within your browser:
   - **Storage**: To keep your visit history on this device and your settings where the browser keeps preferences, which is the sync storage described above.
   - **ActiveTab**: To interact with the currently active tab when you click the extension icon.
   - **Notifications**: To display system alerts when anti-tampering protection detects malicious interference.
-  - **Context Menus**: To add a "Check link safety" option to the right-click menu for links.
+  - **Context Menus**: To add right-click actions for links, selected text and QR-code images where the browser supports them.
   - **Host permissions** (`*://*/*`): To inject content scripts that monitor keyboard and clipboard interactions and analyze links on all websites.
   - **Browser history**: To read your existing history once and turn it into per-hostname visit counts. An empty profile treats every site as unfamiliar, so without that first pass the extension warns about everything and reads as broken. It is decided once per profile: a fresh install imports, an update does so only if the profile holds no counts yet, and neither is repeated afterwards. The history is read in the browser and never leaves it. Only a visit count, a first and last date and a number of active days are kept per hostname, with no page addresses, no titles and no search terms. You can re-run or wipe the import yourself in the settings, under Your data.
 
@@ -186,10 +217,10 @@ entries, which is what makes two builds identical. Full instructions are in
 While Visilant enhances awareness of "unfamiliar" websites, its limitations include:
 
 - **Not a Malware Blocker**:
-  Visilant doesn’t detect or block malicious code, downloads, or trackers. It focuses solely on tracking your visits to determine site familiarity. It's not a replacement for an antivirus, but an additional layer of protection in browser!
+  Visilant doesn’t detect or block malicious code, downloads, or trackers. It helps you assess addresses and familiarity, but it is not a replacement for an antivirus.
 
 - **Relies on User Action**:
-  Visilant issues warnings but does not enforce any protection. Ignoring these alerts leaves you vulnerable.
+  Most protection is advisory: you must notice and act on the warnings. The optional paste guard delays a paste for review, but it does not decide whether a site is legitimate.
 
 - **False Positives and Negatives**:
   Legitimate sites with low visit counts may trigger warnings (false positives), while phishing sites visited repeatedly may go unflagged (false negatives).
@@ -201,7 +232,7 @@ While Visilant enhances awareness of "unfamiliar" websites, its limitations incl
   While your configuration settings are synced across devices (if you're logged into your browser), your visit history is stored locally to accommodate its size. This means a site marked as "familiar" on one computer will still be treated as "unfamiliar" on another until you visit it enough times there. Installing Visilant on that machine imports its history for you, which is what closes most of the gap – except on Firefox for Android, which does not let extensions read its history, so a phone starts from nothing and learns as you browse.
 
 - **Script Injection Limitations**:
-  To detect input and clipboard interactions, Visilant injects a small script into visited pages. While Visilant implements anti-tampering protection that detects removal attempts and notifies you via system notifications, it's still recommended to keep the extension icon in sight as an additional safeguard – pinned to the toolbar on desktop, or under Extensions in the menu on Firefox for Android.
+  To detect input and clipboard interactions and analyse links, Visilant injects content scripts into visited pages. Anti-tampering protection can report attempts to remove or hide its in-page UI, but a hostile page can still interfere with page-level code. Keep the extension icon in sight as an additional safeguard – pinned to the toolbar on desktop, or under Extensions in the menu on Firefox for Android.
 
 Understanding these limitations is crucial for Visilant's effective use.
 
