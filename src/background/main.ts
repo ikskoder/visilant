@@ -171,8 +171,38 @@ async function incrementVisitCount(url: string) {
   await noteVisitForFamiliarIndex(hostname, updated, counted)
 }
 
-// Function to update badge for current URL
+/**
+ * A tab that closed under the write. Reported as a message rather than a code,
+ * so the message is what there is to go on.
+ */
+function isGoneTabError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return /no tab with id|invalid tab id|tab was closed/i.test(message)
+}
+
+/**
+ * Draw one tab's badge and icon, without taking the caller down on failure.
+ *
+ * Three of the callers sweep every open tab, and `browser.action` rejects for
+ * reasons that say nothing about the next tab in the list: the tab closed
+ * between the query and the write, or an icon file is not where it is expected
+ * to be. One rejection used to end the whole sweep, so the tabs after it kept a
+ * stale badge and never got the `visit-data-changed` that travels with it – and
+ * a single missing icon file took the resume-warnings button with it. A vanished
+ * tab is routine and stays quiet, anything else is worth a line in the log.
+ */
 async function updateBadge(hostname: string, tabId?: number) {
+  try {
+    await drawBadge(hostname, tabId)
+  }
+  catch (error) {
+    if (!isGoneTabError(error))
+      console.error('Visilant: the toolbar could not be drawn', error)
+  }
+}
+
+/** One tab's badge and icon, drawn from its record. May reject – see above. */
+async function drawBadge(hostname: string, tabId?: number) {
   // Never paint over a tampering alarm with a routine visit count. Kept in
   // `storage.session`, because this worker is stopped between the alarm and the
   // next badge refresh far more often than not – see logic/tamper-alarms.ts
@@ -180,11 +210,13 @@ async function updateBadge(hostname: string, tabId?: number) {
     return
 
   if (isInternalPage(hostname)) {
+    // The number first: if the icon cannot be drawn, an internal page is at
+    // least not left carrying the last site's count
+    await browser.action.setBadgeText({ text: '', ...(tabId != null && { tabId }) })
     await browser.action.setIcon({
       path: getIconPaths('icon-default'),
       ...(tabId != null && { tabId }),
     })
-    await browser.action.setBadgeText({ text: '', ...(tabId != null && { tabId }) })
     return
   }
 
@@ -634,15 +666,8 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // without the loading-phase update the badge briefly falls back to the
   // global default or another tab's state until 'complete' arrives. Firefox
   // preserves per-tab state across navigations, so it doesn't need this.
-  if (isInternalPage(hostname) && !await hasTamperAlarm(tabId)) {
-    await browser.action.setBadgeText({ text: '', tabId })
-    await browser.action.setIcon({
-      path: getIconPaths('icon-default'),
-      tabId,
-    })
-    return
-  }
-
+  // An internal page is cleared by `updateBadge` itself, which also leaves a
+  // tampering alarm standing – there is nothing to do here but call it
   await updateBadge(hostname, tabId)
 })
 
@@ -663,18 +688,7 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
   if (tab.url) {
     const hostname = getHostname(tab.url)
 
-    // Skip internal pages
-    if (isInternalPage(hostname)) {
-      // Reset badge for internal pages
-      await browser.action.setBadgeText({ text: '', tabId })
-      // Set default icon for internal pages
-      await browser.action.setIcon({
-        path: getIconPaths('icon-default'),
-        tabId,
-      })
-      return
-    }
-
+    // Internal pages included: `updateBadge` clears those itself
     await updateBadge(hostname, tabId)
   }
 })
@@ -1527,14 +1541,28 @@ browser.storage.onChanged.addListener(async (changes) => {
     if (previousRules !== currentRules)
       invalidateFamiliarIndex()
 
-    // Rebuild context menu when link safety settings change
-    await setupContextMenu()
+    // Rebuild context menu when link safety settings change. Guarded like the
+    // draw below it: this runs before the sweep over the tabs, and a rejection
+    // here left every open tab on the settings that were just changed
+    try {
+      await setupContextMenu()
+    }
+    catch (error) {
+      console.error('Visilant: the context menu could not be rebuilt', error)
+    }
 
     // If settings changed and icon colors are disabled, reset all icons to default first
     if (current && !current.changeIcon) {
-      await browser.action.setIcon({
-        path: getIconPaths('icon-default'),
-      })
+      // Guarded for the same reason the per-tab draw is: a rejection here used
+      // to skip the sweep below, and every open tab kept the icon just turned off
+      try {
+        await browser.action.setIcon({
+          path: getIconPaths('icon-default'),
+        })
+      }
+      catch (error) {
+        console.error('Visilant: the default icon could not be set', error)
+      }
     }
 
     // Update all tabs
