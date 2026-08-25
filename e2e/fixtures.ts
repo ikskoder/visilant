@@ -9,10 +9,47 @@ export { name } from '../package.json'
 
 export const extensionPath = path.join(__dirname, '../extension')
 
+/**
+ * Wait for the tab the extension opens when it installs.
+ *
+ * Whichever tab opened last is the one the browser draws, and a tab in the
+ * background is sent no animation frames at all. Playwright waits for two of
+ * them before it will click anything, so a page opened while the welcome tab
+ * was still on its way lost the front a moment later and every click on it
+ * timed out – on elements that were visible, enabled and perfectly still.
+ *
+ * Waiting here, once, means every page a test opens afterwards is the newest
+ * one and keeps the front. Nothing is closed: the welcome tab is under test
+ * itself elsewhere in this suite.
+ *
+ * Gives up quietly. A build that opens no welcome tab is something the welcome
+ * tests report on, and every other test would rather run than fail here.
+ */
+async function waitForWelcomeTab(context: BrowserContext) {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (context.pages().some(page => page.url().includes('welcome')))
+      return
+    await sleep(100)
+  }
+}
+
 export const test = base.extend<{
   context: BrowserContext
   extensionId: string
 }>({
+  /**
+   * The page a test is handed, in front of the others.
+   *
+   * The context below has already waited out the welcome tab, so a page opened
+   * here is the last one and holds the front. The call is kept anyway for a
+   * test that opens pages of its own and comes back to this one.
+   */
+  page: async ({ context }, use) => {
+    const page = await context.newPage()
+    await page.bringToFront()
+    await use(page)
+  },
+
   context: async ({ headless }, use) => {
     // workaround for the Vite server has started but contentScript is not yet.
     await sleep(1000)
@@ -33,6 +70,8 @@ export const test = base.extend<{
         `--load-extension=${extensionPath}`,
       ],
     })
+    await waitForWelcomeTab(context)
+
     await use(context)
     await context.close()
   },
