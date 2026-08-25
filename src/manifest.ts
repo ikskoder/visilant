@@ -1,7 +1,7 @@
 import type { Manifest } from 'webextension-polyfill'
 import type PkgType from '../package.json'
 import fs from 'fs-extra'
-import { isDev, isFirefox, r } from '../scripts/utils'
+import { isFirefox, r } from '../scripts/utils'
 
 export async function getManifest() {
   const pkg = await fs.readJSON(r('package.json')) as typeof PkgType
@@ -145,15 +145,6 @@ export async function getManifest() {
       // through the pages themselves rather than through the policy.
       extension_pages: 'script-src \'self\'; object-src \'self\'',
     },
-  }
-
-  // FIXME: not work in MV3
-  if (isDev && false) {
-    // for content script, as browsers will cache them for each reload,
-    // we use a background script to always inject the latest version
-    // see src/background/contentScriptHMR.ts
-    delete manifest.content_scripts
-    manifest.permissions?.push('webNavigation')
   }
 
   return manifest
