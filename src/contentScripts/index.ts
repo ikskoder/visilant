@@ -2049,7 +2049,12 @@ async function showFramePasteIntercept(data: { hostname: string, status: 'unfami
 }
 
 // Listen for context menu requests from background
-browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse: (response?: any) => void) => {
+// The published types offer three listener shapes, and none of them is the one
+// MV3 documents: answer some messages asynchronously and leave the rest to
+// whoever else is listening. Always returning `true` would hold a response
+// channel open for a message meant for somebody else, so the shape stays and
+// the cast carries it across.
+browser.runtime.onMessage.addListener(((message: any, _sender: any, sendResponse: (response?: any) => void) => {
   // Raised by an iframe on this page, which has no UI of its own
   if (message.type === 'frame-warning' && message.data?.hostname) {
     void showFrameWarning(message.data.kind === 'copy' ? 'copy' : 'input', message.data.hostname)
@@ -2112,7 +2117,7 @@ browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse:
     })
     return undefined
   }
-})
+}) as Parameters<typeof browser.runtime.onMessage.addListener>[0])
 
 // Handle backward-forward cache
 window.addEventListener('pageshow', async (event) => {

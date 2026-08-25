@@ -474,14 +474,14 @@ async function runManualHistoryImport() {
 
     const result = quick.status === 'done'
       ? await runHistoryImport({
-        mode: 'full',
-        // A Re-import rescans everything: `resume` only continues a run of the
-        // same name, and the quick pass above just started this one
-        resume: true,
-        shouldStop,
-        runId,
-        stage: 'full-running',
-      })
+          mode: 'full',
+          // A Re-import rescans everything: `resume` only continues a run of the
+          // same name, and the quick pass above just started this one
+          resume: true,
+          shouldStop,
+          runId,
+          stage: 'full-running',
+        })
       : quick
 
     if (result.status === 'done')
@@ -1311,7 +1311,12 @@ Object.entries(messageHandlers).forEach(([type, handler]) => {
 })
 
 // Add native runtime.onMessage listener for fallback (bfcache support)
-browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
+// The published types offer three listener shapes, and none of them is the one
+// MV3 documents: answer some messages asynchronously and leave the rest to
+// whoever else is listening. Always returning `true` would hold a response
+// channel open for a message meant for somebody else, so the shape stays and
+// the cast carries it across.
+browser.runtime.onMessage.addListener(((message: any, sender, sendResponse) => {
   // Validate sender
   if (sender.id !== browser.runtime.id)
     return
@@ -1346,7 +1351,7 @@ browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
       })
     return true
   }
-})
+}) as Parameters<typeof browser.runtime.onMessage.addListener>[0])
 
 // ==========================================
 // Context Menu for Link Safety (right-click)

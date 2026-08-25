@@ -51,17 +51,17 @@ export interface FamiliarDomain {
  */
 export const PROVIDER_REFERENCE_NOTE = 'email addresses only'
 
-export type LookalikeReason =
+export type LookalikeReason
   /** Identical once visually confusable characters are folded together */
-  | 'confusable'
+  = | 'confusable'
   /** One or two edits away from a familiar name */
-  | 'edit-distance'
+    | 'edit-distance'
   /** A familiar name is one token of a longer label, or embedded in it */
-  | 'contains-familiar'
+    | 'contains-familiar'
   /** A familiar name, or a whole familiar domain, used as a subdomain */
-  | 'familiar-as-subdomain'
+    | 'familiar-as-subdomain'
   /** The same name under a different domain – `paypal.co` next to `paypal.com` */
-  | 'same-name'
+    | 'same-name'
 
 export interface LookalikeMatch {
   /** The familiar domain being imitated */

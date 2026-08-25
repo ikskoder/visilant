@@ -10,12 +10,12 @@ import punycode from 'punycode'
  * None of them is a verdict on its own – they are shown as facts about the
  * address, next to the visit history.
  */
-export type DomainMarkerId =
-  | 'url-userinfo'
-  | 'ip-host'
-  | 'embedded-public-suffix'
-  | 'deep-subdomains'
-  | 'mixed-scripts'
+export type DomainMarkerId
+  = | 'url-userinfo'
+    | 'ip-host'
+    | 'embedded-public-suffix'
+    | 'deep-subdomains'
+    | 'mixed-scripts'
 
 export interface DomainMarker {
   id: DomainMarkerId
