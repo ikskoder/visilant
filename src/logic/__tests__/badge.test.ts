@@ -84,7 +84,7 @@ describe('toolbarLook', () => {
     // Red over a page that will warn about nothing promises a guard that is not
     // on duty. The verdict is still shown, only not as an alarm
     expect(toolbarLook(false, true)).toBe('silenced')
-    expect(BADGE_COLORS.silenced).toBe('#808080')
+    expect(BADGE_COLORS.silenced).toBe('#5f6368')
     expect(ACTION_ICONS.silenced).toBe('site-muted')
   })
 

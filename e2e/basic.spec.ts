@@ -1,4 +1,4 @@
-import { ACTION_ICONS } from '../src/logic/badge'
+import { ACTION_ICONS, BADGE_COLORS } from '../src/logic/badge'
 import { expect, test } from './fixtures'
 import { blankPage, inWorker, patchSettings, seedVisits, serveSite, waitForAutoImport } from './helpers'
 
@@ -806,10 +806,13 @@ test('a silenced site keeps its verdict and loses the alarm colour', async ({ pa
     return rgba.slice(0, 3).join(',')
   }, SITE_HOST)
 
-  const expectColor = (rgb: string) =>
-    expect.poll(badgeColor, { timeout: 15000, intervals: [300] }).toBe(rgb)
+  // Read off the same table the background paints from, so a change of shade
+  // moves one constant and not four
+  const rgb = (hex: string) => [1, 3, 5].map(at => Number.parseInt(hex.slice(at, at + 2), 16)).join(',')
+  const expectColor = (hex: string) =>
+    expect.poll(badgeColor, { timeout: 15000, intervals: [300] }).toBe(rgb(hex))
 
-  await expectColor('255,68,68')
+  await expectColor(BADGE_COLORS.unfamiliar)
 
   // Sent the way the popup sends it. A message posted from inside the worker
   // never reaches the worker's own listener, so it goes from an extension page
@@ -826,7 +829,7 @@ test('a silenced site keeps its verdict and loses the alarm colour', async ({ pa
   // No reload of the site. Coming back to the tab repaints it as well, so this
   // says the colour follows the flag, not which of the two paths drew it
   await silence(true)
-  await expectColor('128,128,128')
+  await expectColor(BADGE_COLORS.silenced)
 
   // And the badge still says how unfamiliar the site is. Read from the record
   // rather than from the seed – the navigation counted a visit of its own
@@ -858,13 +861,13 @@ test('a silenced site keeps its verdict and loses the alarm colour', async ({ pa
   }, ACTION_ICONS.silenced)).toBe('ok')
 
   await silence(false)
-  await expectColor('255,68,68')
+  await expectColor(BADGE_COLORS.unfamiliar)
 
   // A familiar site is never dressed down. Silencing does not make it less
   // known, and there was no warning here to silence in the first place
   await seedVisits(context, SITE_HOST, 90, { activeDays: 30, firstSeen: Date.now() - 90 * 24 * 60 * 60 * 1000 })
   await silence(true)
-  await expectColor('0,200,81')
+  await expectColor(BADGE_COLORS.familiar)
 })
 
 test('the counter list holds only the checks the user judges sites by', async ({ page, extensionId }) => {

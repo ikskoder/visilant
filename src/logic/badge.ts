@@ -84,10 +84,18 @@ export function toolbarLook(isFamiliar: boolean, silenced: boolean): ToolbarLook
 export const BADGE_COLORS: Record<ToolbarLook, string> = {
   familiar: '#00C851',
   unfamiliar: '#ff4444',
-  silenced: '#808080',
+  silenced: '#5f6368',
 }
 
-/** Base name of the toolbar icon per look – see `getIconPaths` in the background. */
+/**
+ * Base name of the toolbar icon per look – see `getIconPaths` in the background.
+ *
+ * The grey shield is lighter than the grey badge on purpose. The badge is a
+ * background with digits on it, and the browser picks black or white for them by
+ * contrast, which a mid grey serves worst. The icon has to stay legible against
+ * the toolbar itself, light and dark, and the badge's darker grey nearly
+ * disappears into a dark one. Do not align the two.
+ */
 export const ACTION_ICONS: Record<ToolbarLook, string> = {
   familiar: 'icon-default',
   unfamiliar: 'site-danger',
