@@ -27,6 +27,20 @@ async function mountForDomain(domain: string) {
   return wrapper
 }
 
+/**
+ * The text of one fact cell, rather than of the whole panel.
+ *
+ * Asserting a number against `wrapper.text()` reads every other number on the
+ * page too, and this panel carries one that moves on its own: the age criterion
+ * renders the days since the first visit, which passed 612 in September 2026.
+ * `not.toContain('12')`, written to prove that active days are not summed,
+ * therefore started failing on a calendar date and would have kept doing it
+ * through every 12x and 120x-day window afterwards.
+ */
+function criterion(wrapper: ReturnType<typeof mount>, id: string) {
+  return wrapper.get(`[data-criterion="${id}"]`).text()
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
 })
@@ -47,7 +61,7 @@ describe('popup as a standalone page', () => {
     const wrapper = await mountForDomain('example.com')
 
     expect(wrapper.text()).toContain('activeDaysLabel')
-    expect(wrapper.text()).toContain('14')
+    expect(criterion(wrapper, 'activeDays')).toContain('14')
     expect(wrapper.text()).not.toContain('statsFamilyWide')
   })
 
@@ -57,7 +71,7 @@ describe('popup as a standalone page', () => {
 
     // Facts, and a line saying they are not about this exact address
     expect(wrapper.text()).toContain('activeDaysLabel')
-    expect(wrapper.text()).toContain('14')
+    expect(criterion(wrapper, 'activeDays')).toContain('14')
     expect(wrapper.text()).toContain('statsFamilyWide')
   })
 
@@ -68,11 +82,11 @@ describe('popup as a standalone page', () => {
     })
     const wrapper = await mountForDomain('example.com')
 
-    const text = wrapper.text()
-    expect(text).toContain('2025')
+    expect(criterion(wrapper, 'age')).toContain('2025')
     // Days overlap between subdomains, so the largest is the honest floor
-    expect(text).toContain('9')
-    expect(text).not.toContain('12')
+    const activeDays = criterion(wrapper, 'activeDays')
+    expect(activeDays).toContain('9')
+    expect(activeDays).not.toContain('12')
   })
 
   it('shows no facts row when nothing in the family was ever visited', async () => {

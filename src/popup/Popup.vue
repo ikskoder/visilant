@@ -690,6 +690,7 @@ onMounted(async () => {
               </div>
               <div
                 v-if="currentStats.firstSeen"
+                data-criterion="age"
                 :class="criterionColor('age')"
                 :title="criterionOutcome('age') ? `${translations.familiarityRequiredAtLeast} ${criterionOutcome('age')!.required} ${translations.familiarityDaysUnit}` : undefined"
               >
@@ -714,6 +715,7 @@ onMounted(async () => {
               </div>
               <div
                 v-if="currentStats.activeDays"
+                data-criterion="activeDays"
                 :class="criterionColor('activeDays')"
                 :title="criterionOutcome('activeDays') ? `${translations.familiarityRequiredAtLeast} ${criterionOutcome('activeDays')!.required}` : undefined"
               >
