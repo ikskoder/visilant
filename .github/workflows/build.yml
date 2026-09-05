@@ -21,6 +21,44 @@ permissions:
   contents: read
 
 jobs:
+  # Before the build, not after it. An artifact built from a tree with a known,
+  # fixable advisory in it is an artifact nobody wanted, and finding out
+  # afterwards means finding out once it already exists.
+  #
+  # VISILANT_AUDIT_STRICT turns "the check could not run" into a failure. That is
+  # the whole point of running it here: locally a missing tool is a warning so
+  # the script stays usable on a machine that has none of them, and in CI a
+  # warning nobody reads is the same as no check.
+  #
+  # The cost, stated rather than discovered later: `build` needs this job and
+  # `release` needs `build`, so an npm registry hiccup, or a new high-severity
+  # advisory with a fix in any of a thousand transitive dependencies, blocks a
+  # release of code that was already written and already green. That is the
+  # intended order - audit before the artifact exists, not after - but when it
+  # bites, the fix is to bump the dependency or re-run, never to drop the job.
+  audit:
+    name: secrets, host paths and advisories
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.1
+        with:
+          # gitleaks scans the history, and a shallow checkout has none.
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # pnpm audit reads pnpm-lock.yaml and asks the registry, so it needs
+      # neither node_modules nor a build.
+      - name: Audit
+        env:
+          VISILANT_AUDIT_STRICT: '1'
+        run: nix develop --command ./scripts/audit.sh
+
   # The Nix build proves the bytes reproduce, and says nothing at all about
   # whether the code is right – a red typecheck and a broken test both build
   # perfectly. Release depends on this through `build`, so a tag cannot be
@@ -97,7 +135,7 @@ jobs:
 
   build:
     name: build ${{ matrix.target }}
-    needs: quality
+    needs: [audit, quality]
     runs-on: ubuntu-24.04
     permissions:
       contents: read

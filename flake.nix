@@ -156,6 +156,12 @@
             # adb, for running the extension on a USB-connected Android phone
             # via `web-ext run -t firefox-android`
             pkgs.android-tools
+            # The secret scanner the pre-commit hook calls. It has to be on the
+            # HOST, not only in the dev container: a hook that calls a tool the
+            # host does not have degrades into no check at all, and a hook that
+            # silently checks nothing is worse than none, because everybody
+            # stops thinking about it.
+            pkgs.gitleaks
           ];
 
           LD_LIBRARY_PATH = lib.makeLibraryPath playwrightLibs;

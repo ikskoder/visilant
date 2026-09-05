@@ -17,7 +17,7 @@ describe('hostnameFromHistoryUrl', () => {
   })
 
   it('skips non-web schemes', () => {
-    expect(hostnameFromHistoryUrl('file:///home/user/a.pdf')).toBeNull()
+    expect(hostnameFromHistoryUrl('file:///home/user/a.pdf')).toBeNull() // host-path-ok: invented, not from a real machine
     expect(hostnameFromHistoryUrl('about:blank')).toBeNull()
     expect(hostnameFromHistoryUrl('chrome://extensions')).toBeNull()
     expect(hostnameFromHistoryUrl('data:text/html,hi')).toBeNull()
