@@ -27,3 +27,11 @@ result-*
 
 # Scratch space for audits, reports and other throwaway files
 .tmp/
+
+# Machine-specific compose additions. compose.yaml itself must never name a path
+# that exists on one computer only, so anything of that shape lives here.
+.devcontainer/compose.override.yaml
+
+# Local-only dev container additions: anything installed or mounted for this
+# machine alone. Nothing under here is part of the project.
+.devcontainer/local/

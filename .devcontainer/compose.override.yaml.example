@@ -1,0 +1,32 @@
+# Copy this to compose.override.yaml, which is gitignored, for anything that is
+# true of one machine rather than of the repository:
+#
+#     cp .devcontainer/compose.override.yaml.example \
+#        .devcontainer/compose.override.yaml
+#
+# Then uncomment what you need. Nothing has to be deleted first: every line is
+# already at the indentation it should end up at, and `environment: {}` is there
+# only so that the file is valid while it still adds nothing - a service key
+# with no children underneath it is a YAML error.
+#
+# compose.yaml itself contains no path from anybody's computer, and it has to
+# stay that way: a bind written there names a directory layout that exists on
+# one machine, and it goes into git the moment it is written.
+#
+# `docker compose` run from .devcontainer/ picks this file up on its own, which
+# is what the `just container-*` recipes do. The VS Code Dev Containers
+# extension passes -f explicitly and does not, so add it to `dockerComposeFile`
+# in devcontainer.json locally if you open the folder that way, and take care
+# not to commit that edit.
+
+services:
+  workspace:
+    environment: {}
+    # volumes:
+    #   # Somewhere to drop a package downloaded from a store, for `just verify`.
+    #   - ${HOME}/Downloads:/downloads:ro
+    #   # Per-tool state you want to survive `docker compose down -v`, kept
+    #   # outside the repository. ${HOME} is read by Compose at run time, so it
+    #   # is a variable rather than a path - but the directory it names exists
+    #   # on your machine only, which is why it belongs in this file.
+    #   - ${HOME}/some-tool-state/visilant:/root/.some-tool

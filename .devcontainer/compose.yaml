@@ -1,0 +1,128 @@
+name: visilant
+
+services:
+  workspace:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Pinned multi-architecture OCI index, not a tag: `22.21.1-bookworm-slim`
+        # today and next month can be different images, so an unchanged
+        # Dockerfile would quietly rebuild on something nobody reviewed.
+        #
+        # 22.21.1 is not the newest Node 22 - it is exactly the one flake.lock
+        # hands the Nix release build, and package.json repeats it in `engines`.
+        # A container that built on a different Node would test something the
+        # release is not. check-workspace.sh compares the two on every start, so
+        # a flake bump surfaces here rather than as a difference in the output.
+        #
+        # bookworm and not trixie: Playwright has open issues resolving apt
+        # dependencies on Debian 13, where it reaches for Debian 12 package
+        # names that no longer exist.
+        BASE_IMAGE: docker.io/library/node:22.21.1-bookworm-slim@sha256:25b3eb23a00590b7499f2a2ce939322727fcce1b15fdd69754fcd09536a3ae2c
+    image: visilant-workspace:local
+    init: true
+
+    # Rootless docker maps container uid 0 to the invoking host user, so `root`
+    # here means files written into the bind-mounted project are owned by you on
+    # the host, and an escape lands as your own account rather than as host root.
+    # Running as `node` (uid 1000) maps to a subordinate uid that cannot write to
+    # the repository at all.
+    #
+    # ON A ROOTFUL DAEMON THIS INVERTS and has to become `user: node`, or the
+    # container writes root-owned files into the tree. `docker info --format
+    # '{{.SecurityOptions}}' | grep rootless` says which daemon you are on, and
+    # check-workspace.sh prints the answer on every start.
+    user: root
+    command: sleep infinity
+    working_dir: /workspaces/visilant
+
+    # No `ports:` on purpose. `pnpm dev` is five `vite build --watch` processes
+    # writing files, not a server - the only dev server in package.json is
+    # `dev:server`, which nothing in the workflow calls. Adding a mapping written
+    # as "3303:3303" would bind 0.0.0.0 and publish it to whatever network the
+    # laptop is joined to, and it would do that by inserting its own firewall
+    # rules, so the host firewall does not save you. If one is ever needed, write
+    # it as "127.0.0.1:3303:3303".
+
+    networks:
+      # npm registry, the advisory feeds, and nothing else needs reaching.
+      # There are no backing services here, so there is no second, internal
+      # network. A database or a queue added later joins an `internal: true`
+      # network and gets `expose:`, never `ports:`.
+      - egress
+
+    volumes:
+      - ../:/workspaces/visilant:rw
+      # node_modules is the container's own, and deliberately NOT shared with
+      # the host through the bind above.
+      #
+      # pnpm records the absolute path of its store in node_modules/.modules.yaml
+      # and rebuilds the whole directory when that path changes. The same folder
+      # is under your projects directory on the host and /workspaces/visilant in
+      # here, so one shared node_modules would belong to whichever side installed
+      # last and every switch would cost a full reinstall - measured, the first
+      # container install refused to continue at all and asked to remove the
+      # host's copy.
+      #
+      # Both sides genuinely need one: the phone workflow (`just ar`) runs
+      # web-ext from the host's node_modules and cannot move in here, because it
+      # needs the USB device. So they get one each, off one shared lockfile.
+      # `extension/` stays on the bind above, which is what matters - a build
+      # made in here is loadable as an unpacked extension by a browser on the
+      # host.
+      - node-modules:/workspaces/visilant/node_modules
+      # The root filesystem is read-only, so the whole home directory is a
+      # volume. It carries the pnpm content-addressed store, the npm cache, the
+      # shell history and git's per-user config, and it survives a rebuild.
+      # Docker seeds a new volume from the image, so the skeleton files remain.
+      - home:/root
+      # Separate, so editor state can be thrown away without losing the store.
+      - vscode-server:/root/.vscode-server
+
+    # Chromium puts its shared memory here and the Docker default of 64 MB is
+    # not enough: the renderer dies mid-test and Playwright reports it as a page
+    # closing on its own, which looks like a flaky test rather than a missing
+    # megabyte. The e2e fixtures do not pass --disable-dev-shm-usage, so the
+    # space has to be real.
+    shm_size: 1gb
+
+    tmpfs:
+      # noexec is the point: writing a binary into /tmp and running it is the
+      # usual next step after a dropper lands. Nothing here needs to execute
+      # from a temporary directory - esbuild and the Vite plugins ship their
+      # binaries inside node_modules, which is on the bind mount.
+      - /tmp:rw,noexec,nosuid,size=2g
+      - /var/tmp:rw,noexec,nosuid,size=512m
+      - /run:rw,noexec,nosuid,size=64m
+    read_only: true
+
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # `pnpm dev` runs five Vite processes and the e2e suite drives a Chromium
+    # that forks a renderer per page, and cgroup v2 counts threads here rather
+    # than processes, so the usual 512 is not obviously enough. Sampled through a
+    # full `pnpm test:e2e` (104 tests, 3.4 minutes) pids.current peaked at 178,
+    # so this is a wide margin over the real number rather than a guess. It is
+    # here to stop a fork bomb taking the laptop down, not to size the work.
+    pids_limit: 1024
+    # Half the cores, so a build does not take the laptop with it.
+    cpus: 8
+    mem_limit: 8g
+
+    environment:
+      # The e2e suite drives Chromium from /opt, which is read-only at run time.
+      # It is baked into the image on purpose - see the Dockerfile.
+      PLAYWRIGHT_BROWSERS_PATH: /opt/ms-playwright
+      PNPM_HOME: /root/.local/share/pnpm
+
+networks:
+  egress:
+
+volumes:
+  home:
+  node-modules:
+  vscode-server:

@@ -13,6 +13,11 @@ ae: android-e2e
 nf: nix-firefox
 nc: nix-chrome
 nk: nix-check
+cb: container-build
+cu: container-up
+cs: container-shell
+ck: container-check
+au: audit
 
 # Clear dist and manifest
 clear:
@@ -150,3 +155,52 @@ test-e2e-headed:
 # Install Playwright browsers locally
 playwright-install:
   npx playwright install chromium
+
+# === AUDIT ===
+# Secrets, machine-specific paths, and dependency advisories. Run it before a
+# dependency bump. The pre-commit hook runs the --staged form on every commit.
+
+# Audit the whole repository
+audit:
+  ./scripts/audit.sh
+
+# Audit only what is staged, the way the pre-commit hook does
+audit-staged:
+  ./scripts/audit.sh --staged
+
+# === DEV CONTAINER ===
+# Where install, build, lint, tests and the e2e suite belong: they run a
+# thousand packages of other people's code, and in here that code cannot see
+# your home directory. See .devcontainer/README.md for what deliberately stays
+# on the host - the Nix release build and anything involving the phone.
+
+# Build the container image
+container-build:
+  cd .devcontainer && docker compose build workspace
+
+# Start the container in the background
+container-up:
+  cd .devcontainer && docker compose up -d workspace
+
+# Stop it, keeping the volumes
+container-down:
+  cd .devcontainer && docker compose down
+
+# A shell inside it
+container-shell:
+  cd .devcontainer && docker compose exec workspace bash -l
+
+# Re-run the start-up checks and print what the hardening actually did
+container-check:
+  cd .devcontainer && docker compose exec workspace bash .devcontainer/scripts/check-workspace.sh
+
+# Run a plain command inside the container, e.g. `just c pnpm test run`
+#
+# Plain means plain: `just` substitutes {{ ARGS }} into a shell line, so quotes,
+# pipes, redirects, `&&` and apostrophes are all read by the shell on the HOST
+# before docker ever sees them, and there is no way to escape that from inside a
+# recipe. Anything with punctuation in it goes through `just container-shell`
+# instead. compose.yaml already sets working_dir, so no `cd` is needed, and PATH
+# comes from the image so pnpm, just and gitleaks are all found.
+c +ARGS:
+  cd .devcontainer && docker compose exec workspace {{ ARGS }}

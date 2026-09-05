@@ -1,0 +1,48 @@
+{
+  "name": "Visilant",
+  // Only the committed file. A machine-specific compose.override.yaml is
+  // picked up automatically by `docker compose` run from this directory,
+  // which is how the justfile recipes drive it - but the Dev Containers
+  // extension passes -f explicitly, and that turns the automatic pickup off.
+  // Listing a file here that is gitignored would break the build for anyone
+  // who has not created it, so add the second entry locally if you need one
+  // and take care not to commit that edit.
+  "dockerComposeFile": ["compose.yaml"],
+  "service": "workspace",
+  "workspaceFolder": "/workspaces/visilant",
+  "remoteUser": "root",
+
+  // Deliberately empty, and it has to stay that way. A Dev Container Feature
+  // carries `capAdd` and `securityOpt` in its metadata, the CLI unions those
+  // across every entry, and Compose appends list values - so one Feature here
+  // would give the container back capabilities that cap_drop: ALL cannot
+  // remove. Anything a Feature would install belongs in the Dockerfile.
+  "features": {},
+
+  // Create-time checks the image, start-time checks the mounts. Keeping them
+  // apart matters because a failed postCreateCommand prints "Skipping any
+  // further user-provided commands" and postStartCommand then never runs at
+  // all, which silently disables every check after it.
+  // The container's node_modules is a volume of its own and is empty on a
+  // fresh create, so the install belongs here rather than in a README step
+  // somebody skips.
+  "postCreateCommand": "pnpm install --frozen-lockfile && bash .devcontainer/scripts/check-workspace.sh",
+  "postStartCommand": "bash .devcontainer/scripts/check-workspace.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vue.volar",
+        "antfu.iconify",
+        "antfu.unocss",
+        "dbaeumer.vscode-eslint",
+        "csstools.postcss"
+      ],
+      "settings": {
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "eslint.experimental.useFlatConfig": true,
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

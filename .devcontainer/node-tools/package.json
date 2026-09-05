@@ -1,0 +1,9 @@
+{
+  "name": "visilant-node-tools",
+  "private": true,
+  "description": "The two npm-delivered tools the image needs before the project's own dependencies exist: the package manager, and the Playwright CLI that seeds Chromium. Both are pinned to exactly what the project asks for - pnpm to `packageManager` in package.json, Playwright to what pnpm-lock.yaml resolves - and check-workspace.sh fails the container start if either drifts.",
+  "dependencies": {
+    "playwright": "1.62.1",
+    "pnpm": "10.22.0"
+  }
+}
