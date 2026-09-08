@@ -170,7 +170,12 @@ describe('tamperWatch', () => {
   // the band the confirmation windows are for, and the only thing that shows it
   // is that the panel never gets to stay where it was put.
   it('catches a page keeping at it below the burst cap', async () => {
-    const slow = 20
+    // A long window on purpose. This is the one test here whose page strikes on
+    // a timer rather than from a mutation, so it is the one that has to survive
+    // the scheduler being busy with the rest of the suite. The window has to
+    // stay wide enough that jitter cannot drop it to a single strike, which is
+    // the count that would let the window be scored as held.
+    const slow = 60
     const parts = mountContainer()
     makeWatch({
       container: parts.container,
@@ -182,12 +187,13 @@ describe('tamperWatch', () => {
     })
     document.body.appendChild(document.createElement('p'))
 
-    // Roughly two strikes to a window, and the page's own node goes each time,
-    // so none of them is the singled-out case either
+    // Three strikes to a window – above the one that would count as held, well
+    // under the five that end it as a burst. The page's own node goes each time,
+    // so none of them is the singled-out case either.
     const beat = setInterval(() => {
       document.body.innerHTML = '<p></p>'
-    }, slow / 2)
-    await new Promise(resolve => setTimeout(resolve, slow * 8))
+    }, slow / 3)
+    await new Promise(resolve => setTimeout(resolve, slow * 6))
     clearInterval(beat)
 
     expect(onTamper).toHaveBeenCalledWith('removed')
