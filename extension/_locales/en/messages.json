@@ -43,9 +43,9 @@
     "message": "If you're still going to paste it somewhere, at least make sure that what's in the clipboard is what you think it is",
     "description": "Security tip about verifying copied content"
   },
-  "dontShowAgain": {
-    "message": "Don't show again for this site",
-    "description": "Text for the button to disable notifications for a site"
+  "warningSilenceHint": {
+    "message": "To stop being warned about this site, open the extension from your browser's toolbar and turn the warnings off there. No page can do that for you.",
+    "description": "Line in the in-page warning saying where the per-site silence lives. Deliberately not a button, so a page cannot talk the reader into silencing itself in one click."
   },
   "dismiss": {
     "message": "Dismiss",
@@ -482,10 +482,6 @@
   "pasteInterceptRepeatHint": {
     "message": "This dialog pastes nothing by itself. Allow it, then press paste again and it goes through exactly as it normally would. You will not be asked again on this page.",
     "description": "Explains that allowing does not paste, the user pastes again themselves"
-  },
-  "pasteInterceptDontAskAgain": {
-    "message": "Do not warn me about this site again",
-    "description": "Checkbox that turns the warnings off for this site for good"
   },
   "pasteInterceptAllow": {
     "message": "Allow pasting",
@@ -1646,5 +1642,29 @@
   "ignoredSiteTooltip": {
     "message": "You chose not to be warned about this site again. Turning it back on brings back the typing, copying and paste warnings here.",
     "description": "Explains what the per-site silence covers"
+  },
+  "warningsActiveNotice": {
+    "message": "Warnings are on for this site",
+    "description": "Shown in the popup when the current site is not silenced"
+  },
+  "warningsActiveTooltip": {
+    "message": "The typing, copying and paste warnings are active here. Turning them off silences all of them for this site until you turn them back on from this window.",
+    "description": "Explains what turning the warnings off would do"
+  },
+  "ignoredSiteSilence": {
+    "message": "Turn off",
+    "description": "Button in the popup that silences the warnings for the current site"
+  },
+  "silencedSitesTitle": {
+    "message": "Sites you have silenced",
+    "description": "Heading of the list of sites whose warnings are turned off"
+  },
+  "silencedSitesDesc": {
+    "message": "One site to a line, warnings turned off on each. A site can only get here from the extension's own window, never from the site itself, so anything listed you switched off yourself. Delete a line to bring its warnings back.",
+    "description": "Explains the silenced sites list and why it is worth reading"
+  },
+  "silencedSitesRejected": {
+    "message": "Not saved, these are not site names:",
+    "description": "Precedes the lines of the list that could not be read as hostnames"
   }
 }

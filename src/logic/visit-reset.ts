@@ -32,7 +32,7 @@ const VISIT_DERIVED_KEYS: readonly string[] = [
  * since changed is still the user's visit data, and a wipe that quietly left it
  * behind would be the worst kind of bug in a button that promises to remove it.
  */
-function isPossibleHostKey(key: string): boolean {
+export function isPossibleHostKey(key: string): boolean {
   return !key.startsWith('__') && /^[\w.:\-[\]]+$/.test(key)
 }
 
@@ -41,6 +41,72 @@ function isVisitRecord(value: unknown): value is SiteVisitData {
     return false
   const record = value as Partial<SiteVisitData>
   return typeof record.count === 'number' && typeof record.lastSeen === 'number'
+}
+
+/**
+ * Every visit record in a `storage.local` snapshot, by hostname.
+ *
+ * Exported because the wipe is not the only thing that has to pick the records
+ * out of everything else in the area, and the shape question above is the one
+ * answer worth having. Anything that reads the table gets the same reading.
+ */
+export function visitRecordEntries(records: Record<string, unknown>): [string, SiteVisitData][] {
+  return Object.entries(records)
+    .filter(([key, value]) => isPossibleHostKey(key) && isVisitRecord(value))
+    .map(([key, value]) => [key, value as SiteVisitData])
+}
+
+/**
+ * The hosts whose warnings the user has turned off.
+ *
+ * Sorted, because this is read as a list to check rather than as data: a name
+ * that moves about between openings is one nobody can scan.
+ */
+export function silencedHosts(records: Record<string, unknown>): string[] {
+  return visitRecordEntries(records)
+    .filter(([, record]) => record.ignored === true)
+    .map(([key]) => key)
+    .sort()
+}
+
+/** What editing the silenced list as text comes to, once it is worked out. */
+export interface SilenceChanges {
+  /** Hosts to silence, lowercased, in the order they were typed. */
+  silence: string[]
+  /** Hosts to stop silencing, named as they are stored. */
+  unsilence: string[]
+  /** Lines that are not hostnames, kept verbatim so they can be shown back. */
+  rejected: string[]
+}
+
+/**
+ * What to change, given what is silenced now and what the box says.
+ *
+ * Every line is matched case-insensitively against the keys as they are stored,
+ * rather than against a lowercased copy of the table. A record written under a
+ * name carrying a capital would otherwise be missed here and silenced a second
+ * time under a key of its own, leaving the site listed twice and only one of
+ * them liftable.
+ *
+ * A line that could never be a storage key is rejected rather than written.
+ * Writing it would put a record where nothing can read it back – `silencedHosts`
+ * asks the same question – so the site would look silenced for as long as the
+ * box was open and be neither silenced nor listed afterwards.
+ */
+export function planSilenceChanges(current: readonly string[], text: string): SilenceChanges {
+  const typed = text.split(/\n/).map(line => line.trim()).filter(Boolean)
+  const rejected = typed.filter(line => !isPossibleHostKey(line))
+
+  const have = new Map(current.map(host => [host.toLowerCase(), host]))
+  const want = new Map(
+    typed.filter(isPossibleHostKey).map(line => [line.toLowerCase(), line.toLowerCase()]),
+  )
+
+  return {
+    silence: [...want].filter(([lower]) => !have.has(lower)).map(([, host]) => host),
+    unsilence: [...have].filter(([lower]) => !want.has(lower)).map(([, host]) => host),
+    rejected,
+  }
 }
 
 /**

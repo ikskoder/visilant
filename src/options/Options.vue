@@ -16,6 +16,7 @@ import { isolatePageZoom } from '~/logic/page-zoom'
 import { hasContextMenus, hasHistoryApi, isAndroidBrowser, supportsHover } from '~/logic/platform'
 import { fetchRemoteShortenerLists, STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
 import { defaultSettings, editSettingsThroughBackground, settings, settingsReady, settingsWriteError } from '~/logic/storage'
+import { planSilenceChanges, silencedHosts } from '~/logic/visit-reset'
 import SectionNav from './SectionNav.vue'
 import SectionReset from './SectionReset.vue'
 
@@ -117,6 +118,9 @@ function updateTranslations() {
     'notificationStylePinNote',
     'notificationCooldown',
     'notificationCooldownDesc',
+    'silencedSitesTitle',
+    'silencedSitesDesc',
+    'silencedSitesRejected',
     'databaseManagement',
     'importHistoryIntro',
     'importStatusNever',
@@ -463,6 +467,7 @@ onMounted(async () => {
 
   lastImport.value = await readHistoryImportState()
   await readStatsCoverage()
+  await readSilencedSites()
 
   browser.storage.onChanged.addListener(watchImportState)
   clock = setInterval(() => {
@@ -844,6 +849,70 @@ const showStatsCoverageWarning = computed(() =>
   && (statsCoverage.value?.missing ?? 0) > 0)
 
 /**
+ * The sites whose warnings the user has turned off.
+ *
+ * Reported here because the switch is otherwise invisible: it lives in the
+ * popup, which only ever describes the site being looked at, so a host silenced
+ * months ago is a hole in the guard that nothing on screen mentions. Somebody
+ * talked into silencing a site has no other way of finding out, and finding out
+ * is the whole point of this list.
+ *
+ * Picked by record shape rather than by name, because the area also holds the
+ * lists, the caches and the migration flags – `silencedHosts` is where that
+ * question is answered for everything that reads the visit table.
+ */
+const silencedSites = ref<string[]>([])
+
+/**
+ * The list as text, one host to a line, the way every other list here is edited.
+ *
+ * Refilled from storage only while the box is not being typed in. This is the
+ * one list on the page that something else can change underneath it – the popup
+ * writes the same flags – and refilling under the cursor would take away what
+ * was half typed.
+ */
+const silencedText = ref('')
+const silencedFocused = ref(false)
+
+/** Lines of the last save that were not hostnames, kept so they can be named. */
+const silencedRejected = ref<string[]>([])
+
+async function readSilencedSites() {
+  silencedSites.value = silencedHosts(await browser.storage.local.get(null))
+  if (!silencedFocused.value)
+    silencedText.value = silencedSites.value.join('\n')
+}
+
+function setSilenced(hostname: string, ignored: boolean) {
+  return browser.runtime.sendMessage({ type: 'ignore-site', data: { hostname, ignored } })
+}
+
+/**
+ * Applied when the box is left, not as the text is typed.
+ *
+ * The other lists here save from a `watch` on a short delay, because each of
+ * them is one array under one key and the last write wins. These are flags on
+ * separate visit records, so the same delay would silence `e`, `ex` and `exa` on
+ * the way to `example.com`, and each of those would be left behind as a visit
+ * record of its own – junk that the stats-coverage count would then report as
+ * history missing its dates.
+ */
+async function saveSilencedList() {
+  const changes = planSilenceChanges(silencedSites.value, silencedText.value)
+  silencedRejected.value = changes.rejected
+
+  for (const host of changes.silence)
+    await setSilenced(host, true)
+  for (const host of changes.unsilence)
+    await setSilenced(host, false)
+
+  // Puts the box back in the stored order, which is alphabetical, and drops
+  // whatever the lines above were rejected for
+  silencedFocused.value = false
+  await readSilencedSites()
+}
+
+/**
  * Whether the records still without dates can ever get any.
  *
  * A full import reads the browser history and nothing else, so a site the
@@ -952,6 +1021,8 @@ async function resetSelected() {
     // there is something new to say.
     lastImport.value = await readHistoryImportState()
     await readStatsCoverage()
+    // The silences were kept on those same records, so they went with them
+    await readSilencedSites()
   }
 
   if (resetSelections.value.settings) {
@@ -1499,6 +1570,48 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 </p>
               </div>
             </div>
+          </div>
+
+          <!--
+            Outside the toggle above, because it reports on sites that stay
+            silenced whether the notifications are switched on or not.
+
+            Not part of this card's reset, and deliberately: the silences are
+            flags on the visit records, so a "restore defaults" here that swept
+            them up would be deleting the user's history from a settings card.
+            Emptying the box is how one goes, and clearing them all at once is
+            the data section's business.
+          -->
+          <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
+            <label class="text-sm font-medium">{{ translations.silencedSitesTitle }}</label>
+            <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+              {{ translations.silencedSitesDesc }}
+            </p>
+            <!--
+              A box that scrolls its own contents, so a profile carrying hundreds
+              of these takes the same six rows as a profile carrying two and the
+              rest of the page keeps its place.
+
+              Applied on the way out rather than as it is typed – see
+              `saveSilencedList` for why this one list cannot follow the others
+              into a debounced watch.
+            -->
+            <textarea
+              v-model="silencedText"
+              wrap="off"
+              spellcheck="false"
+              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+              rows="6"
+              placeholder="example.com&#10;shop.example.org"
+              @focus="silencedFocused = true"
+              @blur="saveSilencedList"
+            />
+            <!-- Named rather than dropped in silence: a line that was meant to be
+                 a hostname and is not would otherwise vanish on save with nothing
+                 said, and the site would stay unsilenced -->
+            <p v-if="silencedRejected.length" class="text-xs text-amber-600 dark:text-amber-400 mt-1 break-all">
+              {{ translations.silencedSitesRejected }} {{ silencedRejected.join(', ') }}
+            </p>
           </div>
         </div>
         <!-- Anti-Tampering Settings -->

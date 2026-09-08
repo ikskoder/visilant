@@ -16,8 +16,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'allow', dontAskAgain: boolean): void
-  (e: 'cancel', dontAskAgain: boolean): void
+  (e: 'allow'): void
+  (e: 'cancel'): void
   (e: 'details', domain: string): void
 }>()
 
@@ -27,12 +27,8 @@ const { statusLabel } = useFamiliarityFacts()
 // Hidden by default. Whatever is pasted here is exactly the kind of thing that
 // should not land on a screen without being asked for.
 const revealed = ref(false)
-// Ticking this turns the site off for good, so it must never carry over from a
-// previous dialog on a different address
-const dontAskAgain = ref(false)
 watch(() => props.visible, () => {
   revealed.value = false
-  dontAskAgain.value = false
 })
 
 /**
@@ -72,7 +68,7 @@ useModalDialog({
   visible: () => props.visible && Boolean(props.data),
   container: () => card.value,
   initialFocus: () => safeButton.value,
-  onEscape: () => emit('cancel', false),
+  onEscape: () => emit('cancel'),
 })
 
 const payloadKind = computed(() => {
@@ -86,7 +82,7 @@ const payloadKind = computed(() => {
     <div
       v-if="visible && data"
       class="fixed inset-0 z-[2147483647] flex items-center justify-center pointer-events-auto"
-      @click.self="emit('cancel', dontAskAgain)"
+      @click.self="emit('cancel')"
     >
       <!-- Backdrop. Transparent to clicks, or it would sit between the user and
            the overlay behind it and swallow every click-outside -->
@@ -118,7 +114,7 @@ const payloadKind = computed(() => {
             :aria-label="t('closeDialog')"
             class="close-x w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors"
             :class="isDark ? 'text-gray-500 hover:text-white hover:bg-gray-700/50' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200/50'"
-            @click="emit('cancel', dontAskAgain)"
+            @click="emit('cancel')"
           >
             <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -205,19 +201,16 @@ const payloadKind = computed(() => {
           {{ t('pasteInterceptRepeatHint') }}
         </p>
 
-        <!-- Applies to whichever button is pressed: it is about the site, not
-             about this one paste. Nothing to turn off while there is no verdict. -->
-        <label v-if="status === 'unfamiliar'" class="flex items-start gap-2 mb-4 cursor-pointer">
-          <input
-            v-model="dontAskAgain"
-            type="checkbox"
-            class="dont-ask-box flex-shrink-0"
-            style="accent-color: #3b82f6;"
-          >
-          <span class="dialog-label" :class="isDark ? 'text-gray-300' : 'text-gray-600'">
-            {{ t('pasteInterceptDontAskAgain') }}
-          </span>
-        </label>
+        <!--
+          Where a tickbox used to be, and for the reason given in `InputWarning`:
+          it silenced the site for good, and this dialog is raised mid-paste,
+          with the reader in a hurry and a page free to tell them which box to
+          tick. Saying where the switch is costs the same one line and cannot be
+          aimed. Nothing to say while there is no verdict.
+        -->
+        <p v-if="status === 'unfamiliar'" class="dialog-label mb-4" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+          {{ t('warningSilenceHint') }}
+        </p>
 
         <!-- Action buttons. Refusing is named rather than left to the close cross:
              this dialog interrupts a real action, so the way out of it has to be
@@ -238,7 +231,7 @@ const payloadKind = computed(() => {
           ref="safeButton"
           class="w-full px-4 py-2.5 rounded-lg border transition-colors dialog-button"
           :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
-          @click="emit('allow', false)"
+          @click="emit('allow')"
         >
           {{ t('pasteInterceptUnderstood') }}
         </button>
@@ -247,14 +240,14 @@ const payloadKind = computed(() => {
             ref="safeButton"
             class="flex-1 px-4 py-2.5 rounded-lg border transition-colors dialog-button"
             :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
-            @click="emit('cancel', dontAskAgain)"
+            @click="emit('cancel')"
           >
             {{ t('pasteInterceptCancel') }}
           </button>
           <button
             class="flex-1 px-4 py-2.5 rounded-lg border transition-colors dialog-button"
             :class="isDark ? 'bg-red-900/40 border-red-700 hover:bg-red-800/50 text-white' : 'bg-red-600 border-red-600 hover:bg-red-700 text-white'"
-            @click="emit('allow', dontAskAgain)"
+            @click="emit('allow')"
           >
             {{ t('pasteInterceptAllow') }}
           </button>
@@ -264,7 +257,7 @@ const payloadKind = computed(() => {
           ref="safeButton"
           class="w-full px-4 py-2.5 rounded-lg border transition-colors dialog-button"
           :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
-          @click="emit('cancel', false)"
+          @click="emit('cancel')"
         >
           {{ t('pasteInterceptCancel') }}
         </button>
@@ -287,15 +280,6 @@ button {
 .close-x,
 .reveal-btn {
   border: none !important;
-}
-
-/* `all: initial` on the shadow host strips checkboxes down to nothing */
-.dont-ask-box {
-  width: 15px !important;
-  height: 15px !important;
-  margin: 1px 0 0 0 !important;
-  appearance: auto !important;
-  -webkit-appearance: checkbox !important;
 }
 
 .dialog-container {

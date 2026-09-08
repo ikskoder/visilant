@@ -62,7 +62,10 @@ function updateTranslations() {
     'antiTamperingParentRule',
     'ignoredSiteNotice',
     'ignoredSiteResume',
+    'ignoredSiteSilence',
     'ignoredSiteTooltip',
+    'warningsActiveNotice',
+    'warningsActiveTooltip',
     'antiTamperingDisableForSite',
     'antiTamperingEnableForSite',
     'antiTamperingTooltipWhat',
@@ -222,12 +225,23 @@ const isIgnoredHost = computed(() => {
   return Boolean(host && (visits.value[host] as SiteVisitData | undefined)?.ignored)
 })
 
-async function resumeWarnings() {
+/**
+ * Turning the warnings for this host off and back on.
+ *
+ * Off used to be a button inside the warning itself, on the page the warning
+ * was about. A page cannot press it – the in-page UI is in a closed shadow root
+ * – but it does not have to: writing "press Don't show again to continue" next
+ * to it was enough, and one honest click silenced the guard on the attacker's
+ * own hostname for good. Here the page has no such reach. It cannot draw in
+ * this window, script it, or know it was opened, and the name being silenced is
+ * the one this window spells out rather than the one the page claims.
+ */
+async function setWarnings(ignored: boolean) {
   const host = currentHostname.value
   if (!host)
     return
 
-  await browser.runtime.sendMessage({ type: 'ignore-site', data: { hostname: host, ignored: false } })
+  await browser.runtime.sendMessage({ type: 'ignore-site', data: { hostname: host, ignored } })
   await loadDomainData(host)
 }
 
@@ -741,22 +755,30 @@ onMounted(async () => {
             there is a claim about nothing. The exclusion list stays reachable
             from the details page and from the settings either way.
           -->
-          <!-- Only when there is something to undo. A row that always said
-               "warnings are on" would be one more line on a page that is short
-               of room, and it says nothing the rest of the panel does not. -->
-          <div v-if="!isCheckPage && isIgnoredHost" class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <div class="flex items-center gap-1.5 cursor-help" :title="translations.ignoredSiteTooltip">
-              <div class="w-2 h-2 rounded-full flex-shrink-0 bg-amber-400" />
-              <span style="font-size: 0.8em;" class="text-amber-600">
-                {{ translations.ignoredSiteNotice }}
+          <!-- Shown either way round now, and not only when there is something
+               to undo. This is the only place the warnings can be turned off at
+               all, so a row that appeared solely once they were off would leave
+               the switch with nowhere to live. It costs the line the row below
+               already spends on the same shape. -->
+          <div v-if="!isCheckPage" class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div
+              class="flex items-center gap-1.5 cursor-help"
+              :title="isIgnoredHost ? translations.ignoredSiteTooltip : translations.warningsActiveTooltip"
+            >
+              <div
+                class="w-2 h-2 rounded-full flex-shrink-0"
+                :class="isIgnoredHost ? 'bg-amber-400' : 'bg-green-500'"
+              />
+              <span style="font-size: 0.8em;" :class="isIgnoredHost ? 'text-amber-600' : 'text-gray-400'">
+                {{ isIgnoredHost ? translations.ignoredSiteNotice : translations.warningsActiveNotice }}
               </span>
             </div>
             <button
               class="text-blue-500 hover:text-blue-700 hover:underline transition-colors" style="font-size: 0.8em;"
-              :title="translations.ignoredSiteTooltip"
-              @click="resumeWarnings"
+              :title="isIgnoredHost ? translations.warningsActiveTooltip : translations.ignoredSiteTooltip"
+              @click="setWarnings(!isIgnoredHost)"
             >
-              {{ translations.ignoredSiteResume }}
+              {{ isIgnoredHost ? translations.ignoredSiteResume : translations.ignoredSiteSilence }}
             </button>
           </div>
 

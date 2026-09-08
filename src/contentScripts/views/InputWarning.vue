@@ -18,7 +18,6 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'ignoreSite'): void
 }>()
 
 const { t } = useI18n()
@@ -85,16 +84,25 @@ const { t } = useI18n()
             </ul>
           </div>
 
-          <!-- Actions -->
-          <div class="mt-3 flex items-center">
-            <button
-              class="duration-200 flex items-center space-x-1 group px-3 py-2 rounded-lg"
-              :class="isDark ? 'text-black bg-white' : 'text-white bg-red-600 hover:bg-red-700'"
-              @click="emit('ignoreSite')"
-            >
-              <span class="group-hover:underline">{{ t('dontShowAgain') }}</span>
-            </button>
-          </div>
+          <!--
+            A line, and deliberately not a button.
+
+            This used to be "Don't show again", one click from silencing every
+            warning about the site for good. The page cannot press it – the
+            shadow root is closed, so there is no path from the page to this
+            button – but it does not need to. It only has to write "press Don't
+            show again to continue" somewhere above, and an honest reader
+            silences the guard on the attacker's own hostname themselves.
+
+            So the switch moved to the popup, which is browser chrome: a page
+            cannot draw over it, script it, or know it was opened, and the
+            reader decides while looking at our description of the site rather
+            than at the page's. The last sentence is here to be read at exactly
+            the moment such an instruction would be.
+          -->
+          <p class="mt-3 leading-relaxed" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+            {{ t('warningSilenceHint') }}
+          </p>
         </div>
       </div>
     </div>

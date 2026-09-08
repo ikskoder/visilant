@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import browser from 'webextension-polyfill'
+import CheckField from '../CheckField.vue'
 import Popup from '../Popup.vue'
 
 // The details page is opened for a link's hostname or an email's domain, which
@@ -94,6 +95,87 @@ describe('popup as a standalone page', () => {
     const wrapper = await mountForDomain('never-visited.example')
 
     expect(wrapper.text()).not.toContain('activeDaysLabel')
+  })
+})
+
+/**
+ * The switch that used to be a button inside the in-page warning.
+ *
+ * It moved here because a page cannot reach into this window: it cannot draw
+ * over it, script it, or tell the reader to press something in it while they
+ * are looking at the page. So this is now the only place warnings can be turned
+ * off, which is why the row has to be here whichever way it is set.
+ */
+describe('turning the warnings off for a site', () => {
+  it('offers the switch on a site that is not silenced', async () => {
+    stubLocalStorage({ 'example.com': record })
+    const wrapper = await mountForDomain('example.com')
+
+    expect(wrapper.text()).toContain('warningsActiveNotice')
+    expect(wrapper.text()).toContain('ignoredSiteSilence')
+    expect(wrapper.text()).not.toContain('ignoredSiteNotice')
+  })
+
+  it('offers the way back on a site that is', async () => {
+    stubLocalStorage({ 'example.com': { ...record, ignored: true } })
+    const wrapper = await mountForDomain('example.com')
+
+    expect(wrapper.text()).toContain('ignoredSiteNotice')
+    expect(wrapper.text()).toContain('ignoredSiteResume')
+    expect(wrapper.text()).not.toContain('ignoredSiteSilence')
+  })
+
+  it('asks the background to silence the host, and not some parent of it', async () => {
+    stubLocalStorage({ 'shop.example.com': record })
+    const sent = vi.spyOn(browser.runtime, 'sendMessage').mockResolvedValue(undefined as never)
+    const wrapper = await mountForDomain('shop.example.com')
+
+    const button = wrapper.findAll('button').find(b => b.text() === 'ignoredSiteSilence')!
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(sent).toHaveBeenCalledWith({
+      type: 'ignore-site',
+      data: { hostname: 'shop.example.com', ignored: true },
+    })
+  })
+
+  it('asks the background to lift it again', async () => {
+    stubLocalStorage({ 'example.com': { ...record, ignored: true } })
+    const sent = vi.spyOn(browser.runtime, 'sendMessage').mockResolvedValue(undefined as never)
+    const wrapper = await mountForDomain('example.com')
+
+    const button = wrapper.findAll('button').find(b => b.text() === 'ignoredSiteResume')!
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(sent).toHaveBeenCalledWith({
+      type: 'ignore-site',
+      data: { hostname: 'example.com', ignored: false },
+    })
+  })
+
+  /**
+   * The name here was typed into a field rather than visited, so there is no
+   * site this window is about and nothing to silence.
+   *
+   * Checked after a name has been entered, not on the empty page: with the
+   * field still blank there is no hostname and the whole panel is absent, so
+   * an empty page would pass this whether the check-page rule existed or not.
+   */
+  it('keeps the switch off the check page', async () => {
+    stubLocalStorage({ 'example.com': record })
+    window.history.replaceState({}, '', '/dist/popup/index.html?check=1')
+    const wrapper = mount(Popup)
+    await flushPromises()
+
+    wrapper.findComponent(CheckField).vm.$emit('checked-domain', 'example.com')
+    await flushPromises()
+
+    // The panel is up – the facts are there – and the switch still is not
+    expect(wrapper.text()).toContain('activeDaysLabel')
+    expect(wrapper.text()).not.toContain('ignoredSiteSilence')
+    expect(wrapper.text()).not.toContain('warningsActiveNotice')
   })
 })
 

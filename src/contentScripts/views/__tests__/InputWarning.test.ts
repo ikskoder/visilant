@@ -45,11 +45,20 @@ describe('inputWarning component', () => {
     expect(wrapper.emitted('close')).toBeTruthy()
   })
 
-  it('emits ignoreSite when "dont show again" is clicked', async () => {
+  /**
+   * The whole point of the change: silencing a site is not reachable from the
+   * page the warning is about. A page cannot press a button in a closed shadow
+   * root, but it can tell the reader to, so there is no button to be told about.
+   * The only control left here closes the warning, which decides nothing.
+   */
+  it('offers nothing that turns the warnings off', () => {
     const wrapper = mount(InputWarning, { props: defaultProps })
-    // The ignore button is the first button with group class
-    const ignoreBtn = wrapper.find('button.group')
-    await ignoreBtn.trigger('click')
-    expect(wrapper.emitted('ignoreSite')).toBeTruthy()
+    expect(wrapper.findAll('button')).toHaveLength(1)
+    expect(wrapper.find('button.flex-shrink-0').exists()).toBe(true)
+  })
+
+  it('says where the switch actually is', () => {
+    const wrapper = mount(InputWarning, { props: defaultProps })
+    expect(wrapper.text()).toContain('warningSilenceHint')
   })
 })

@@ -90,25 +90,11 @@ async function checkSiteSafety() {
   safetyLevel.value = isFamiliar(visitData, normalizeFamiliarity(settings.value.familiarity))
 }
 
-// Handle ignoring site
-async function ignoreSite() {
-  if (!hostname.value) {
-    // Fallback: Get hostname from current URL if not set
-    hostname.value = new URL(window.location.href).hostname
-  }
-  if (!hostname.value)
-    return
-
-  // Send message to background script to ignore the site
-  const response = await sendMessageSafe('ignore-site', { hostname: hostname.value })
-
-  // If the operation was successful, update local state
-  if (response === 'Site ignored successfully') {
-    isIgnored.value = true
-    // Hide warning
-    showWarning.value = false
-  }
-}
+// Nothing here turns the warnings off any more. Silencing a site is a decision
+// the page must not be able to steer, and every surface in this document is
+// drawn over a page that can write instructions next to it – see the note in
+// `InputWarning`. The switch is in the popup, and `isIgnored` is now only ever
+// read: the background tells this document what the popup decided.
 
 // Link tooltip handlers
 function handleTooltipHoverEnter() {
@@ -173,17 +159,13 @@ function handleInterceptCancel() {
 
 // Paste intercept handlers. The promise is the paste itself waiting to happen,
 // so it always has to be settled, whichever button was pressed.
-async function resolvePasteIntercept(allowed: boolean, dontAskAgain: boolean) {
+function resolvePasteIntercept(allowed: boolean) {
   pasteInterceptVisible.value = false
   pasteInterceptData.value = null
   if (pasteInterceptResolve.value) {
     pasteInterceptResolve.value(allowed)
     pasteInterceptResolve.value = null
   }
-  // The same per-site switch the warning banner offers, reached from here so the
-  // user does not have to hunt for it after being interrupted
-  if (dontAskAgain)
-    await ignoreSite()
 }
 
 function handleResolveInterceptUrl() {
@@ -219,7 +201,6 @@ onMounted(async () => {
       :frame-host="warningFrameHost"
       :is-dark="isDark"
       @close="showWarning = false"
-      @ignore-site="ignoreSite"
     />
 
     <LinkTooltip
@@ -265,8 +246,8 @@ onMounted(async () => {
       :visible="pasteInterceptVisible"
       :data="pasteInterceptData"
       :is-dark="isDark"
-      @allow="(dontAskAgain) => resolvePasteIntercept(true, dontAskAgain)"
-      @cancel="(dontAskAgain) => resolvePasteIntercept(false, dontAskAgain)"
+      @allow="resolvePasteIntercept(true)"
+      @cancel="resolvePasteIntercept(false)"
       @details="handleTooltipDetails"
     />
   </div>
