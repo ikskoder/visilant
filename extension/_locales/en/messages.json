@@ -91,6 +91,18 @@
     "message": "Known for",
     "description": "Title of the first-visit age criterion"
   },
+  "familiarityVisitsCompact": {
+    "message": "At least {n} visits",
+    "description": "The visit-count criterion as one sentence, used when explanations are switched off. {n} is where the number box goes, and may sit anywhere in the sentence."
+  },
+  "familiarityActiveDaysCompact": {
+    "message": "At least {n} active days",
+    "description": "The active-days criterion as one sentence, used when explanations are switched off. {n} is where the number box goes."
+  },
+  "familiarityAgeCompact": {
+    "message": "Known for at least {n} days",
+    "description": "The first-visit age criterion as one sentence, used when explanations are switched off. {n} is where the number box goes."
+  },
   "familiarityAgeDesc": {
     "message": "How long ago your first recorded visit was. A domain registered last week cannot clear this one at all.",
     "description": "Description of the first-visit age criterion"

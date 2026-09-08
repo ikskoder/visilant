@@ -67,6 +67,9 @@ function updateTranslations() {
     'familiarityActiveDaysDesc',
     'familiarityAge',
     'familiarityAgeDesc',
+    'familiarityVisitsCompact',
+    'familiarityActiveDaysCompact',
+    'familiarityAgeCompact',
     'familiarityAtLeastLabel',
     'familiarityVisitsUnit',
     'familiarityDaysUnit',
@@ -727,15 +730,35 @@ const badgeContentOptions = computed(() => [
 const shownBadgeContent = computed(() => resolveBadgeContent(settings.value.badgeContent, familiarity.value))
 
 /** One row per criterion, in the order they are shown. */
-const familiarityRows = computed(() => FAMILIARITY_CRITERIA.map(id => ({
-  id,
-  criterion: familiarity.value[id],
-  title: translations.value[`familiarity${id[0].toUpperCase()}${id.slice(1)}`],
-  description: translations.value[`familiarity${id[0].toUpperCase()}${id.slice(1)}Desc`],
-  unit: id === 'visits' ? translations.value.familiarityVisitsUnit : translations.value.familiarityDaysUnit,
-  // Only the visit count is recorded for every site from the start
-  needsImport: id !== 'visits',
-})))
+const familiarityRows = computed(() => FAMILIARITY_CRITERIA.map((id) => {
+  const key = `familiarity${id[0].toUpperCase()}${id.slice(1)}`
+
+  /**
+   * The same criterion as one sentence, for when explanations are switched off.
+   *
+   * Written as a whole sentence with the number box marked in it rather than
+   * assembled from the title and the unit, because assembling it only works in
+   * a language that puts those words in that order. Split here so the box can
+   * sit wherever the translation puts `{n}`.
+   */
+  const sentence = translations.value[`${key}Compact`] ?? ''
+  const [before = '', after = ''] = sentence.split('{n}')
+  const unit = id === 'visits' ? translations.value.familiarityVisitsUnit : translations.value.familiarityDaysUnit
+
+  return {
+    id,
+    criterion: familiarity.value[id],
+    title: translations.value[key],
+    description: translations.value[`${key}Desc`],
+    unit,
+    // A locale without the sentence falls back to the words the long form uses,
+    // which reads a little flatter and is still a rule rather than a bare box
+    compactBefore: sentence ? before.trim() : translations.value.familiarityAtLeastLabel,
+    compactAfter: sentence ? after.trim() : unit,
+    // Only the visit count is recorded for every site from the start
+    needsImport: id !== 'visits',
+  }
+}))
 
 /** The rule in one sentence, above the checkboxes that spell it out. */
 const familiaritySummary = computed(() => {
@@ -1290,33 +1313,57 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 : 'border-gray-200 dark:border-gray-700'"
               @click="onCriterionCardClick(row.id, $event)"
             >
-              <!-- Not a label any more: the card around it is the click target,
-                   and a label would toggle a second time on its way there -->
-              <div class="flex items-start gap-2">
+              <!--
+                Two shapes of the same card. With explanations on, the name and
+                its paragraph stand above the threshold, which is how a setting
+                being read for the first time wants to be laid out. With them
+                off, the name is not dropped but folded into the threshold line,
+                so the card says the whole rule in a sentence instead of leaving
+                a heading over a number.
+
+                This one cannot be done by hiding a `hint` like the rest of the
+                page, because nothing is being hidden – three elements become
+                one line. The number box is still written once, and only what
+                stands either side of it changes.
+
+                Not a label any more: the card around it is the click target,
+                and a label would toggle a second time on its way there.
+              -->
+              <div class="flex gap-2" :class="settings.verboseOptions ? 'items-start' : 'items-center'">
                 <input
-                  type="checkbox" class="mt-1 h-4 w-4 pointer-events-none"
+                  type="checkbox" class="h-4 w-4 flex-shrink-0 pointer-events-none"
+                  :class="{ 'mt-1': settings.verboseOptions }"
                   :checked="row.criterion.enabled"
                   :disabled="row.criterion.enabled && familiarityEnabledCount <= 1"
                   :aria-label="row.title"
                   :title="row.criterion.enabled && familiarityEnabledCount <= 1 ? translations.familiarityKeepOne : undefined"
                   @change="toggleCriterion(row.id)"
                 >
-                <span>
-                  <span class="text-sm font-medium">{{ row.title }}</span>
-                  <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ row.description }}</span>
-                </span>
-              </div>
+                <div class="flex-1">
+                  <span v-if="settings.verboseOptions">
+                    <span class="text-sm font-medium">{{ row.title }}</span>
+                    <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ row.description }}</span>
+                  </span>
 
-              <div class="flex items-center gap-2 mt-2 ml-6" :class="{ 'opacity-50': !row.criterion.enabled }">
-                <span class="text-sm">{{ translations.familiarityAtLeastLabel }}</span>
-                <input
-                  :value="row.criterion.min" type="number" min="1"
-                  :disabled="!row.criterion.enabled"
-                  class="w-14 px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-text"
-                  @input="updateCriterionMin(row.id, ($event.target as HTMLInputElement).value)"
-                  @blur="restoreCriterionMin(row.id, $event.target as HTMLInputElement)"
-                >
-                <span class="text-sm text-gray-500 dark:text-gray-400">{{ row.unit }}</span>
+                  <div
+                    class="flex items-center gap-2"
+                    :class="[{ 'opacity-50': !row.criterion.enabled }, settings.verboseOptions ? 'mt-2' : '']"
+                  >
+                    <span class="text-sm">
+                      {{ settings.verboseOptions ? translations.familiarityAtLeastLabel : row.compactBefore }}
+                    </span>
+                    <input
+                      :value="row.criterion.min" type="number" min="1"
+                      :disabled="!row.criterion.enabled"
+                      class="w-14 px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-text"
+                      @input="updateCriterionMin(row.id, ($event.target as HTMLInputElement).value)"
+                      @blur="restoreCriterionMin(row.id, $event.target as HTMLInputElement)"
+                    >
+                    <span class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ settings.verboseOptions ? row.unit : row.compactAfter }}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -2266,8 +2313,15 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
              a row would push the settings off centre on every window wide
              enough to show the contents. Last child and out of the flow, so the
              column above is laid out exactly as it was without it – hence the
-             forced margin reset, which the column's own spacing would undo. -->
-        <div class="hidden xl:block absolute right-full top-0 h-full w-64 pr-8 !mt-0">
+             forced margin reset, which the column's own spacing would undo.
+
+             Sized to the longest entry rather than to a fixed column. A set
+             width left every row stretched far past its own text, which put the
+             highlight on the section in view around mostly empty space and read
+             as a gap rather than as a mark. The cap is there for a translation
+             with longer names, which wraps instead of reaching for the window
+             edge. -->
+        <div class="hidden xl:block absolute right-full top-0 h-full w-max max-w-64 pr-8 !mt-0">
           <SectionNav
             :sections="sections" :active-id="activeSection"
             :heading="translations.onThisPage" class="sticky top-10"
