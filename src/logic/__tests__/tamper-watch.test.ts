@@ -3,13 +3,36 @@
  * control case has to keep passing for the rest to mean anything: if plain
  * removal ever stops being caught, the others are testing nothing.
  */
-import type { TamperReason } from '../tamper-watch'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { TamperReason, TamperWatch, TamperWatchOptions } from '../tamper-watch'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyHostStyles, createTamperWatch, HOST_STYLES, isHiddenByAncestor, isHostStyleIntact, isVisuallyHidden } from '../tamper-watch'
 
 function settle() {
   return new Promise(resolve => setTimeout(resolve, 0))
 }
+
+/** The confirmation window every watch here is built with. */
+const CONFIRM_MS = 5
+
+/**
+ * Every watch made here, so `afterEach` can put it down.
+ *
+ * A watch left running keeps its observers on `document.documentElement`, which
+ * survives the reset between cases – so it went on reporting into the previous
+ * case's mock, and was still repairing a container out of a window jsdom had
+ * already taken apart.
+ */
+const live: TamperWatch[] = []
+
+function makeWatch(options: TamperWatchOptions): TamperWatch {
+  const w = createTamperWatch(options)
+  live.push(w)
+  return w
+}
+
+afterEach(() => {
+  live.splice(0).forEach(w => w.stop())
+})
 
 function mountContainer() {
   const container = document.createElement('div')
@@ -35,13 +58,50 @@ describe('tamperWatch', () => {
   })
 
   function watch(parts: ReturnType<typeof mountContainer>) {
-    return createTamperWatch({
+    return makeWatch({
       container: parts.container,
       shadow: parts.shadow,
       guardedNodes: [parts.root, parts.styleEl],
       onTamper,
       isSelfRemoving: () => selfRemoving,
+      // Short enough to run in real time. The logic counts windows, not
+      // milliseconds, so the length of one changes nothing it decides.
+      repairConfirmMs: CONFIRM_MS,
     })
+  }
+
+  /** Let one confirmation window open and close. */
+  function confirmWindow() {
+    return new Promise(resolve => setTimeout(resolve, CONFIRM_MS * 2))
+  }
+
+  /** Long enough for every window the watch is willing to give. */
+  function allWindows() {
+    return new Promise(resolve => setTimeout(resolve, CONFIRM_MS * 10))
+  }
+
+  /**
+   * A page that will not have the container on it.
+   *
+   * Every time the repair puts it back, this takes it away again – and takes a
+   * node of its own along, so it never looks like the singled-out case and has
+   * to be caught the patient way, by the repair failing to hold. This is the
+   * shape of a page that actually means it, as opposed to a router, which
+   * removes the container once and then leaves it alone.
+   */
+  function keepsFighting(container: HTMLElement, strike: () => void) {
+    // The watch is what has to end this exchange, by giving up on the repair
+    // once the page is clearly in a loop. The budget is only here so a watch
+    // that stops doing that fails the run instead of hanging it.
+    let budget = 500
+    const enemy = new MutationObserver(() => {
+      if (budget > 0 && document.body?.contains(container)) {
+        budget -= 1
+        strike()
+      }
+    })
+    enemy.observe(document.documentElement, { childList: true, subtree: true })
+    return () => enemy.disconnect()
   }
 
   it('control: catches the container being removed', async () => {
@@ -76,24 +136,61 @@ describe('tamperWatch', () => {
     expect(isHostStyleIntact(parts.container)).toBe(true)
   })
 
-  it('catches the document body being replaced under it', async () => {
+  it('catches a body that is replaced out from under it over and over', async () => {
     const parts = mountContainer()
     watch(parts)
+    const done = keepsFighting(parts.container, () => {
+      document.documentElement.replaceChild(document.createElement('body'), document.body)
+    })
 
     document.documentElement.replaceChild(document.createElement('body'), document.body)
-    await settle()
+    await allWindows()
+    done()
 
     expect(onTamper).toHaveBeenCalledWith('document-replaced')
   })
 
-  it('catches the whole document element being wiped', async () => {
+  it('catches a body that is cleared and cleared again', async () => {
     const parts = mountContainer()
     watch(parts)
+    const done = keepsFighting(parts.container, () => {
+      document.body.innerHTML = '<p></p>'
+    })
 
-    document.documentElement.innerHTML = '<head></head><body>gone</body>'
-    await settle()
+    document.body.appendChild(document.createElement('p'))
+    document.body.innerHTML = '<p></p>'
+    await allWindows()
+    done()
 
-    expect(onTamper).toHaveBeenCalledWith('document-replaced')
+    expect(onTamper).toHaveBeenCalledWith('removed')
+  })
+
+  // Between the two ways of being caught there is a rate that is neither: too
+  // steady to be a router, too slow to be the loop the burst cap ends. This is
+  // the band the confirmation windows are for, and the only thing that shows it
+  // is that the panel never gets to stay where it was put.
+  it('catches a page keeping at it below the burst cap', async () => {
+    const slow = 20
+    const parts = mountContainer()
+    makeWatch({
+      container: parts.container,
+      shadow: parts.shadow,
+      guardedNodes: [parts.root, parts.styleEl],
+      onTamper,
+      isSelfRemoving: () => selfRemoving,
+      repairConfirmMs: slow,
+    })
+    document.body.appendChild(document.createElement('p'))
+
+    // Roughly two strikes to a window, and the page's own node goes each time,
+    // so none of them is the singled-out case either
+    const beat = setInterval(() => {
+      document.body.innerHTML = '<p></p>'
+    }, slow / 2)
+    await new Promise(resolve => setTimeout(resolve, slow * 8))
+    clearInterval(beat)
+
+    expect(onTamper).toHaveBeenCalledWith('removed')
   })
 
   it('catches the shadow tree being gutted', async () => {
@@ -128,6 +225,204 @@ describe('tamperWatch', () => {
     await settle()
 
     expect(onTamper).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops on browser pagehide and protects a fresh restored mount', async () => {
+    const spy = vi.spyOn(window, 'addEventListener')
+    const parts = mountContainer()
+    const w = watch(parts)
+    const handler = spy.mock.calls.find(([type]) => type === 'pagehide')![1] as EventListener
+    spy.mockRestore()
+    handler({ isTrusted: true, persisted: true } as PageTransitionEvent)
+    parts.container.remove()
+    await settle()
+    expect(onTamper).not.toHaveBeenCalled()
+    w.stop()
+
+    const restored = mountContainer()
+    const next = watch(restored)
+    restored.container.remove()
+    await settle()
+    expect(onTamper).toHaveBeenCalledWith('removed')
+    next.stop()
+  })
+
+  it('ignores synthetic pagehide events', async () => {
+    const parts = mountContainer()
+    const w = watch(parts)
+    window.dispatchEvent(new Event('pagehide'))
+    parts.container.remove()
+    await settle()
+    expect(onTamper).toHaveBeenCalledWith('removed')
+    w.stop()
+  })
+
+  it('defers visual checks until the document is visible', () => {
+    vi.useFakeTimers()
+    const visibility = vi.spyOn(document, 'visibilityState', 'get')
+    const parts = mountContainer()
+    const w = watch(parts)
+    try {
+      document.body.style.opacity = '0'
+      visibility.mockReturnValue('hidden')
+      w.setUiVisible(true)
+      vi.advanceTimersByTime(3000)
+      expect(onTamper).not.toHaveBeenCalled()
+      visibility.mockReturnValue('visible')
+      vi.advanceTimersByTime(3000)
+      expect(onTamper).toHaveBeenCalledWith('hidden')
+    }
+    finally {
+      w.stop()
+      visibility.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it('puts the container back into the body it was taken out of', async () => {
+    const parts = mountContainer()
+    const w = watch(parts)
+
+    parts.container.remove()
+    await settle()
+
+    expect(onTamper).toHaveBeenCalledWith('removed')
+    // Reported and repaired, the same way a stripped style attribute is
+    expect(document.body.contains(parts.container)).toBe(true)
+    w.stop()
+  })
+
+  it('puts the container into the new body after a swap, and keeps watching it', async () => {
+    const parts = mountContainer()
+    const w = watch(parts)
+
+    document.documentElement.replaceChild(document.createElement('body'), document.body)
+    await settle()
+    expect(document.body.contains(parts.container)).toBe(true)
+
+    // The watch used to be left observing the body that had just been thrown
+    // away, so nothing the page did to the new one was ever seen again. A plain
+    // removal is the proof: only the body watch catches that, and it has to be
+    // on the body the container is in now for this to be caught at all.
+    document.body.removeChild(parts.container)
+    await settle()
+    expect(onTamper).toHaveBeenCalledWith('removed')
+    expect(document.body.contains(parts.container)).toBe(true)
+    w.stop()
+  })
+
+  // The false alarm all of this exists for: going back or forward on a site that
+  // draws its own pages swaps the body for the one belonging to the new route,
+  // and our container goes with it
+  it('stays quiet when a body swap lets the repair stand', async () => {
+    const parts = mountContainer()
+    const w = watch(parts)
+
+    document.documentElement.replaceChild(document.createElement('body'), document.body)
+    await settle()
+    await confirmWindow()
+
+    expect(onTamper).not.toHaveBeenCalled()
+    // Quiet, but never absent: the panel is back on the page the router drew
+    expect(document.body.contains(parts.container)).toBe(true)
+    w.stop()
+  })
+
+  it('allows a route that renders itself twice over', async () => {
+    const parts = mountContainer()
+    const w = watch(parts)
+
+    // One window with two losses in it, which a framework hydrating over its own
+    // first render produces. A single bad window is not a verdict.
+    document.documentElement.replaceChild(document.createElement('body'), document.body)
+    await settle()
+    document.documentElement.replaceChild(document.createElement('body'), document.body)
+    await settle()
+    await allWindows()
+
+    expect(onTamper).not.toHaveBeenCalled()
+    expect(document.body.contains(parts.container)).toBe(true)
+    w.stop()
+  })
+
+  it('stays quiet through a run of navigations, however fast they come', async () => {
+    const parts = mountContainer()
+    const w = watch(parts)
+
+    // Somebody leaning on the back button. Each one is a single loss that the
+    // repair survives, which is the whole difference from the case above.
+    for (let i = 0; i < 10; i++) {
+      document.documentElement.replaceChild(document.createElement('body'), document.body)
+      await settle()
+      await confirmWindow()
+    }
+
+    expect(onTamper).not.toHaveBeenCalled()
+    expect(document.body.contains(parts.container)).toBe(true)
+    w.stop()
+  })
+
+  it('will not be quietened by a page that changes its address first', async () => {
+    const parts = mountContainer()
+    const w = watch(parts)
+    // Changing the address used to buy a page one silent removal, and it could
+    // change the address as often as it liked. Nothing reads it any more.
+    const done = keepsFighting(parts.container, () => {
+      history.pushState({}, '', `/route-${Date.now()}`)
+      document.body.innerHTML = '<p></p>'
+    })
+
+    history.pushState({}, '', '/route-first')
+    document.body.appendChild(document.createElement('p'))
+    document.body.innerHTML = '<p></p>'
+    await allWindows()
+    done()
+
+    expect(onTamper).toHaveBeenCalledWith('removed')
+    w.stop()
+  })
+
+  it('says so at once when the container alone is picked out of a full body', async () => {
+    const parts = mountContainer()
+    const w = watch(parts)
+    document.body.appendChild(document.createElement('p'))
+
+    // No router reaches past a page's own nodes for one injected element, so
+    // this one does not get the benefit of the doubt
+    parts.container.remove()
+    await settle()
+
+    expect(onTamper).toHaveBeenCalledWith('removed')
+    expect(document.body.contains(parts.container)).toBe(true)
+    w.stop()
+  })
+
+  it('gives the benefit of the doubt to a body cleared of everything', async () => {
+    const parts = mountContainer()
+    const w = watch(parts)
+    document.body.appendChild(document.createElement('p'))
+
+    // Our container went, but so did the page's own – this is a render, not aim
+    document.body.innerHTML = ''
+    await settle()
+    await confirmWindow()
+
+    expect(onTamper).not.toHaveBeenCalled()
+    expect(document.body.contains(parts.container)).toBe(true)
+    w.stop()
+  })
+
+  it('does not repair while the extension is taking its own UI down', async () => {
+    const parts = mountContainer()
+    const w = watch(parts)
+
+    selfRemoving = true
+    parts.container.remove()
+    await settle()
+
+    expect(onTamper).not.toHaveBeenCalled()
+    expect(document.body.contains(parts.container)).toBe(false)
+    w.stop()
   })
 
   it('verify() reports the current state without waiting for a mutation', () => {
@@ -217,7 +512,7 @@ describe('the watch after it has said something', () => {
   })
 
   function watchWith(container: HTMLElement, shadow: HTMLElement) {
-    return createTamperWatch({
+    return makeWatch({
       container,
       shadow,
       guardedNodes: [],

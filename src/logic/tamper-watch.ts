@@ -14,6 +14,20 @@
  * The first two are structural and are watched all the time. The last one costs
  * a hit test, so it only runs while our own UI is actually on screen. Nothing is
  * hidden at that moment means nothing was hidden.
+ *
+ * All of it is repaired before it is reported – the guard styles go back on the
+ * container, the container goes back into the body – because a warning about a
+ * panel that is still missing is worth less than one the user can read while it
+ * is on the screen in front of them.
+ *
+ * The repair is also what decides whether there is anything to report. A site
+ * that draws its own pages throws its body away on every route it takes, and our
+ * container goes with it, which is the same event as a page tearing the panel
+ * out and is why back and forward used to raise the alarm on sites doing nothing
+ * wrong. What tells the two apart is not the event, it is what happens next: a
+ * router removed the container as a side effect of work it has already finished,
+ * so once it is put back it stays back, while a page that wants the panel gone
+ * has to keep taking it away. See `repairStructure` and `confirmRepair`.
  */
 
 export type TamperReason
@@ -279,6 +293,8 @@ export interface TamperWatchOptions {
   isSelfRemoving: () => boolean
   /** How often to re-check visibility while our UI is on screen. */
   visibleCheckInterval?: number
+  /** How long a repair is given to prove it held – see `confirmRepair`. */
+  repairConfirmMs?: number
 }
 
 export interface TamperWatch {
@@ -294,6 +310,34 @@ const DEFAULT_VISIBLE_CHECK_INTERVAL = 1000
 /** One alarm per page strike, rather than one per mutation it makes. */
 const REPORT_COOLDOWN_MS = 5000
 
+/** How long a repair is given to show that it held. */
+const DEFAULT_REPAIR_CONFIRM_MS = 150
+
+/**
+ * Confirmation windows that may fail in a row before the page is called out.
+ *
+ * Three of them, so the whole verdict is reached inside half a second. The panel
+ * is back on the page for nearly all of that – every window begins by putting it
+ * back – so what this really bounds is how long a page can keep taking it away
+ * again before it is named for it.
+ */
+const REPAIR_WINDOWS = 3
+
+/**
+ * Repairs allowed inside one window before the watch stops putting it back.
+ *
+ * A page can strike from inside a mutation observer of its own, which puts its
+ * removal and our repair on the same microtask queue. Neither of them yields, so
+ * the timer that would end the window never gets to run and the tab locks up –
+ * the repair feeding the very loop it is trying to undo. So the repair gives up
+ * for the rest of the window once a page has shown it is in a loop, which lets
+ * the queue drain, and the window is what lets it try again afterwards.
+ *
+ * Well above what a page renders in one go. A router replaces its body once, or
+ * twice where something hydrates over the top of it.
+ */
+const MAX_REPAIRS_PER_WINDOW = 5
+
 export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
   const { container, shadow, guardedNodes, onTamper, isSelfRemoving } = options
   const doc = container.ownerDocument
@@ -302,6 +346,14 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
   let lastReportAt = 0
   /** An ancestor was found hiding us last time round – see `isHiddenByAncestor`. */
   let ancestorHidPreviously = false
+  /** The confirmation window that is open, if one is – see `confirmRepair`. */
+  let confirmTimer: ReturnType<typeof setTimeout> | null = null
+  /** Structural losses seen since the open window began. */
+  let strikesInWindow = 0
+  /** Windows that ended with the panel still being fought over. */
+  let failedWindows = 0
+  /** What the last structural loss was, for when it comes to be reported. */
+  let structuralReason: TamperReason = 'removed'
 
   /**
    * Say something, and keep watching.
@@ -344,12 +396,21 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
 
   // Removal of the container from the body
   const bodyObserver = new MutationObserver((mutations) => {
+    let lost = false
+    let othersRemoved = 0
     for (const mutation of mutations) {
       mutation.removedNodes.forEach((node) => {
         if (node === container || node.contains?.(container))
-          report('removed')
+          lost = true
+        else
+          othersRemoved += 1
       })
     }
+
+    // One repair for the batch, and the batch is also what says whether we were
+    // singled out: a page clearing its body takes its own nodes with ours.
+    if (lost)
+      repairStructure('removed', othersRemoved === 0)
   })
 
   // Replacement of the body itself, which takes the container off the screen
@@ -357,8 +418,9 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
   // Nothing was removed from anything we watch, so the check is positional:
   // is the container still inside whatever body the document has now.
   const documentObserver = new MutationObserver(() => {
+    // Never singled out: the page's whole body went, ours with it
     if (!isAttached())
-      report('document-replaced')
+      repairStructure('document-replaced', false)
   })
 
   // Rewriting or stripping the inline guard styles
@@ -398,7 +460,125 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
     }
   })
 
+  /**
+   * Put the container back into whatever body the document has now.
+   *
+   * Nothing used to. The watch reported a body swap and then went blind, because
+   * `bodyObserver` was left on a body that is no longer in the document – so the
+   * first swap was the last thing it ever saw, and the panel was gone for the
+   * rest of the visit with nothing to bring it back. Every panel lives inside
+   * the container's shadow root, so moving the container is the whole repair and
+   * the Vue app never notices it happened.
+   */
+  function reattach() {
+    if (stopped || isSelfRemoving() || !doc.body)
+      return
+
+    if (!doc.body.contains(container))
+      doc.body.appendChild(container)
+
+    // Point at the body that is there now. Observing the same node twice is a
+    // no-op, so an ordinary removal costs nothing here.
+    bodyObserver.disconnect()
+    bodyObserver.observe(doc.body, { childList: true })
+  }
+
+  /**
+   * The container is off the page. Put it back, and work out whether that was
+   * worth an alarm.
+   *
+   * Two questions, and neither of them is "where is the page". Asking the
+   * address was the obvious way to tell a router apart from an attack, and it is
+   * the wrong one: a page can change its address as often as it likes, so every
+   * alarm was one `pushState` away from being suppressed.
+   *
+   * The first question is whether we were singled out. A site drawing its next
+   * page throws its own body away and ours goes with it. Nothing reaches past a
+   * page's own nodes to take out one injected element and leave the rest of the
+   * page standing – that is not something a router has any reason to do, so it
+   * is said at once.
+   *
+   * The second is asked of everything else, and it is the one that cannot be
+   * talked out of: does the repair hold. A router removes the container once as
+   * a side effect of work it has already finished, so the moment it is put back,
+   * it stays back. A page that wants the panel gone has to keep taking it away,
+   * because we keep putting it there – and having to keep doing it is exactly
+   * what gives it away. That is what `confirmRepair` waits to see.
+   */
+  function repairStructure(reason: TamperReason, singledOut: boolean) {
+    if (stopped || isSelfRemoving())
+      return
+
+    structuralReason = reason
+    strikesInWindow += 1
+    armConfirm()
+
+    // Nothing is in any doubt by now – see `MAX_REPAIRS_PER_WINDOW` for why the
+    // watch has to stop pushing back rather than keep winning the exchange
+    if (strikesInWindow > MAX_REPAIRS_PER_WINDOW) {
+      report(reason)
+      return
+    }
+
+    reattach()
+
+    if (singledOut)
+      report(reason)
+  }
+
+  /**
+   * Did the panel we just put back stay put?
+   *
+   * A window fails on either count: the container is not there at all, or it is
+   * there only because it was put back more than once while the window was open.
+   * Both mean somebody is still pulling at it.
+   *
+   * A single loss inside a window is deliberately not a failure. That is what an
+   * ordinary navigation looks like, and it is also the shape of the one pattern
+   * this cannot catch – a page taking the container out once every window, for
+   * ever. It is not worth catching: the panel is on the page for all but a tick
+   * of that, which is the whole thing the alarm is protecting.
+   */
+  function confirmRepair() {
+    confirmTimer = null
+    if (stopped || isSelfRemoving())
+      return
+
+    const held = isAttached() && strikesInWindow <= 1
+    strikesInWindow = 0
+
+    if (held) {
+      failedWindows = 0
+      return
+    }
+
+    reattach()
+    failedWindows += 1
+    if (failedWindows >= REPAIR_WINDOWS) {
+      failedWindows = 0
+      report(structuralReason)
+      return
+    }
+
+    armConfirm()
+  }
+
+  function armConfirm() {
+    if (confirmTimer === null)
+      confirmTimer = setTimeout(confirmRepair, options.repairConfirmMs ?? DEFAULT_REPAIR_CONFIRM_MS)
+  }
+
+  function resetConfirm() {
+    if (confirmTimer !== null) {
+      clearTimeout(confirmTimer)
+      confirmTimer = null
+    }
+    strikesInWindow = 0
+    failedWindows = 0
+  }
+
   function stopObservers() {
+    resetConfirm()
     bodyObserver.disconnect()
     documentObserver.disconnect()
     attributeObserver.disconnect()
@@ -408,6 +588,35 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
       timer = null
     }
   }
+
+  /**
+   * Stop watching once the document is leaving, cache or no cache.
+   *
+   * A page put into the back-forward cache is frozen with the watch still armed.
+   * Its repeat check and any mutation records it had queued are held, and then
+   * all of them run at once on restore – against a document the browser is
+   * bringing back and the content script is about to take apart and rebuild.
+   * Every one of those looks exactly like the page hiding the panel, which is
+   * why going back or forward raised an alarm that visiting the same site
+   * directly never did. Nothing is left unguarded: the content script builds a
+   * fresh watch when it remounts on a persisted `pageshow`.
+   *
+   * Only a trusted event counts. A page can dispatch a `pagehide` of its own,
+   * and switching the watch off by asking it to would be the easiest way past
+   * everything above.
+   */
+  function onPageHide(event: PageTransitionEvent) {
+    if (event.isTrusted)
+      stop()
+  }
+
+  function stop() {
+    stopped = true
+    stopObservers()
+    doc.defaultView?.removeEventListener('pagehide', onPageHide, true)
+  }
+
+  doc.defaultView?.addEventListener('pagehide', onPageHide, true)
 
   if (doc.body)
     bodyObserver.observe(doc.body, { childList: true })
@@ -434,6 +643,32 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
         if (stopped)
           return
 
+        // Nothing to judge in a document nobody is looking at. A hidden tab is
+        // not laid out, so the rect and the hit test below answer from whatever
+        // was left over rather than from the screen, and a tab backgrounded with
+        // a panel open reported itself hidden or covered on that. The observers
+        // above carry on either way, so removal and a rewritten style attribute
+        // are still caught here. The ancestor count starts again from nothing
+        // when the tab comes back, because a reading taken before it went away
+        // is not a sighting of anything.
+        if (doc.visibilityState === 'hidden') {
+          ancestorHidPreviously = false
+          return
+        }
+
+        // Asked first, and separately, because nothing below can be judged of a
+        // container that is not in the document: there are no ancestors to walk
+        // and no rect to measure. It also has to go through the repair rather
+        // than be reported, or a loss the observers somehow missed would be
+        // announced once a second and never put right.
+        // Nothing here says how the container came to be gone, so this cannot
+        // claim it was singled out and goes the patient way round
+        const structural = checkStructure()
+        if (structural) {
+          repairStructure(structural, false)
+          return
+        }
+
         // Believed only on the second sighting: a page fading its body in, or
         // holding it hidden until a web font loads, looks exactly like this for
         // a moment and is not tampering with anything
@@ -441,7 +676,7 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
         const ancestorConfirmed = ancestorHides && ancestorHidPreviously
         ancestorHidPreviously = ancestorHides
 
-        const problem = verify()
+        const problem = checkAppearance()
           ?? (ancestorConfirmed ? 'hidden' : null)
           ?? (isPanelOffScreen(container, shadow) ? 'hidden' : null)
           ?? (findCoveringElement(container, shadow) ? 'covered' : null)
@@ -452,9 +687,6 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
       timer = setInterval(check, options.visibleCheckInterval ?? DEFAULT_VISIBLE_CHECK_INTERVAL)
     },
     verify,
-    stop() {
-      stopped = true
-      stopObservers()
-    },
+    stop,
   }
 }
