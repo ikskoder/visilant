@@ -83,8 +83,10 @@ Visilant employs several techniques to help you spot spoofed domains:
 ### Interactive Popup Dashboard
 Clicking the extension icon reveals a dashboard where you can:
 - View visit statistics for the current domain and its subdomains.
-- **Sort Sites**: Organize the list by visit count or name to better understand your history with a domain family.
+- **Pick the Number**: The list of related hosts draws one figure per host, and you choose which – visits, active days, days known, or how many checks the host passes. The heading above it says whether the family adds its members up or takes its strongest single one, because only visits add up: a day spent on `mail` and on `accounts` is one day of knowing Google rather than two.
+- **Sort Sites**: Order the list by that number or by name, to understand your history with a domain family.
 - **Customize Display**: Toggle domain highlighting, change text case (uppercase/lowercase), switch Punycode modes, and adjust font size on the fly.
+- **Per-Site Warnings Switch**: Turn the warnings for the current site off, or back on. It lives here and nowhere in the page: a page can print "press Don't show again to continue" beside its own login form, and it cannot reach the popup. The settings page lists every site you have silenced.
 - **Per-Site Anti-Tampering Toggle**: See whether tamper detection is active for the current site and quickly disable or re-enable it without leaving the popup.
 - **Check Anything by Hand**: A field opened from the popup takes a link, a bare domain, an email address or a QR code image – pasted, dropped or picked from disk – and reports the same facts as everything above. The same check is a right-click away on any selected text, and opens in the page you are already on.
 
@@ -100,7 +102,7 @@ Clicking the extension icon reveals a dashboard where you can:
 Visilant implements multiple layers of protection to ensure reliable operation even on malicious sites:
 - **Early Injection**: Content scripts load at `document_start`, so protection starts early in the page load.
 - **Event Capturing**: Keyboard, input and clipboard listeners are registered in the capture phase so the extension can handle them early in the event flow.
-- **Anti-Tampering Protection**: A MutationObserver watches the extension's in-page UI. If it detects removal or concealment, Visilant raises an alarm and system notification. The check can be disabled per-site (from the popup or via an exclusion list in settings) for trusted sites that heavily rebuild their page (e.g. some SPAs) and trigger false alarms.
+- **Anti-Tampering Protection**: A MutationObserver watches the extension's in-page UI. Removal or concealment is repaired first and reported only if it keeps happening – a site that draws its own pages throws its body away on every route and loses the container as a side effect, so once it is put back it stays back, while a page set on removing it has to keep taking it away. What survives that is an alarm and a system notification. The check can still be disabled per-site (from the popup or via an exclusion list in settings) for trusted sites that set it off anyway.
 - **Randomized DOM Footprint**: The extension container uses a randomly generated ID for each page load, making it harder for malicious scripts to detect Visilant's presence by querying specific element IDs.
 - **Overlay Protection**: In-page warnings use maximum z-index and fixed positioning, and while a panel is on screen the tamper watcher also checks whether the page is covering it.
 
@@ -147,7 +149,7 @@ Visilant implements multiple layers of protection to ensure reliable operation e
      - Select notification triggers: typing, copying, or both (see [Notification Triggers](#notification-triggers) for details).
      - Select notification styles: browser notifications, in-page warnings, or both.
      - **Hold pastes on unfamiliar sites** (opt-in): instead of only warning you, the first paste on an unfamiliar site is stopped and nothing is inserted until you have looked at the address. Allowing it pastes nothing by itself – you press paste again and it goes through as an ordinary paste, and the page stops asking.
-     - **_Note:_** When an in-page alert is displayed, you can disable further warnings for that specific site, whatever the familiarity rules say about it.
+     - **Sites you have silenced**: The warnings for one site are turned off in the popup, whatever the familiarity rules say about it, and this list names every site you have done that to – one host to a line. Delete a line to bring its warnings back. The in-page warning deliberately carries no such button, only a line saying where the switch is: a page that wants to be trusted can write "press Don't show again to continue" beside its own login form, and it has no way to reach the popup.
      - You can also disable notifications completely if you prefer a non-intrusive browsing experience. However, be sure to check the visit count on the extension icon during important interactions, as otherwise, the extension's effectiveness is greatly diminished.
 
    Every section carries a reset in its corner, which puts that section back to how it ships and leaves the rest of the page alone.
@@ -197,7 +199,7 @@ You do not have to take our word for what the store installed. Every release can
 be rebuilt from this repository, byte for byte:
 
 ```bash
-nix build github:ikskoder/visilant/v3.1.0#firefox
+nix build github:ikskoder/visilant/v3.1.1#firefox
 sha256sum result/*.xpi          # compare with SHA256SUMS on the release
 ```
 

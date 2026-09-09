@@ -1,7 +1,7 @@
 {
   "name": "visilant",
   "displayName": "Visilant",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "private": true,
   "packageManager": "pnpm@10.22.0",
   "description": "Browser-extension to provide protection against Homograph Attack & Clone Phishing based on your site visiting statistics",
