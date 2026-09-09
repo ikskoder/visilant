@@ -1,0 +1,22 @@
+/*
+ * A tooltip on something that cannot be clicked has to announce itself.
+ *
+ * Half the facts in this extension carry a `title` – the bar a check has to
+ * clear, the date a day count was measured from, the full address behind a
+ * truncated one – and nothing marked them as hoverable, so the reader had to
+ * already know they were there. Saying it once here means every fact added
+ * later says it too, rather than each one remembering a class of its own.
+ *
+ * `cursor` is inherited, so a control nested inside a titled element has to
+ * name its own – which every button and link in this project already does.
+ *
+ * Controls keep the plain hand, tooltip or no tooltip. A drawn cursor was tried
+ * here – the hand with the same question mark on it – and taken out again: an
+ * image cursor is a picture of one desktop's idea of a hand, sitting among the
+ * real ones the system draws, and it looks foreign wherever the user's theme is
+ * not the one it was drawn against. `help` and `pointer` are the system's own,
+ * and they follow whatever the user has set.
+ */
+[title]:not(button, a, input, select, textarea, summary, label, [role="button"], [role="link"], [contenteditable]) {
+  cursor: help;
+}

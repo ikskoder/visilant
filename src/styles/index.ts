@@ -1,4 +1,5 @@
 import '@unocss/reset/tailwind.css'
 import '@fontsource/atkinson-hyperlegible'
+import './help-cursor.css'
 import './main.css'
 import 'uno.css'

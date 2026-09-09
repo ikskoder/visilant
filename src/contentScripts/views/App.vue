@@ -12,6 +12,9 @@ import InputWarning from './InputWarning.vue'
 import LinkInterceptDialog from './LinkInterceptDialog.vue'
 import LinkTooltip from './LinkTooltip.vue'
 import PasteInterceptDialog from './PasteInterceptDialog.vue'
+// The same rule the extension's own pages get, since the in-page surfaces carry
+// the same titled facts and load none of `main.css`
+import '~/styles/help-cursor.css'
 import 'uno.css'
 
 // The tooltip's "go" button belongs to the trigger that intercepts the click,
