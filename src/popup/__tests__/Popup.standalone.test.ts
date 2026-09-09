@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import browser from 'webextension-polyfill'
+import { settings } from '~/logic/storage'
 import CheckField from '../CheckField.vue'
 import Popup from '../Popup.vue'
 
@@ -11,6 +12,21 @@ const record = {
   lastSeen: Date.UTC(2026, 7, 9),
   firstSeen: Date.UTC(2026, 4, 7),
   activeDays: 14,
+  ignored: false,
+}
+
+/**
+ * The same site before it was known: two visits, one day, first seen today.
+ *
+ * `record` above clears every default bar, and the warnings row is only drawn
+ * where a warning could actually fire – so anything about that row needs a site
+ * the checks have not passed yet.
+ */
+const unfamiliar = {
+  count: 2,
+  lastSeen: Date.now(),
+  firstSeen: Date.now(),
+  activeDays: 1,
   ignored: false,
 }
 
@@ -61,7 +77,7 @@ describe('popup as a standalone page', () => {
     stubLocalStorage({ 'example.com': record })
     const wrapper = await mountForDomain('example.com')
 
-    expect(wrapper.text()).toContain('activeDaysLabel')
+    expect(wrapper.find('[data-criterion="activeDays"]').exists()).toBe(true)
     expect(criterion(wrapper, 'activeDays')).toContain('14')
     expect(wrapper.text()).not.toContain('statsFamilyWide')
   })
@@ -71,30 +87,45 @@ describe('popup as a standalone page', () => {
     const wrapper = await mountForDomain('example.com')
 
     // Facts, and a line saying they are not about this exact address
-    expect(wrapper.text()).toContain('activeDaysLabel')
+    expect(wrapper.find('[data-criterion="activeDays"]').exists()).toBe(true)
     expect(criterion(wrapper, 'activeDays')).toContain('14')
     expect(wrapper.text()).toContain('statsFamilyWide')
   })
 
-  it('takes the earliest first visit and the latest last visit across the family', async () => {
+  it('takes the earliest first visit across the family, and says it in days', async () => {
     stubLocalStorage({
-      'a.example.com': { ...record, firstSeen: Date.UTC(2025, 0, 1), lastSeen: Date.UTC(2026, 0, 1), activeDays: 3 },
-      'b.example.com': { ...record, firstSeen: Date.UTC(2026, 0, 1), lastSeen: Date.UTC(2026, 7, 9), activeDays: 9 },
+      'a.example.com': { ...record, firstSeen: Date.UTC(2025, 0, 1), activeDays: 3 },
+      'b.example.com': { ...record, firstSeen: Date.UTC(2026, 0, 1), activeDays: 9 },
     })
     const wrapper = await mountForDomain('example.com')
 
-    expect(criterion(wrapper, 'age')).toContain('2025')
+    // The count is what the age check is made of, so it is the number on show.
+    // 2025 is a year and a bit back, which no reading of the later date is.
+    const age = wrapper.get('[data-criterion="age"]')
+    expect(Number.parseInt(age.text(), 10)).toBeGreaterThan(365)
+    // The date it was measured from is still there, one hover away
+    expect(age.attributes('title')).toContain('2025')
+
     // Days overlap between subdomains, so the largest is the honest floor
     const activeDays = criterion(wrapper, 'activeDays')
     expect(activeDays).toContain('9')
     expect(activeDays).not.toContain('12')
   })
 
+  it('shows the visit count as a fact in the row, not beside the hostname', async () => {
+    stubLocalStorage({ 'example.com': record })
+    const wrapper = await mountForDomain('example.com')
+
+    // One count on the panel, in the column that names the check it belongs to
+    expect(wrapper.findAll('[data-criterion="visits"]')).toHaveLength(1)
+    expect(criterion(wrapper, 'visits')).toContain('42')
+  })
+
   it('shows no facts row when nothing in the family was ever visited', async () => {
     stubLocalStorage({})
     const wrapper = await mountForDomain('never-visited.example')
 
-    expect(wrapper.text()).not.toContain('activeDaysLabel')
+    expect(wrapper.find('[data-criterion="activeDays"]').exists()).toBe(false)
   })
 })
 
@@ -107,8 +138,8 @@ describe('popup as a standalone page', () => {
  * off, which is why the row has to be here whichever way it is set.
  */
 describe('turning the warnings off for a site', () => {
-  it('offers the switch on a site that is not silenced', async () => {
-    stubLocalStorage({ 'example.com': record })
+  it('offers the switch on a site the warnings can still fire on', async () => {
+    stubLocalStorage({ 'example.com': unfamiliar })
     const wrapper = await mountForDomain('example.com')
 
     expect(wrapper.text()).toContain('warningsActiveNotice')
@@ -116,7 +147,35 @@ describe('turning the warnings off for a site', () => {
     expect(wrapper.text()).not.toContain('ignoredSiteNotice')
   })
 
-  it('offers the way back on a site that is', async () => {
+  /**
+   * Nothing warns on a familiar site, so a switch offering to turn a warning
+   * off there promises a guard that was never posted.
+   */
+  it('keeps the row away from a familiar site', async () => {
+    stubLocalStorage({ 'example.com': record })
+    const wrapper = await mountForDomain('example.com')
+
+    expect(wrapper.text()).not.toContain('warningsActiveNotice')
+    expect(wrapper.text()).not.toContain('ignoredSiteSilence')
+    // The anti-tampering row is not a function of the verdict and stays put
+    expect(wrapper.text()).toContain('antiTamperingProtected')
+  })
+
+  // A zero that can never move is not a site the warnings have anything to say
+  // about – the content script treats it as safe for exactly that reason
+  it('keeps the row away from a host that is never counted', async () => {
+    stubLocalStorage({})
+    const wrapper = await mountForDomain('localhost')
+
+    expect(wrapper.text()).not.toContain('warningsActiveNotice')
+  })
+
+  /**
+   * The half that matters: this window is the only place an exception can be
+   * lifted, so a silenced site keeps the row whatever its verdict says. A
+   * familiar record here, which would otherwise take the row away.
+   */
+  it('offers the way back on a site that is silenced', async () => {
     stubLocalStorage({ 'example.com': { ...record, ignored: true } })
     const wrapper = await mountForDomain('example.com')
 
@@ -126,7 +185,7 @@ describe('turning the warnings off for a site', () => {
   })
 
   it('asks the background to silence the host, and not some parent of it', async () => {
-    stubLocalStorage({ 'shop.example.com': record })
+    stubLocalStorage({ 'shop.example.com': unfamiliar })
     const sent = vi.spyOn(browser.runtime, 'sendMessage').mockResolvedValue(undefined as never)
     const wrapper = await mountForDomain('shop.example.com')
 
@@ -164,7 +223,8 @@ describe('turning the warnings off for a site', () => {
    * an empty page would pass this whether the check-page rule existed or not.
    */
   it('keeps the switch off the check page', async () => {
-    stubLocalStorage({ 'example.com': record })
+    // Unfamiliar, so the row would be there on any other page
+    stubLocalStorage({ 'example.com': unfamiliar })
     window.history.replaceState({}, '', '/dist/popup/index.html?check=1')
     const wrapper = mount(Popup)
     await flushPromises()
@@ -173,9 +233,95 @@ describe('turning the warnings off for a site', () => {
     await flushPromises()
 
     // The panel is up – the facts are there – and the switch still is not
-    expect(wrapper.text()).toContain('activeDaysLabel')
+    expect(wrapper.find('[data-criterion="activeDays"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('ignoredSiteSilence')
     expect(wrapper.text()).not.toContain('warningsActiveNotice')
+  })
+})
+
+/**
+ * The list under the panel, which is about the rest of the family.
+ *
+ * Everything it can say about the address at the top of the page is already
+ * said there, in a panel that names the checks and the bars they have to clear.
+ * So the list earns its place only when there is another host in it.
+ */
+describe('the domain family list', () => {
+  beforeEach(() => {
+    settings.value.listMetric = 'visits'
+    settings.value.sortByName = false
+    settings.value.sortOrder = 'desc'
+  })
+
+  it('stays away when the site is the only host in its family', async () => {
+    stubLocalStorage({ 'example.com': record })
+    const wrapper = await mountForDomain('example.com')
+
+    expect(wrapper.find('[data-family-total]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('relatedDomains')
+    // The facts are on the panel above, so this is not an empty profile either
+    expect(wrapper.text()).not.toContain('noVisitData')
+  })
+
+  it('appears as soon as there is another host to compare against', async () => {
+    stubLocalStorage({ 'example.com': record, 'www.example.com': record })
+    const wrapper = await mountForDomain('example.com')
+
+    expect(wrapper.text()).toContain('relatedDomains')
+    // Visits are the one metric that adds up, and the heading says so
+    expect(wrapper.get('[data-family-total]').text()).toBe('total84')
+  })
+
+  it('leaves out the base domain when it is the name already on show', async () => {
+    stubLocalStorage({ 'example.com': record, 'www.example.com': record })
+
+    const onBase = await mountForDomain('example.com')
+    expect(onBase.text()).not.toContain('baseDomain')
+
+    const onSubdomain = await mountForDomain('www.example.com')
+    expect(onSubdomain.text()).toContain('baseDomain')
+  })
+
+  it('draws the metric the chips ask for, folded the way that metric folds', async () => {
+    stubLocalStorage({
+      'example.com': { ...record, activeDays: 14 },
+      'www.example.com': { ...record, activeDays: 9 },
+    })
+    const wrapper = await mountForDomain('example.com')
+
+    await wrapper.get('[data-list-metric="activeDays"]').trigger('click')
+    await flushPromises()
+
+    // Days spent on two hosts of one family are not two days of knowing it, so
+    // the family takes the largest single member rather than the sum
+    expect(wrapper.get('[data-family-total]').text()).toBe('max14')
+    // And the column now carries that number rather than the visit count
+    const rows = wrapper.findAll('[data-family-value]')
+    expect(rows.map(row => row.text())).toEqual(['14', '9'])
+  })
+
+  /**
+   * The reason the metric and the order are two settings rather than one.
+   *
+   * As a single row of chips with `Name` among them, ordering alphabetically
+   * also meant answering "and which number, then?" – and the only answer was to
+   * drop whatever the reader had chosen.
+   */
+  it('keeps the number on show when the order goes alphabetical', async () => {
+    stubLocalStorage({
+      'zebra.example.com': { ...record, activeDays: 14 },
+      'alpha.example.com': { ...record, activeDays: 9 },
+    })
+    const wrapper = await mountForDomain('zebra.example.com')
+
+    await wrapper.get('[data-list-metric="activeDays"]').trigger('click')
+    await wrapper.get('[data-sort-by-name]').trigger('click')
+    await flushPromises()
+
+    // Alphabetical, descending – and still active days in the column
+    const rows = wrapper.findAll('[data-family-value]')
+    expect(rows.map(row => row.text())).toEqual(['14', '9'])
+    expect(wrapper.get('[data-family-total]').text()).toBe('max14')
   })
 })
 

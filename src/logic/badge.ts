@@ -1,4 +1,5 @@
-import type { FamiliarityCriterionId, FamiliaritySettings, FamiliarityStats } from './familiarity'
+import type { DomainMetric } from './domain-metric'
+import type { FamiliaritySettings, FamiliarityStats } from './familiarity'
 import { criterionValue, enabledCriteria, evaluateFamiliarity } from './familiarity'
 
 /**
@@ -8,7 +9,7 @@ import { criterionValue, enabledCriteria, evaluateFamiliarity } from './familiar
  * carries the verdict. Which number is worth those three characters depends on
  * which checks the user actually judges a site by.
  */
-export type BadgeContent = FamiliarityCriterionId | 'checks'
+export type BadgeContent = DomainMetric
 
 export const BADGE_CONTENTS: BadgeContent[] = ['visits', 'activeDays', 'age', 'checks']
 

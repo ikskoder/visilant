@@ -1,4 +1,5 @@
 import type { BadgeContent } from './badge'
+import type { DomainMetric } from './domain-metric'
 import type { FamiliaritySettings } from './familiarity'
 import { createWebExtensionStorage } from '~/composables/useWebExtensionStorage'
 import { defaultFamiliaritySettings } from './familiarity'
@@ -49,8 +50,19 @@ export interface Settings {
   // Language settings
   selectedLanguage: string
 
-  // Sorting settings
-  sortOption: 'name' | 'visits'
+  /**
+   * Which number the related-domain list draws beside each host – see
+   * logic/domain-metric.ts.
+   *
+   * Kept apart from the order below, because the two used to be one setting and
+   * one of its values was `name`: picking alphabetical order therefore had to
+   * choose a number as well, and the only honest answer was to throw the
+   * reader's choice away and go back to visits. What is shown and what it is
+   * sorted by are two questions, so they are two settings.
+   */
+  listMetric: DomainMetric
+  /** Order by the hostname rather than by the number on show. */
+  sortByName: boolean
   sortOrder: 'asc' | 'desc'
 
   // Display settings
@@ -185,8 +197,9 @@ export const defaultSettings: Settings = {
   // Language settings
   selectedLanguage: 'en',
 
-  // Sorting settings
-  sortOption: 'visits',
+  // The related-domain list: visits are the count it has always drawn, largest first
+  listMetric: 'visits',
+  sortByName: false,
   sortOrder: 'desc',
 
   // Display settings

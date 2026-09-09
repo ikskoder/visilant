@@ -8,7 +8,7 @@ import { settings } from '~/logic/storage'
  * international name is shown.
  *
  * One row rather than three copies. The controls used to live inside the
- * subdomain list, which only exists once a site has visits – so the check page,
+ * related-domain list, which only exists once a site has visits – so the check page,
  * where somebody is looking hard at an address they do not know, had no way to
  * switch any of it on. They are settings, not list controls, and they belong
  * next to the other display control there is, the font size.

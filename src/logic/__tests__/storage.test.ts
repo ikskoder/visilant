@@ -36,7 +36,8 @@ describe('defaultSettings', () => {
   })
 
   it('has correct sort defaults', () => {
-    expect(defaultSettings.sortOption).toBe('visits')
+    expect(defaultSettings.listMetric).toBe('visits')
+    expect(defaultSettings.sortByName).toBe(false)
     expect(defaultSettings.sortOrder).toBe('desc')
   })
 
@@ -102,7 +103,8 @@ describe('defaultSettings', () => {
       'showInputWarning',
       'showCopyWarning',
       'selectedLanguage',
-      'sortOption',
+      'listMetric',
+      'sortByName',
       'sortOrder',
       'domainCase',
       'domainHighlighting',

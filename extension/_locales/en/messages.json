@@ -88,8 +88,8 @@
     "description": "Description of the active-days criterion"
   },
   "familiarityAge": {
-    "message": "Known for",
-    "description": "Title of the first-visit age criterion"
+    "message": "Days known",
+    "description": "Title of the first-visit age criterion. Named for what it counts, like the two beside it – a column of bare numbers under it then needs no unit repeated on every row"
   },
   "familiarityVisitsCompact": {
     "message": "At least {n} visits",
@@ -100,7 +100,7 @@
     "description": "The active-days criterion as one sentence, used when explanations are switched off. {n} is where the number box goes."
   },
   "familiarityAgeCompact": {
-    "message": "Known for at least {n} days",
+    "message": "At least {n} days known",
     "description": "The first-visit age criterion as one sentence, used when explanations are switched off. {n} is where the number box goes."
   },
   "familiarityAgeDesc": {
@@ -351,18 +351,6 @@
     "message": "Runs the same two passes the automatic import ran. First the summary the browser keeps for each page, which brings visit counts up to date in a moment. Then every recorded visit, one page at a time, which is the only place first-visit dates and active days can come from – slower on a large history, and you can cancel at any point without losing what it has already read. Worth running if the automatic import did not finish, or if history has synced in from another device since. Safe to repeat: counts are matched, not added up.",
     "description": "Description of the history import button"
   },
-  "firstSeenLabel": {
-    "message": "First known visit",
-    "description": "Label for the earliest recorded visit"
-  },
-  "lastSeenLabel": {
-    "message": "Last visit",
-    "description": "Label for the most recent visit"
-  },
-  "activeDaysLabel": {
-    "message": "Active days",
-    "description": "Label for the number of distinct days a site was visited"
-  },
   "statsUnknown": {
     "message": "unknown",
     "description": "Shown instead of a date that the extension cannot know"
@@ -547,25 +535,41 @@
     "message": "Base domain",
     "description": "Label preceding the base (registrable) domain"
   },
-  "subdomains": {
-    "message": "Subdomains",
-    "description": "Header for the list of subdomains under the base domain"
+  "relatedDomains": {
+    "message": "Related domains",
+    "description": "Header for the list of recorded hostnames under the base domain. Not \"Subdomains\": the list holds every name at any depth, the base domain itself among them, and that one is nobody's subdomain"
   },
   "total": {
     "message": "Total: ",
-    "description": "Label for total visits"
+    "description": "Label for a figure the whole domain family adds up to, which only visits do"
   },
-  "sortBy": {
-    "message": "Sort by",
-    "description": "Label for sort controls"
+  "max": {
+    "message": "Max: ",
+    "description": "Label for a figure taken from the strongest single member of the domain family – active days, age and passed checks, none of which can be added up"
+  },
+  "listNumberLabel": {
+    "message": "Number",
+    "description": "Label before the chips picking which number the subdomain list draws, and the same word on the sort button when the list is ordered by that number. The chips themselves are named after the familiarity checks, since they are the same facts"
+  },
+  "listSortLabel": {
+    "message": "Sort",
+    "description": "Label before the two buttons setting the order of the subdomain list"
   },
   "sortByName": {
     "message": "Name",
-    "description": "Sort by name option"
+    "description": "The sort button's other state: the list ordered by hostname rather than by the number on show"
   },
-  "sortByVisits": {
-    "message": "Visits",
-    "description": "Sort by visits option"
+  "sortToName": {
+    "message": "Sort by name – currently by the number shown",
+    "description": "Tooltip on that button while the list is ordered by its number"
+  },
+  "sortToNumber": {
+    "message": "Sort by the number shown – currently by name",
+    "description": "Tooltip on that button while the list is ordered by name"
+  },
+  "firstVisitOn": {
+    "message": "First visit on",
+    "description": "Hover text before the date a number of days since the first visit was measured from"
   },
   "sortOrderToAsc": {
     "message": "Sort ascending – currently descending",

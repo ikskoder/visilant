@@ -310,7 +310,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
               class="panel-list rounded-lg border divide-y shadow-sm mb-1"
               :class="isDark ? 'border-gray-700 divide-gray-700' : 'border-gray-200 divide-gray-100'"
             >
-              <!-- The facts rather than the bare total the subdomain rows carry:
+              <!-- The facts rather than the bare total the related-domain rows carry:
                    this site is the one the verdict about the address actually
                    rests on, so it is judged in full like any other -->
               <div v-for="site in mailSites" :key="site.site" class="p-2.5">
@@ -327,7 +327,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
 
           <template v-if="data.family.entries.length > 0">
             <div class="panel-label uppercase tracking-wider mb-1" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
-              {{ t('subdomains') }}
+              {{ t('relatedDomains') }}
             </div>
             <div
               class="panel-list rounded-lg border divide-y overflow-y-auto shadow-sm"
@@ -396,7 +396,7 @@ button {
   line-height: 1.35em !important;
 }
 
-/* Custom thin scrollbar for the subdomain list and the panel itself */
+/* Custom thin scrollbar for the related-domain list and the panel itself */
 .panel-list,
 .panel-container {
   scrollbar-width: thin;
