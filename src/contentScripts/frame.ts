@@ -25,25 +25,26 @@
 import { isMessageError } from '~/logic/message-error'
 import { isEditableEventTarget, isPasteSink, shouldInterceptPaste } from '~/logic/paste-guard'
 import { parseStoredSettings } from '~/logic/storage'
-import { isTrackableHostname } from '~/logic/visit-stats'
 
-/** What the background can say about the frame's own address. */
+/**
+ * What the background says about the page this frame sits in.
+ *
+ * The page, not the frame. A cross-origin frame is unfamiliar by definition –
+ * visits are counted for top-level navigations, so a host that only ever
+ * appears inside a frame can never leave zero – and judging frames by their own
+ * address meant warning about every embedded preview and payment box for ever.
+ * The guard is about what the top document cannot see, which is the events, and
+ * the verdict about those is the verdict about the page they happened on.
+ */
 interface FrameVerdict {
-  /** null when nothing could be worked out about this frame. */
+  /** null when nothing could be worked out about the page. */
   isSafe: boolean | null
   ignored: boolean
   /** Whether the user asked for pastes to be held on unfamiliar sites. */
   guardPaste: boolean
   /** Whether the user wants warnings at all. */
   warn: boolean
-  /**
-   * The address the verdict is about, named by the background.
-   *
-   * Not always this frame's own: a frame the page wrote – `about:blank`, a
-   * `srcdoc`, a blob – has no address, and belongs to the page that made it.
-   * Its events still do not reach the top document, so it is still guarded, and
-   * the name shown is the page's.
-   */
+  /** The page's address, named by the background. Empty on an internal page. */
   hostname: string
 }
 
@@ -93,12 +94,10 @@ async function send<T>(type: string, data: unknown): Promise<T> {
 }
 
 function install() {
-  // A dotless name is not tracked anywhere in this extension, so there is no
-  // verdict to be had about one. Anything else – including a frame with no
-  // address of its own – is asked about, and the background says what applies.
-  const own = window.location.hostname
-  if (own && !isTrackableHostname(own))
-    return
+  // Nothing here is judged by this frame's own address any more, so nothing
+  // here filters on it either: a form served from a dotless host inside an
+  // unfamiliar page is the same form. The background answers for the page, and
+  // an internal one comes back with nothing to guard.
 
   /** The verdict once it has arrived. Read by the paste handler, which cannot wait. */
   let settled: FrameVerdict | null = null
@@ -147,7 +146,9 @@ function install() {
   function prime(): Promise<FrameVerdict> {
     void primeSettings()
 
-    pending ??= send<FrameVerdict>('frame-verdict', { url: window.location.href })
+    // Nothing is sent about this frame: the browser tells the background which
+    // tab the message came from, and the tab's address is the whole question.
+    pending ??= send<FrameVerdict>('frame-verdict', {})
       .then((answer) => {
         // An empty answer is not a verdict either. Kept as one, it left the
         // frame believing nothing was known - and `UNKNOWN` holds nothing to
@@ -199,10 +200,11 @@ function install() {
     }
 
     // The visit records are keyed by hostname, and a change to somebody else's
-    // record says nothing about this frame. A wipe reports the key as removed,
-    // which is a change to it like any other.
+    // record says nothing about the page this frame is on. A wipe reports the
+    // key as removed, which is a change to it like any other. Nothing to forget
+    // before the first answer arrives, so an unsettled frame ignores this.
     if (area === 'local') {
-      const host = settled?.hostname || own
+      const host = settled?.hostname
       if (host && Object.prototype.hasOwnProperty.call(changes, host))
         forget()
     }
@@ -217,7 +219,9 @@ function install() {
       return
 
     warned = true
-    await send('frame-warning', { kind, hostname: answer.hostname }).catch(() => undefined)
+    // Only the kind: the top document knows which page it is, and drawing the
+    // frame's own name beside the warning is the claim this guard no longer makes
+    await send('frame-warning', { kind }).catch(() => undefined)
   }
 
   window.addEventListener('keydown', (event) => {
@@ -282,7 +286,7 @@ function install() {
       // frame was cancelled with no dialog and no way to get one.
       const proceed = await Promise.race([
         send<{ allowed: boolean }>('frame-paste-intercept', {
-          hostname: answer.hostname || own,
+          hostname: answer.hostname,
           isSafe: answer.isSafe,
           status: shown,
         }),

@@ -17,7 +17,7 @@ import { classifyQrPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { resolveTooltipTrigger } from '~/logic/platform'
 import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, parseStoredSettings, settings, settingsReady } from '~/logic/storage'
 import { applyHostStyles, createTamperWatch } from '~/logic/tamper-watch'
-import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningFrameHost, warningType } from '~/logic/ui-state'
+import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
 import { addCustomShortener, isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
 import { isTrackableHostname } from '~/logic/visit-stats'
 import App from './views/App.vue'
@@ -1985,41 +1985,46 @@ async function ensureTooltipUiMounted(): Promise<boolean> {
 }
 
 /**
- * Show a warning an iframe on this page raised.
+ * Show a warning for something an iframe on this page caught.
  *
  * The frame has no UI of its own – a dialog inside a payment widget would be
  * clipped to the widget – so it hands the fact over and this document draws it.
- * The name shown is the frame's, because that is the site the box belongs to and
- * the one the address bar does not mention.
+ *
+ * The same warning, word for word, as one raised by typing in the page itself.
+ * It used to name the frame's own host and say the box belonged to another
+ * site, which is a warning nobody can act on: a frame is unfamiliar by
+ * definition, since visits are only counted for top-level navigations, and if
+ * somebody has got their frame onto a site the user knows then the site is
+ * already theirs. What the frame is for is the events, which are the half this
+ * document cannot see – so a typed key is a typed key wherever it landed, and
+ * the verdict is the one about the page.
  */
-async function showFrameWarning(kind: 'input' | 'copy', frameHost: string) {
-  if (hasNotifiedOnThisPage.value || isIgnored.value)
-    return
-  if (kind === 'input' && !settings.value.showInputWarning)
-    return
-  if (kind === 'copy' && !settings.value.showCopyWarning)
+async function showFrameWarning(kind: 'input' | 'copy') {
+  if (safetyLevel.value !== false || !settings.value?.showWarningNotification)
     return
 
   await ensureTooltipUiMounted()
-  warningType.value = kind
-  warningFrameHost.value = frameHost
-  hasNotifiedOnThisPage.value = true
-  showWarning.value = true
+  await showNotifications(kind)
 }
 
 /**
  * Hold a paste an iframe caught, and answer it.
  *
- * Same dialog as a paste into this document, drawn about the frame's own site.
- * The answer travels back so the frame knows whether to stop asking.
+ * The same dialog as a paste into this document, and about the same site: the
+ * page, not the frame. The frame names it from the verdict the background gave
+ * it, and this document's own address is the fallback for the one case the
+ * frame cannot be told about – an internal page, where there is nothing to
+ * guard anyway. The answer travels back so the frame knows whether to stop
+ * asking.
  */
-async function showFramePasteIntercept(data: { hostname: string, status: 'unfamiliar' | 'settled' | 'error' }): Promise<{ allowed: boolean }> {
+async function showFramePasteIntercept(data: { hostname?: string, status: 'unfamiliar' | 'settled' | 'error' }): Promise<{ allowed: boolean }> {
   // The frame is holding a cancelled paste and is waiting on this answer. With
   // no dialog to answer from, saying no now is what stops it waiting.
   if (!await ensureTooltipUiMounted())
     return { allowed: false }
 
-  const facts = await fetchLinkData(`https://${data.hostname}`, data.hostname).catch(() => null)
+  const host = data.hostname || window.location.hostname
+  const facts = await fetchLinkData(`https://${host}`, host).catch(() => null)
 
   // A second dialog over the first would leave the first paste unanswered
   if (pasteInterceptVisible.value)
@@ -2030,9 +2035,9 @@ async function showFramePasteIntercept(data: { hostname: string, status: 'unfami
   })
 
   pasteInterceptData.value = {
-    domain: data.hostname,
+    domain: host,
     stats: facts?.stats ?? { count: 0 },
-    punycode: alternateSpelling(data.hostname),
+    punycode: alternateSpelling(host),
     // The payload stays in the frame. Only its shape would be worth showing and
     // sending the text across for that is not worth what it is.
     payload: describePastePayload(''),
@@ -2056,11 +2061,11 @@ async function showFramePasteIntercept(data: { hostname: string, status: 'unfami
 // the cast carries it across.
 browser.runtime.onMessage.addListener(((message: any, _sender: any, sendResponse: (response?: any) => void) => {
   // Raised by an iframe on this page, which has no UI of its own
-  if (message.type === 'frame-warning' && message.data?.hostname) {
-    void showFrameWarning(message.data.kind === 'copy' ? 'copy' : 'input', message.data.hostname)
+  if (message.type === 'frame-warning' && message.data) {
+    void showFrameWarning(message.data.kind === 'copy' ? 'copy' : 'input')
     return undefined
   }
-  if (message.type === 'frame-paste-intercept' && message.data?.hostname) {
+  if (message.type === 'frame-paste-intercept' && message.data) {
     // The only message here that answers. The frame is holding a cancelled paste
     // and cannot stop holding it until the user has said something.
     showFramePasteIntercept(message.data).then(sendResponse, () => sendResponse({ allowed: false }))

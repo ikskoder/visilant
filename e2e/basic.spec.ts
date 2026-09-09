@@ -1123,6 +1123,32 @@ test('typing into a form inside an iframe is warned about', async ({ page }) => 
   await expect(warning.first()).toBeAttached({ timeout: 5000 })
 })
 
+/**
+ * The frame is judged by the page it sits in, never by its own address.
+ *
+ * Judging the frame meant every cross-origin embed warned for ever: visits are
+ * counted for top-level navigations, so a host that only appears inside frames
+ * can never leave zero. And the warning was one nobody could act on – somebody
+ * who has got their frame onto a site the user knows already owns that site.
+ */
+test('a frame on a familiar page raises no warning', async ({ page, context }) => {
+  const DAY = 24 * 60 * 60 * 1000
+  // The install-time import writes the same records, so a seed laid before it
+  // settles is overwritten and the page is unfamiliar again
+  await waitForAutoImport(context)
+  await seedVisits(context, SITE_HOST, 42, { activeDays: 12, firstSeen: Date.now() - 30 * DAY })
+  await serveFramedForm(page)
+
+  const inner = page.frameLocator('#frame').locator('#inner')
+  await inner.click()
+  await page.keyboard.type('hunter2')
+  await page.waitForTimeout(2000)
+
+  // The frame's own host has no visits at all and never will have
+  const warning = page.locator('body > div[style*="2147483647"]')
+  await expect(warning).toHaveCount(0)
+})
+
 test('a paste into an iframe on an unfamiliar site is held', async ({ context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'https://tracked-site.test' })
   await patchSettings(context, { blockPasteOnUnfamiliar: true })

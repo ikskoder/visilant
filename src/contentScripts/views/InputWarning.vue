@@ -6,14 +6,6 @@ defineProps<{
   show: boolean
   warningType: 'input' | 'copy'
   isDark: boolean
-  /**
-   * The frame this warning is about, when it did not come from this document.
-   *
-   * A form served in an iframe belongs to a different site from the page around
-   * it, and the address bar only names the page. Saying which site the box
-   * actually belongs to is the whole value of the warning in that case.
-   */
-  frameHost?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -26,7 +18,7 @@ const { t } = useI18n()
 <template>
   <Transition name="slide-fade">
     <div
-      v-if="show && (safetyLevel === false || frameHost)"
+      v-if="show && safetyLevel === false"
       class="fixed top-4 right-4 p-1 rounded-lg shadow-2xl z-[2147483647] bg-gradient-to-r from-red-500 to-red-600 text-white popup-container pointer-events-auto"
     >
       <div class="relative">
@@ -56,13 +48,6 @@ const { t } = useI18n()
           </div>
 
           <div class="text-left" :class="isDark ? 'text-gray-100' : 'text-gray-700'">
-            <!-- Named before anything else: this is the one fact the address bar
-                 cannot tell the user, and it is why the warning is here -->
-            <p v-if="frameHost" class="leading-relaxed mb-2 font-bold">
-              {{ t('frameWarningBody') }}
-              <br>
-              <span class="break-all">{{ frameHost }}</span>
-            </p>
             <p class="leading-relaxed">
               <template v-if="warningType === 'input'">
                 {{ t('inputWarningMessage') }}

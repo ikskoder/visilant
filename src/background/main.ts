@@ -693,7 +693,8 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
   }
 })
 
-// Collect visit data for a whole domain family (base domain + subdomains),
+// Collect visit data for a whole domain family (the base domain and every host
+// recorded under it, at any depth),
 // the same aggregation the popup dashboard shows
 async function getDomainFamilyLogic(hostname: string) {
   const base = siteDomainOrSelf(hostname)
@@ -1136,44 +1137,29 @@ async function handleResetVisits() {
 }
 
 /**
- * An address worth judging, or nothing.
- *
- * A `blob:` URL carries the origin that made it in its own text and has no
- * hostname of its own, so it is unwrapped rather than thrown away. Anything
- * with no host after that – `about:blank`, a data URL, an opaque origin
- * written as the string `null` – is not an address and says so.
- */
-function addressOf(value: string | undefined): string | null {
-  if (!value || value === 'null')
-    return null
-
-  const url = value.startsWith('blob:') ? value.slice('blob:'.length) : value
-  const host = getHostname(url)
-  return host && host !== url && !isInternalPage(host) ? url : null
-}
-
-/**
  * Answer an iframe about itself.
  *
  * A frame keeps nothing: no settings, no lists, no verdict. It asks once, when
  * somebody first touches it, and this is the whole answer – see
  * src/contentScripts/frame.ts for why it is kept that thin.
  */
-async function handleFrameVerdict(claimed: string, ctx?: MessageContext) {
-  // The browser's word about where the message came from, ahead of the frame's
-  // own. `sender.origin` is the origin the document really runs at, and a frame
-  // the page wrote – `about:blank`, a `srcdoc`, a `blob:` – inherits it from
-  // whoever wrote it. Reaching straight for the tab's address instead handed a
-  // cross-origin advert's own `srcdoc` child the verdict of the page around it:
-  // on a familiar site, a clean way past every check in here.
+async function handleFrameVerdict(ctx?: MessageContext) {
+  // The page the user is on, and deliberately nothing else.
   //
-  // A frame sandboxed without `allow-same-origin` has no origin to inherit and
-  // reports the opaque one. Nothing can say who wrote that, so it still falls
-  // back to the page around it, which is where this began.
-  const judged = addressOf(ctx?.frameOrigin)
-    ?? addressOf(ctx?.frameUrl)
-    ?? addressOf(claimed)
-    ?? (ctx?.tabUrl ?? '')
+  // This used to judge the frame's own origin, which meant a cross-origin frame
+  // was unfamiliar by definition: visits are counted for top-level navigations,
+  // so a host that only ever appears inside a frame sits at zero for ever and
+  // no amount of use can move it. Every embedded preview, payment widget and
+  // sign-in box raised a warning that repeating the visit could never settle.
+  //
+  // And the warning it raised was not one anybody could act on. If somebody has
+  // got their frame onto a site the user knows, the site is already theirs –
+  // pointing at the box afterwards changes nothing that matters. So the frame
+  // guard keeps catching what happens inside a frame, which is the half the top
+  // document cannot see, and the verdict about it is the verdict about the page
+  // it is embedded in: an unfamiliar page warns whether the form is in the page
+  // or in a frame it loaded, and a familiar one stays quiet either way.
+  const judged = ctx?.tabUrl ?? ''
   const hostname = getHostname(judged)
 
   if (!hostname || isInternalPage(hostname)) {
@@ -1219,10 +1205,6 @@ interface MessageContext {
   tabId?: number
   /** The tab's top-level URL, which a frame with no address of its own needs. */
   tabUrl?: string
-  /** The sender's own document URL, as the browser reports it rather than as the page claims it. */
-  frameUrl?: string
-  /** The origin the sender runs at, which is `null` for a sandboxed frame. */
-  frameOrigin?: string
 }
 
 // Centralized message handlers map
@@ -1252,7 +1234,7 @@ const messageHandlers = {
   'patch-settings': (data: any) => applySettingsPatch(data?.patch),
   'ignore-site': (data: any) => handleIgnoreSite(data.hostname, data.ignored !== false),
   // What an iframe asks about itself, and the two things it can ask for
-  'frame-verdict': (data: any, ctx?: MessageContext) => handleFrameVerdict(data.url, ctx),
+  'frame-verdict': (_data: any, ctx?: MessageContext) => handleFrameVerdict(ctx),
   'frame-warning': (data: any, ctx?: MessageContext) =>
     sendToTopFrame(ctx?.tabId, 'frame-warning', data),
   'frame-paste-intercept': async (data: any, ctx?: MessageContext) =>
@@ -1334,10 +1316,6 @@ browser.runtime.onMessage.addListener(((message: any, sender, sendResponse) => {
         {
           tabId: sender.tab?.id,
           tabUrl: sender.tab?.url,
-          // Both come from the browser, not from the message. A frame is judged
-          // on these rather than on the address it sends about itself.
-          frameUrl: sender.url,
-          frameOrigin: (sender as { origin?: string }).origin,
         },
       ))
       .then(sendResponse, (error) => {

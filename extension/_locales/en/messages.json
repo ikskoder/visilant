@@ -1631,10 +1631,6 @@
     "message": "Something on this page is not part of it",
     "description": "Title of the warning raised by an iframe on the page"
   },
-  "frameWarningBody": {
-    "message": "You are typing into a box that belongs to another site, loaded inside this page. Check the name below before you continue.",
-    "description": "Body of the warning raised by an iframe on the page"
-  },
   "pasteInterceptInFrame": {
     "message": "This box belongs to another site, loaded inside the page you are on.",
     "description": "Line added to the paste dialog when the paste was made inside an iframe"

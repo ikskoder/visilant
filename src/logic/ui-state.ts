@@ -8,14 +8,6 @@ import { ref } from 'vue'
 export const showWarning = ref(false)
 export const warningType = ref<'input' | 'copy'>('input')
 
-/**
- * The frame the warning is about, when it did not come from this document.
- *
- * A form served in an iframe belongs to a different site from the page around
- * it, and that is the whole reason the warning is worth reading: the address bar
- * says one thing and the box the user is typing into belongs to another.
- */
-export const warningFrameHost = ref<string | null>(null)
 export const safetyLevel = ref<boolean | null>(null)
 export const isIgnored = ref(false)
 export const hasNotifiedOnThisPage = ref(false)
