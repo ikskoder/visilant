@@ -30,9 +30,15 @@ watch(() => props.hostname, () => {
 
 <template>
   <div v-if="links.length" class="mt-2">
+    <!-- The caveat rides on the toggle rather than sitting under the links. It
+         is about what following one of them costs, which is worth knowing
+         before the row is even opened, and as a line of its own it was three
+         lines of small print under a row of buttons in the busiest panel in
+         the extension. -->
     <button
       class="flex items-center gap-1 opacity-70 hover:opacity-100 transition-opacity"
       :aria-expanded="expanded"
+      :title="t('externalLookupsCaveat')"
       @click="expanded = !expanded"
     >
       <span>{{ expanded ? '▾' : '▸' }}</span>
@@ -54,12 +60,6 @@ watch(() => props.hostname, () => {
           @click="openInBackgroundTab($event, link.url)"
         >{{ link.name }} ↗</a>
       </div>
-      <!-- A notch larger than the links above it: the popup already scales this
-           whole block down, and a caveat about what a third party gets to see
-           has to stay readable at the bottom of that -->
-      <p class="mt-1 opacity-60 leading-snug text-[1.1em]">
-        {{ t('externalLookupsCaveat') }}
-      </p>
     </div>
   </div>
 </template>
