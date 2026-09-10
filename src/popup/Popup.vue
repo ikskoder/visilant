@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import type { DomainMetric, MetricReading } from '~/logic/domain-metric'
-import type { FamiliarityCriterionId } from '~/logic/familiarity'
 import type { SiteVisitData } from '~/logic/storage'
 import punycode from 'punycode'
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
-import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
 import { belongsToSite, siteDomainOrSelf } from '~/logic/domain-boundary'
 import { displayDomain } from '~/logic/domain-display'
-import { DOMAIN_METRICS, metricAggregation, metricReading, metricSortValue, metricTotal } from '~/logic/domain-metric'
-import { aggregateFamiliarityStats, daysSince, evaluateFamiliarity, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
+import { DOMAIN_METRICS, metricReading, metricSortValue } from '~/logic/domain-metric'
+import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { popupWidthCap } from '~/logic/platform'
 import { editSettingsThroughBackground, settings } from '~/logic/storage'
@@ -20,7 +18,6 @@ import SecureText from '../components/SecureText.vue'
 import CheckField from './CheckField.vue'
 
 const { t, isLoaded, loadedTranslations } = useI18n()
-const { factsFor, withThresholds } = useFamiliarityFacts()
 const { isDark } = useTheme()
 
 // The sort order, the case of the names, the punycode toggle: small edits, sent
@@ -45,8 +42,7 @@ function updateTranslations() {
     'checkedDomain',
     'baseDomain',
     'relatedDomains',
-    'total',
-    'max',
+    'familySummaryTitle',
     'listNumberLabel',
     'listSortLabel',
     'sortByName',
@@ -80,7 +76,6 @@ function updateTranslations() {
     'firstVisitOn',
     'statsUnknown',
     'statsImportHint',
-    'statsFamilyWide',
     'externalLookupsTitle',
     'untrackedHostTitle',
     'untrackedHostText',
@@ -181,6 +176,21 @@ const otherFamilyHosts = computed(() =>
 
 const showFamily = computed(() => otherFamilyHosts.value.length > 0)
 
+/**
+ * Whether the base domain gets a card of its own.
+ *
+ * Two separate reasons for it, and either is enough. A subdomain was checked, so
+ * the name it sits under is worth spelling out and worth offering the lookups
+ * for – the check field used to print that name in a line of its own and no
+ * longer does. Or there is a family, whose figures belong under the base
+ * domain's name rather than under one member's.
+ *
+ * The figures inside it follow the second reason only: with no other host
+ * recorded, the family is this host and its row would repeat the card above it.
+ */
+const showBaseDomainCard = computed(() =>
+  Boolean(baseDomain.value) && (baseDomain.value !== currentHostname.value || showFamily.value))
+
 // Hostnames without a dot (localhost, a machine name on the local network) are
 // never counted, so their zero is not a fact about the user. Showing it as a red
 // 0 would accuse a machine on their own desk of being unfamiliar, and no amount
@@ -199,35 +209,40 @@ const isUntrackedHost = computed(() => {
 const hasBlockBelowPanel = computed(() =>
   showFamily.value || (!familyHosts.value.length && !isUntrackedHost.value))
 
-// The details page is usually opened for a link or an email domain, which often
-// has no record of its own even when the rest of the family does – visits are
-// counted per hostname, so `example.com` and `www.example.com` are separate.
-// Falling back to the family keeps the facts from vanishing. They are marked as
-// family-wide, because facts about a family are not facts about this address.
-const statsAreFamilyWide = computed(() => {
-  return Boolean(currentHostname.value) && !visits.value[currentHostname.value] && familyHosts.value.length > 0
-})
-
+/**
+ * This exact host's own record, and nothing borrowed.
+ *
+ * It used to fall back to the family whenever the host had no record of its own,
+ * which kept a details page from showing nothing – but it also meant the number
+ * under a hostname was sometimes the family's and sometimes the host's, with
+ * only a caption to say which. Two of them then sat on one screen: the check
+ * field above folds the family, so `Visits 5` and `Visits 2` appeared forty
+ * pixels apart under names that looked like the same name.
+ *
+ * The family's figures did not go away – they are drawn under the base domain
+ * now, which is the name they are actually about. So this one can say the plain
+ * truth about the host it names, zero included.
+ */
 const currentStats = computed<SiteVisitData | undefined>(() => {
   const own = visits.value[currentHostname.value]
   if (own)
     return own
 
+  // A host nothing is counted for has its own notice, and a red 0 under it would
+  // accuse a machine on the user's desk of being unfamiliar for ever
+  return isUntrackedHost.value || !currentHostname.value ? undefined : { count: 0, lastSeen: 0 }
+})
+
+/**
+ * Everything recorded under the base domain, folded the way a verdict folds it.
+ *
+ * This is what the check field's chip is decided on – "have I been here" is one
+ * question about `example.com` and `www.example.com` – so the evidence for it
+ * belongs under the base domain's own name rather than under one subdomain's.
+ */
+const familyStats = computed(() => {
   const records = familyHosts.value.map(domain => visits.value[domain]).filter(Boolean)
-  if (!records.length)
-    return undefined
-
-  // Folded the same way the familiarity check folds a family: visits add up,
-  // active days take the largest single member and the first visit the earliest
-  const aggregated = aggregateFamiliarityStats(records)
-
-  return {
-    count: aggregated.count,
-    lastSeen: Math.max(...records.map(r => r.lastSeen)),
-    firstSeen: aggregated.firstSeen,
-    activeDays: aggregated.activeDays,
-    ignored: false,
-  }
+  return records.length ? aggregateFamiliarityStats(records) : undefined
 })
 
 /**
@@ -265,19 +280,12 @@ async function setWarnings(ignored: boolean) {
 
 const familiarityRules = computed(() => normalizeFamiliarity(settings.value.familiarity))
 
-/** Which of the user's checks this address passes, and whether that is enough. */
-const currentVerdict = computed(() =>
-  evaluateFamiliarity(currentStats.value ?? { count: 0 }, familiarityRules.value))
-
 /**
  * Whether a warning could fire on this page at all.
  *
- * Drawn from the record for this exact hostname, never from `currentStats`,
- * which falls back to the family so that a details page opened for an address
- * with no visits of its own still has facts to show. The warnings do no such
- * thing – the content script judges the host it is on – so borrowing the
- * family's verdict here would take the switch away from a page that is about to
- * warn.
+ * Drawn from the record for this exact hostname, never from the family: the
+ * content script judges the host it is on, so borrowing the family's verdict
+ * here would take the switch away from a page that is about to warn.
  *
  * An address that is never counted is safe by the same rule the content script
  * uses: a zero that can never move would otherwise warn about the router's own
@@ -305,77 +313,6 @@ const warningsCanFire = computed(() => {
  */
 const showWarningsRow = computed(() =>
   !isCheckPage.value && (isIgnoredHost.value || warningsCanFire.value))
-
-/**
- * The outcome of one check, or undefined when the user has it switched off.
- *
- * Drives the colour on the facts below: a number that has no say in the verdict
- * is left uncoloured rather than being tinted as if it did.
- */
-function criterionOutcome(id: FamiliarityCriterionId) {
-  return currentVerdict.value.criteria.find(outcome => outcome.id === id)
-}
-
-/**
- * The same fact as the check surfaces would word it, for the grid below.
- *
- * The grid lays first visit, last visit and active days out in a shape of its
- * own, but the numbers inside it are the ones every other surface shows – so
- * whether the threshold rides along with them is one setting, not two.
- * Undefined for a criterion the user has switched off, which the grid still
- * lists as a plain fact.
- */
-function criterionText(id: FamiliarityCriterionId) {
-  const fact = factsFor(currentStats.value ?? { count: 0 }).find(entry => entry.id === id)
-  if (!fact)
-    return undefined
-  // The grid names every row already, so the bar rides along in the cell rather
-  // than claiming a column of its own
-  return withThresholds.value ? fact.combined : fact.value
-}
-
-function criterionColor(id: FamiliarityCriterionId) {
-  return readingColor(criterionOutcome(id)?.met)
-}
-
-/** The bar a criterion has to clear, for the hover on the fact that has to clear it. */
-function criterionBar(id: FamiliarityCriterionId) {
-  const outcome = criterionOutcome(id)
-  if (!outcome)
-    return undefined
-
-  const unit = id === 'age' ? ` ${translations.value.familiarityDaysUnit}` : ''
-  return `${translations.value.familiarityRequiredAtLeast} ${outcome.required}${unit}`
-}
-
-/**
- * How long ago the first visit was, with the date itself moved to the hover.
- *
- * The date was the number on show here, and it is the one thing in the panel a
- * reader has to do arithmetic on before it means anything: "May 25" answers
- * nothing on its own, while "106 days" is the fact the age check is actually
- * made of. The date is still a click of the mouse away, since it is what makes
- * the count checkable.
- */
-const firstSeenText = computed(() => {
-  const firstSeen = currentStats.value?.firstSeen
-  if (!firstSeen)
-    return ''
-
-  // The wording every other surface uses, bar and all, whenever the age check is
-  // switched on. Off, it is a plain fact and says so in days.
-  return criterionText('age') ?? `${daysSince(firstSeen, Date.now())} ${translations.value.familiarityDaysUnit}`
-})
-
-const firstSeenTitle = computed(() => {
-  const firstSeen = currentStats.value?.firstSeen
-  if (!firstSeen)
-    return undefined
-
-  const date = `${translations.value.firstVisitOn} ${formatTimestamp(firstSeen)}`
-  const bar = criterionBar('age')
-  return bar ? `${date}\n${bar}` : date
-})
 
 // The domain display is deliberately wide – a hyperlegible face at 0.25em letter
 // spacing – so a long hostname cannot fit at the headline size. Stepping the size
@@ -451,14 +388,6 @@ const sortedFamilyHosts = computed(() => {
   })
 })
 
-/** The family's figure for the metric on show, and how it was arrived at. */
-const familyReading = computed(() =>
-  metricTotal(listMetric.value, familyHosts.value.map(domain => visits.value[domain]), familiarityRules.value))
-
-const familyTotalLabel = computed(() => metricAggregation(listMetric.value) === 'total'
-  ? translations.value.total
-  : translations.value.max)
-
 /**
  * A reading as it should read, in a column three characters wide.
  *
@@ -505,6 +434,10 @@ function toggleSortByName() {
 
 function setListMetric(metric: DomainMetric) {
   settings.value.listMetric = metric
+}
+
+function onListMetricChange(event: Event) {
+  setListMetric((event.target as HTMLSelectElement).value as DomainMetric)
 }
 
 /**
@@ -835,76 +768,16 @@ onMounted(async () => {
                reader is meant to press does not want the size of a footnote -->
           <ExternalLookups :hostname="currentHostname" />
 
-          <!-- Visit history facts. firstSeen/activeDays stay empty until a full
-               history import supplies them – we never guess a date. -->
-          <div
+          <!-- Visit history facts, for this exact host and nothing else. The
+               family's own figures are under the base domain further down, which
+               is the name they are about. firstSeen/activeDays stay empty until
+               a full history import supplies them – we never guess a date. -->
+          <FamiliarityGrid
             v-if="currentStats"
-            class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-2 text-left"
+            :stats="currentStats"
+            class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700"
             style="font-size: 0.85em;"
-          >
-            <!-- Days, not a date. The date is on the hover, where it is still
-                 there to be checked without asking the reader to count months
-                 back from today before the fact means anything.
-
-                 All three headings are the criteria's own names, the ones the
-                 settings page and the chips below use. This row had two of its
-                 own – "First known visit" over a count of days, which had
-                 stopped being a date, and a second "Active days" written out
-                 separately – so the same three facts went under two sets of
-                 names on one page. -->
-            <div>
-              <div class="uppercase tracking-wider opacity-50">
-                {{ translations.familiarityAge }}
-              </div>
-              <div
-                v-if="currentStats.firstSeen"
-                class="font-mono"
-                data-criterion="age"
-                :class="criterionColor('age')"
-                :title="firstSeenTitle"
-              >
-                {{ firstSeenText }}
-              </div>
-              <div v-else class="opacity-40 italic" :title="translations.statsImportHint">
-                {{ translations.statsUnknown }}
-              </div>
-            </div>
-            <div>
-              <div class="uppercase tracking-wider opacity-50">
-                {{ translations.familiarityActiveDays }}
-              </div>
-              <div
-                v-if="currentStats.activeDays"
-                class="font-mono"
-                data-criterion="activeDays"
-                :class="criterionColor('activeDays')"
-                :title="criterionBar('activeDays')"
-              >
-                {{ criterionText('activeDays') ?? currentStats.activeDays }}
-              </div>
-              <div v-else class="opacity-40 italic" :title="translations.statsImportHint">
-                {{ translations.statsUnknown }}
-              </div>
-            </div>
-            <!-- The count that used to sit beside the hostname, now in the row
-                 with the other two facts and coloured by its own check -->
-            <div>
-              <div class="uppercase tracking-wider opacity-50">
-                {{ translations.familiarityVisits }}
-              </div>
-              <div
-                class="font-mono"
-                data-criterion="visits"
-                :class="criterionColor('visits')"
-                :title="criterionBar('visits')"
-              >
-                {{ criterionText('visits') ?? currentStats.count }}
-              </div>
-            </div>
-          </div>
-          <p v-if="currentStats && statsAreFamilyWide" class="mt-1 opacity-60 text-left" style="font-size: 0.75em;">
-            {{ translations.statsFamilyWide }}
-          </p>
+          />
 
           <!--
             Anti-tampering status, and only where there is a site it is about.
@@ -972,21 +845,59 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- The rest of the family, and only where there is one. A list holding
-             nothing but the address already on show above says nothing that
-             panel has not said, so it and its heading stay away. -->
-        <div v-if="showFamily">
-          <!-- The base domain, unless it is the name spelled out at the top of
-               the page – in which case this is the same word twice -->
-          <div v-if="baseDomain !== currentHostname" class="mb-2">
+        <!-- The base domain, and the family's own figures under it.
+
+             This is the name those figures are about: "have I been here" folds
+             `example.com` and `www.example.com` into one question, and it is the
+             fold the check field's verdict is taken on. Drawn under the
+             subdomain's name it read as that host's own count and disagreed with
+             the card above it by however much the rest of the family came to.
+             The same card and the same grid as the checked domain, deliberately,
+             so the two rows can be compared rather than puzzled over – two rows
+             of facts, one framed and one loose on the page, read as a block and
+             a footnote instead.
+
+             The name and its lookups are skipped where the base domain is the
+             address already spelled out at the top of the page. The figures are
+             skipped where nothing but this host is recorded under it, since the
+             fold would then be the card above, number for number. -->
+        <div v-if="showBaseDomainCard" data-base-domain class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+          <template v-if="baseDomain !== currentHostname">
             <div class="uppercase tracking-wider mb-1 opacity-50" style="font-size: 0.75em;">
               {{ translations.baseDomain }}
             </div>
             <div class="secure-domain-display font-bold break-words" style="font-size: 1.1em;">
               <SecureText :text="baseDomain" />
             </div>
-          </div>
+            <ExternalLookups :hostname="baseDomain" />
+          </template>
+          <!-- Said before the numbers, and said whether or not the name above
+               them is drawn. Where the base domain is the address the window is
+               already about, the name and its heading are skipped – and that
+               used to leave this card as a bare row of figures with nothing at
+               all to say what they were about or what they covered. -->
+          <template v-if="showFamily && familyStats">
+            <div
+              class="uppercase tracking-wider opacity-50"
+              :class="baseDomain === currentHostname ? '' : 'mt-2'"
+              style="font-size: 0.75em;"
+            >
+              {{ translations.familySummaryTitle }}
+            </div>
+            <FamiliarityGrid
+              :stats="familyStats"
+              aggregated
+              data-family-stats
+              class="mt-1"
+              style="font-size: 0.85em;"
+            />
+          </template>
+        </div>
 
+        <!-- The rest of the family, and only where there is one. A list holding
+             nothing but the address already on show above says nothing that
+             panel has not said, so it and its heading stay away. -->
+        <div v-if="showFamily">
           <!-- One row, two questions. On the left, what order the rows are in:
                by the hostname or by the number, and which way up. On the right,
                which number that is – chips named after the checks the verdict
@@ -1005,10 +916,17 @@ onMounted(async () => {
                loose buttons, so a row too narrow for both breaks between them
                and not through the middle of the chips – which used to leave a
                lone `Passed checks` under the word `Sort`, reading as if it
-               belonged to it. -->
-          <div class="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 mb-2" style="font-size: 0.65em;">
+               belonged to it.
+
+               The four chips are a dropdown. Laid out one beside the other they
+               took a line of their own and sometimes two, which is a lot of the
+               narrowest thing on the page to spend on a choice that is made once
+               and then left alone. The two labels grew as the chips shrank: they
+               name what each control is for, and at the size of the buttons they
+               were the smallest text on the page. -->
+          <div class="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 mb-2" style="font-size: 0.8em;">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="opacity-50">{{ translations.listSortLabel }}</span>
+              <span class="opacity-70">{{ translations.listSortLabel }}</span>
               <button
                 class="btn-ghost btn-sm !rounded min-w-[4.5em]"
                 data-sort-by-name
@@ -1028,27 +946,26 @@ onMounted(async () => {
               </button>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <span class="opacity-50">{{ translations.listNumberLabel }}</span>
-              <button
-                v-for="metric in DOMAIN_METRICS" :key="metric"
-                class="btn-ghost btn-sm !rounded"
-                :class="listMetric === metric ? '!bg-blue-100 !border-blue-200 !text-blue-700 dark:!bg-blue-900/40 dark:!border-blue-700 dark:!text-blue-300' : ''"
-                :data-list-metric="metric"
-                @click="setListMetric(metric)"
+              <span class="opacity-70">{{ translations.listNumberLabel }}</span>
+              <select
+                class="btn-ghost btn-sm !rounded !text-[1.05em]"
+                data-list-metric
+                :value="listMetric"
+                :aria-label="translations.listNumberLabel"
+                @change="onListMetricChange"
               >
-                {{ metricLabel(metric) }}
-              </button>
+                <option v-for="metric in DOMAIN_METRICS" :key="metric" :value="metric">
+                  {{ metricLabel(metric) }}
+                </option>
+              </select>
             </div>
           </div>
 
-          <!-- Total or max, named for which one it is: only visits add up -->
-          <div class="flex justify-between items-center uppercase tracking-wider mb-1" style="font-size: 0.75em;">
-            <span class="opacity-50">{{ translations.relatedDomains }}</span>
-            <span
-              class="font-mono font-bold" data-family-total
-              :class="readingColor(familyReading.met)"
-              :title="readingTitle(familyReading)"
-            >{{ familyTotalLabel }}{{ readingText(familyReading) }}</span>
+          <!-- No family figure beside this heading any more: it was the same
+               fold, for the same family, as the grid under the base domain a few
+               lines above – and for visits it was the very same number. -->
+          <div class="uppercase tracking-wider mb-1 opacity-50" style="font-size: 0.75em;">
+            {{ translations.relatedDomains }}
           </div>
           <div
             class="overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700 shadow-sm"
@@ -1060,9 +977,34 @@ onMounted(async () => {
               class="p-2.5 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               :class="{ 'bg-blue-50 hover:bg-blue-50 dark:bg-blue-900/30 dark:hover:bg-blue-900/30': domain === currentHostname }"
             >
-              <span class="truncate flex-1 mr-3 secure-domain-display" :title="domain">
+              <!-- No hover repeating the name: it said exactly what the row
+                   already says. It was there because the name was cut off at the
+                   width of the row, so the name is allowed to wrap instead –
+                   which is the better answer to a name too long to fit anyway,
+                   since it needs no mouse and no second look.
+
+                   The one hover left is for a name whose two spellings differ:
+                   the row draws whichever the header's toggle asked for, and the
+                   other one is not on screen to be read. -->
+              <span
+                class="flex-1 mr-3 secure-domain-display break-all"
+                :title="displayDomain(domain) === domain ? undefined : domain"
+              >
                 <SecureText :text="displayDomain(domain)" />
-                <span v-if="domain === currentHostname" class="ml-1 text-[10px] text-blue-500 bg-blue-100 dark:bg-blue-900/40 dark:text-blue-300 px-1 rounded font-sans">{{ translations.current }}</span>
+                <!-- Solid, not a tint. This badge sits on the one row that is
+                     itself tinted blue, so a translucent blue chip with blue
+                     letters on it was very nearly the row it was printed on.
+
+                     Letter spacing set back to normal, inline because the rule
+                     it is overriding is a class of the same weight: the word is
+                     a label, not an address, and the quarter-em that makes a
+                     hostname readable character by character only makes a label
+                     look stretched. -->
+                <span
+                  v-if="domain === currentHostname"
+                  class="ml-1.5 text-[10px] font-semibold bg-blue-600 text-white dark:bg-blue-400 dark:text-blue-950 px-1.5 py-0.5 rounded font-sans"
+                  style="letter-spacing: normal;"
+                >{{ translations.current }}</span>
               </span>
               <span
                 class="font-mono font-bold whitespace-nowrap" data-family-value

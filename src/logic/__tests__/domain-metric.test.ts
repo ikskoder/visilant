@@ -1,6 +1,6 @@
 import type { FamiliaritySettings } from '../familiarity'
 import { describe, expect, it } from 'vitest'
-import { DOMAIN_METRICS, metricAggregation, metricReading, metricSortValue, metricTotal } from '../domain-metric'
+import { metricAggregation, metricReading, metricSortValue } from '../domain-metric'
 import { DAY_MS, defaultFamiliaritySettings } from '../familiarity'
 
 const NOW = Date.UTC(2026, 8, 8)
@@ -50,50 +50,20 @@ describe('one host, one metric', () => {
   })
 })
 
-describe('a whole domain family', () => {
-  // Deliberately two hosts that each fail a different check: the busy one is
-  // new, and the old one has barely been opened
-  const family = [
-    { count: 30, activeDays: 9, firstSeen: daysAgo(5) },
-    { count: 12, activeDays: 4, firstSeen: daysAgo(400) },
-  ]
-
-  it('adds visits up and nothing else', () => {
+/*
+ * The family's own figures are `aggregateFamiliarityStats`, tested with the rest
+ * of the familiarity rules. They used to be folded here as well, for the number
+ * that stood beside the related-domain list's heading, and that number is gone –
+ * the base domain draws the whole row of facts under its own name instead.
+ */
+describe('naming how a family figure was folded', () => {
+  // The row on the base domain card puts this word under every heading, because
+  // the four figures in it are not arrived at the same way and a row that does
+  // not say so invites the reader to compare a sum with a maximum
+  it('adds visits up and takes the best single host for everything else', () => {
     expect(metricAggregation('visits')).toBe('total')
-    expect(metricTotal('visits', family, rules, NOW).value).toBe(42)
-  })
-
-  it('takes the largest single member for active days', () => {
     expect(metricAggregation('activeDays')).toBe('max')
-    // The same day spent on two hosts of one family is one day of knowing it
-    expect(metricTotal('activeDays', family, rules, NOW).value).toBe(9)
-  })
-
-  it('counts age from the earliest member, which is the largest number of days', () => {
-    const reading = metricTotal('age', family, rules, NOW)
-
     expect(metricAggregation('age')).toBe('max')
-    expect(reading.value).toBe(400)
-    expect(reading.firstSeen).toBe(daysAgo(400))
-  })
-
-  it('gives the family the best checks any one host passes, not a sum of them', () => {
-    // Neither host clears every bar on its own, and the folded family would:
-    // 42 visits, 9 active days and 400 days of age is three checks out of three,
-    // which no host in this family actually holds.
-    const reading = metricTotal('checks', family, rules, NOW)
-
     expect(metricAggregation('checks')).toBe('max')
-    expect(reading).toMatchObject({ value: 2, outOf: 3, met: false })
-  })
-
-  it('answers for an empty family without inventing a record', () => {
-    for (const metric of DOMAIN_METRICS) {
-      const reading = metricTotal(metric, [], rules, NOW)
-      expect(reading.met).not.toBe(true)
-    }
-
-    expect(metricTotal('visits', [], rules, NOW).value).toBe(0)
-    expect(metricTotal('activeDays', [], rules, NOW).value).toBeUndefined()
   })
 })

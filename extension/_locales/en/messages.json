@@ -359,10 +359,6 @@
     "message": "Import your browser history to fill this in",
     "description": "Hint shown when first-visit data is missing"
   },
-  "statsFamilyWide": {
-    "message": "This address has no visits of its own – these are for the domain as a whole.",
-    "description": "Shown when the visit facts come from the domain family rather than the exact address"
-  },
   "untrackedHostBadge": {
     "message": "not counted",
     "description": "Badge shown instead of a familiar/unfamiliar verdict for an address that is never counted"
@@ -543,9 +539,17 @@
     "message": "Total: ",
     "description": "Label for a figure the whole domain family adds up to, which only visits do"
   },
-  "max": {
-    "message": "Max: ",
-    "description": "Label for a figure taken from the strongest single member of the domain family – active days, age and passed checks, none of which can be added up"
+  "foldTotal": {
+    "message": "total",
+    "description": "Appended to a heading over a family figure that is the sum of every host under the domain. Only visits add up"
+  },
+  "foldMax": {
+    "message": "max",
+    "description": "Appended to a heading over a family figure taken from the strongest single host rather than a sum – active days, age and passed checks, none of which can be added together"
+  },
+  "familySummaryTitle": {
+    "message": "All related domains together",
+    "description": "Small label over the row of facts on the base domain card, saying the numbers under it summarise every host in the list below rather than describing one address"
   },
   "listNumberLabel": {
     "message": "Number",

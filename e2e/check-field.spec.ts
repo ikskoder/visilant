@@ -17,7 +17,7 @@ async function openCheckPage(context: any, extensionId: string) {
   return page
 }
 
-const CHECK_INPUT = 'input[placeholder="Paste a link, domain or email address"]'
+const CHECK_INPUT = 'textarea[placeholder="Paste a link, domain or email address"]'
 
 /**
  * The check field itself.
@@ -55,9 +55,38 @@ test('checking a URL reports its base domain and visit count', async ({ context,
 
   await check(page, 'https://shop.example.org/cart?id=1')
 
-  await expect(field(page).locator('text=Base domain')).toContainText('example.org', { timeout: 5000 })
-  // Visits are counted across the whole domain family, not per exact hostname
-  await expect(field(page).locator('[data-criterion="visits"]').first()).toHaveText('4')
+  // The base domain is named once, in a card of its own – the check field used
+  // to print it as well, a line above
+  await expect(page.locator('[data-base-domain]')).toContainText('example.org', { timeout: 5000 })
+  // And the checked-domain card answers for the exact hostname that was checked
+  await expect(page.locator('[data-criterion="visits"]').first()).toHaveText('4')
+  // Nothing else is recorded under that base domain, so the family's own row
+  // would be this same number a second time and is left out
+  await expect(page.locator('[data-family-stats]')).toHaveCount(0)
+})
+
+/**
+ * The change this whole layout exists for: one name, one set of numbers.
+ *
+ * The check field folded the family and printed the result under the subdomain's
+ * name, a few pixels above the card printing that host's own record – so a
+ * profile like this one put `Visits 10` and `Visits 4` on screen together, both
+ * apparently about `shop.example.org`.
+ */
+test('the family is drawn under the base domain, never under the subdomain', async ({ context, extensionId }) => {
+  await seedVisits(context, 'shop.example.org', 4)
+  await seedVisits(context, 'www.example.org', 6)
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'https://shop.example.org/cart?id=1')
+
+  // The host answers for itself
+  await expect(page.locator('[data-criterion="visits"]').first()).toHaveText('4', { timeout: 5000 })
+  // The family answers for the family, under the family's name
+  const family = page.locator('[data-family-stats]')
+  await expect(family.locator('[data-criterion="visits"]')).toHaveText('10')
+  // And the field above carries neither
+  await expect(field(page).locator('[data-criterion="visits"]')).toHaveCount(0)
 })
 
 const DAY = 24 * 60 * 60 * 1000
@@ -69,26 +98,30 @@ test('a check reports every fact its verdict was drawn from', async ({ context, 
   await check(page, 'https://evidence.example.org/')
 
   // Not the visit count on its own: a site can be called unfamiliar over a date
-  // while the only number on screen says it has been visited plenty
-  await expect(field(page).locator('[data-criterion="visits"]').first()).toHaveText('4', { timeout: 5000 })
-  await expect(field(page).locator('[data-criterion="activeDays"]').first()).toHaveText('3')
-  await expect(field(page).locator('[data-criterion="age"]').first()).toContainText('7')
+  // while the only number on screen says it has been visited plenty. The facts
+  // are drawn once, in the checked-domain card – the check field above used to
+  // carry a second copy of them, folded over the family instead of this host.
+  await expect(page.locator('[data-criterion="visits"]').first()).toHaveText('4', { timeout: 5000 })
+  await expect(page.locator('[data-criterion="activeDays"]').first()).toHaveText('3')
+  await expect(page.locator('[data-criterion="age"]').first()).toContainText('7')
+  await expect(field(page).locator('[data-criterion="visits"]')).toHaveCount(0)
 })
 
-test('the facts become a headed table once the bar is asked for', async ({ context, extensionId }) => {
+/**
+ * The card names each fact above the number, so it takes the bar into the cell
+ * rather than growing a column for it – the shape `MismatchTable` and this grid
+ * have always used. The headed table is what the surfaces that do not name their
+ * rows switch to, and `FamiliarityFacts` is unit-tested for both shapes.
+ */
+test('the bar rides along inside the cell once it is asked for', async ({ context, extensionId }) => {
   await patchSettings(context, { showFamiliarityThresholds: true })
   await seedVisits(context, 'threshold.example.org', 4, { activeDays: 3, firstSeen: Date.now() - 7 * DAY })
   const page = await openCheckPage(context, extensionId)
 
   await check(page, 'https://threshold.example.org/')
 
-  // Headings, because a bare "4 / 10" is a pair of numbers whose meaning is gone
-  // a moment later. The shipped bar for visits is 10.
-  await expect(field(page).locator('table').first()).toContainText('Needed', { timeout: 5000 })
-  await expect(field(page).locator('[data-criterion="visits"]').first()).toHaveText('4')
-  await expect(field(page).locator('[data-required="visits"]').first()).toHaveText('10')
-  // Four visits against a bar of ten, so the row is marked as not cleared
-  await expect(field(page).locator('[data-passed="visits"]').first()).toHaveText('✗')
+  // Four visits against the shipped bar of ten
+  await expect(page.locator('[data-criterion="visits"]').first()).toHaveText('4 / 10', { timeout: 5000 })
 })
 
 // The check page is the one surface with no site behind it: the reader is on the
@@ -109,9 +142,9 @@ test('a bare domain is understood without a scheme', async ({ context, extension
   await check(page, 'example.net')
 
   await expect(field(page).locator('.secure-domain-display').first()).toHaveText('example.net', { timeout: 5000 })
-  await expect(field(page).locator('[data-criterion="visits"]').first()).toHaveText('0')
+  await expect(page.locator('[data-criterion="visits"]').first()).toHaveText('0')
   // Nothing sits in front of the base domain, so there is no base domain to add
-  await expect(field(page).locator('text=Base domain')).toHaveCount(0)
+  await expect(page.locator('[data-base-domain]')).toHaveCount(0)
 })
 
 test('a known shortener is flagged and offers to be expanded', async ({ context, extensionId }) => {
@@ -345,7 +378,7 @@ test('two tenants of one hosting platform are two different sites', async ({ con
   await check(page, 'https://evil.github.io/login')
 
   // The stranger is its own site, with its own count of nothing
-  await expect(field(page).locator('[data-criterion="visits"]').first()).toContainText('0')
+  await expect(page.locator('[data-criterion="visits"]').first()).toContainText('0')
   await expect(field(page).locator('text=evil.github.io').first()).toBeVisible()
 })
 
@@ -356,7 +389,12 @@ test('a tenant keeps its own subdomains', async ({ context, extensionId }) => {
 
   await check(page, 'https://blog.alice.github.io/post')
 
-  await expect(field(page).locator('[data-criterion="visits"]').first()).toContainText('30')
+  // The tenant's thirty visits belong to the tenant, so they are drawn under the
+  // tenant's own name. `blog.` has none of its own, and its card says so rather
+  // than borrowing them – which is what put two different `Visits` rows on one
+  // screen before.
+  await expect(page.locator('[data-family-stats]').locator('[data-criterion="visits"]')).toContainText('30', { timeout: 5000 })
+  await expect(page.locator('[data-criterion="visits"]').first()).toContainText('0')
 })
 
 test('every recipient of a mailto is checked, not just the first', async ({ context, extensionId }) => {

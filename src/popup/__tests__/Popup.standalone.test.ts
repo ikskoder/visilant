@@ -82,14 +82,29 @@ describe('popup as a standalone page', () => {
     expect(wrapper.text()).not.toContain('statsFamilyWide')
   })
 
-  it('falls back to the domain family when only subdomains have records', async () => {
+  /**
+   * The panel never borrows the family's numbers for the address it names.
+   *
+   * It used to, whenever the address had no record of its own, with a caption to
+   * say the facts were family-wide. That put a number under a hostname that was
+   * sometimes the host's and sometimes the family's – and on the check page it
+   * sat a few pixels under the field's own fold of the family, so one screen
+   * carried two rows headed `Visits` with different numbers in them. The
+   * family's figures moved to the base domain, which is the name they are about,
+   * and this row now answers only for the name above it.
+   */
+  it('answers for the exact address, with the family under the base domain', async () => {
     stubLocalStorage({ 'www.example.com': record })
     const wrapper = await mountForDomain('example.com')
 
-    // Facts, and a line saying they are not about this exact address
-    expect(wrapper.find('[data-criterion="activeDays"]').exists()).toBe(true)
-    expect(criterion(wrapper, 'activeDays')).toContain('14')
-    expect(wrapper.text()).toContain('statsFamilyWide')
+    // Nothing is recorded for `example.com` itself, and the row says so rather
+    // than showing what the subdomain has been up to
+    expect(criterion(wrapper, 'activeDays')).toContain('statsUnknown')
+    expect(criterion(wrapper, 'visits')).toContain('0')
+
+    // The family's own facts, under the family's own name
+    const family = wrapper.get('[data-family-stats]')
+    expect(family.get('[data-criterion="activeDays"]').text()).toContain('14')
   })
 
   it('takes the earliest first visit across the family, and says it in days', async () => {
@@ -98,16 +113,17 @@ describe('popup as a standalone page', () => {
       'b.example.com': { ...record, firstSeen: Date.UTC(2026, 0, 1), activeDays: 9 },
     })
     const wrapper = await mountForDomain('example.com')
+    const family = wrapper.get('[data-family-stats]')
 
     // The count is what the age check is made of, so it is the number on show.
     // 2025 is a year and a bit back, which no reading of the later date is.
-    const age = wrapper.get('[data-criterion="age"]')
+    const age = family.get('[data-criterion="age"]')
     expect(Number.parseInt(age.text(), 10)).toBeGreaterThan(365)
     // The date it was measured from is still there, one hover away
     expect(age.attributes('title')).toContain('2025')
 
     // Days overlap between subdomains, so the largest is the honest floor
-    const activeDays = criterion(wrapper, 'activeDays')
+    const activeDays = family.get('[data-criterion="activeDays"]').text()
     expect(activeDays).toContain('9')
     expect(activeDays).not.toContain('12')
   })
@@ -121,11 +137,21 @@ describe('popup as a standalone page', () => {
     expect(criterion(wrapper, 'visits')).toContain('42')
   })
 
-  it('shows no facts row when nothing in the family was ever visited', async () => {
+  /**
+   * A zero is an answer. The row used to disappear entirely when there was no
+   * record, which leaves a reader working out whether the address was never
+   * visited or whether the panel simply failed to say – and those are the two
+   * things a check page exists to tell apart. A host nothing is ever counted for
+   * is the one case that still says so in words instead, above.
+   */
+  it('says nothing was recorded rather than dropping the row', async () => {
     stubLocalStorage({})
     const wrapper = await mountForDomain('never-visited.example')
 
-    expect(wrapper.find('[data-criterion="activeDays"]').exists()).toBe(false)
+    expect(criterion(wrapper, 'visits')).toContain('0')
+    expect(criterion(wrapper, 'activeDays')).toContain('statsUnknown')
+    // No family either, so nothing is borrowed from one
+    expect(wrapper.find('[data-family-stats]').exists()).toBe(false)
   })
 })
 
@@ -257,7 +283,7 @@ describe('the domain family list', () => {
     stubLocalStorage({ 'example.com': record })
     const wrapper = await mountForDomain('example.com')
 
-    expect(wrapper.find('[data-family-total]').exists()).toBe(false)
+    expect(wrapper.find('[data-family-stats]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('relatedDomains')
     // The facts are on the panel above, so this is not an empty profile either
     expect(wrapper.text()).not.toContain('noVisitData')
@@ -268,8 +294,38 @@ describe('the domain family list', () => {
     const wrapper = await mountForDomain('example.com')
 
     expect(wrapper.text()).toContain('relatedDomains')
-    // Visits are the one metric that adds up, and the heading says so
-    expect(wrapper.get('[data-family-total]').text()).toBe('total84')
+    // Visits are the one fact that adds up, and the family's row is where the
+    // sum lives now – it used to be repeated beside the list's heading as well
+    const family = wrapper.get('[data-family-stats]')
+    expect(family.get('[data-criterion="visits"]').text()).toContain('84')
+  })
+
+  /**
+   * A row of numbers that does not say what it covers or how it got there.
+   *
+   * On a base domain that is also the address the window is about, the name and
+   * its heading are skipped – and the card was then a bare row of figures with
+   * nothing to say they summarised the list below it. Worse, the figures are
+   * folded two different ways: 84 visits is a sum and 14 active days is the best
+   * single host, so read side by side without a word about it they invite a
+   * comparison that means nothing.
+   */
+  it('says what the family row covers and how each figure was folded', async () => {
+    stubLocalStorage({ 'example.com': record, 'www.example.com': record })
+    const wrapper = await mountForDomain('example.com')
+
+    // The name is the one already at the top of the page, so the heading that
+    // would repeat it is skipped – and this line has to be there regardless
+    expect(wrapper.text()).not.toContain('baseDomain')
+    expect(wrapper.text()).toContain('familySummaryTitle')
+
+    const family = wrapper.get('[data-family-stats]')
+    expect(family.get('[data-fold="visits"]').text()).toContain('foldTotal')
+    expect(family.get('[data-fold="activeDays"]').text()).toContain('foldMax')
+    expect(family.get('[data-fold="age"]').text()).toContain('foldMax')
+
+    // The card about one host says nothing of the kind – nothing is folded there
+    expect(wrapper.findAll('[data-fold]')).toHaveLength(3)
   })
 
   it('leaves out the base domain when it is the name already on show', async () => {
@@ -282,19 +338,20 @@ describe('the domain family list', () => {
     expect(onSubdomain.text()).toContain('baseDomain')
   })
 
-  it('draws the metric the chips ask for, folded the way that metric folds', async () => {
+  it('draws the metric the dropdown asks for, folded the way that metric folds', async () => {
     stubLocalStorage({
       'example.com': { ...record, activeDays: 14 },
       'www.example.com': { ...record, activeDays: 9 },
     })
     const wrapper = await mountForDomain('example.com')
 
-    await wrapper.get('[data-list-metric="activeDays"]').trigger('click')
+    await wrapper.get('[data-list-metric]').setValue('activeDays')
     await flushPromises()
 
     // Days spent on two hosts of one family are not two days of knowing it, so
     // the family takes the largest single member rather than the sum
-    expect(wrapper.get('[data-family-total]').text()).toBe('max14')
+    const family = wrapper.get('[data-family-stats]')
+    expect(family.get('[data-criterion="activeDays"]').text()).toContain('14')
     // And the column now carries that number rather than the visit count
     const rows = wrapper.findAll('[data-family-value]')
     expect(rows.map(row => row.text())).toEqual(['14', '9'])
@@ -314,14 +371,13 @@ describe('the domain family list', () => {
     })
     const wrapper = await mountForDomain('zebra.example.com')
 
-    await wrapper.get('[data-list-metric="activeDays"]').trigger('click')
+    await wrapper.get('[data-list-metric]').setValue('activeDays')
     await wrapper.get('[data-sort-by-name]').trigger('click')
     await flushPromises()
 
     // Alphabetical, descending – and still active days in the column
     const rows = wrapper.findAll('[data-family-value]')
     expect(rows.map(row => row.text())).toEqual(['14', '9'])
-    expect(wrapper.get('[data-family-total]').text()).toBe('max14')
   })
 })
 

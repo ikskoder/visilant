@@ -6,7 +6,7 @@ import type { MailSiteFamily } from '~/logic/mail-sites'
 import type { SiteVisitData } from '~/logic/storage'
 import type { EmailRecipientInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
-import { onMounted, onUnmounted, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AddressCompare from '~/components/AddressCompare.vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailBreakdown from '~/components/EmailBreakdown.vue'
@@ -62,6 +62,28 @@ type CheckResult
 const inputText = ref('')
 const result = ref<CheckResult | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+const checkInput = ref<HTMLTextAreaElement | null>(null)
+
+/**
+ * The field takes the height of what is in it.
+ *
+ * Measured rather than counted: the box is collapsed to nothing first, because
+ * `scrollHeight` on an element already tall enough reports the height it has
+ * rather than the height it needs, and a field that has grown once would then
+ * never shrink again.
+ */
+function growInput() {
+  const box = checkInput.value
+  if (!box)
+    return
+
+  box.style.height = 'auto'
+  box.style.height = `${box.scrollHeight}px`
+}
+
+// Not every address arrives by typing – a QR code, a drop, a paste and the value
+// the check page is opened with all set the text from the outside
+watch(inputText, () => nextTick(growInput))
 
 /** Set once the lists this page classifies by have actually been read. */
 let stopWatchingLists: (() => void) | null = null
@@ -367,12 +389,6 @@ function statusText(isSafe: boolean, count: number, hostname: string) {
   return { text: t.value('linkTooltipUnfamiliar'), class: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400' }
 }
 
-function subdomainPart(hostname: string, baseDomain: string) {
-  if (hostname === baseDomain || !hostname.endsWith(`.${baseDomain}`))
-    return null
-  return hostname.slice(0, -baseDomain.length - 1)
-}
-
 function payloadTypeLabel(payloadKind: string) {
   const key = `qrType${payloadKind.charAt(0).toUpperCase()}${payloadKind.slice(1)}`
   return t.value(key)
@@ -390,14 +406,25 @@ function payloadTypeLabel(payloadKind: string) {
       {{ t('checkFieldTitle') }}
     </div>
 
-    <div class="flex gap-1.5 items-center">
-      <input
+    <!-- Aligned to the top rather than the middle, so the buttons stay beside
+         the first line of an address instead of sliding down the middle of a
+         long one. -->
+    <div class="flex gap-1.5 items-start">
+      <!-- A box that grows, not a one-line field that scrolls. The whole point
+           of this field is to read an address closely, and the part of a long
+           URL that matters – where the host ends, what the path really says – is
+           exactly the part that had scrolled out of sight. Enter still checks
+           rather than opening a second line: nothing here is ever more than one
+           address long. -->
+      <textarea
+        ref="checkInput"
         v-model="inputText"
-        type="text"
-        class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm focus:outline-none focus:border-blue-400 dark:focus:border-blue-500"
+        rows="1"
+        class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm leading-snug resize-none overflow-hidden break-all focus:outline-none focus:border-blue-400 dark:focus:border-blue-500"
         :placeholder="t('checkFieldPlaceholder')"
-        @keydown.enter="onSubmit"
-      >
+        @input="growInput"
+        @keydown.enter.prevent="onSubmit"
+      />
       <!-- The only name this button had was a `title`, which a touchscreen never
            shows: on a phone it was a 32 px picture of a QR code and nothing
            else. `tap-target` comes from the popup and grows the hit area to
@@ -443,20 +470,16 @@ function payloadTypeLabel(payloadKind: string) {
           </span>
         </div>
 
-        <div v-if="subdomainPart(result.hostname, result.baseDomain)" class="text-xs opacity-60 mb-0.5">
-          {{ t('baseDomain') }}: <SecureText :text="result.baseDomain" :force-highlight="true" :danger-only="true" />
-        </div>
-
         <div v-if="result.punycode && result.punycode !== result.hostname" class="text-xs text-yellow-600 dark:text-yellow-400 mb-0.5 break-all">
           {{ t('linkTooltipPunycode') }}: {{ result.punycode }}
         </div>
 
-        <!-- No count line for an address that is never counted. The dashboard
-             right below this field says why, so it is not repeated here. -->
-        <div v-if="!result.isShortener && isTrackableHostname(result.hostname)" class="mb-1">
-          <FamiliarityFacts :stats="result.stats" />
-        </div>
-
+        <!-- No facts here, and no base-domain line either. Both are drawn once,
+             below: this host's own numbers in the checked-domain card, the
+             family's under the base domain's own name, each under the name it is
+             about. This field used to print the family's fold under the
+             subdomain's name, a few pixels above the card printing the host's –
+             two rows headed `Visits` carrying different numbers. -->
         <!-- Structural markers and resemblance to a domain the user knows.
              No lookup links here: the checked-domain card below carries them for
              this very name, and one screen offering the same control twice reads
@@ -507,7 +530,13 @@ function payloadTypeLabel(payloadKind: string) {
         </div>
 
         <div v-if="result.resolve.status === 'resolved'" class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-          <div class="flex items-center flex-wrap gap-1.5 mb-1">
+          <!-- Only where the redirect actually went somewhere else. A link that
+               lands on the host it started from is the ordinary case, and
+               repeating the name and its verdict for it put the same address on
+               screen twice, one line apart, each with its own `unfamiliar site`
+               beside it – which reads as two findings about two sites. The final
+               URL below is printed either way, since the path is what moved. -->
+          <div v-if="result.resolve.finalHostname && result.resolve.finalHostname !== result.hostname" class="flex items-center flex-wrap gap-1.5 mb-1">
             <span
               class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
               :class="result.resolve.finalIsSafe ? 'bg-green-500' : 'bg-red-500'"
@@ -551,10 +580,10 @@ function payloadTypeLabel(payloadKind: string) {
 
         <!-- A mailto carries a list, cc and bcc included -->
         <MailRecipients :recipients="result.recipients" :not-checked="result.recipientsNotChecked" :is-dark="isDark" />
-        <div v-if="result.providerKind === 'regular'" class="mt-1">
-          <FamiliarityFacts :stats="result.stats" />
-        </div>
 
+        <!-- The address domain's own facts are in the checked-domain card below,
+             once. A mail site further down keeps its own, because that is a
+             different name and no other block on the page carries it. -->
         <!-- The part after the @ is a domain like any other, and an address one
              letter off a provider the user knows is the whole point of checking.
              The lookup links for this name live in the checked-domain card

@@ -1,5 +1,5 @@
 import type { FamiliarityCriterionId, FamiliaritySettings, FamiliarityStats } from './familiarity'
-import { aggregateFamiliarityStats, criterionValue, evaluateFamiliarity } from './familiarity'
+import { criterionValue, evaluateFamiliarity } from './familiarity'
 
 /**
  * One number about one host, picked by the reader.
@@ -55,42 +55,25 @@ export function metricReading(
 }
 
 /**
- * Whether the family's figure is everything added up or the best single member.
+ * Whether a family's figure is everything added up or the best single member.
  *
  * Only visits add up. The same day spent on `mail` and on `accounts` is one day
  * of knowing Google rather than two, the family has been known since its
  * earliest member was, and checks are passed by a host and not by a sum – so
- * those three take the largest member and the heading says so.
+ * those three take the largest member.
+ *
+ * This is the one place that knows which is which, and every label naming a fold
+ * comes from here. A row of numbers that does not say how it was arrived at is
+ * the thing this answers: 11961 visits and 90 active days over the same family
+ * are a sum and a maximum, and nothing about the two figures says so.
+ *
+ * There used to be a `metricTotal` beside this, folding the family for a single
+ * figure next to the related-domain list's heading. That figure is gone – the
+ * base domain draws the whole row of facts instead – and the fold it used is
+ * `aggregateFamiliarityStats`, which is what the verdict itself has always used.
  */
 export function metricAggregation(metric: DomainMetric): 'total' | 'max' {
   return metric === 'visits' ? 'total' : 'max'
-}
-
-/** The same metric for a whole domain family. */
-export function metricTotal(
-  metric: DomainMetric,
-  records: Iterable<FamiliarityStats | undefined>,
-  rules: FamiliaritySettings,
-  now: number = Date.now(),
-): MetricReading {
-  const present = [...records].filter((record): record is FamiliarityStats => Boolean(record))
-
-  // Checks are passed per host, so the family's figure is the best any one
-  // member manages. Reading them off the folded stats instead would hand the
-  // family a pass that no single host in it holds.
-  if (metric === 'checks') {
-    let best: MetricReading | undefined
-    for (const record of present) {
-      const reading = metricReading('checks', record, rules, now)
-      if (!best || (reading.value ?? -1) > (best.value ?? -1))
-        best = reading
-    }
-    return best ?? metricReading('checks', { count: 0 }, rules, now)
-  }
-
-  // Visits add up, active days take the largest member and the first visit the
-  // earliest – the fold the familiarity check itself uses on a family
-  return metricReading(metric, aggregateFamiliarityStats(present), rules, now)
 }
 
 /**
