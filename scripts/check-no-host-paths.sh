@@ -75,7 +75,19 @@ else
   add_derived "$(hostname 2>/dev/null || true)"
   add_derived "$(git rev-parse --show-toplevel 2>/dev/null || true)"
 fi
-add_derived "$(git config user.email 2>/dev/null || true)"
+# The committer's e-mail: from the configuration where there is one, and from the
+# tip commit where there is not. A CI runner is the second case - `actions/
+# checkout` configures no identity and the image carries no global one - so this
+# read came back empty, no pattern was derived from it, and the self-test below
+# then demanded that an empty string be caught. The check reported that it could
+# not be trusted, on every run, in the one place it is meant to be authoritative.
+#
+# Taking it from the commit is not a workaround but the better source: it is the
+# address that actually signed the work being scanned, which is what the pattern
+# is for.
+committer_email="$(git config user.email 2>/dev/null || true)"
+[[ -n "$committer_email" ]] || committer_email="$(git log -1 --format=%ae 2>/dev/null || true)"
+add_derived "$committer_email"
 
 joined=$(printf '%s|' "${patterns[@]}")
 joined="${joined%|}"
@@ -191,7 +203,17 @@ case "$mode" in
     # The one that matters most here: a "load the unpacked extension from ..."
     # line is the likeliest real leak in this repository, and it is a file: URL.
     must_hit "load from file://$h/you/projects/visilant/extension/"
-    must_hit "$(git config user.email)"
+    # Skipped rather than failed where there is no e-mail to derive a pattern
+    # from, and skipped out loud - the same rule the container branch follows. A
+    # case that cannot apply must not be reported as one that was missed, and it
+    # must not be reported as one that passed either. The length test is the one
+    # `add_derived` uses, so the self-test cannot assert a pattern that was never
+    # added.
+    if [[ ${#committer_email} -ge 5 ]]; then
+      must_hit "$committer_email"
+    else
+      echo "  (e-mail case skipped: neither the configuration nor the tip commit named one)"
+    fi
     if [[ -z "$derived_note" ]]; then
       must_hit "$(hostname)"
       must_hit "$(git rev-parse --show-toplevel)"
