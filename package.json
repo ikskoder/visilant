@@ -88,6 +88,11 @@
     "webext-bridge": "^6.0.1",
     "webextension-polyfill": "^0.12.0"
   },
+  "pnpm": {
+    "overrides": {
+      "js-yaml@^4": "^4.3.2"
+    }
+  },
   "simple-git-hooks": {
     "pre-commit": "./scripts/pre-commit.sh"
   },
