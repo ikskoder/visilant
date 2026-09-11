@@ -104,13 +104,43 @@ test('stripping the container style attribute raises the alarm', async ({ contex
   await expect.poll(() => alarmRaised(context), { timeout: 5000 }).toBe('!!!')
 })
 
-test('replacing document.body raises the alarm', async ({ context }) => {
+/**
+ * One body swap is a router, not an attacker.
+ *
+ * A site that draws its own pages throws its body away on every route it takes,
+ * and the container goes with it - the same event as a page tearing the panel
+ * out. What separates them is not the event but what follows: the router is
+ * done, so once the container is put back it stays back, while a page that
+ * wants it gone has to keep taking it away. Alarming on the first swap made
+ * every single-page application look hostile.
+ */
+test('a single body replacement is repaired without an alarm', async ({ context }) => {
   const page = await openHostilePage(context)
   // The container leaves the screen inside the old body, so no removal is ever
   // recorded on the node the watch is attached to
   await attack(page, 'document.documentElement.replaceChild(document.createElement(\'body\'), document.body)')
+  await page.waitForTimeout(3000)
 
-  await expect.poll(() => alarmRaised(context), { timeout: 5000 }).toBe('!!!')
+  expect(await alarmRaised(context)).not.toBe('!!!')
+  // Put back rather than merely forgiven, so the guard is still on screen
+  expect(await page.evaluate(`Boolean(${FIND_CONTAINER})`)).toBe(true)
+})
+
+test('a page that keeps replacing its body raises the alarm', async ({ context }) => {
+  const page = await openHostilePage(context)
+  await page.waitForTimeout(1500)
+
+  // Well past MAX_REPAIRS_PER_WINDOW, with a beat between each so the watch
+  // gets to put the container back and count the strike rather than seeing one
+  // batch of mutations
+  await page.evaluate(async () => {
+    for (let i = 0; i < 12; i++) {
+      document.documentElement.replaceChild(document.createElement('body'), document.body)
+      await new Promise(resolve => setTimeout(resolve, 60))
+    }
+  })
+
+  await expect.poll(() => alarmRaised(context), { timeout: 8000 }).toBe('!!!')
 })
 
 test('covering the panel with an overlay raises the alarm', async ({ context }) => {

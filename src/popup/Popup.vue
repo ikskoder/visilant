@@ -837,6 +837,7 @@ onMounted(async () => {
             </div>
             <button
               class="text-blue-500 hover:text-blue-700 hover:underline transition-colors" style="font-size: 0.8em;"
+              data-anti-tampering-toggle
               :title="isAntiTamperingExcluded ? translations.antiTamperingTooltipOn : translations.antiTamperingTooltipOff"
               @click="toggleAntiTampering"
             >

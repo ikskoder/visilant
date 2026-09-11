@@ -86,6 +86,11 @@ test('popup font size increase/decrease buttons work', async ({ page, extensionI
 
 test('popup sort controls are visible for domain with data', async ({ page, extensionId, context }) => {
   await seedVisits(context, SITE_HOST, 2)
+  // Two hosts, because the controls belong to the related-domain list and the
+  // list is only drawn where there is a second name in it. One row repeating
+  // the address already spelled out above it, under a heading and a sort order,
+  // is the same fact written three times.
+  await seedVisits(context, `www.${SITE_HOST}`, 3)
 
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)
@@ -449,8 +454,11 @@ test('excluding domain in popup appears in options anti-tampering textarea', asy
   await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await popup.waitForTimeout(1500)
 
-  // Click disable button
-  const toggleBtn = popup.locator('button.text-blue-500').first()
+  // Named, not "the first blue button". The row that silences a site's warnings
+  // now sits above this one and carries a link of exactly the same colour, so
+  // the first one turned the warnings off and left anti-tampering untouched -
+  // and the amber dot it raised looked like this switch had worked.
+  const toggleBtn = popup.locator('[data-anti-tampering-toggle]')
   await toggleBtn.click()
   await popup.waitForTimeout(500)
   await expect(popup.locator('.bg-amber-400').first()).toBeAttached({ timeout: 3000 })
@@ -704,13 +712,19 @@ test('turning explanations off empties the settings page of them and nothing els
   expect(total).toBeGreaterThan(20)
   await expect(hints.first()).toBeVisible()
   const tall = await page.evaluate(() => document.body.scrollHeight)
+  // The familiarity checks are the one card that folds rather than hides. With
+  // explanations off each check states its whole rule on the threshold line, so
+  // the description it used to stand over leaves the markup along with it.
+  const foldedBefore = await page.locator('#section-familiarity .hint').count()
 
   // The toggle sits last in General, next to the theme picker
   await page.locator('#section-general label.cursor-pointer').last().click()
   await page.waitForTimeout(700)
 
-  // Still in the markup, just not taking up the page
-  await expect(hints).toHaveCount(total)
+  // Everything except those is still in the markup, just not taking up the page
+  const foldedAfter = await page.locator('#section-familiarity .hint').count()
+  expect(foldedAfter).toBeLessThan(foldedBefore)
+  await expect(hints).toHaveCount(total - (foldedBefore - foldedAfter))
   await expect(hints.first()).toBeHidden()
   expect(await page.evaluate(() => document.body.scrollHeight)).toBeLessThan(tall)
   // Its own description is the way back, so it stays
@@ -1117,10 +1131,11 @@ test('typing into a form inside an iframe is warned about', async ({ page }) => 
   const inner = page.frameLocator('#frame').locator('#inner')
   await inner.click()
   await page.keyboard.type('hunter2')
-  await page.waitForTimeout(2000)
 
-  const warning = page.locator('body > div[style*="2147483647"]')
-  await expect(warning.first()).toBeAttached({ timeout: 5000 })
+  // Hit-tested, not merely attached. The container is mounted on every page for
+  // the link check, so asserting its presence passed on any page at all - this
+  // test would have gone on passing with the frame guard deleted outright.
+  await expect.poll(() => warningShowing(page), { timeout: 10000 }).toBe(true)
 })
 
 /**
@@ -1144,9 +1159,14 @@ test('a frame on a familiar page raises no warning', async ({ page, context }) =
   await page.keyboard.type('hunter2')
   await page.waitForTimeout(2000)
 
-  // The frame's own host has no visits at all and never will have
-  const warning = page.locator('body > div[style*="2147483647"]')
-  await expect(warning).toHaveCount(0)
+  // The frame's own host has no visits at all and never will have.
+  //
+  // Asked as "is a panel on screen", because the thing this used to count is
+  // the container the content script mounts on every page for the link check.
+  // It is there whatever the verdict, so the old assertion could not pass on
+  // any page in any state - it was failing on the container, never on a warning.
+  await page.waitForTimeout(2000)
+  expect(await warningShowing(page)).toBe(false)
 })
 
 test('a paste into an iframe on an unfamiliar site is held', async ({ context }) => {
@@ -1252,10 +1272,18 @@ test('a site shortcut is not reported as typing, but typing into a field is', as
   await expect.poll(() => warningShowing(page), { timeout: 10000, intervals: [250] }).toBe(true)
 })
 
-/** The colour class on the big visit count at the top of the popup. */
+/**
+ * The colour on the visit count in the checked-domain card.
+ *
+ * Asked for by criterion rather than by looking for a bold monospace number.
+ * The card now draws one cell per check and a bolder one for the tally, so
+ * "the first bold figure" was the tally on a profile that has one and nothing
+ * at all on a profile that does not - neither of which is the count this is
+ * about.
+ */
 async function countColour(page: any): Promise<string> {
   return page.evaluate(() => {
-    const el = document.querySelector('.font-mono.font-bold')
+    const el = document.querySelector('[data-criterion="visits"]')
     const cls = el?.className ?? ''
     if (cls.includes('text-green'))
       return 'green'
