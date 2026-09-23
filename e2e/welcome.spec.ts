@@ -91,7 +91,7 @@ test('a failed import says so and offers to run again', async ({ context, extens
   await publishState(context, { status: 'failed', finishedAt: 1 })
   const page = await openWelcome(context, extensionId)
 
-  await expect(page.locator('text=The import did not finish')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('text=The import didn\'t finish')).toBeVisible({ timeout: 5000 })
   await expect(page.locator('button', { hasText: 'Import again' })).toBeVisible()
 })
 

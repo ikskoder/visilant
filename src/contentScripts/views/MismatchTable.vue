@@ -107,14 +107,16 @@ const summaryRow = computed(() => {
         </td>
       </tr>
       <template v-if="shouldShowCount(textDomainIsSafe) || shouldShowCount(destIsSafe)">
+        <!-- The mark leads the cell, as it leads the line in FamiliarityFacts: the
+             verdict is read first and the column of marks lines up -->
         <tr v-for="row in factRows" :key="row.id">
           <td :class="[pad, isDark ? 'text-gray-500' : 'text-gray-400']">
             {{ row.label }}
           </td>
           <td :class="[pad, shouldShowCount(textDomainIsSafe) ? `font-medium ${valueClass(row.left.met, row.left.known)}` : 'text-gray-500 italic']">
             <template v-if="shouldShowCount(textDomainIsSafe)">
+              <span class="mr-1" :class="valueClass(row.left.met)" :data-passed="row.id">{{ row.left.met ? '✓' : '✗' }}</span>
               {{ cell(row.left) }}
-              <span class="ml-1" :class="valueClass(row.left.met)" :data-passed="row.id">{{ row.left.met ? '✓' : '✗' }}</span>
             </template>
             <template v-else>
               {{ t('mismatchVisitsHidden') }}
@@ -122,8 +124,8 @@ const summaryRow = computed(() => {
           </td>
           <td :class="[pad, shouldShowCount(destIsSafe) ? `font-medium ${valueClass(row.right.met, row.right.known)}` : 'text-gray-500 italic']">
             <template v-if="shouldShowCount(destIsSafe)">
+              <span class="mr-1" :class="valueClass(row.right.met)" :data-passed="row.id">{{ row.right.met ? '✓' : '✗' }}</span>
               {{ cell(row.right) }}
-              <span class="ml-1" :class="valueClass(row.right.met)" :data-passed="row.id">{{ row.right.met ? '✓' : '✗' }}</span>
             </template>
             <template v-else>
               {{ t('mismatchVisitsHidden') }}
@@ -136,8 +138,8 @@ const summaryRow = computed(() => {
           </td>
           <td :class="[pad, shouldShowCount(textDomainIsSafe) ? `font-medium ${valueClass(summaryRow.left.met)}` : 'text-gray-500 italic']">
             <template v-if="shouldShowCount(textDomainIsSafe)">
+              <span class="mr-1" :class="valueClass(summaryRow.left.met)" data-passed="checks">{{ summaryRow.left.met ? '✓' : '✗' }}</span>
               {{ summaryRow.left.combined }}
-              <span class="ml-1" :class="valueClass(summaryRow.left.met)" data-passed="checks">{{ summaryRow.left.met ? '✓' : '✗' }}</span>
             </template>
             <template v-else>
               {{ t('mismatchVisitsHidden') }}
@@ -145,8 +147,8 @@ const summaryRow = computed(() => {
           </td>
           <td :class="[pad, shouldShowCount(destIsSafe) ? `font-medium ${valueClass(summaryRow.right.met)}` : 'text-gray-500 italic']">
             <template v-if="shouldShowCount(destIsSafe)">
+              <span class="mr-1" :class="valueClass(summaryRow.right.met)" data-passed="checks">{{ summaryRow.right.met ? '✓' : '✗' }}</span>
               {{ summaryRow.right.combined }}
-              <span class="ml-1" :class="valueClass(summaryRow.right.met)" data-passed="checks">{{ summaryRow.right.met ? '✓' : '✗' }}</span>
             </template>
             <template v-else>
               {{ t('mismatchVisitsHidden') }}

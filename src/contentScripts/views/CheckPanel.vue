@@ -120,14 +120,20 @@ const isUntrackedHost = computed(() => {
   return Boolean(hostname) && !isTrackableHostname(hostname!)
 })
 
-function statusBadge(stats: FamiliarityStats, hostname: string) {
+/**
+ * The badge beside the name being checked. Beside an email address it never
+ * says "never visited": nobody visits an address, and next to "Email address"
+ * it read as though somebody could. Familiar and unfamiliar are about the site
+ * behind it, and read the same either way.
+ */
+function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
   const count = stats.count
   if (!isTrackableHostname(hostname))
     return { text: t.value('untrackedHostBadge'), class: props.isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600' }
   if (isFamiliar(stats, familiarityRules.value))
     return { text: t.value('linkTooltipFamiliar'), class: props.isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700' }
   if (count === 0)
-    return { text: t.value('linkTooltipNeverVisited'), class: props.isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700' }
+    return { text: t.value(email ? 'linkTooltipUnfamiliar' : 'linkTooltipNeverVisited'), class: props.isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700' }
   return { text: t.value('linkTooltipUnfamiliar'), class: props.isDark ? 'bg-yellow-900/40 text-yellow-400' : 'bg-yellow-100 text-yellow-700' }
 }
 </script>
@@ -175,8 +181,8 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
             <span v-else-if="data.email.providerKind === 'public'" class="panel-label px-1.5 py-0.5 rounded" :class="isDark ? 'bg-blue-900/40 text-blue-400' : 'bg-blue-100 text-blue-700'">
               {{ t('emailPublicProvider') }}
             </span>
-            <span v-else class="panel-label px-1.5 py-0.5 rounded" :class="statusBadge(familyStats, data.hostname).class">
-              {{ statusBadge(familyStats, data.hostname).text.toLowerCase() }}
+            <span v-else class="panel-label px-1.5 py-0.5 rounded" :class="statusBadge(familyStats, data.hostname, true).class">
+              {{ statusBadge(familyStats, data.hostname, true).text.toLowerCase() }}
             </span>
           </div>
           <div class="panel-label uppercase tracking-wider mb-0.5" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
@@ -281,14 +287,11 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
              an untracked host: the family is the address itself, and every number
              in it would be a zero that can never move. -->
         <div v-if="!isUntrackedHost" class="pt-2" :class="isDark ? 'border-t border-gray-700/50' : 'border-t border-gray-200'">
-          <div class="flex justify-between items-center mb-1">
-            <span class="panel-label uppercase tracking-wider" :class="isDark ? 'text-gray-500' : 'text-gray-400'">{{ t('baseDomain') }}</span>
-            <!-- With the mailbox listed below, this zero is a fact about a name
-                 nobody opens rather than a verdict, so it is not painted as one -->
-            <span
-              class="panel-label font-mono font-bold"
-              :class="mailSites.length ? (isDark ? 'text-gray-500' : 'text-gray-400') : countColor(familyStats)"
-            >{{ t('total') }}{{ data.family.total }}</span>
+          <!-- No figure beside this heading. A bare "Total" repeated the visits
+               line printed under it, with no word for what it counted, and next
+               to a mail domain it was a zero nobody could move. -->
+          <div class="panel-label uppercase tracking-wider mb-1" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
+            {{ t('baseDomain') }}
           </div>
           <div class="font-bold break-all mb-2">
             <SecureText :text="displayDomain(data.family.baseDomain)" :highlight-override="localHighlight" :case-override="localCase" />

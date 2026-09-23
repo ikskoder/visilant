@@ -2,7 +2,7 @@ import type { FamiliarityStats } from '~/logic/familiarity'
 import type { VisitFacts } from '~/logic/link-safety'
 import type { Settings } from '~/logic/storage'
 import type { TamperWatch } from '~/logic/tamper-watch'
-import type { CheckPanelData, DomainFamilyInfo, EmailRecipientInfo, LinkTooltipData, RawPayloadInfo } from '~/logic/ui-state'
+import type { CheckPanelData, DomainFamilyInfo, EmailRecipientInfo, LinkTooltipData, RawPayloadInfo, ShortUrlInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { createApp, watch, watchEffect } from 'vue'
 import { setupApp } from '~/logic/common-setup'
@@ -642,6 +642,54 @@ function getAnchorRect(anchor: HTMLAnchorElement) {
   return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }
 }
 
+/**
+ * Follow a link's redirects for the intercept dialog, in auto mode.
+ *
+ * A failure is kept as a failure rather than dropped. Dropping it left the
+ * dialog with nothing to say about a short link it could not see through, and
+ * with no way to tell that a lookup had even been tried – so a familiar
+ * shortener read as a familiar destination.
+ */
+async function resolveForIntercept(url: string, hostname: string, isKnownShortener: boolean): Promise<ShortUrlInfo> {
+  const failed = (error: string, chain: string[] = [url]): ShortUrlInfo => ({
+    originalUrl: url,
+    resolvedUrl: '',
+    resolvedDomain: '',
+    resolvedStats: { count: 0 },
+    resolvedIsSafe: false,
+    chain,
+    status: 'error',
+    error,
+    isKnownShortener,
+  })
+
+  try {
+    const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url })
+    if (!result)
+      return failed('failed')
+    if (result.status !== 'resolved')
+      return failed(result.error || 'failed', result.chain)
+    if (!result.finalHostname || result.finalHostname === hostname)
+      return failed('same_domain', result.chain)
+
+    const resolvedVisitData = await fetchLinkData(`https://${result.finalHostname}`, result.finalHostname)
+    return {
+      originalUrl: url,
+      resolvedUrl: result.finalUrl,
+      resolvedDomain: result.finalHostname,
+      resolvedStats: resolvedVisitData.stats,
+      resolvedPunycode: alternateSpelling(result.finalHostname),
+      resolvedIsSafe: resolvedVisitData.isSafe,
+      chain: result.chain,
+      status: 'resolved',
+      isKnownShortener,
+    }
+  }
+  catch {
+    return failed('failed')
+  }
+}
+
 // Show intercept dialog for a URL without an anchor element (used by right-click context menu)
 async function showLinkInterceptByUrl(url: string) {
   const hostname = getHostnameFromHref(url)
@@ -659,29 +707,15 @@ async function showLinkInterceptByUrl(url: string) {
   const isKnownShortener = isShortenedUrl(hostname)
   const resolveAny = settings.value.linkSafety.shortUrlResolveAny
   const shouldResolve = shortUrlMode === 'auto' && (isKnownShortener || resolveAny)
-  let shortUrlInfo: import('~/logic/ui-state').ShortUrlInfo | null = null
+  let shortUrlInfo: ShortUrlInfo | null = null
 
   if (shouldResolve) {
-    try {
-      const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url })
-      if (result && result.status === 'resolved' && result.finalHostname && result.finalHostname !== hostname) {
-        const resolvedVisitData = await fetchLinkData(`https://${result.finalHostname}`, result.finalHostname)
-        shortUrlInfo = {
-          originalUrl: url,
-          resolvedUrl: result.finalUrl,
-          resolvedDomain: result.finalHostname,
-          resolvedStats: resolvedVisitData.stats,
-          resolvedPunycode: alternateSpelling(result.finalHostname),
-          resolvedIsSafe: resolvedVisitData.isSafe,
-          chain: result.chain,
-          status: 'resolved',
-          isKnownShortener,
-        }
-      }
-    }
-    catch {
-      // Resolution failed – show intercept anyway
-    }
+    shortUrlInfo = await resolveForIntercept(url, hostname, isKnownShortener)
+    // A failure only has something to say about a known shortener. For any other
+    // host the dialog keeps its "Show real destination" and "Mark as shortener"
+    // buttons, which is how a shortener missing from the list gets added.
+    if (!isKnownShortener && shortUrlInfo.status === 'error')
+      shortUrlInfo = null
   }
   else if (shortUrlMode === 'button' && (isKnownShortener || resolveAny)) {
     shortUrlInfo = {
@@ -1395,34 +1429,25 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
   const isKnownShortener = isShortenedUrl(hostname)
   const resolveAny = settings.value.linkSafety.shortUrlResolveAny
   const shouldResolve = shortUrlMode === 'auto' && (isKnownShortener || resolveAny)
-  let shortUrlInfo: import('~/logic/ui-state').ShortUrlInfo | null = null
+  let shortUrlInfo: ShortUrlInfo | null = null
 
   if (shouldResolve) {
-    try {
-      const result = await sendMessageSafe<ResolvedUrlResult>('resolve-short-url', { url: href })
-      if (result && result.status === 'resolved' && result.finalHostname && result.finalHostname !== hostname) {
-        const resolvedVisitData = await fetchLinkData(`https://${result.finalHostname}`, result.finalHostname)
-        shortUrlInfo = {
-          originalUrl: href,
-          resolvedUrl: result.finalUrl,
-          resolvedDomain: result.finalHostname,
-          resolvedStats: resolvedVisitData.stats,
-          resolvedPunycode: alternateSpelling(result.finalHostname),
-          resolvedIsSafe: resolvedVisitData.isSafe,
-          chain: result.chain,
-          status: 'resolved',
-          isKnownShortener,
-        }
-        // Use resolved domain's safety for intercept decision
-        if (resolvedVisitData.isSafe) {
-          followLink(anchor, openInNewTab, href)
-          return false
-        }
-      }
+    shortUrlInfo = await resolveForIntercept(href, hostname, isKnownShortener)
+    // Use resolved domain's safety for intercept decision
+    if (shortUrlInfo.status === 'resolved' && shortUrlInfo.resolvedIsSafe) {
+      followLink(anchor, openInNewTab, href)
+      return false
     }
-    catch {
-      // Resolution failed – show intercept as safe default
+    // "Resolve any link" asks about every link, and most of them go nowhere
+    // else. One that stays on a familiar host leads where it says, and stopping
+    // it put a dialog in front of every ordinary link on the page.
+    if (!isKnownShortener && shortUrlInfo.error === 'same_domain' && visitData.isSafe) {
+      followLink(anchor, openInNewTab, href)
+      return false
     }
+    // See `showLinkInterceptByUrl` for why a failure on any other host is dropped
+    if (!isKnownShortener && shortUrlInfo.status === 'error')
+      shortUrlInfo = null
   }
   else if (shortUrlMode === 'button' && (isKnownShortener || resolveAny)) {
     // Button mode: show idle state so user can resolve manually in the dialog

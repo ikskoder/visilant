@@ -56,16 +56,12 @@ const { t } = useI18n()
                 {{ t('copyWarningMessage') }}
               </template>
             </p>
-            <ul class="mt-2 space-y-1">
-              <li>{{ t('checkUrl') }}</li>
-              <template v-if="warningType === 'input'">
-                <li>{{ t('avoidPasswords') }}</li>
-                <li>{{ t('beCareful') }}</li>
-              </template>
-              <template v-else>
-                <li>{{ t('avoidShell') }}</li>
-                <li>{{ t('verifyContent') }}</li>
-              </template>
+            <!-- Typing is about which site this is, and the message itself sends
+                 the reader to the toolbar window for that. Copying is about what
+                 ended up in the clipboard, which no check of the address can tell. -->
+            <ul v-if="warningType === 'copy'" class="mt-2 space-y-1">
+              <li>{{ t('avoidShell') }}</li>
+              <li>{{ t('verifyContent') }}</li>
             </ul>
           </div>
 

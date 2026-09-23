@@ -74,7 +74,9 @@ describe('linkInterceptDialog component', () => {
     expect(wrapper.emitted('details')?.[0]).toEqual(['suspicious.com'])
   })
 
-  it('has no dialog-level details button when mismatch is present', () => {
+  // Each column of the mismatch table has its own, and a short link not yet
+  // seen through has nothing behind it but the shortener's own page
+  it('has no dialog-level details button on a mismatch or an unresolved short link', () => {
     const mismatchData: LinkInterceptData = {
       ...baseData,
       mismatch: {
@@ -83,18 +85,16 @@ describe('linkInterceptDialog component', () => {
         textDomainIsSafe: true,
       },
     }
-    const noMismatchWrapper = mount(LinkInterceptDialog, {
-      props: { ...defaultProps, data: baseData },
-    })
-    const mismatchWrapper = mount(LinkInterceptDialog, {
-      props: { ...defaultProps, data: mismatchData },
-    })
-    // Without mismatch: 3 action buttons (Go Back + Details + Continue) + 2 resolve/mark buttons
-    // With mismatch: no dialog-level Details button, but MismatchTable adds its own 2
-    // So total button count should differ
-    const noMismatchButtons = noMismatchWrapper.findAll('button')
-    const mismatchButtons = mismatchWrapper.findAll('button')
-    expect(mismatchButtons.length).not.toBe(noMismatchButtons.length)
+    const shortData: LinkInterceptData = {
+      ...baseData,
+      shortUrl: { originalUrl: 'https://bit.ly/abc', resolvedUrl: '', resolvedDomain: '', resolvedStats: { count: 0 }, resolvedIsSafe: false, chain: [], status: 'idle', isKnownShortener: true },
+    }
+    const detailsIn = (data: LinkInterceptData) => mount(LinkInterceptDialog, { props: { ...defaultProps, data } })
+      .findAll('button')
+      .some(b => b.text() === 'linkInterceptDomainInfo')
+    expect(detailsIn(baseData)).toBe(true)
+    expect(detailsIn(mismatchData)).toBe(false)
+    expect(detailsIn(shortData)).toBe(false)
   })
 
   it('shows mismatch table when mismatch data is present', () => {
@@ -180,5 +180,57 @@ describe('linkInterceptDialog component', () => {
     const resolveBtn = buttons.find(b => b.classes().some(c => c.includes('bg-orange')))
     await resolveBtn!.trigger('click')
     expect(wrapper.emitted('resolveShortUrl')).toBeTruthy()
+  })
+
+  // The title and the way forward follow what is known about the destination.
+  // It used to say "Unfamiliar site ahead" whatever the link was.
+  const shortUrl = (over: Partial<NonNullable<LinkInterceptData['shortUrl']>>) => ({
+    originalUrl: 'https://bit.ly/abc',
+    resolvedUrl: '',
+    resolvedDomain: '',
+    resolvedStats: { count: 0 },
+    resolvedIsSafe: false,
+    chain: [],
+    status: 'idle' as const,
+    isKnownShortener: true,
+    ...over,
+  })
+
+  function titleAndProceed(data: LinkInterceptData) {
+    const wrapper = mount(LinkInterceptDialog, { props: { ...defaultProps, data } })
+    const buttons = wrapper.findAll('button').map(b => b.text())
+    const proceed = buttons.find(b => b === 'linkTooltipGoToLink' || b === 'linkInterceptContinue')
+    return { title: wrapper.find('h2').text(), proceed, hint: wrapper.text().includes('linkInterceptPhishingHint') }
+  }
+
+  it('calls an unfamiliar destination unfamiliar', () => {
+    expect(titleAndProceed(baseData)).toEqual({ title: 'linkInterceptTitle', proceed: 'linkInterceptContinue', hint: true })
+  })
+
+  it('does not call a familiar destination unfamiliar', () => {
+    const data = { ...baseData, isSafe: true, stats: { count: 50 } }
+    expect(titleAndProceed(data)).toEqual({ title: 'linkInterceptTitleFamiliar', proceed: 'linkTooltipGoToLink', hint: false })
+  })
+
+  it('calls a short link not yet seen through hidden, even on a familiar shortener', () => {
+    const data = { ...baseData, isSafe: true, shortUrl: shortUrl({ status: 'error', error: 'failed' }) }
+    expect(titleAndProceed(data)).toEqual({ title: 'linkInterceptTitleHidden', proceed: 'linkInterceptContinue', hint: false })
+  })
+
+  it('judges a resolved short link by where it really goes', () => {
+    const toUnknown = { ...baseData, isSafe: true, shortUrl: shortUrl({ status: 'resolved', resolvedDomain: 'x.test', resolvedIsSafe: false }) }
+    expect(titleAndProceed(toUnknown).title).toBe('linkInterceptTitle')
+    const toKnown = { ...baseData, isSafe: false, shortUrl: shortUrl({ status: 'resolved', resolvedDomain: 'x.test', resolvedIsSafe: true }) }
+    expect(titleAndProceed(toKnown)).toEqual({ title: 'linkInterceptTitleFamiliar', proceed: 'linkTooltipGoToLink', hint: false })
+  })
+
+  it('does not wave a mismatched link through, even to a familiar site', () => {
+    const data = { ...baseData, isSafe: true, mismatch: { textDomain: 'paypal.com', textDomainStats: { count: 0 }, textDomainIsSafe: false } }
+    expect(titleAndProceed(data).proceed).toBe('linkInterceptContinue')
+  })
+
+  it('does not wave a link through while its destination is still being looked up', () => {
+    const data = { ...baseData, isSafe: true, shortUrl: shortUrl({ status: 'loading', isKnownShortener: false }) }
+    expect(titleAndProceed(data).proceed).toBe('linkInterceptContinue')
   })
 })

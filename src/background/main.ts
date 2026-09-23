@@ -1034,10 +1034,29 @@ async function loadTranslation(key: string): Promise<string> {
   }
 }
 
-// Handle notification requests
-async function handleShowNotification(warningType: 'input' | 'copy') {
-  // For browser notification, we translate here
+/**
+ * A system notification's title, naming the site it is about.
+ *
+ * A notification outlives the tab it came from: read after switching tabs, one
+ * that says only "Security warning" leaves the reader guessing which site it
+ * meant. The name comes from the tab the browser says sent the message, never
+ * from anything the page passed along, and it is the plain ASCII form, so a
+ * lookalike written in another alphabet shows as the `xn--` it really is.
+ */
+async function notificationTitle(tabUrl?: string): Promise<string> {
   const title = await loadTranslation('securityWarning')
+  let host = ''
+  try {
+    host = tabUrl ? new URL(tabUrl).hostname : ''
+  }
+  catch {}
+  return host ? `${title} – ${host}` : title
+}
+
+// Handle notification requests
+async function handleShowNotification(warningType: 'input' | 'copy', tabUrl?: string) {
+  // For browser notification, we translate here
+  const title = await notificationTitle(tabUrl)
 
   // Get the appropriate message based on the warning type
   const messageKey = warningType === 'input' ? 'inputWarningMessage' : 'copyWarningMessage'
@@ -1057,7 +1076,7 @@ async function handleShowNotification(warningType: 'input' | 'copy') {
 }
 
 // Handle tampering detection
-async function handleTampering(tabId?: number, url?: string) {
+async function handleTampering(tabId?: number, url?: string, tabUrl?: string) {
   // The page watcher keeps going after its first report now, so a page that
   // strikes repeatedly reports repeatedly. The alarm and the badge are worth
   // re-asserting every time – the notification is worth showing once.
@@ -1069,7 +1088,7 @@ async function handleTampering(tabId?: number, url?: string) {
     await raiseTamperAlarm(tabId, url ?? '')
 
   if (!alreadyAlarmed) {
-    const title = await loadTranslation('securityWarning')
+    const title = await notificationTitle(tabUrl)
     const message = await loadTranslation('tamperingMessage')
 
     // Show high-priority notification
@@ -1246,8 +1265,8 @@ const messageHandlers = {
   // The menus namespace is not exposed to content scripts anywhere, so the one
   // context that can answer this is the one that would create the menu
   'get-platform': async () => ({ contextMenus: hasContextMenus() }),
-  'show-notification': (data: any) => handleShowNotification(data.warningType),
-  'tampering-detected': (data: any, ctx?: MessageContext) => handleTampering(ctx?.tabId, data?.url),
+  'show-notification': (data: any, ctx?: MessageContext) => handleShowNotification(data.warningType, ctx?.tabUrl),
+  'tampering-detected': (data: any, ctx?: MessageContext) => handleTampering(ctx?.tabId, data?.url, ctx?.tabUrl),
   'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain),
   'resolve-short-url': async (data: any) => {
     // A retry is the user saying the answer they were given is not good enough.
@@ -1399,14 +1418,18 @@ async function sendToTabSafe(tabId: number, message: { type: string, data: any }
   }
 }
 
+/**
+ * The answer to a QR scan the user asked for. Not a security warning: an image
+ * with no code in it is no threat, and the red icon and title said it was.
+ */
 async function showQrNotification(messageKey: string, detail?: string) {
-  const title = await loadTranslation('securityWarning')
+  const title = await loadTranslation('extensionName')
   const message = await loadTranslation(messageKey)
   await browser.notifications.create({
     type: 'basic',
     title,
     message: detail ? `${message}\n${detail}` : message,
-    iconUrl: browser.runtime.getURL('assets/site-danger-48.png'),
+    iconUrl: browser.runtime.getURL('assets/icon-default-48.png'),
   })
 }
 
@@ -1443,8 +1466,10 @@ async function handleQrImageCheck(srcUrl: string, tabId?: number) {
 
   const delivered = tabId != null && await sendToTabSafe(tabId, { type: 'show-qr-result', data: { payload } })
   if (!delivered) {
-    // Content script unreachable (chrome://, PDF viewer...) – at least show the payload
-    await showQrNotification('qrPayloadType', payload.slice(0, 120))
+    // Content script unreachable – most often a tab opened before the extension
+    // was installed or updated, which never got one, and otherwise a page no
+    // extension may enter. At least show the payload, and say it went unchecked.
+    await showQrNotification('qrNotificationContents', payload.slice(0, 120))
   }
 }
 

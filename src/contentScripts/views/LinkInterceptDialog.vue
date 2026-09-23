@@ -69,9 +69,56 @@ const hasTraceData = computed(() => {
   return props.traceChain && props.data?.shortUrl?.status === 'resolved' && (props.data.shortUrl.chain.length > 2)
 })
 
-// After tracing, if the resolved destination is safe – soften the warning
-const resolvedIsSafe = computed(() => {
-  return props.data?.shortUrl?.status === 'resolved' && props.data.shortUrl.resolvedIsSafe
+/**
+ * What the dialog has to say about where the link goes.
+ *
+ * The title used to say "Unfamiliar site ahead" whatever the link was, and the
+ * dialog also opens for familiar sites – from the context menu, and for a short
+ * link it could not see through – so a red title sat above a green "Familiar
+ * site". Once a short link is resolved, only the real destination counts. Until
+ * then a known shortener says nothing about where it leads, whether or not the
+ * shortener itself is familiar.
+ */
+const verdict = computed<'unfamiliar' | 'hidden' | 'familiar'>(() => {
+  const data = props.data
+  if (!data)
+    return 'unfamiliar'
+  if (data.shortUrl?.status === 'resolved')
+    return data.shortUrl.resolvedIsSafe ? 'familiar' : 'unfamiliar'
+  if (data.shortUrl?.isKnownShortener)
+    return 'hidden'
+  return data.isSafe ? 'familiar' : 'unfamiliar'
+})
+
+const title = computed(() => {
+  switch (verdict.value) {
+    case 'familiar': return t.value('linkInterceptTitleFamiliar')
+    case 'hidden': return t.value('linkInterceptTitleHidden')
+    default: return t.value('linkInterceptTitle')
+  }
+})
+
+/**
+ * Whether going ahead is a plain "Go to link".
+ *
+ * A familiar destination is not always the end of it. Link text naming another
+ * site is worth stopping for wherever the link goes, and a lookup still running
+ * – or offered and not yet pressed – may yet turn the answer red after the
+ * button was pressed.
+ */
+const calm = computed(() => {
+  const data = props.data
+  if (verdict.value !== 'familiar' || !data)
+    return false
+  if (data.mismatch)
+    return false
+  return !data.shortUrl || data.shortUrl.status === 'resolved'
+})
+
+const iconClass = computed(() => {
+  if (calm.value)
+    return 'text-blue-500'
+  return verdict.value === 'unfamiliar' ? 'text-red-500' : 'text-orange-500'
 })
 </script>
 
@@ -87,14 +134,15 @@ const resolvedIsSafe = computed(() => {
       <div class="absolute inset-0 bg-black/60 pointer-events-none" />
 
       <!-- Dialog card -->
-      <div ref="card" role="dialog" aria-modal="true" :aria-label="t('linkInterceptTitle')" class="relative dialog-container rounded-xl shadow-2xl px-5 pb-3 pt-0" :class="[isDark ? 'bg-gray-900 border border-gray-700/50' : 'bg-white border border-gray-200', { 'dialog-wide': data?.mismatch, 'dialog-full': hasTraceData }]">
+      <div ref="card" role="dialog" aria-modal="true" :aria-label="title" class="relative dialog-container rounded-xl shadow-2xl px-5 pb-3 pt-0" :class="[isDark ? 'bg-gray-900 border border-gray-700/50' : 'bg-white border border-gray-200', { 'dialog-wide': data?.mismatch, 'dialog-full': hasTraceData }]">
         <!-- Warning icon + title + close -->
         <div class="flex items-center gap-2 mb-3">
-          <svg class="w-5 h-5 text-red-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          <svg class="w-5 h-5 flex-shrink-0" :class="iconClass" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path v-if="calm" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
           <h2 class="dialog-title font-bold flex-1" :class="isDark ? 'text-white' : 'text-gray-900'">
-            {{ t('linkInterceptTitle') }}
+            {{ title }}
           </h2>
           <button
             ref="closeButton"
@@ -109,11 +157,10 @@ const resolvedIsSafe = computed(() => {
           </button>
         </div>
 
-        <!-- Message -->
-        <p class="dialog-text mb-2" :class="isDark ? 'text-gray-300' : 'text-gray-600'">
-          {{ t('linkInterceptMessage') }}
-        </p>
-        <p class="dialog-label mb-4" :class="isDark ? 'text-yellow-400/80' : 'text-yellow-600'">
+        <!-- Only an unfamiliar destination gets a hint. The title already says it
+             is unfamiliar, so the hint is about the one case that matters: the
+             reader thinks they know the site, which is what a copy relies on. -->
+        <p v-if="verdict === 'unfamiliar'" class="dialog-label mb-4" :class="isDark ? 'text-yellow-400/80' : 'text-yellow-600'">
           {{ t('linkInterceptPhishingHint') }}
         </p>
 
@@ -281,7 +328,7 @@ const resolvedIsSafe = computed(() => {
           <!-- Short URL: error -->
           <div v-if="data.shortUrl?.status === 'error'" class="mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">
             <div class="dialog-label mb-2" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
-              {{ data.shortUrl.error === 'same_domain' ? t('linkTooltipResolveSameDomain') : t('linkTooltipResolveError') }}
+              {{ data.shortUrl.error === 'same_domain' ? t(data.shortUrl.isKnownShortener ? 'linkTooltipResolveSameDomainShortener' : 'linkTooltipResolveSameDomain') : t('linkTooltipResolveError') }}
             </div>
             <button
               v-if="data.shortUrl.error !== 'same_domain'"
@@ -302,7 +349,11 @@ const resolvedIsSafe = computed(() => {
           <DomainMarkers :hostname="data.domain" :url="data.url" class="dialog-label mt-2" />
           <LookalikeNotice :hostname="data.domain" class="dialog-label mt-2" />
 
-          <!-- Resolve once + Mark as shortener: shown when domain is not detected as shortener and short URL detection is enabled -->
+          <!-- Resolve once: shown when the domain is not a known shortener and
+               short URL detection is enabled. "Mark as shortener" is not offered
+               here: nothing yet says this site is one, and a stray press would
+               hide every link from it. It appears once the check has shown the
+               link really leads somewhere else, in the resolved block above. -->
           <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-3 pt-3" :class="isDark ? 'border-t border-gray-700' : 'border-t border-gray-200'">
             <button
               class="flex-1 px-3 py-2 rounded-lg border transition-colors dialog-button text-center"
@@ -311,20 +362,16 @@ const resolvedIsSafe = computed(() => {
             >
               {{ t('linkTooltipResolveOnce') }}
             </button>
-            <button
-              class="flex-1 px-3 py-2 rounded-lg border transition-colors dialog-button text-center"
-              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-orange-400 border-transparent' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
-              @click.stop="handleMarkAsShortener()"
-            >
-              {{ t('linkTooltipMarkAsShortener') }}
-            </button>
           </div>
         </div>
 
         <!-- Action buttons -->
         <div class="flex gap-3">
+          <!-- Not on a mismatch, where each column of the table has its own. Not
+               for a short link not yet seen through either: all it could open is
+               the shortener's own page, which says nothing about the destination. -->
           <button
-            v-if="!data.mismatch"
+            v-if="!data.mismatch && verdict !== 'hidden'"
             class="flex-1 px-4 py-2.5 rounded-lg border transition-colors dialog-button"
             :class="isDark ? 'bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 border-gray-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300'"
             @click="emit('details', data.shortUrl?.status === 'resolved' ? data.shortUrl.resolvedDomain : data.domain)"
@@ -333,12 +380,12 @@ const resolvedIsSafe = computed(() => {
           </button>
           <button
             class="flex-1 px-4 py-2.5 rounded-lg border transition-colors dialog-button"
-            :class="resolvedIsSafe
+            :class="calm
               ? (isDark ? 'bg-blue-700/60 border-blue-700 hover:bg-blue-600/60 text-white' : 'bg-blue-600 border-blue-600 hover:bg-blue-700 text-white')
               : (isDark ? 'bg-red-900/40 border-red-700 hover:bg-red-800/50 text-white' : 'bg-red-600 border-red-600 hover:bg-red-700 text-white')"
             @click="emit('continue')"
           >
-            {{ t('linkInterceptContinue') }}
+            {{ calm ? t('linkTooltipGoToLink') : t('linkInterceptContinue') }}
           </button>
         </div>
       </div>

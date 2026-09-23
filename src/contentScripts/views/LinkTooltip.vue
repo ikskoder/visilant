@@ -204,7 +204,9 @@ onBeforeUnmount(() => {
                   ? (isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700')
                   : (isDark ? 'bg-yellow-900/40 text-yellow-400' : 'bg-yellow-100 text-yellow-700')"
             >
-              {{ statusLabel(data.isSafe, data.stats.count).text.toLowerCase() }}
+              <!-- Never "never visited" here: nobody visits an address, and beside
+                   "Email address" it read as though they could -->
+              {{ t(data.isSafe ? 'linkTooltipFamiliar' : 'linkTooltipUnfamiliar').toLowerCase() }}
             </span>
           </div>
 
@@ -233,6 +235,10 @@ onBeforeUnmount(() => {
 
           <!-- Visit count for the address's domain (regular domains only) -->
           <div v-if="data.email.providerKind === 'regular' && shouldShowCount(data.isSafe)" class="tooltip-label mt-1 mb-2" :class="isDark ? 'text-white' : 'text-gray-800'">
+            <!-- Named, because the address printed just above is not what was visited -->
+            <div :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+              {{ t('emailSiteFactsLabel') }}: <SecureText :text="data.domain" />
+            </div>
             <FamiliarityFacts :stats="data.stats" />
           </div>
 
@@ -471,7 +477,7 @@ onBeforeUnmount(() => {
           <!-- Short URL: error -->
           <div v-if="data.shortUrl?.status === 'error'" class="mt-2 mb-1">
             <div class="tooltip-label mb-2" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
-              {{ data.shortUrl.error === 'same_domain' ? t('linkTooltipResolveSameDomain') : t('linkTooltipResolveError') }}
+              {{ data.shortUrl.error === 'same_domain' ? t(data.shortUrl.isKnownShortener ? 'linkTooltipResolveSameDomainShortener' : 'linkTooltipResolveSameDomain') : t('linkTooltipResolveError') }}
             </div>
             <button
               v-if="data.shortUrl.error !== 'same_domain'"
@@ -512,7 +518,11 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
-          <!-- Resolve once + Mark as shortener: shown when domain is not detected as shortener and short URL detection is enabled -->
+          <!-- Resolve once: shown when the domain is not a known shortener and
+               short URL detection is enabled. "Mark as shortener" is not offered
+               here: nothing yet says this site is one, and a stray press would
+               hide every link from it. It appears once the check has shown the
+               link really leads somewhere else, in the resolved block above. -->
           <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-2">
             <button
               class="flex-1 px-3 py-1 rounded-lg border transition-colors tooltip-label text-center"
@@ -520,13 +530,6 @@ onBeforeUnmount(() => {
               @click.stop="handleResolveOnce()"
             >
               {{ t('linkTooltipResolveOnce') }}
-            </button>
-            <button
-              class="flex-1 px-3 py-1 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-orange-400 border-transparent' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
-              @click.stop="handleMarkAsShortener()"
-            >
-              {{ t('linkTooltipMarkAsShortener') }}
             </button>
           </div>
         </template>

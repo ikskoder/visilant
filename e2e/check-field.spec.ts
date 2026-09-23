@@ -321,7 +321,7 @@ test('two addresses can be held against each other, character by character', asy
   await expect(page.locator('text=Not the same address')).toBeVisible({ timeout: 3000 })
 
   // "rn" against "m" – three columns out of the alignment, and nothing else
-  await expect(page.locator('text=3 characters do not line up')).toBeVisible()
+  await expect(page.locator('text=3 characters don\'t line up')).toBeVisible()
 
   // The same address, and the answer flips
   await field.fill('anna@exarnple.org')
