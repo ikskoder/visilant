@@ -69,7 +69,29 @@ export function clearVisitCache() {
 }
 
 /**
- * Check if a link points to a different domain than the current page
+ * A hostname without its leading `www.`, as far as telling two names apart goes.
+ *
+ * The background keeps `www.X` and `X` as one record (`visitKey`), and a link
+ * from one to the other is a link within the site. The suffix list `visitKey`
+ * uses is too big for a content script, and it is not needed here: both names
+ * being compared are real addresses a browser has opened or is about to, so the
+ * only case the list guards against – a bare suffix like `co.uk` – cannot come
+ * up. The prefix stays when nothing with a dot would be left, so `www.com` is
+ * still not `com`.
+ */
+function withoutWww(hostname: string): string {
+  let name = hostname.toLowerCase()
+  while (name.startsWith('www.') && name.slice(4).includes('.'))
+    name = name.slice(4)
+  return name
+}
+
+/**
+ * Check if a link points to a different site than the current page.
+ *
+ * `www.example.com` and `example.com` are one site, so a link between them is
+ * not external: it used to get the tooltip and the dialog as if it led somewhere
+ * new.
  */
 export function isExternalLink(href: string, currentHostname: string): boolean {
   try {
@@ -77,7 +99,7 @@ export function isExternalLink(href: string, currentHostname: string): boolean {
     // Skip non-http(s) protocols
     if (url.protocol !== 'http:' && url.protocol !== 'https:')
       return false
-    return url.hostname !== currentHostname
+    return withoutWww(url.hostname) !== withoutWww(currentHostname)
   }
   catch {
     return false

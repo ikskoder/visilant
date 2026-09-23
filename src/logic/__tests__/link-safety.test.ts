@@ -18,6 +18,19 @@ import {
 } from '../link-safety'
 
 describe('isExternalLink', () => {
+  // One site under two spellings – the background keeps them as one record
+  it('does not call a link between www. and the bare name external', () => {
+    expect(isExternalLink('https://example.com/a', 'www.example.com')).toBe(false)
+    expect(isExternalLink('https://www.example.com/a', 'example.com')).toBe(false)
+    expect(isExternalLink('https://www.example.com/a', 'WWW.example.com')).toBe(false)
+  })
+
+  it('still calls www.com and another site external', () => {
+    expect(isExternalLink('https://com/', 'www.com')).toBe(true)
+    expect(isExternalLink('https://www.example.org/', 'example.com')).toBe(true)
+    expect(isExternalLink('https://mail.example.com/', 'www.example.com')).toBe(true)
+  })
+
   it('returns true for different hostname', () => {
     expect(isExternalLink('https://evil.com/path', 'example.com')).toBe(true)
   })

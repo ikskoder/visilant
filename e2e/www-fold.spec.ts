@@ -2,12 +2,17 @@ import type { BrowserContext } from '@playwright/test'
 import { chromium } from '@playwright/test'
 import { BADGE_COLORS } from '../src/logic/badge'
 import { expect, extensionPath, test } from './fixtures'
-import { blankPage, inWorker, serveSite, waitForAutoImport } from './helpers'
+import { blankPage, inWorker, patchSettings, serveSite, waitForAutoImport } from './helpers'
 
 // Evaluated inside the extension's own worker, where the namespace exists
 declare const chrome: any
 
 const FLAG = '__visilantWwwFolded'
+
+/** Link checking on, stopping a click on a link to somewhere unfamiliar. */
+const CLICK_LEFT = {
+  linkSafety: { enabled: true, tooltipTrigger: 'click-left', hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
+}
 
 /**
  * One browser profile, started as often as a test needs.
@@ -93,4 +98,35 @@ test('a page on the bare name is judged by what was recorded under www.', async 
   finally {
     await context.close()
   }
+})
+
+// A link from www.X to X stays on the site. It used to be checked like a link
+// to somewhere new, and with the click trigger it stopped behind a dialog.
+test('a link between www. and the bare name is followed without a check', async ({ context, page }) => {
+  await waitForAutoImport(context)
+  await patchSettings(context, CLICK_LEFT)
+  await page.route('https://link-site.test/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: blankPage('bare') }))
+  await serveSite(page, 'https://www.link-site.test/', blankPage('www', `
+    <a id="bare" href="https://link-site.test/next" style="position:fixed;top:300px;left:300px;font-size:20px">onwards</a>
+  `))
+  await page.waitForTimeout(2000)
+
+  await page.locator('#bare').click()
+  await expect.poll(() => page.url(), { timeout: 5000 }).toBe('https://link-site.test/next')
+})
+
+// The control: the same click to another site does stop, so the test above is
+// not passing because the click trigger was never on
+test('CONTROL: a link to another site is still stopped', async ({ context, page }) => {
+  await waitForAutoImport(context)
+  await patchSettings(context, CLICK_LEFT)
+  await page.route('https://other-site.test/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: blankPage('other') }))
+  await serveSite(page, 'https://www.link-site.test/', blankPage('www', `
+    <a id="other" href="https://other-site.test/next" style="position:fixed;top:300px;left:300px;font-size:20px">elsewhere</a>
+  `))
+  await page.waitForTimeout(2000)
+
+  await page.locator('#other').click()
+  await page.waitForTimeout(1500)
+  expect(page.url()).toBe('https://www.link-site.test/')
 })
