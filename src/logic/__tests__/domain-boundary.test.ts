@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { belongsToSite, hostingPlatform, isPlatformTenant, siteDomain, siteDomainOrSelf } from '../domain-boundary'
+import { belongsToSite, hostingPlatform, isPlatformTenant, siteDomain, siteDomainOrSelf, visitKey } from '../domain-boundary'
 
 describe('siteDomain', () => {
   it('keeps two tenants of one platform apart', () => {
@@ -71,5 +71,47 @@ describe('belongsToSite', () => {
   it('rejects a name that only ends in the same letters', () => {
     expect(belongsToSite('notexample.com', 'example.com')).toBe(false)
     expect(belongsToSite('evil.github.io', 'alice.github.io')).toBe(false)
+  })
+})
+
+describe('visitKey', () => {
+  it('counts www. and the bare name as one site', () => {
+    expect(visitKey('www.example.com')).toBe('example.com')
+    expect(visitKey('www.bbc.co.uk')).toBe('bbc.co.uk')
+    expect(visitKey('www.alice.github.io')).toBe('alice.github.io')
+    expect(visitKey('example.com')).toBe('example.com')
+  })
+
+  it('leaves a name alone when cutting the prefix would leave no site behind', () => {
+    // A registered name of its own, a country suffix, a platform suffix
+    expect(visitKey('www.com')).toBe('www.com')
+    expect(visitKey('www.co.uk')).toBe('www.co.uk')
+    expect(visitKey('www.github.io')).toBe('www.github.io')
+    expect(visitKey('www.blogspot.com')).toBe('www.blogspot.com')
+    // An address, and a name with no dot left
+    expect(visitKey('www.1.2.3.4')).toBe('www.1.2.3.4')
+    expect(visitKey('www.localhost')).toBe('www.localhost')
+    expect(visitKey('www')).toBe('www')
+  })
+
+  it('cuts only the www label itself', () => {
+    expect(visitKey('www2.example.com')).toBe('www2.example.com')
+    expect(visitKey('wwww.example.com')).toBe('wwww.example.com')
+    expect(visitKey('mail.example.com')).toBe('mail.example.com')
+    expect(visitKey('mail.www.example.com')).toBe('mail.www.example.com')
+  })
+
+  // A key travels between contexts and is folded again on the way, so folding
+  // twice has to change nothing
+  it('gives the same answer however many times it is asked', () => {
+    for (const name of ['www.www.example.com', 'www.example.com', 'www.com', 'WWW.Example.COM', 'www.example.com.', 'www.example.com:8080']) {
+      const once = visitKey(name)
+      expect(visitKey(once)).toBe(once)
+    }
+    expect(visitKey('www.www.example.com')).toBe('example.com')
+  })
+
+  it('folds case, since the stored keys are lower case', () => {
+    expect(visitKey('WWW.Example.COM')).toBe('example.com')
   })
 })

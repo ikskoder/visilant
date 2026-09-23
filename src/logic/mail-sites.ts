@@ -174,8 +174,17 @@ export function collectMailSiteFamilies(
   domain: string,
   rules?: FamiliaritySettings,
   now: number = Date.now(),
+  /**
+   * How a name becomes a record key – `visitKey` from the callers that have
+   * the suffix list. Passed in rather than imported: this file also runs in
+   * content scripts, and those never load the list. A mapping line reading
+   * `x.com = www.x.com` would otherwise look for records that live under x.com.
+   */
+  fold: (hostname: string) => string = hostname => hostname,
 ): MailSiteFamily[] {
-  const sites = resolveMailSites(domain)
+  // Two lines can name one site once folded – `www.m.example` and `m.example` –
+  // and one site is one row
+  const sites = [...new Set(resolveMailSites(domain).map(fold))]
   if (!sites.length)
     return []
 

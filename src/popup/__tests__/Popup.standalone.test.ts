@@ -94,7 +94,7 @@ describe('popup as a standalone page', () => {
    * and this row now answers only for the name above it.
    */
   it('answers for the exact address, with the family under the base domain', async () => {
-    stubLocalStorage({ 'www.example.com': record })
+    stubLocalStorage({ 'mail.example.com': record })
     const wrapper = await mountForDomain('example.com')
 
     // Nothing is recorded for `example.com` itself, and the row says so rather
@@ -290,7 +290,7 @@ describe('the domain family list', () => {
   })
 
   it('appears as soon as there is another host to compare against', async () => {
-    stubLocalStorage({ 'example.com': record, 'www.example.com': record })
+    stubLocalStorage({ 'example.com': record, 'mail.example.com': record })
     const wrapper = await mountForDomain('example.com')
 
     expect(wrapper.text()).toContain('relatedDomains')
@@ -311,7 +311,7 @@ describe('the domain family list', () => {
    * comparison that means nothing.
    */
   it('says what the family row covers and how each figure was folded', async () => {
-    stubLocalStorage({ 'example.com': record, 'www.example.com': record })
+    stubLocalStorage({ 'example.com': record, 'mail.example.com': record })
     const wrapper = await mountForDomain('example.com')
 
     // The name is the one already at the top of the page, so the heading that
@@ -328,20 +328,33 @@ describe('the domain family list', () => {
     expect(wrapper.findAll('[data-fold]')).toHaveLength(3)
   })
 
+  // www.example.com and example.com are one record – see visitKey. Opened on
+  // the www name, the window reads the bare name's record, calls it the current
+  // host rather than another member of the family, and has no base domain card
+  // to repeat it under.
+  it('reads the www name from the bare name\'s record', async () => {
+    stubLocalStorage({ 'example.com': record })
+    const wrapper = await mountForDomain('www.example.com')
+
+    expect(criterion(wrapper, 'visits')).toContain('42')
+    expect(wrapper.text()).not.toContain('baseDomain')
+    expect(wrapper.text()).not.toContain('relatedDomains')
+  })
+
   it('leaves out the base domain when it is the name already on show', async () => {
-    stubLocalStorage({ 'example.com': record, 'www.example.com': record })
+    stubLocalStorage({ 'example.com': record, 'mail.example.com': record })
 
     const onBase = await mountForDomain('example.com')
     expect(onBase.text()).not.toContain('baseDomain')
 
-    const onSubdomain = await mountForDomain('www.example.com')
+    const onSubdomain = await mountForDomain('mail.example.com')
     expect(onSubdomain.text()).toContain('baseDomain')
   })
 
   it('draws the metric the dropdown asks for, folded the way that metric folds', async () => {
     stubLocalStorage({
       'example.com': { ...record, activeDays: 14 },
-      'www.example.com': { ...record, activeDays: 9 },
+      'mail.example.com': { ...record, activeDays: 9 },
     })
     const wrapper = await mountForDomain('example.com')
 

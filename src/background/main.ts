@@ -5,7 +5,7 @@ import type { Settings, SiteVisitData } from '~/logic/storage'
 import { onMessage } from 'webext-bridge/background'
 import { ACTION_ICONS, BADGE_COLORS, badgeText, toolbarLook } from '~/logic/badge'
 import { fetchBlobBounded } from '~/logic/bounded-fetch'
-import { belongsToSite, siteDomain, siteDomainOrSelf } from '~/logic/domain-boundary'
+import { belongsToSite, siteDomain, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
 import { buildFamiliarIndex, findLookalikes } from '~/logic/domain-similarity'
 import { getProviderReferenceDomains } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, parseMailtoUrl } from '~/logic/email-safety'
@@ -22,6 +22,7 @@ import { addCustomShortener, clearCachedResolvedUrl, getCachedResolvedUrl, loadS
 import { visitKeysToRemove } from '~/logic/visit-reset'
 import { applyVisit, isTrackableHostname } from '~/logic/visit-stats'
 import { removeVisitRecords, updateVisitRecord, visitGeneration } from '~/logic/visit-store'
+import { foldWwwRecords } from '~/logic/www-fold'
 
 // Load user-defined and remotely fetched shortener domains on service worker start
 loadShortenersFromStorage()
@@ -55,6 +56,36 @@ function backgroundReady(): Promise<void> {
 // A failure here is only reported, never kept - the call above hands the next
 // caller a fresh attempt.
 void backgroundReady().catch(error => console.error('Visilant: the settings could not be read', error))
+
+/**
+ * The one-off move of `www.X` records into `X`, settled.
+ *
+ * Queued here, at load and before any other code of this worker gets to write,
+ * so it is first in the line every visit write stands in – see foldWwwRecords.
+ * The reads that do not stand in that line wait for this instead: until the
+ * records have moved, a site somebody uses every day reads as never visited.
+ *
+ * A failure is reported and let through rather than kept: the flag stays unset,
+ * so the next start tries again, and a worker that never answers is worse than
+ * one that answers from the records as they are.
+ */
+const visitKeysFolded: Promise<boolean> = foldWwwRecords().catch((error) => {
+  console.error('Visilant: the www records could not be merged', error)
+  // It may have got as far as rewriting the records before it failed, and a tab
+  // redrawn for nothing costs less than one left on a verdict that moved
+  return true
+})
+
+// Tabs opened before the update were judged from the records as they stood. Not
+// awaited by anything: redrawing waits on the reads above, which wait on this.
+// The settings first, like every other badge – drawn before they are read, the
+// badge would use the shipped threshold rather than the user's.
+void visitKeysFolded.then(async (moved) => {
+  if (!moved)
+    return
+  await backgroundReady()
+  await refreshOpenTabs()
+}).catch(error => console.error('Visilant: the tabs could not be redrawn', error))
 
 // The locales this build actually ships. Russian and Ukrainian were dropped
 // rather than kept half-checked, so the picking machinery stays and the list is
@@ -151,7 +182,8 @@ function isInternalPage(hostname: string): boolean {
 
 // Function to increment visit count for a URL (storage only – does NOT touch badge)
 async function incrementVisitCount(url: string) {
-  const hostname = getHostname(url)
+  // The key the record lives under, not the name in the address bar – see visitKey
+  const hostname = visitKey(getHostname(url))
 
   // Read and written as one step. Read separately, this raced the ignore command
   // and the history import for the same record, and the loser's field was put
@@ -220,8 +252,10 @@ async function drawBadge(hostname: string, tabId?: number) {
     return
   }
 
-  const result = await browser.storage.local.get(hostname)
-  const siteData = result[hostname] as SiteVisitData | undefined
+  await visitKeysFolded
+  const key = visitKey(hostname)
+  const result = await browser.storage.local.get(key)
+  const siteData = result[key] as SiteVisitData | undefined
   const stats: FamiliarityStats = {
     count: siteData?.count || 0,
     activeDays: siteData?.activeDays,
@@ -283,11 +317,16 @@ async function refreshTabsForHost(hostname: string) {
   if (!hostname)
     return
 
+  // Compared as record keys: silencing example.com is news to a tab on www.
+  const key = visitKey(hostname)
   const tabs = await browser.tabs.query({})
   for (const tab of tabs) {
-    if (!tab.url || tab.id == null || getHostname(tab.url) !== hostname)
+    if (!tab.url || tab.id == null)
       continue
-    await updateBadge(hostname, tab.id)
+    const tabHost = getHostname(tab.url)
+    if (visitKey(tabHost) !== key)
+      continue
+    await updateBadge(tabHost, tab.id)
     await sendToTabSafe(tab.id, { type: 'visit-data-changed', data: {} })
   }
 }
@@ -434,6 +473,8 @@ async function withImportLock(run: () => Promise<void>): Promise<boolean> {
 
   importRunning = true
   try {
+    // A resumed pass reads its cursor from the state the www fold may reset
+    await visitKeysFolded
     await run()
     return true
   }
@@ -454,6 +495,9 @@ async function runManualHistoryImport() {
     return { success: false, state: await readHistoryImportState() }
 
   importRunning = true
+  // The www fold rewrites the import state from its own snapshot, and a run
+  // publishing in between would have its first state written over
+  await visitKeysFolded
   manualImportCancelled = false
   const runId = newImportRunId()
   const startedAt = visitGeneration()
@@ -697,6 +741,7 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
 // recorded under it, at any depth),
 // the same aggregation the popup dashboard shows
 async function getDomainFamilyLogic(hostname: string) {
+  await visitKeysFolded
   const base = siteDomainOrSelf(hostname)
   const allData = await browser.storage.local.get(null)
   const entries: { hostname: string, count: number, activeDays?: number, firstSeen?: number }[] = []
@@ -717,19 +762,26 @@ async function getDomainFamilyLogic(hostname: string) {
   // An address domain is not a site anyone opens, so its family is empty by
   // nature. Where the mail is read is, and that is what the panel shows instead.
   loadMailSitesFromRecords(allData)
-  const mailSites = collectMailSiteFamilies(allData, hostname, currentFamiliarityRules())
-  return { baseDomain: base, entries, total: stats.count, stats, mailSites }
+  const mailSites = collectMailSiteFamilies(allData, hostname, currentFamiliarityRules(), Date.now(), visitKey)
+  // `key` names the entry that is this host's own record, which is not always
+  // the name that was asked about – see visitKey
+  return { baseDomain: base, key: visitKey(hostname), entries, total: stats.count, stats, mailSites }
 }
 
 // Add message handler to get visit count
 async function getVisitCountLogic(url: string) {
+  await visitKeysFolded
   const hostname = getHostname(url)
-  const result = await browser.storage.local.get(hostname)
-  const record = result[hostname] as SiteVisitData | undefined
+  const key = visitKey(hostname)
+  const result = await browser.storage.local.get(key)
+  const record = result[key] as SiteVisitData | undefined
   // Everything a familiarity verdict needs, so the caller does not have to ask
-  // twice or judge on the visit count alone
+  // twice or judge on the visit count alone. `hostname` is the name as seen and
+  // is what gets shown, `key` is the record it was read from – a content script
+  // cannot fold one into the other itself, it has no suffix list.
   return {
     hostname,
+    key,
     count: record?.count || 0,
     lastSeen: record?.lastSeen || 0,
     ignored: record?.ignored || false,
@@ -981,9 +1033,12 @@ async function findLookalikesLogic(hostname: string, context?: 'email') {
 }
 
 // Handle ignore site requests
-async function handleIgnoreSite(hostname: string, ignored = true) {
-  if (!hostname)
+async function handleIgnoreSite(name: string, ignored = true) {
+  if (!name)
     return 'Error: No hostname provided'
+
+  // Silencing www.X silences X: they are one record – see visitKey
+  const hostname = visitKey(name)
 
   // The flag is set on the record as it stands, not on a copy read earlier: a
   // navigation writing its own count in between used to carry the old flag back
@@ -1188,6 +1243,7 @@ async function handleFrameVerdict(ctx?: MessageContext) {
       guardPaste: false,
       warn: false,
       hostname: '',
+      key: '',
     }
   }
 
@@ -1198,6 +1254,8 @@ async function handleFrameVerdict(ctx?: MessageContext) {
     guardPaste: Boolean(appSettings.value.blockPasteOnUnfamiliar),
     warn: Boolean(appSettings.value.showWarningNotification),
     hostname,
+    // The storage key the frame watches for changes to this verdict
+    key: record.key,
   }
 }
 

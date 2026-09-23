@@ -91,6 +91,11 @@ export const linkTooltipData = ref<LinkTooltipData | null>(null)
 // dashboard like the extension popup, rendered on the current page
 export interface DomainFamilyInfo {
   baseDomain: string
+  /**
+   * Which entry is the checked name's own record. Not always the name itself:
+   * `www.x` is kept under `x`. Absent from a background too old to send it.
+   */
+  key?: string
   entries: { hostname: string, count: number, activeDays?: number, firstSeen?: number }[]
   total: number
   /** The family's facts rolled together, for a verdict on the family as a whole */

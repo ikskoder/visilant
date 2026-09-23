@@ -18,7 +18,7 @@ import MailRecipients from '~/components/MailRecipients.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
-import { belongsToSite, siteDomainOrSelf } from '~/logic/domain-boundary'
+import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
@@ -143,8 +143,8 @@ function nextCheck(): number {
   return checkGeneration
 }
 
-// Visits are stored per exact hostname, but "have I been here" should count the
-// whole domain family (gmail.com visits may live under www.gmail.com etc.)
+// Visits are stored per record key (see visitKey), but "have I been here" should
+// count the whole domain family (gmail.com visits may live under mail.gmail.com)
 async function getVisitData(hostname: string): Promise<{ stats: FamiliarityStats, isSafe: boolean, mailSites: MailSiteFamily[] }> {
   const base = siteDomainOrSelf(hostname)
   const allData = await browser.storage.local.get(null)
@@ -163,7 +163,7 @@ async function getVisitData(hostname: string): Promise<{ stats: FamiliarityStats
   return {
     stats,
     isSafe: isFamiliar(stats, rules),
-    mailSites: collectMailSiteFamilies(allData, hostname, rules),
+    mailSites: collectMailSiteFamilies(allData, hostname, rules, Date.now(), visitKey),
   }
 }
 

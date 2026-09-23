@@ -90,7 +90,7 @@ test('popup sort controls are visible for domain with data', async ({ page, exte
   // list is only drawn where there is a second name in it. One row repeating
   // the address already spelled out above it, under a heading and a sort order,
   // is the same fact written three times.
-  await seedVisits(context, `www.${SITE_HOST}`, 3)
+  await seedVisits(context, `shop.${SITE_HOST}`, 3)
 
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)

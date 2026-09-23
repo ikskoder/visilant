@@ -75,3 +75,33 @@ export function isPlatformTenant(hostname: string): boolean {
 export function belongsToSite(hostname: string, site: string): boolean {
   return hostname === site || hostname.endsWith(`.${site}`)
 }
+
+/**
+ * The name a visit record is kept under.
+ *
+ * `www.example.com` and `example.com` are one owner's name for one site, and
+ * nearly always the same pages. Kept apart, somebody who reads their bank at
+ * `www.` every day got an unfamiliar-site warning the first time a link left the
+ * prefix off, and a warning that is wrong that often teaches people to click
+ * through it. So both are counted, judged and silenced as the bare name.
+ *
+ * Only the prefix goes, and only while what is left is still somebody's site:
+ * `www.com` is a registered name of its own, and `www.co.uk` or `www.github.io`
+ * would leave nothing but a suffix behind. A loop rather than one cut, so the
+ * answer is the same however many times it is asked – a key travels between
+ * contexts and gets folded again on the way.
+ *
+ * Every write and every read of a record goes through this. It pulls in the
+ * suffix list, so a content script never calls it and asks the background for
+ * the key instead.
+ */
+export function visitKey(hostname: string): string {
+  let key = hostname.toLowerCase()
+  while (key.startsWith('www.')) {
+    const rest = key.slice(4)
+    if (siteDomain(rest) === null)
+      break
+    key = rest
+  }
+  return key
+}

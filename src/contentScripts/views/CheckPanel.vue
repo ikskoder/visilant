@@ -341,7 +341,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
                 v-for="entry in data.family.entries"
                 :key="entry.hostname"
                 class="p-2.5 flex justify-between items-center gap-3 transition-colors"
-                :class="entry.hostname === data.hostname
+                :class="entry.hostname === (data.family.key || data.hostname)
                   ? (isDark ? 'bg-blue-900/30' : 'bg-blue-50')
                   : (isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-50')"
               >

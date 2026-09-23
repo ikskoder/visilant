@@ -121,6 +121,18 @@ describe('collectMailSiteFamilies', () => {
     expect(family.familiar).toBe(true)
   })
 
+  // A mapping line may name the www spelling, and the records are kept under
+  // the bare name – see visitKey. The caller hands in the fold, since this file
+  // also runs in content scripts, which have no suffix list to fold with.
+  it('looks for a www mail site under the key its records are kept at', () => {
+    loadCustomMailSites(['corp.example = www.webmail.example'])
+    const fold = (host: string) => host.replace(/^www\./, '')
+    const [family] = collectMailSiteFamilies({ 'webmail.example': record(9) }, 'corp.example', VISITS_ONLY, Date.now(), fold)
+
+    expect(family.site).toBe('webmail.example')
+    expect(family.total).toBe(9)
+  })
+
   it('keeps a site with no visits rather than staying silent about it', () => {
     const [family] = collectMailSiteFamilies({}, 'gmail.com', VISITS_ONLY)
 

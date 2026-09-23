@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { FAMILIAR_INDEX_KEY } from '../familiar-index'
 import { HISTORY_AUTO_IMPORT_KEY, HISTORY_IMPORT_STATE_KEY } from '../history-import'
 import { planSilenceChanges, silencedHosts, visitKeysToRemove } from '../visit-reset'
+import { WWW_FOLD_KEY } from '../www-fold'
 
 function visit(count: number) {
   return { count, lastSeen: 1_700_000_000_000, ignored: false }
@@ -28,6 +29,13 @@ describe('visitKeysToRemove', () => {
   // profile and imports the history the user has just chosen to throw away
   it('keeps the auto-import flag', () => {
     expect(visitKeysToRemove({ [HISTORY_AUTO_IMPORT_KEY]: true })).toEqual([])
+  })
+
+  // Wiped, the next start would fold again, and there is nothing left to fold –
+  // but a half-way mark read as unfinished would delete nothing and cost a scan
+  it('keeps the www fold flag, done or half-way', () => {
+    expect(visitKeysToRemove({ [WWW_FOLD_KEY]: true })).toEqual([])
+    expect(visitKeysToRemove({ [WWW_FOLD_KEY]: 'merged' })).toEqual([])
   })
 
   it('keeps every list the user typed or fetched', () => {
@@ -176,5 +184,20 @@ describe('planSilenceChanges', () => {
 
   it('stores what it silences in lower case', () => {
     expect(planSilenceChanges([], 'Shop.Example.COM').silence).toEqual(['shop.example.com'])
+  })
+})
+
+// www.X is kept as X – see visitKey – so the box and the table have to agree
+describe('planSilenceChanges and the www prefix', () => {
+  it('reads www.X as the silenced X, not as a new site plus a lifted one', () => {
+    expect(planSilenceChanges(['example.com'], 'www.example.com')).toEqual({ silence: [], unsilence: [], rejected: [] })
+  })
+
+  it('silences under the key the record lives at', () => {
+    expect(planSilenceChanges([], 'www.example.com').silence).toEqual(['example.com'])
+  })
+
+  it('writes one silence for two spellings of one site', () => {
+    expect(planSilenceChanges([], 'example.com\nwww.example.com').silence).toEqual(['example.com'])
   })
 })

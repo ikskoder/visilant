@@ -75,7 +75,7 @@ test('checking a URL reports its base domain and visit count', async ({ context,
  */
 test('the family is drawn under the base domain, never under the subdomain', async ({ context, extensionId }) => {
   await seedVisits(context, 'shop.example.org', 4)
-  await seedVisits(context, 'www.example.org', 6)
+  await seedVisits(context, 'mail.example.org', 6)
   const page = await openCheckPage(context, extensionId)
 
   await check(page, 'https://shop.example.org/cart?id=1')

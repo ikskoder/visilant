@@ -56,6 +56,17 @@ function enqueue<T>(work: () => Promise<T>): Promise<T> {
   return next
 }
 
+/**
+ * Run one step in the same line as every write.
+ *
+ * For work that rewrites many records at once and is nobody's read-modify-write
+ * of one host, a one-off migration being the case it exists for. It still has
+ * to wait its turn, and everything queued behind it still has to wait for it.
+ */
+export function runVisitStep<T>(work: () => Promise<T>): Promise<T> {
+  return enqueue(work)
+}
+
 /** What an updater may say about a record. `undefined` leaves it alone. */
 export type VisitUpdate = (existing: SiteVisitData | undefined) => SiteVisitData | undefined
 

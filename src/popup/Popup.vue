@@ -5,7 +5,7 @@ import punycode from 'punycode'
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
-import { belongsToSite, siteDomainOrSelf } from '~/logic/domain-boundary'
+import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
 import { displayDomain } from '~/logic/domain-display'
 import { DOMAIN_METRICS, metricReading, metricSortValue } from '~/logic/domain-metric'
 import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
@@ -140,6 +140,13 @@ const isTabView = ref(false)
 // are kept apart on purpose
 const isPageView = computed(() => isStandalonePage.value || isTabView.value)
 const currentHostname = ref('')
+/**
+ * The record this host's figures are kept under. The heading keeps the name as
+ * the address bar has it, but `www.example.com` and `example.com` are one
+ * record – see visitKey – so every lookup and every "is this the current host"
+ * compares this instead.
+ */
+const currentKey = computed(() => currentHostname.value ? visitKey(currentHostname.value) : '')
 const baseDomain = ref('')
 const visits = ref<Record<string, any>>({})
 /**
@@ -172,7 +179,7 @@ const isPunycode = computed(() => {
  * three times.
  */
 const otherFamilyHosts = computed(() =>
-  familyHosts.value.filter(domain => domain !== currentHostname.value))
+  familyHosts.value.filter(domain => domain !== currentKey.value))
 
 const showFamily = computed(() => otherFamilyHosts.value.length > 0)
 
@@ -189,7 +196,7 @@ const showFamily = computed(() => otherFamilyHosts.value.length > 0)
  * recorded, the family is this host and its row would repeat the card above it.
  */
 const showBaseDomainCard = computed(() =>
-  Boolean(baseDomain.value) && (baseDomain.value !== currentHostname.value || showFamily.value))
+  Boolean(baseDomain.value) && (baseDomain.value !== currentKey.value || showFamily.value))
 
 // Hostnames without a dot (localhost, a machine name on the local network) are
 // never counted, so their zero is not a fact about the user. Showing it as a red
@@ -224,7 +231,7 @@ const hasBlockBelowPanel = computed(() =>
  * truth about the host it names, zero included.
  */
 const currentStats = computed<SiteVisitData | undefined>(() => {
-  const own = visits.value[currentHostname.value]
+  const own = visits.value[currentKey.value]
   if (own)
     return own
 
@@ -237,7 +244,7 @@ const currentStats = computed<SiteVisitData | undefined>(() => {
  * Everything recorded under the base domain, folded the way a verdict folds it.
  *
  * This is what the check field's chip is decided on – "have I been here" is one
- * question about `example.com` and `www.example.com` – so the evidence for it
+ * question about `example.com` and `mail.example.com` – so the evidence for it
  * belongs under the base domain's own name rather than under one subdomain's.
  */
 const familyStats = computed(() => {
@@ -254,7 +261,7 @@ const familyStats = computed(() => {
  * worse than no exception at all.
  */
 const isIgnoredHost = computed(() => {
-  const host = currentHostname.value
+  const host = currentKey.value
   return Boolean(host && (visits.value[host] as SiteVisitData | undefined)?.ignored)
 })
 
@@ -295,7 +302,7 @@ const warningsCanFire = computed(() => {
   if (!currentHostname.value || isUntrackedHost.value)
     return false
 
-  return !isFamiliar(visits.value[currentHostname.value] ?? { count: 0 }, familiarityRules.value)
+  return !isFamiliar(visits.value[currentKey.value] ?? { count: 0 }, familiarityRules.value)
 })
 
 /**
@@ -559,10 +566,11 @@ async function loadDomainData(hostname: string) {
   }
 
   // Sort: current hostname first, then alphabetical
+  const own = visitKey(hostname)
   familyHosts.value = matched.sort((a, b) => {
-    if (a === hostname)
+    if (a === own)
       return -1
-    if (b === hostname)
+    if (b === own)
       return 1
     return a.localeCompare(b)
   })
@@ -849,7 +857,7 @@ onMounted(async () => {
         <!-- The base domain, and the family's own figures under it.
 
              This is the name those figures are about: "have I been here" folds
-             `example.com` and `www.example.com` into one question, and it is the
+             `example.com` and `mail.example.com` into one question, and it is the
              fold the check field's verdict is taken on. Drawn under the
              subdomain's name it read as that host's own count and disagreed with
              the card above it by however much the rest of the family came to.
@@ -863,7 +871,7 @@ onMounted(async () => {
              skipped where nothing but this host is recorded under it, since the
              fold would then be the card above, number for number. -->
         <div v-if="showBaseDomainCard" data-base-domain class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
-          <template v-if="baseDomain !== currentHostname">
+          <template v-if="baseDomain !== currentKey">
             <div class="uppercase tracking-wider mb-1 opacity-50" style="font-size: 0.75em;">
               {{ translations.baseDomain }}
             </div>
@@ -880,7 +888,7 @@ onMounted(async () => {
           <template v-if="showFamily && familyStats">
             <div
               class="uppercase tracking-wider opacity-50"
-              :class="baseDomain === currentHostname ? '' : 'mt-2'"
+              :class="baseDomain === currentKey ? '' : 'mt-2'"
               style="font-size: 0.75em;"
             >
               {{ translations.familySummaryTitle }}
@@ -976,7 +984,7 @@ onMounted(async () => {
             <div
               v-for="domain in sortedFamilyHosts" :key="domain"
               class="p-2.5 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              :class="{ 'bg-blue-50 hover:bg-blue-50 dark:bg-blue-900/30 dark:hover:bg-blue-900/30': domain === currentHostname }"
+              :class="{ 'bg-blue-50 hover:bg-blue-50 dark:bg-blue-900/30 dark:hover:bg-blue-900/30': domain === currentKey }"
             >
               <!-- No hover repeating the name: it said exactly what the row
                    already says. It was there because the name was cut off at the
@@ -1002,7 +1010,7 @@ onMounted(async () => {
                      hostname readable character by character only makes a label
                      look stretched. -->
                 <span
-                  v-if="domain === currentHostname"
+                  v-if="domain === currentKey"
                   class="ml-1.5 text-[10px] font-semibold bg-blue-600 text-white dark:bg-blue-400 dark:text-blue-950 px-1.5 py-0.5 rounded font-sans"
                   style="letter-spacing: normal;"
                 >{{ translations.current }}</span>

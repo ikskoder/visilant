@@ -46,9 +46,14 @@ interface FrameVerdict {
   warn: boolean
   /** The page's address, named by the background. Empty on an internal page. */
   hostname: string
+  /**
+   * The storage key its record lives under, which a `www.` address does not
+   * share with its name. Absent from a background too old to send it.
+   */
+  key?: string
 }
 
-const UNKNOWN: FrameVerdict = { isSafe: null, ignored: false, guardPaste: false, warn: false, hostname: '' }
+const UNKNOWN: FrameVerdict = { isSafe: null, ignored: false, guardPaste: false, warn: false, hostname: '', key: '' }
 
 /** How long a held paste waits for a verdict before the dialog stops waiting. */
 const HOLD_TIMEOUT_MS = 6000
@@ -204,7 +209,7 @@ function install() {
     // key as removed, which is a change to it like any other. Nothing to forget
     // before the first answer arrives, so an unsettled frame ignores this.
     if (area === 'local') {
-      const host = settled?.hostname
+      const host = settled?.key || settled?.hostname
       if (host && Object.prototype.hasOwnProperty.call(changes, host))
         forget()
     }

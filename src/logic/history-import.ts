@@ -1,4 +1,5 @@
 import type { SiteVisitData } from './storage'
+import { visitKey } from './domain-boundary'
 import { hasHistoryApi } from './platform'
 import { dayKey, isTrackableHostname } from './visit-stats'
 import { updateVisitRecords, visitGeneration } from './visit-store'
@@ -13,6 +14,10 @@ export interface ImportedDomainStats {
 /**
  * Hostname of a browser-history entry, or null if the entry is not a web page we
  * track (non-http schemes, localhost and other dotless names, unparseable URLs).
+ *
+ * Folded into the record's key here, before anything is grouped by it: `www.X`
+ * and `X` then share one count and one set of days, where folding at write time
+ * would have made two entries of one batch collide on the same key.
  */
 export function hostnameFromHistoryUrl(url: string | undefined): string | null {
   if (!url)
@@ -24,7 +29,7 @@ export function hostnameFromHistoryUrl(url: string | undefined): string | null {
       return null
 
     const hostname = parsed.hostname.toLowerCase()
-    return isTrackableHostname(hostname) ? hostname : null
+    return isTrackableHostname(hostname) ? visitKey(hostname) : null
   }
   catch {
     return null

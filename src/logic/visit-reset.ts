@@ -1,4 +1,5 @@
 import type { SiteVisitData } from './storage'
+import { visitKey } from './domain-boundary'
 import { FAMILIAR_INDEX_KEY } from './familiar-index'
 import { HISTORY_IMPORT_STATE_KEY } from './history-import'
 
@@ -97,9 +98,12 @@ export function planSilenceChanges(current: readonly string[], text: string): Si
   const typed = text.split(/\n/).map(line => line.trim()).filter(Boolean)
   const rejected = typed.filter(line => !isPossibleHostKey(line))
 
-  const have = new Map(current.map(host => [host.toLowerCase(), host]))
+  // Both sides folded the way the records are keyed. Typing www.X for a site
+  // stored as X used to plan a silence of www.X and a lift of X in one save, and
+  // the lift, applied last, won. visitKey lowercases as well.
+  const have = new Map(current.map(host => [visitKey(host), host]))
   const want = new Map(
-    typed.filter(isPossibleHostKey).map(line => [line.toLowerCase(), line.toLowerCase()]),
+    typed.filter(isPossibleHostKey).map(line => [visitKey(line), visitKey(line)]),
   )
 
   return {

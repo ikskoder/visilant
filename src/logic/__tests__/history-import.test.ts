@@ -16,6 +16,13 @@ describe('hostnameFromHistoryUrl', () => {
     expect(hostnameFromHistoryUrl('https://Example.COM/')).toBe('example.com')
   })
 
+  // Folded before anything is grouped, so www.X and X share one count and one
+  // set of days rather than colliding as two entries of one batch
+  it('counts www. and the bare name under one key', () => {
+    expect(hostnameFromHistoryUrl('https://www.example.com/a')).toBe('example.com')
+    expect(hostnameFromHistoryUrl('https://www.co.uk/')).toBe('www.co.uk')
+  })
+
   it('skips non-web schemes', () => {
     expect(hostnameFromHistoryUrl('file:///home/user/a.pdf')).toBeNull() // host-path-ok: invented, not from a real machine
     expect(hostnameFromHistoryUrl('about:blank')).toBeNull()
