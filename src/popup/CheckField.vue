@@ -415,11 +415,14 @@ function payloadTypeLabel(payloadKind: string) {
            URL that matters – where the host ends, what the path really says – is
            exactly the part that had scrolled out of sight. Enter still checks
            rather than opening a second line: nothing here is ever more than one
-           address long. -->
+           address long. The spelling check is off: every domain is a word no
+           dictionary has, and a red wave under it reads as the field marking
+           the part of the address that is wrong. -->
       <textarea
         ref="checkInput"
         v-model="inputText"
         rows="1"
+        spellcheck="false"
         class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm leading-snug resize-none overflow-hidden break-all focus:outline-none focus:border-blue-400 dark:focus:border-blue-500"
         :placeholder="t('checkFieldPlaceholder')"
         @input="growInput"
