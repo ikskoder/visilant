@@ -29,6 +29,24 @@ const REASON_KEYS: Record<LookalikeReason, string> = {
   'same-name': 'lookalikeReasonSameName',
 }
 
+/**
+ * One sentence per match, with the imitated domain inside it.
+ *
+ * It used to be two lines, the domain on the first and the reason on the
+ * second, and the reason said "that name" – which reads as nothing at all to
+ * somebody meeting it for the first time. The domain is now named in the
+ * sentence and drawn as a filled block, so where the name starts and stops is
+ * plain, and the reason follows it directly.
+ */
+function sentence(match: LookalikeMatch): { before: string, glue: string, after: string } {
+  const who = t.value(match.source === 'provider' ? 'lookalikeWhoProvider' : 'lookalikeWhoFamiliar')
+  const [before = '', rest = ''] = t.value(REASON_KEYS[match.reason]).replace('{who}', who).split('{site}')
+  // The comma after the name stays with it. Left to wrap on its own it opened
+  // the next line, which reads as a sentence starting with a comma.
+  const glue = /^[^\s\p{L}\p{N}]*/u.exec(rest)?.[0] ?? ''
+  return { before, glue, after: rest.slice(glue.length) }
+}
+
 const CACHE_TTL_MS = 5 * 60_000
 const CACHE_LIMIT = 200
 const cache = new Map<string, { matches: LookalikeMatch[], at: number }>()
@@ -79,29 +97,40 @@ watch(() => props.hostname, async (hostname) => {
 
 <template>
   <div v-if="matches.length" class="mb-2 flex flex-col gap-1.5">
-    <div v-for="match in matches" :key="match.domain" class="flex items-start gap-1">
+    <div
+      v-for="match in matches"
+      :key="match.domain"
+      data-lookalike
+      :data-lookalike-reason="match.reason"
+      :data-lookalike-source="match.source ?? 'history'"
+      class="flex items-start gap-1"
+    >
       <span
         class="flex-shrink-0"
         :class="match.severity === 'high' ? (isDark ? 'text-red-400' : 'text-red-600') : (isDark ? 'text-amber-400' : 'text-amber-700')"
         aria-hidden="true"
       >⚠</span>
       <span class="break-words">
+        <!-- Colours named on every part rather than inherited. This renders
+             inside a shadow root on somebody else's page, and `color` crosses
+             that boundary – text that names no colour takes the host page's. -->
         <span :class="match.severity === 'high' ? (isDark ? 'text-red-400' : 'text-red-600') : (isDark ? 'text-amber-400' : 'text-amber-700')">
-          {{ match.source === 'provider' ? t('lookalikeLooksLikeProvider') : t('lookalikeLooksLike') }}
-          <SecureText :text="match.domain" force-highlight danger-only class="font-mono" />
+          {{ sentence(match).before }}<span class="whitespace-nowrap"><!--
+            A block of its own, so it moves to the next line whole. Kept on one
+            line with nowrap alone it still split at the dot, since Chrome breaks
+            at the <wbr> SecureText puts there regardless. It only breaks inside
+            when it is wider than the line on its own.
+          --><span
+            data-lookalike-site
+            class="inline-block max-w-full font-mono px-1 rounded whitespace-normal"
+            :class="match.severity === 'high'
+              ? (isDark ? 'bg-red-400/20 text-red-200' : 'bg-red-100 text-red-800')
+              : (isDark ? 'bg-amber-400/20 text-amber-100' : 'bg-amber-100 text-amber-900')"
+            ><SecureText :text="match.domain" force-highlight danger-only /></span>{{ sentence(match).glue }}</span>{{ sentence(match).after }}
         </span>
-        <!-- Its own colour rather than the inherited one. This renders inside a
-             shadow root on somebody else's page, and `color` crosses that
-             boundary – text that names no colour takes the host page's. -->
-        <span class="opacity-70" :class="isDark ? 'text-gray-300' : 'text-gray-600'">
-          <!-- A provider off the list was never visited, so a count of zero
-               would read as a finding about the user rather than about it -->
-          <template v-if="match.source !== 'provider'">
-            · {{ t('linkTooltipVisits') }}: {{ match.visits }}
-          </template>
-          <br>
-          {{ t(REASON_KEYS[match.reason]) }}
-        </span>
+        <!-- No visit count after it. "The familiar site" already gives the
+             verdict, and a number at the end of a sentence about another address
+             read as that address's visits rather than the familiar site's. -->
       </span>
     </div>
   </div>

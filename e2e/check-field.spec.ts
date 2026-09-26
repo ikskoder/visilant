@@ -179,8 +179,11 @@ test('an email address one letter off a familiar provider is flagged', async ({ 
 
   await check(page, 'jsdojif@gmal.com')
 
-  await expect(field(page).locator('text=Resembles a site you know')).toBeVisible({ timeout: 5000 })
-  await expect(field(page).locator('text=gmail.com').first()).toBeVisible()
+  // One sentence, naming the site it is about. The reason used to sit on a line
+  // of its own and say "that name", which told a first-time reader nothing.
+  const notice = field(page).locator('[data-lookalike-source="history"]')
+  await expect(notice).toHaveText(/Looks like the familiar site\s*gmail\.com, but with a letter or two changed/, { timeout: 5000 })
+  await expect(notice.locator('[data-lookalike-site]')).toHaveText('gmail.com')
 })
 
 test('lowering the familiarity threshold brings a domain into the comparison', async ({ context, extensionId }) => {
@@ -191,7 +194,7 @@ test('lowering the familiarity threshold brings a domain into the comparison', a
   const page = await openCheckPage(context, extensionId)
   await page.evaluate(async () => chrome.runtime.sendMessage({ type: 'rebuild-familiar-index', data: {} }))
   await check(page, 'jsdojif@gmal.com')
-  await expect(field(page).locator('text=Resembles a site you know')).toHaveCount(0)
+  await expect(field(page).locator('[data-lookalike-source="history"]')).toHaveCount(0)
 
   // The rules decide what goes in the index, so changing them has to reach
   // the running worker – not wait for it to be restarted
@@ -209,7 +212,7 @@ test('lowering the familiarity threshold brings a domain into the comparison', a
   await page.waitForTimeout(1500)
   await check(page, 'jsdojif@gmal.com')
 
-  await expect(field(page).locator('text=Resembles a site you know')).toBeVisible({ timeout: 5000 })
+  await expect(field(page).locator('[data-lookalike-source="history"]')).toBeVisible({ timeout: 5000 })
 })
 
 test('a check the record cannot answer takes a domain back out of the comparison', async ({ context, extensionId }) => {
@@ -230,7 +233,7 @@ test('a check the record cannot answer takes a domain back out of the comparison
   await page.evaluate(async () => chrome.runtime.sendMessage({ type: 'rebuild-familiar-index', data: {} }))
   await check(page, 'jsdojif@gmal.com')
 
-  await expect(field(page).locator('text=Resembles a site you know')).toHaveCount(0)
+  await expect(field(page).locator('[data-lookalike-source="history"]')).toHaveCount(0)
 })
 
 test('an email address is read as an email, not as a link', async ({ context, extensionId }) => {
@@ -281,10 +284,10 @@ test('an email address is compared against the mail providers, not just history'
   const page = await openCheckPage(context, extensionId)
   await check(page, 'dpfk@gmal.com')
 
-  await expect(field(page).locator('text=Resembles a well-known mail provider')).toBeVisible({ timeout: 5000 })
+  await expect(field(page).locator('[data-lookalike-source="provider"]')).toBeVisible({ timeout: 5000 })
   await expect(field(page).locator('text=gmail.com')).toBeVisible()
   // Never opened, so there is no visit count to report about it
-  await expect(field(page).locator('text=Resembles a site you know')).toHaveCount(0)
+  await expect(field(page).locator('[data-lookalike-source="history"]')).toHaveCount(0)
 })
 
 test('the provider list stays out of the plain link check', async ({ context, extensionId }) => {
@@ -294,7 +297,7 @@ test('the provider list stays out of the plain link check', async ({ context, ex
   await check(page, 'https://gmal.com')
 
   await expect(field(page).locator('.secure-domain-display').first()).toHaveText('gmal.com', { timeout: 5000 })
-  await expect(field(page).locator('text=Resembles')).toHaveCount(0)
+  await expect(field(page).locator('[data-lookalike]')).toHaveCount(0)
 })
 
 test('a gmail address points at google.com, where the visits actually are', async ({ context, extensionId }) => {

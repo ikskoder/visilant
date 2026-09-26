@@ -875,33 +875,33 @@
     "message": "Different alphabets in one part of the address",
     "description": "Marker: a hostname label mixes writing systems"
   },
-  "lookalikeLooksLike": {
-    "message": "Resembles a site you know:",
-    "description": "Intro to the familiar domain a lookalike imitates"
+  "lookalikeWhoFamiliar": {
+    "message": "the familiar site",
+    "description": "Fills {who} in the lookalike sentences when the imitated domain comes from the user's own history"
   },
-  "lookalikeLooksLikeProvider": {
-    "message": "Resembles a well-known mail provider:",
-    "description": "Intro to the mail provider a lookalike address imitates. Shown instead of lookalikeLooksLike when the reference is the built-in provider list rather than the user’s own history."
+  "lookalikeWhoProvider": {
+    "message": "the well-known mail provider",
+    "description": "Fills {who} in the lookalike sentences when the imitated domain comes from the built-in mail provider list, which the user may never have visited"
   },
   "lookalikeReasonConfusable": {
-    "message": "Characters replaced with ones that look the same",
-    "description": "Lookalike reason: confusable characters"
+    "message": "Looks like {who} {site}, but with some characters replaced by almost identical ones",
+    "description": "Lookalike warning, one sentence. {who} is lookalikeWhoFamiliar or lookalikeWhoProvider, {site} is the imitated domain, drawn highlighted. The address uses letters from another alphabet or digits that look like the real letters"
   },
   "lookalikeReasonEditDistance": {
-    "message": "A letter or two apart from that name",
-    "description": "Lookalike reason: small edit distance"
+    "message": "Looks like {who} {site}, but with a letter or two changed",
+    "description": "Lookalike warning, one sentence. {who} and {site} as in lookalikeReasonConfusable. The address is one or two typos away from the real name"
   },
   "lookalikeReasonContains": {
-    "message": "That name with extra text attached",
-    "description": "Lookalike reason: familiar name embedded in a longer label"
+    "message": "Looks like {who} {site}, but with extra text added",
+    "description": "Lookalike warning, one sentence. {who} and {site} as in lookalikeReasonConfusable. The address holds the real name with more text around it, like paypal-secure.com"
   },
   "lookalikeReasonSubdomain": {
-    "message": "That name is only a subdomain here, not the real domain",
-    "description": "Lookalike reason: familiar name used as a subdomain"
+    "message": "Looks like {who} {site}, but here it is only a subdomain of a different site",
+    "description": "Lookalike warning, one sentence. {who} and {site} as in lookalikeReasonConfusable. The real name sits in front of somebody else's domain, like paypal.com.evil.net"
   },
   "lookalikeReasonSameName": {
-    "message": "Same name, but a different domain",
-    "description": "Lookalike reason: same label under another suffix"
+    "message": "Looks like {who} {site}, but with a different ending",
+    "description": "Lookalike warning, one sentence. {who} and {site} as in lookalikeReasonConfusable. The same name under another domain ending, like paypal.co next to paypal.com"
   },
   "linkTooltipGoToLink": {
     "message": "Go to link",
