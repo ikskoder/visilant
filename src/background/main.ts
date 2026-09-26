@@ -1,8 +1,9 @@
 import type { ToolbarLook } from '~/logic/badge'
 import type { FamiliarDomain, FamiliarIndex } from '~/logic/domain-similarity'
-import type { FamiliarityStats } from '~/logic/familiarity'
+import type { FamiliaritySettings, FamiliarityStats } from '~/logic/familiarity'
 import type { Settings, SiteVisitData } from '~/logic/storage'
 import { onMessage } from 'webext-bridge/background'
+import { applySilence, canAutoLift, familiarSilencedHosts, liftSilence, recordStats } from '~/logic/auto-unsilence'
 import { ACTION_ICONS, BADGE_COLORS, badgeText, toolbarLook } from '~/logic/badge'
 import { fetchBlobBounded } from '~/logic/bounded-fetch'
 import { belongsToSite, siteDomain, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
@@ -21,7 +22,7 @@ import { clearAllTamperAlarms, clearTamperAlarm, hasTamperAlarm, raiseTamperAlar
 import { addCustomShortener, clearCachedResolvedUrl, getCachedResolvedUrl, loadShortenersFromStorage, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
 import { visitKeysToRemove } from '~/logic/visit-reset'
 import { applyVisit, isTrackableHostname } from '~/logic/visit-stats'
-import { removeVisitRecords, updateVisitRecord, visitGeneration } from '~/logic/visit-store'
+import { removeVisitRecords, runVisitStep, updateVisitRecord, updateVisitRecords, visitGeneration } from '~/logic/visit-store'
 import { foldWwwRecords } from '~/logic/www-fold'
 
 // Load user-defined and remotely fetched shortener domains on service worker start
@@ -189,13 +190,24 @@ async function incrementVisitCount(url: string) {
   // and the history import for the same record, and the loser's field was put
   // back to whatever the winner had read a moment earlier.
   let counted = false
+  let lifted = false
   const updated = await updateVisitRecord(hostname, (existing) => {
-    const next = applyVisit(existing, Date.now())
+    const now = Date.now()
+    const next = applyVisit(existing, now)
     counted = next.count !== (existing?.count ?? 0)
-    return next
+    // Lifted here, on a visit, rather than when the site qualifies – see
+    // auto-unsilence.ts for why no other moment will do
+    lifted = appSettings.value.autoUnsilenceFamiliar && canAutoLift(next, currentFamiliarityRules(), now)
+    return lifted ? liftSilence(next) : next
   })
   if (!updated)
     return
+
+  // The page may already have asked about itself and been told it is silenced.
+  // Nothing shows while it is familiar, but it would stay silenced past a
+  // tightening of the rules until it was reloaded.
+  if (lifted)
+    await refreshTabsForHost(hostname)
 
   // Whether this was a visit or a reload inside the debounce window – the same
   // question the counter above just answered, and the index has to give the
@@ -1042,12 +1054,12 @@ async function handleIgnoreSite(name: string, ignored = true) {
 
   // The flag is set on the record as it stands, not on a copy read earlier: a
   // navigation writing its own count in between used to carry the old flag back
-  await updateVisitRecord(hostname, existing => ({
-    count: 0,
-    lastSeen: 0,
-    ...existing,
+  await updateVisitRecord(hostname, existing => applySilence(
+    { count: 0, lastSeen: 0, ignored: false, ...existing },
     ignored,
-  }))
+    currentFamiliarityRules(),
+    Date.now(),
+  ))
 
   // The pages this was about are open right now, and what they believe about
   // themselves just changed. Resume warnings used to reach only the popup that
@@ -1211,6 +1223,57 @@ async function handleResetVisits() {
 }
 
 /**
+ * Turn warnings back on for the familiar sites the settings page listed.
+ *
+ * The hosts come from the page, so the list lifted is the list that was shown
+ * rather than whatever happens to qualify by the time the click arrives. Each is
+ * checked again at the write all the same: a site the page saw as familiar may
+ * have been unsilenced since, or the rules tightened under it.
+ *
+ * The open tabs are told once, for all of them. Nothing shows on a familiar site
+ * either way, but a tab that still believes it is silenced would stay silent past
+ * a later tightening of the rules until it was reloaded.
+ */
+async function handleUnsilenceFamiliar(hosts: unknown) {
+  const keys = Array.isArray(hosts) ? hosts.filter((host): host is string => typeof host === 'string') : []
+  const rules = currentFamiliarityRules()
+  const now = Date.now()
+  const lifted = await updateVisitRecords(keys, (_key, existing) =>
+    existing?.ignored && isFamiliar(recordStats(existing), rules, now) ? liftSilence(existing) : undefined)
+  if (lifted)
+    await refreshOpenTabs()
+  return { lifted }
+}
+
+/**
+ * Lift every silence on a familiar site, once, as the setting is switched on.
+ *
+ * Otherwise a site already familiar at that moment would stay silenced until its
+ * next visit, which for a site the user has stopped going to is never. Every one
+ * of them goes, the ones put on a familiar site included: silences from before
+ * that was noted cannot be told apart from the rest, and switching this on is
+ * the user asking for the list to be cleaned. The note only guards against the
+ * lift on a visit afterwards.
+ *
+ * The rules come from the settings just written rather than from the ref, which
+ * catches up with storage in its own time.
+ */
+async function liftFamiliarSilences(rules: FamiliaritySettings) {
+  const now = Date.now()
+  const lifted = await runVisitStep(async () => {
+    const records = await browser.storage.local.get(null)
+    const payload: Record<string, SiteVisitData> = {}
+    for (const key of familiarSilencedHosts(records, rules, now))
+      payload[key] = liftSilence(records[key] as SiteVisitData)
+    if (Object.keys(payload).length)
+      await browser.storage.local.set(payload)
+    return Object.keys(payload).length
+  })
+  if (lifted)
+    await refreshOpenTabs()
+}
+
+/**
  * Answer an iframe about itself.
  *
  * A frame keeps nothing: no settings, no lists, no verdict. It asks once, when
@@ -1310,6 +1373,7 @@ const messageHandlers = {
   // What a page changed, for the one context allowed to store it
   'patch-settings': (data: any) => applySettingsPatch(data?.patch),
   'ignore-site': (data: any) => handleIgnoreSite(data.hostname, data.ignored !== false),
+  'unsilence-familiar': (data: any) => handleUnsilenceFamiliar(data?.hosts),
   // What an iframe asks about itself, and the two things it can ask for
   'frame-verdict': (_data: any, ctx?: MessageContext) => handleFrameVerdict(ctx),
   'frame-warning': (data: any, ctx?: MessageContext) =>
@@ -1569,10 +1633,12 @@ if (hasContextMenus()) {
     }
 
     if (info.menuItemId === CONTEXT_MENU_LINK_ID && info.linkUrl && tab?.id) {
-      // Send message to content script to show intercept dialog for this link
+      // Send message to content script to show intercept dialog for this link.
+      // The frame goes along because the dialog is drawn in the top document,
+      // which only knows what the link's text said when the click was its own.
       await sendToTabSafe(tab.id, {
         type: 'show-link-intercept',
-        data: { url: info.linkUrl },
+        data: { url: info.linkUrl, frameId: info.frameId },
       })
     }
 
@@ -1606,6 +1672,18 @@ browser.storage.onChanged.addListener(async (changes) => {
     const currentRules = current && familiaritySignature(normalizeFamiliarity(current.familiarity))
     if (previousRules !== currentRules)
       invalidateFamiliarIndex()
+
+    // Switched on just now. Not on a first write with nothing before it, which is
+    // a new profile or settings arriving through sync rather than anybody's click.
+    // Guarded like the steps below it, which every open tab is waiting on.
+    if (previous && current && previous.autoUnsilenceFamiliar !== true && current.autoUnsilenceFamiliar === true) {
+      try {
+        await liftFamiliarSilences(normalizeFamiliarity(current.familiarity))
+      }
+      catch (error) {
+        console.error('Visilant: the familiar sites could not be taken off the silenced list', error)
+      }
+    }
 
     // Rebuild context menu when link safety settings change. Guarded like the
     // draw below it: this runs before the sweep over the tabs, and a rejection

@@ -345,6 +345,58 @@ function parseDomainList(raw: string): string[] {
 }
 
 /**
+ * What a link looked like at the moment it was right-clicked.
+ *
+ * The context menu's "Check link safety" hands the page an address and nothing
+ * else – Chrome's click data has no link text at all – so the words the link was
+ * wearing have to be read off the page. They are read when the user acts on the
+ * link rather than when the menu item arrives, so a page cannot rewrite the text
+ * in between. Strings only: a kept element would hold a node the page may have
+ * thrown away.
+ */
+export interface ContextLinkSnapshot {
+  href: string
+  /** The domain the link text names when it is not where the link goes, or null. */
+  textDomain: string | null
+}
+
+/**
+ * Take the snapshot for one anchor, or null when there is nothing to check.
+ *
+ * An SVG `<a>` matches `a[href]` too, and its `href` is an object rather than a
+ * string, so the type is tested rather than assumed.
+ */
+export function snapshotContextLink(anchor: Element | null): ContextLinkSnapshot | null {
+  const href = (anchor as HTMLAnchorElement | null)?.href
+  if (typeof href !== 'string' || !href)
+    return null
+  const hostname = getHostnameFromHref(href)
+  if (!hostname)
+    return null
+  const result = checkAnchorMismatch(anchor, hostname)
+  return { href, textDomain: result.mismatch && result.textDomain ? result.textDomain : null }
+}
+
+/**
+ * The link text's domain for a context-menu check, when the snapshot is about
+ * the same link.
+ *
+ * Only for the top document: a link in a frame was right-clicked where this
+ * document heard nothing, so whatever it holds is about an earlier click. And
+ * only for the same address, so a menu opened on one link never borrows the
+ * words of another.
+ */
+export function contextLinkTextDomain(
+  snapshot: ContextLinkSnapshot | null,
+  url: string,
+  frameId: number | undefined,
+): string | null {
+  if (!snapshot || (frameId !== undefined && frameId !== 0))
+    return null
+  return snapshot.href === url ? snapshot.textDomain : null
+}
+
+/**
  * Find the closest `<a>` element behind an event.
  *
  * Takes the event rather than its target on purpose. A link inside a custom

@@ -78,6 +78,9 @@ export function mergeImportedStats(
     lastSeen: Math.max(existing?.lastSeen || 0, imported.lastSeen),
     ignored: existing?.ignored || false,
   }
+  // Part of the silence, and user intent like it – see canAutoLift
+  if (existing?.ignored && existing.silencedWhileFamiliar)
+    merged.silencedWhileFamiliar = true
 
   const firstSeen = [existing?.firstSeen, imported.firstSeen].filter(
     (value): value is number => typeof value === 'number' && value > 0,

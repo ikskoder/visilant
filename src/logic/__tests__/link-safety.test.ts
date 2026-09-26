@@ -6,6 +6,7 @@ import {
   checkAnchorMismatch,
   checkDomainMismatch,
   clearVisitCache,
+  contextLinkTextDomain,
   extractDomainFromText,
   findAnchorElement,
   findAnchorFromEvent,
@@ -15,6 +16,7 @@ import {
   isDomainInScope,
   isExternalLink,
   setCachedVisitCount,
+  snapshotContextLink,
 } from '../link-safety'
 
 describe('isExternalLink', () => {
@@ -493,5 +495,60 @@ describe('the visit cache', () => {
     finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('the context-menu snapshot', () => {
+  function link(text: string, href = 'https://yourbank-secure-login.com/verify'): HTMLAnchorElement {
+    const element = document.createElement('a')
+    element.href = href
+    element.textContent = text
+    return element
+  }
+
+  it('keeps the domain the text names when the link goes elsewhere', () => {
+    expect(snapshotContextLink(link('https://www.yourbank.com/signin'))).toEqual({
+      href: 'https://yourbank-secure-login.com/verify',
+      textDomain: 'yourbank.com',
+    })
+  })
+
+  it('keeps no domain when the text agrees with the link', () => {
+    expect(snapshotContextLink(link('yourbank-secure-login.com'))?.textDomain).toBeNull()
+  })
+
+  it('takes nothing from a link without a host', () => {
+    expect(snapshotContextLink(link('yourbank.com', 'mailto:a@yourbank.com'))).toBeNull()
+    expect(snapshotContextLink(null)).toBeNull()
+  })
+
+  // An SVG link matches a[href] too, and its href is an SVGAnimatedString, not a
+  // string. Built by hand because jsdom has no SVG link to build it from.
+  it('takes nothing from a link whose href is not a string', () => {
+    const svgLike = document.createElement('span')
+    svgLike.textContent = 'yourbank.com'
+    Object.defineProperty(svgLike, 'href', {
+      value: { baseVal: 'https://yourbank-secure-login.com/', toString: () => 'https://yourbank-secure-login.com/' },
+    })
+    expect(snapshotContextLink(svgLike)).toBeNull()
+  })
+
+  const snapshot = { href: 'https://yourbank-secure-login.com/verify', textDomain: 'yourbank.com' }
+
+  it('answers for the same link in the top document', () => {
+    expect(contextLinkTextDomain(snapshot, snapshot.href, 0)).toBe('yourbank.com')
+  })
+
+  it('never lends one link\'s words to another', () => {
+    expect(contextLinkTextDomain(snapshot, 'https://yourbank-secure-login.com/other', 0)).toBeNull()
+  })
+
+  // The top document heard nothing of a right-click inside a frame
+  it('says nothing about a link in a frame', () => {
+    expect(contextLinkTextDomain(snapshot, snapshot.href, 3)).toBeNull()
+  })
+
+  it('says nothing without a snapshot', () => {
+    expect(contextLinkTextDomain(null, snapshot.href, 0)).toBeNull()
   })
 })

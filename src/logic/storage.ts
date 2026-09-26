@@ -47,6 +47,9 @@ export interface Settings {
   // Hold a paste on an unfamiliar site until the user confirms it
   blockPasteOnUnfamiliar: boolean
 
+  // Turn a site's warnings back on once it is familiar – see auto-unsilence.ts
+  autoUnsilenceFamiliar: boolean
+
   // Language settings
   selectedLanguage: string
 
@@ -193,6 +196,9 @@ export const defaultSettings: Settings = {
 
   // Off by default: it interrupts a real action, so it has to be asked for
   blockPasteOnUnfamiliar: false,
+
+  // Off by default: a silence is the user's choice, and lifting one is not ours
+  autoUnsilenceFamiliar: false,
 
   // Language settings
   selectedLanguage: 'en',
@@ -575,4 +581,7 @@ export interface SiteVisitData {
   // no honest value for them, and only a browser-history import can supply one.
   firstSeen?: number // Unix timestamp of the earliest known visit
   activeDays?: number // Number of distinct local days the site was visited on
+  // Silenced while it was already familiar, so the automatic lift leaves it be –
+  // see canAutoLift. Absent on every record that is not silenced.
+  silencedWhileFamiliar?: boolean
 }

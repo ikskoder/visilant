@@ -49,6 +49,11 @@ export function mergeVisitRecords(a: SiteVisitData | undefined, b: SiteVisitData
   if (activeDays.length)
     merged.activeDays = Math.max(...activeDays)
 
+  // Kept if either silence was put on a familiar site: the automatic lift passing
+  // over a silence it might have taken is the side to err on
+  if ((a.ignored && a.silencedWhileFamiliar) || (b.ignored && b.silencedWhileFamiliar))
+    merged.silencedWhileFamiliar = true
+
   return merged
 }
 

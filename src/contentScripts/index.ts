@@ -1,5 +1,5 @@
 import type { FamiliarityStats } from '~/logic/familiarity'
-import type { VisitFacts } from '~/logic/link-safety'
+import type { ContextLinkSnapshot, VisitFacts } from '~/logic/link-safety'
 import type { Settings } from '~/logic/storage'
 import type { TamperWatch } from '~/logic/tamper-watch'
 import type { CheckPanelData, DomainFamilyInfo, EmailRecipientInfo, LinkTooltipData, RawPayloadInfo, ShortUrlInfo } from '~/logic/ui-state'
@@ -9,7 +9,7 @@ import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
-import { alternateSpelling, anchorLabel, checkAnchorMismatch, clearVisitCache, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount } from '~/logic/link-safety'
+import { alternateSpelling, anchorLabel, checkAnchorMismatch, clearVisitCache, contextLinkTextDomain, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount, snapshotContextLink } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
 import { isMessageError } from '~/logic/message-error'
 import { describePastePayload, editableTargetOf, isEditableEventTarget, isPasteSink, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
@@ -578,6 +578,45 @@ window.addEventListener('paste', handlePaste, true)
 window.addEventListener('copy', handleCopyCut, true)
 window.addEventListener('cut', handleCopyCut, true)
 
+/**
+ * The link the context menu was last opened on, as it read at the time.
+ *
+ * "Check link safety" arrives with an address and no link text, so without this
+ * the dialog could never say that the text names one site and the link opens
+ * another – which is the trick the check is most often asked about. See
+ * `snapshotContextLink`.
+ *
+ * Taken on the pointer press rather than on `contextmenu`: a page's own
+ * handlers see the press first and could rewrite the text before the menu event
+ * fires. Any other press clears it. The menu key, a long press on a touchscreen
+ * and a menu opened a second time have no right-button press of their own, so
+ * `contextmenu` takes a fresh one unless it is the menu that very press opened.
+ * A link in a frame is kept out by the frame id the menu item sends, see
+ * `contextLinkTextDomain`. On `window` in the capture phase, like the
+ * listeners above, so it runs before anything the page registers.
+ */
+let contextLink: ContextLinkSnapshot | null = null
+/** The last right-button press has not had its menu yet. */
+let contextPressPending = false
+
+window.addEventListener('pointerdown', (event) => {
+  if (!event.isTrusted)
+    return
+  contextPressPending = event.button === 2
+  contextLink = contextPressPending ? snapshotContextLink(findAnchorFromEvent(event)) : null
+}, true)
+
+window.addEventListener('contextmenu', (event) => {
+  if (!event.isTrusted)
+    return
+  const pressed = contextPressPending
+  contextPressPending = false
+  const href = (findAnchorFromEvent(event) as HTMLAnchorElement | null)?.href
+  if (pressed && contextLink && typeof href === 'string' && href === contextLink.href)
+    return
+  contextLink = snapshotContextLink(findAnchorFromEvent(event))
+}, true)
+
 // ==========================================
 // Link Safety – tooltip and intercept logic
 // ==========================================
@@ -690,15 +729,19 @@ async function resolveForIntercept(url: string, hostname: string, isKnownShorten
   }
 }
 
-// Show intercept dialog for a URL without an anchor element (used by right-click context menu)
-async function showLinkInterceptByUrl(url: string) {
+// Show intercept dialog for a URL without an anchor element (used by right-click context menu).
+// `textDomain` is what the link's own text named, read off the right-click that
+// opened the menu, when it named somewhere else.
+async function showLinkInterceptByUrl(url: string, textDomain: string | null = null) {
   const hostname = getHostnameFromHref(url)
   if (!hostname)
     return
 
-  const currentHostname = window.location.hostname
-  if (!isExternalLink(url, currentHostname))
-    return
+  // No external-link gate here, unlike the hover and click paths. Those run on
+  // every link the pointer meets, and one on the same site says nothing new.
+  // This one runs because the user picked "Check link safety" on this link, and
+  // an answer about the site they are on is still an answer, where returning
+  // left the menu item doing nothing at all.
 
   const visitData = await fetchLinkData(url, hostname)
 
@@ -730,13 +773,19 @@ async function showLinkInterceptByUrl(url: string) {
     }
   }
 
+  let mismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null = null
+  if (textDomain) {
+    const textDomainData = await fetchLinkData(`https://${textDomain}`, textDomain)
+    mismatch = { textDomain, textDomainStats: textDomainData.stats, textDomainIsSafe: textDomainData.isSafe }
+  }
+
   linkInterceptData.value = {
     domain: hostname,
     url,
     target: '_blank',
     stats: visitData.stats,
     isSafe: visitData.isSafe,
-    mismatch: null,
+    mismatch,
     punycode: alternateSpelling(hostname),
     shortUrl: shortUrlInfo,
   }
@@ -2099,12 +2148,19 @@ browser.runtime.onMessage.addListener(((message: any, _sender: any, sendResponse
 
   // Keep this listener synchronous (returning a Promise here would hijack the
   // response channel of unrelated webext-bridge messages)
-  if (message.type === 'show-link-tooltip-at-cursor' && message.data?.url) {
-    ensureTooltipUiMounted().then(() => showLinkTooltipByUrl(message.data.url))
-    return undefined
-  }
   if (message.type === 'show-link-intercept' && message.data?.url) {
-    ensureTooltipUiMounted().then(() => showLinkInterceptByUrl(message.data.url))
+    const url: string = message.data.url
+    // Taken now, not after the mount below: a right-click in the meantime would
+    // otherwise put a different link's words into this link's dialog
+    const textDomain = contextLinkTextDomain(contextLink, url, message.data.frameId)
+    contextLink = null
+    // A mailto link has no site to open and nothing for the dialog to say. It
+    // gets the address check a left click on it gives, instead of the menu item
+    // doing nothing at all.
+    if (isMailtoHref(url))
+      ensureTooltipUiMounted().then(() => showEmailTooltipByAddress(url))
+    else
+      ensureTooltipUiMounted().then(() => showLinkInterceptByUrl(url, textDomain))
     return undefined
   }
   if (message.type === 'check-selection') {

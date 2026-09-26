@@ -127,5 +127,7 @@ export function applyVisit(existing: SiteVisitData | undefined, now: number): Si
       ? undefined
       : existing.activeDays + (isNewDay ? 1 : 0),
     ignored: existing.ignored || false,
+    // Part of the silence, and carried with it – see canAutoLift
+    ...(existing.ignored && existing.silencedWhileFamiliar && { silencedWhileFamiliar: true }),
   }
 }

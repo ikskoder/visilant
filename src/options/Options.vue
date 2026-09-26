@@ -7,6 +7,7 @@ import type { Settings, SiteVisitData } from '~/logic/storage'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
+import { familiarSilencedHosts } from '~/logic/auto-unsilence'
 import { resolveBadgeContent } from '~/logic/badge'
 import { fetchRemoteDomainLists, parseListUrls, STORAGE_KEY_CUSTOM_DISPOSABLE, STORAGE_KEY_CUSTOM_PUBLIC, STORAGE_KEY_REMOTE_DISPOSABLE, STORAGE_KEY_REMOTE_PUBLIC, updateDisposableList, updatePublicList } from '~/logic/email-providers'
 import { enabledCriteria, FAMILIARITY_CRITERIA, normalizeFamiliarity, requiredMatches } from '~/logic/familiarity'
@@ -124,6 +125,10 @@ function updateTranslations() {
     'silencedSitesTitle',
     'silencedSitesDesc',
     'silencedSitesRejected',
+    'silencedFamiliarNote',
+    'silencedFamiliarClear',
+    'autoUnsilenceFamiliar',
+    'autoUnsilenceFamiliarDesc',
     'databaseManagement',
     'importHistoryIntro',
     'importStatusNever',
@@ -307,7 +312,7 @@ const SECTION_SETTINGS: Record<string, (keyof Settings)[]> = {
   'general': ['theme', 'verboseOptions'],
   'familiarity': ['familiarity', 'showFamiliarityThresholds'],
   'display': ['showBadge', 'badgeContent', 'changeIcon'],
-  'notifications': ['showWarningNotification', 'notificationStyle', 'showInputWarning', 'showCopyWarning', 'blockPasteOnUnfamiliar'],
+  'notifications': ['showWarningNotification', 'notificationStyle', 'showInputWarning', 'showCopyWarning', 'blockPasteOnUnfamiliar', 'autoUnsilenceFamiliar'],
   'tampering': ['antiTamperingExcludedDomains'],
   'link-safety': ['linkSafety'],
   'lookups': ['lookupServices'],
@@ -405,6 +410,8 @@ const importProgress = ref({ current: 0, total: 0 })
  */
 const now = ref(Date.now())
 let clock: ReturnType<typeof setInterval> | null = null
+// The batched re-read of the silenced list – see watchSilences
+let silencedReread: ReturnType<typeof setTimeout> | null = null
 
 /**
  * Follow the import wherever it is running.
@@ -473,6 +480,7 @@ onMounted(async () => {
   await readSilencedSites()
 
   browser.storage.onChanged.addListener(watchImportState)
+  browser.storage.onChanged.addListener(watchSilences)
   clock = setInterval(() => {
     now.value = Date.now()
   }, 5000)
@@ -480,6 +488,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   browser.storage.onChanged.removeListener(watchImportState)
+  browser.storage.onChanged.removeListener(watchSilences)
+  if (silencedReread !== null)
+    clearTimeout(silencedReread)
   if (clock !== null) {
     clearInterval(clock)
     clock = null
@@ -897,13 +908,84 @@ const silencedSites = ref<string[]>([])
 const silencedText = ref('')
 const silencedFocused = ref(false)
 
+/**
+ * The list as it stood when the box was entered, which is what the text in it
+ * started from.
+ *
+ * The save compares the text against this and not against the list as it is by
+ * the time the box is left. The list is followed while the box is open, and a
+ * silence the popup added or a visit lifted in the meantime would otherwise read
+ * as a line the user had deleted or typed – and be undone on the way out.
+ */
+let silencedBaseline: string[] = []
+
+function startEditingSilenced() {
+  silencedFocused.value = true
+  silencedBaseline = [...silencedSites.value]
+}
+
 /** Lines of the last save that were not hostnames, kept so they can be named. */
 const silencedRejected = ref<string[]>([])
 
+/**
+ * The silenced records themselves, from the same read as the list, so the page
+ * can say which of them are familiar under the rules it is showing.
+ */
+const silencedRecords = ref<Record<string, SiteVisitData>>({})
+
 async function readSilencedSites() {
-  silencedSites.value = silencedHosts(await browser.storage.local.get(null))
+  const records = await browser.storage.local.get(null)
+  silencedSites.value = silencedHosts(records)
+  silencedRecords.value = Object.fromEntries(silencedSites.value.map(host => [host, records[host] as SiteVisitData]))
   if (!silencedFocused.value)
     silencedText.value = silencedSites.value.join('\n')
+}
+
+/**
+ * Silenced sites that are familiar now, where the silence holds back nothing.
+ *
+ * Offered for clearing in one go rather than lifted behind the user's back –
+ * that is the automatic setting below it, and it is off unless asked for.
+ */
+const familiarSilenced = computed(() =>
+  familiarSilencedHosts(silencedRecords.value, familiarity.value, now.value))
+
+const unsilencingFamiliar = ref(false)
+
+async function unsilenceFamiliar() {
+  unsilencingFamiliar.value = true
+  try {
+    // The names on screen, so what goes is what the line said would go
+    await browser.runtime.sendMessage({ type: 'unsilence-familiar', data: { hosts: [...familiarSilenced.value] } })
+  }
+  finally {
+    unsilencingFamiliar.value = false
+    await readSilencedSites()
+  }
+}
+
+/**
+ * Follow the silences as other windows change them.
+ *
+ * The popup silences and unsilences, a visit can lift a silence on its own, and
+ * a silenced site becomes familiar as it is visited. Only a change to a silence
+ * or to a record already on the list is worth a read, since every navigation in
+ * every tab writes a record. Batched, because an import writes hundreds at once.
+ */
+function watchSilences(changes: Record<string, { oldValue?: unknown, newValue?: unknown }>, area: string) {
+  if (area !== 'local')
+    return
+  const relevant = Object.entries(changes).some(([key, change]) =>
+    key in silencedRecords.value
+    || (change.oldValue as SiteVisitData | undefined)?.ignored !== (change.newValue as SiteVisitData | undefined)?.ignored)
+  if (!relevant)
+    return
+  if (silencedReread !== null)
+    clearTimeout(silencedReread)
+  silencedReread = setTimeout(() => {
+    silencedReread = null
+    readSilencedSites()
+  }, 300)
 }
 
 function setSilenced(hostname: string, ignored: boolean) {
@@ -921,7 +1003,7 @@ function setSilenced(hostname: string, ignored: boolean) {
  * history missing its dates.
  */
 async function saveSilencedList() {
-  const changes = planSilenceChanges(silencedSites.value, silencedText.value)
+  const changes = planSilenceChanges(silencedBaseline, silencedText.value)
   silencedRejected.value = changes.rejected
 
   for (const host of changes.silence)
@@ -1645,12 +1727,13 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             -->
             <textarea
               v-model="silencedText"
+              data-silenced-list
               wrap="off"
               spellcheck="false"
               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
               rows="6"
               placeholder="example.com&#10;shop.example.org"
-              @focus="silencedFocused = true"
+              @focus="startEditingSilenced"
               @blur="saveSilencedList"
             />
             <!-- Named rather than dropped in silence: a line that was meant to be
@@ -1659,6 +1742,38 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <p v-if="silencedRejected.length" class="text-xs text-amber-600 dark:text-amber-400 mt-1 break-all">
               {{ translations.silencedSitesRejected }} {{ silencedRejected.join(', ') }}
             </p>
+            <!-- Reports state, so it keeps its place on a compact page like the
+                 line above it. One button for all of them: the textarea is where
+                 a single site is taken off -->
+            <div v-if="familiarSilenced.length" data-familiar-silenced class="mt-2">
+              <p class="text-xs text-gray-600 dark:text-gray-300 break-words">
+                {{ translations.silencedFamiliarNote }}
+                <span class="font-mono">{{ familiarSilenced.join(', ') }}</span>
+              </p>
+              <button
+                class="btn-ghost btn-sm mt-2"
+                data-unsilence-familiar
+                :disabled="unsilencingFamiliar"
+                @click="unsilenceFamiliar"
+              >
+                {{ translations.silencedFamiliarClear }}
+              </button>
+            </div>
+
+            <div class="flex items-start justify-between mt-4">
+              <div class="pr-3">
+                <label class="text-sm font-medium">{{ translations.autoUnsilenceFamiliar }}</label>
+                <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {{ translations.autoUnsilenceFamiliarDesc }}
+                </p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input v-model="settings.autoUnsilenceFamiliar" data-auto-unsilence type="checkbox" class="sr-only peer">
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
+                />
+              </label>
+            </div>
           </div>
         </div>
         <!-- Anti-Tampering Settings -->
