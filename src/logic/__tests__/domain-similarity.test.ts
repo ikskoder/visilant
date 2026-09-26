@@ -81,6 +81,17 @@ describe('findLookalikes – attack shapes that must be caught', () => {
     expect(match.severity).toBe('high')
   })
 
+  // The way the background actually asks: the address as the browser hands it
+  // over, in its xn-- form, with the registrable domain worked out the same way.
+  // Asked in Unicode with no registrable domain, the case below never saw the
+  // two spellings meet, and a swapped letter was explained as a subdomain.
+  it('explains a Cyrillic homoglyph as a swapped letter when asked in the browser\'s own spelling', () => {
+    const [match] = findLookalikes('xn--pypal-4ve.com', index, 'xn--pypal-4ve.com')
+    expect(match.domain).toBe('paypal.com')
+    expect(match.reason).toBe('confusable')
+    expect(match.severity).toBe('high')
+  })
+
   it('catches a Cyrillic homoglyph', () => {
     const [match] = check('pаypal.com')
     expect(match.domain).toBe('paypal.com')

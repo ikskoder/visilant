@@ -341,7 +341,12 @@ export function findLookalikes(
   if (index.byDomain.has(registrable))
     return []
 
-  const registrableLabel = registrable.split('.')[0]
+  // Decoded like the labels it is compared with below. The background passes the
+  // registrable domain as the browser hands it over, in its `xn--` form, while
+  // the labels are Unicode – so for every name with a swapped-in letter from
+  // another alphabet the two never matched, and the one label that IS the site's
+  // own name was taken for a subdomain and explained as one.
+  const registrableLabel = decodeHostname(registrable).split('.')[0]
   const best = new Map<string, LookalikeMatch>()
 
   const offer = (match: LookalikeMatch) => {
