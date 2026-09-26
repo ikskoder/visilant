@@ -51,6 +51,32 @@ test('popup shows visit count for domain', async ({ page, extensionId, context }
   await expect(page.locator('.font-mono').filter({ hasText: /^3$/ }).first()).toBeAttached({ timeout: 5000 })
 })
 
+/**
+ * A shortener keeps its figures – they are true about the site – with a line
+ * saying they are no answer about its links. The popup never loaded the lists,
+ * so a domain the user had marked by hand carried no sign of it here.
+ */
+test('the domain card says when the domain is a shortener', async ({ page, extensionId, context }) => {
+  const setShorteners = (domains: string[]) => inWorker(context, async (list: string[]) => {
+    await chrome.storage.local.set({ customShorteners: list })
+  }, domains)
+  const notice = page.locator('[data-domain-panel] [data-marker-note="shortener"]')
+
+  await setShorteners(['short-link.test'])
+  await seedVisits(context, 'short-link.test', 3)
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=short-link.test`)
+  await expect(notice).toContainText('Link shortener', { timeout: 5000 })
+  await expect(page.locator('[data-criterion="visits"]').first()).toHaveText('3')
+
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
+  await expect(page.locator('[data-domain-panel]')).toBeVisible({ timeout: 5000 })
+  await expect(notice).toHaveCount(0)
+
+  // Marked from the settings while this page is open, and shown without a reload
+  await setShorteners(['short-link.test', SITE_HOST])
+  await expect(notice).toBeVisible({ timeout: 5000 })
+})
+
 test('popup shows "no visit data" for unvisited domain', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=never-visited-domain-12345.com`)
   await page.waitForTimeout(1000)
@@ -371,21 +397,25 @@ test('popup can toggle anti-tampering for domain', async ({ page, extensionId })
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)
 
+  // Found by what it is rather than by its colour. Picked by colour, `.first()`
+  // was the warnings switch in the row above, and this test toggled that instead
+  const toggleButton = page.locator('[data-anti-tampering-toggle]')
+  const row = page.locator('div:has(> [data-anti-tampering-toggle])')
+
   // Should show green dot (protected by default)
-  await expect(page.locator('.bg-green-500').first()).toBeAttached({ timeout: 5000 })
+  await expect(row.locator('.bg-green-500')).toBeAttached({ timeout: 5000 })
 
   // Click the toggle button (disable protection)
-  const toggleButton = page.locator('button.text-blue-500').first()
   await toggleButton.click()
   await page.waitForTimeout(500)
 
   // Should now show amber dot (not protected)
-  await expect(page.locator('.bg-amber-400').first()).toBeAttached({ timeout: 3000 })
+  await expect(row.locator('.bg-amber-400')).toBeAttached({ timeout: 3000 })
 
   // Toggle back
   await toggleButton.click()
   await page.waitForTimeout(500)
-  await expect(page.locator('.bg-green-500').first()).toBeAttached({ timeout: 3000 })
+  await expect(row.locator('.bg-green-500')).toBeAttached({ timeout: 3000 })
 })
 
 // ==========================================

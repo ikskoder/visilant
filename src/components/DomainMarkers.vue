@@ -10,6 +10,12 @@ import { findDomainMarkers } from '~/logic/domain-markers'
 const props = defineProps<{
   hostname: string
   url?: string | null
+  /**
+   * Lines the caller knows and this component does not – what a list says about
+   * the host, say. Drawn first, in the same shape, so a notice and a marker under
+   * one address read as one list rather than two blocks with a gap between them.
+   */
+  notes?: { id: string, text: string }[]
 }>()
 
 const isDark = inject('isDark', ref(false))
@@ -31,7 +37,17 @@ const markers = computed(() => {
 </script>
 
 <template>
-  <div v-if="markers.length" class="mb-2 flex flex-col gap-1">
+  <div v-if="markers.length || notes?.length" class="mb-2 flex flex-col gap-1">
+    <div
+      v-for="note in notes"
+      :key="note.id"
+      :data-marker-note="note.id"
+      class="flex items-start gap-1 leading-snug"
+      :class="isDark ? 'text-amber-400' : 'text-amber-700'"
+    >
+      <span class="flex-shrink-0" aria-hidden="true">⚠</span>
+      <span class="break-words">{{ note.text }}</span>
+    </div>
     <div
       v-for="marker in markers"
       :key="marker.id"

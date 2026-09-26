@@ -70,7 +70,7 @@ test('a finished import shows the figures it ended on', async ({ context, extens
 
   // Grouped and localised rather than printed raw
   await expect(stats(page)).toHaveText(['1,234', '56,789'], { timeout: 5000 })
-  await expect(page.locator('text=These sites are now familiar')).toBeVisible()
+  await expect(page.locator('text=The ones you use regularly')).toBeVisible()
   // Nothing is still going, so there is nothing to retry
   await expect(page.locator('button', { hasText: 'Import again' })).toHaveCount(0)
 })

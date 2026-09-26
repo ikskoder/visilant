@@ -9,9 +9,12 @@ import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-bounda
 import { displayDomain } from '~/logic/domain-display'
 import { DOMAIN_METRICS, metricReading, metricSortValue } from '~/logic/domain-metric'
 import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
+import { applyListChanges } from '~/logic/list-sync'
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { popupWidthCap } from '~/logic/platform'
+import { STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
 import { editSettingsThroughBackground, settings } from '~/logic/storage'
+import { isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
 import { isTrackableHostname } from '~/logic/visit-stats'
 import Logo from '../components/Logo.vue'
 import SecureText from '../components/SecureText.vue'
@@ -43,6 +46,9 @@ function updateTranslations() {
     'baseDomain',
     'relatedDomains',
     'familySummaryTitle',
+    'familyOnlyCheckedDomain',
+    'familyOnlyCurrentDomain',
+    'shortenerHostNotice',
     'listNumberLabel',
     'listSortLabel',
     'sortByName',
@@ -184,6 +190,18 @@ const otherFamilyHosts = computed(() =>
 const showFamily = computed(() => otherFamilyHosts.value.length > 0)
 
 /**
+ * The line drawn where the family's figures would be.
+ *
+ * With this host the only one on record, the fold is the card above number for
+ * number and is left out, but a card with a name and no figures read as if the
+ * figures had been forgotten. It names that card by its heading rather than by
+ * the address, so the wording follows the heading from page to popup.
+ */
+const onlyThisHostText = computed(() => isStandalonePage.value
+  ? translations.value.familyOnlyCheckedDomain
+  : translations.value.familyOnlyCurrentDomain)
+
+/**
  * Whether the base domain gets a card of its own.
  *
  * Two separate reasons for it, and either is enough. A subdomain was checked, so
@@ -209,12 +227,14 @@ const isUntrackedHost = computed(() => {
 /**
  * Whether anything at all is drawn under the domain panel.
  *
- * Either the family list or the "nothing recorded" notice, which are the two
- * branches below it. With neither, the panel is the last thing on the page and
- * the space kept for what would follow it is space kept for nothing.
+ * The base domain card, the family list or the "nothing recorded" notice. The
+ * card also stands alone, under a subdomain that is the only host on record,
+ * and leaving it out here pressed the two cards against each other. With none
+ * of the three, the panel is the last thing on the page and the space kept for
+ * what would follow it is space kept for nothing.
  */
 const hasBlockBelowPanel = computed(() =>
-  showFamily.value || (!familyHosts.value.length && !isUntrackedHost.value))
+  showBaseDomainCard.value || showFamily.value || (!familyHosts.value.length && !isUntrackedHost.value))
 
 /**
  * This exact host's own record, and nothing borrowed.
@@ -588,12 +608,51 @@ watch(isPageView, (pageView) => {
   document.documentElement.classList.toggle('standalone-page', pageView)
 }, { immediate: true })
 
-onMounted(() => {
+/**
+ * Bumped whenever the shortener lists change under this window.
+ *
+ * The lists are plain module sets, not reactive, so a computed reading them
+ * needs something that is. The toolbar popup had no list at all – only the check
+ * field loaded one – and a host the user had marked as a shortener carried no
+ * sign of it here.
+ */
+const shortenerListsVersion = ref(0)
+
+const isShortenerHost = computed(() => {
+  void shortenerListsVersion.value
+  return Boolean(currentHostname.value) && isShortenedUrl(currentHostname.value)
+})
+
+/**
+ * What the lists say about this host, drawn with the structural markers.
+ *
+ * A shortener keeps its figures, since somebody who uses one every day may want
+ * to know it is the same site. They say nothing about where its links lead,
+ * though, and a count drawn over one without a word reads as if they did.
+ */
+const hostNotes = computed(() => isShortenerHost.value
+  ? [{ id: 'shortener', text: translations.value.shortenerHostNotice }]
+  : [])
+
+const SHORTENER_KEYS = new Set(['customShorteners', STORAGE_KEY_REMOTE_SHORTENERS])
+
+function onShortenerListChange(changes: Record<string, { newValue?: unknown }>, area: string) {
+  if (area !== 'local' || !Object.keys(changes).some(key => SHORTENER_KEYS.has(key)))
+    return
+  applyListChanges(changes)
+  shortenerListsVersion.value += 1
+}
+
+onMounted(async () => {
   window.addEventListener('resize', refreshWidthCap)
+  browser.storage.onChanged.addListener(onShortenerListChange)
+  await loadShortenersFromStorage()
+  shortenerListsVersion.value += 1
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', refreshWidthCap)
+  browser.storage.onChanged.removeListener(onShortenerListChange)
 })
 
 onMounted(async () => {
@@ -720,6 +779,7 @@ onMounted(async () => {
 
       <div v-if="currentHostname">
         <div
+          data-domain-panel
           class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700"
           :class="{ 'mb-4': hasBlockBelowPanel }"
         >
@@ -769,7 +829,7 @@ onMounted(async () => {
           </div>
 
           <!-- Structural markers and resemblance to a domain the user knows -->
-          <DomainMarkers :hostname="currentHostname" class="mt-2" style="font-size: 0.85em;" />
+          <DomainMarkers :hostname="currentHostname" :notes="hostNotes" class="mt-2" style="font-size: 0.85em;" />
           <LookalikeNotice :hostname="currentHostname" style="font-size: 0.85em;" />
           <!-- Not scaled down like the two above it: this is the one place the
                lookup links are offered for the checked name, and a control the
@@ -817,7 +877,7 @@ onMounted(async () => {
               </span>
             </div>
             <button
-              class="text-blue-500 hover:text-blue-700 hover:underline transition-colors" style="font-size: 0.8em;"
+              class="text-blue-700 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-200 hover:underline transition-colors" style="font-size: 0.8em;"
               :title="isIgnoredHost ? translations.warningsActiveTooltip : translations.ignoredSiteTooltip"
               @click="setWarnings(!isIgnoredHost)"
             >
@@ -844,7 +904,7 @@ onMounted(async () => {
               </span>
             </div>
             <button
-              class="text-blue-500 hover:text-blue-700 hover:underline transition-colors" style="font-size: 0.8em;"
+              class="text-blue-700 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-200 hover:underline transition-colors" style="font-size: 0.8em;"
               data-anti-tampering-toggle
               :title="isAntiTamperingExcluded ? translations.antiTamperingTooltipOn : translations.antiTamperingTooltipOff"
               @click="toggleAntiTampering"
@@ -879,6 +939,16 @@ onMounted(async () => {
               <SecureText :text="baseDomain" />
             </div>
             <ExternalLookups :hostname="baseDomain" />
+            <!-- Where the figures would be. Only when this host is on record: with
+                 nothing recorded at all, the notice further down says so -->
+            <p
+              v-if="!showFamily && familyHosts.includes(currentKey)"
+              data-family-only-host
+              class="mt-2 leading-snug opacity-60"
+              style="font-size: 0.8em;"
+            >
+              {{ onlyThisHostText }}
+            </p>
           </template>
           <!-- Said before the numbers, and said whether or not the name above
                them is drawn. Where the base domain is the address the window is

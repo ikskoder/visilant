@@ -527,6 +527,18 @@
     "message": "All related domains together",
     "description": "Small label over the row of facts on the base domain card, saying the numbers under it summarise every host in the list below rather than describing one address"
   },
+  "shortenerHostNotice": {
+    "message": "Link shortener: its links can lead to any site, so your visit history here says nothing about whether they are safe.",
+    "description": "Warning line on the domain card of the popup when the domain is on the shortener list. The figures stay, since they are true about the site itself, but they say nothing about where its links go"
+  },
+  "familyOnlyCheckedDomain": {
+    "message": "Other than the checked domain, nothing is recorded under this domain.",
+    "description": "Line on the base domain card where the family's figures would be, when the address in the Checked domain card above is the only one recorded under it. Says the figures are missing because there is nothing to add up, not because they were forgotten. Names that card by its heading"
+  },
+  "familyOnlyCurrentDomain": {
+    "message": "Other than the current domain, nothing is recorded under this domain.",
+    "description": "The same line as familyOnlyCheckedDomain, in the toolbar popup, where the card above is headed Current domain"
+  },
   "listNumberLabel": {
     "message": "Number",
     "description": "Label before the chips picking which number the subdomain list draws, and the same word on the sort button when the list is ordered by that number. The chips themselves are named after the familiarity checks, since they are the same facts"
@@ -1392,8 +1404,8 @@
     "description": "Shown while the imported sites are being saved"
   },
   "welcomeStatusDone": {
-    "message": "These sites are now familiar to Visilant and won't be warned about. Everything else still will be.",
-    "description": "Shown under the import result numbers"
+    "message": "Visilant now knows how often you've been to each of these sites. The ones you use regularly won't be warned about. New and rarely visited ones still will be.",
+    "description": "Shown under the import result numbers. The numbers count every site read from the history, familiar or not, so this must not call them all familiar: only the ones that pass the familiarity rules are."
   },
   "welcomeStatusFailed": {
     "message": "The import didn't finish, so Visilant still treats every site as new. You can run it again.",
@@ -1408,8 +1420,8 @@
     "description": "Shown when the browser has no history API, as on Firefox for Android"
   },
   "welcomeDetailsRunning": {
-    "message": "Your sites are already counted, and warnings already know them. Filling in first-visit dates and active-day counts now.",
-    "description": "Shown while the slower detail pass of the import is still running"
+    "message": "Your sites are counted. Now filling in first-visit dates and active-day counts. Until that's done, sites you know may still be warned about.",
+    "description": "Shown while the slower detail pass of the import is still running. The counting pass stores visits only, and the shipped familiarity rules also need active days and a first visit, so until this pass lands no imported site is familiar yet."
   },
   "welcomeKeepOpen": {
     "message": "Carry on browsing as usual and feel free to close this page – the import runs in the background. Just try not to close the browser itself until it's done. If you do, it saves its place as it goes and picks up where it left off next time you start the browser.",
@@ -1420,8 +1432,8 @@
     "description": "Tab title flashed when the import finishes while the user is on another tab"
   },
   "welcomeDetailsFailed": {
-    "message": "The extra pass that fills in first-visit dates didn't finish. Your sites are counted either way, so warnings already work. Only those dates are missing.",
-    "description": "Shown when the detail pass failed but the counting pass succeeded"
+    "message": "The extra pass that fills in first-visit dates and active days didn't finish. Your sites are counted, but until those are in, sites you know may still be warned about.",
+    "description": "Shown when the detail pass failed but the counting pass succeeded. Without its dates a site fails the active-day and first-visit checks, which the shipped rules require, so warnings do not yet know the imported sites."
   },
   "welcomeRetry": {
     "message": "Import again",
@@ -1650,6 +1662,22 @@
   "silencedSitesTitle": {
     "message": "Sites you've silenced",
     "description": "Heading of the list of sites whose warnings are turned off"
+  },
+  "silencedFamiliarNote": {
+    "message": "Familiar now, so you would get no warnings there anyway:",
+    "description": "Line under the silenced sites list, followed by the names of the silenced sites that are familiar now"
+  },
+  "silencedFamiliarClear": {
+    "message": "Remove them from the list",
+    "description": "Button that turns warnings back on for every silenced site named in the line above it"
+  },
+  "autoUnsilenceFamiliar": {
+    "message": "Remove sites from this list once they are familiar",
+    "description": "Label of the setting that turns a site's warnings back on once it is familiar"
+  },
+  "autoUnsilenceFamiliarDesc": {
+    "message": "While a site is familiar you get no warnings there anyway. This only matters if you later make the familiarity rules stricter: a site removed from the list will warn you again, a site kept on it will not. Turning this on removes every site on the list that is familiar already. After that, sites leave the list on your next visit once they are familiar. A site whose warnings you turn off while it is already familiar stays on the list.",
+    "description": "What the automatic removal from the silenced list does, when it acts and what it leaves alone"
   },
   "silencedSitesDesc": {
     "message": "One site to a line, warnings turned off on each. A site can only get here from the extension's own window, never from the site itself, so anything listed you switched off yourself. Delete a line to bring its warnings back.",

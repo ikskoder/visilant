@@ -63,6 +63,14 @@ test('checking a URL reports its base domain and visit count', async ({ context,
   // Nothing else is recorded under that base domain, so the family's own row
   // would be this same number a second time and is left out
   await expect(page.locator('[data-family-stats]')).toHaveCount(0)
+  // In their place the card says why, so it does not read as figures forgotten
+  await expect(page.locator('[data-base-domain] [data-family-only-host]'))
+    .toHaveText('Other than the checked domain, nothing is recorded under this domain.')
+  // With no family list under it, the base domain card still keeps its distance
+  // from the card above – the gap used to be kept only for the family list
+  const panel = await page.locator('[data-domain-panel]').boundingBox()
+  const base = await page.locator('[data-base-domain]').boundingBox()
+  expect(base.y - (panel.y + panel.height)).toBeGreaterThan(8)
 })
 
 /**
@@ -85,6 +93,8 @@ test('the family is drawn under the base domain, never under the subdomain', asy
   // The family answers for the family, under the family's name
   const family = page.locator('[data-family-stats]')
   await expect(family.locator('[data-criterion="visits"]')).toHaveText('10')
+  // There is something to add up here, so the line saying there is not stays away
+  await expect(page.locator('[data-family-only-host]')).toHaveCount(0)
   // And the field above carries neither
   await expect(field(page).locator('[data-criterion="visits"]')).toHaveCount(0)
 })
