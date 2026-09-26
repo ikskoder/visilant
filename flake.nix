@@ -59,7 +59,7 @@
             root = ./.;
             fileset = lib.fileset.unions [ ./package.json ./pnpm-lock.yaml ./.npmrc ];
           };
-          hash = "sha256-mOpgWoJAsZkjY6JVOivW6d/Jj8wL8KC60bK2cPzy8EU=";
+          hash = "sha256-wCutIWzQ6Fd2sR3NxETNqi6C/nIdt9Rps4yqVwNPcb4=";
         };
 
         # target: "chrome" | "firefox"
