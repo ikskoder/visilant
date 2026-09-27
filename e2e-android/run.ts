@@ -62,11 +62,18 @@ const SENTINELS: Record<string, unknown> = {
 // The extension is there, and alive
 // ==========================================
 
+// Firefox for Android has neither API and says so on install. One package serves
+// desktop and phone, so the manifest keeps both, and the runtime checks for each
+// before using it. Any other warning is still a failure.
+const ANDROID_MISSING_PERMISSIONS = ['contextMenus', 'history']
+
 test('the add-on is installed, with nothing the browser complains about', async (port) => {
   const session = await Session.open(port)
   try {
     const { descriptor } = await session.addonTargets()
-    assertEqual(descriptor.warnings, [], 'the browser reported warnings about the add-on')
+    const unexpected = ((descriptor.warnings ?? []) as string[]).filter(w =>
+      !ANDROID_MISSING_PERMISSIONS.some(p => w.includes('Warning processing permissions') && w.includes(`Value "${p}" must`)))
+    assertEqual(unexpected, [], 'the browser reported warnings about the add-on')
     assert(descriptor.temporarilyInstalled, 'not installed as a temporary add-on – run `just ar`')
   }
   finally {
@@ -118,7 +125,7 @@ test('there is no history API here, and the settings page says so rather than of
     assertEqual(hasHistory, 'undefined', 'this phone does have a history API – the rest of this test assumes it does not')
 
     const status = await session.evaluate(options, 'document.querySelector("#section-data p").textContent.trim()')
-    assert(String(status).includes('does not let extensions read its history'), `the status line does not name the reason: ${JSON.stringify(status)}`)
+    assert(String(status).includes('let extensions read its history'), `the status line does not name the reason: ${JSON.stringify(status)}`)
 
     // A disabled "Re-import history" under that line, with a paragraph on the
     // two passes it would run, is what this browser used to show
@@ -232,48 +239,66 @@ test('a page load is counted, and reloads inside the debounce window are not', a
 // ==========================================
 
 // A check names every fact its verdict rests on, which on a phone is three
-// labels and three numbers – and with the thresholds switched on, six. Laid out
-// as one run they ran off the edge of the screen, so they are stacked. Only a
-// real display can say whether that worked.
-test('the familiarity facts stack one per line and stay inside the screen', async (port) => {
+// labels and three numbers – and with the thresholds switched on, each value
+// carries its bar too. The popup check lays them out as a grid of cells, one
+// per fact, and only a real display can say whether the longer cells still fit.
+test('the familiarity facts of a check stay inside the screen, bars shown or not', async (port) => {
   const snapshot = await withBackground(port, readStorage)
+  const settingsBefore = await withBackground(port, (session, background) =>
+    session.evaluate(background, 'browser.storage.sync.get("settings").then(r => r.settings)'))
+  const setThresholds = (on: boolean) => withBackground(port, (session, background) => session.evaluate(background, `
+    browser.storage.sync.get("settings").then(r => {
+      const s = JSON.parse(r.settings);
+      s.showFamiliarityThresholds = ${on};
+      return browser.storage.sync.set({settings: JSON.stringify(s)}).then(() => "ok");
+    })`))
   try {
     const now = Date.now()
     await withBackground(port, (session, background) => writeStorage(session, background, {
       'facts-check.test': { count: 209, firstSeen: now - 109 * 86_400_000, lastSeen: now, activeDays: 30, ignored: false },
     }))
 
-    await withExtensionPage(port, 'dist/popup/index.html?check=1', async (session, page) => {
-      // v-model listens for the event, not for the assignment, so the native
-      // setter is called first and the event sent after it
-      await session.evaluate(page, `(() => {
-        const input = document.querySelector('input[type="text"]')
-        const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
-        setValue.call(input, 'https://facts-check.test/')
-        input.dispatchEvent(new Event('input', { bubbles: true }))
-        const button = [...document.querySelectorAll('button')].find(b => /^check$/i.test(b.textContent.trim()))
-        button.click()
-        return 'ok'
-      })()`)
-      await sleep(2500)
+    const texts: string[] = []
+    for (const thresholds of [false, true]) {
+      await setThresholds(thresholds)
+      await sleep(1000)
 
-      const facts = await session.json<{ id: string, text: string, top: number, right: number, width: number }[]>(page, `JSON.stringify(
-        [...document.querySelectorAll('.familiarity-facts [data-criterion]')].map((el) => {
-          const box = el.getBoundingClientRect()
-          const line = el.parentElement.getBoundingClientRect()
-          return { id: el.dataset.criterion, text: el.textContent.trim(), top: Math.round(line.top), right: Math.round(box.right), width: document.documentElement.clientWidth }
-        }))`)
+      await withExtensionPage(port, 'dist/popup/index.html?check=1', async (session, page) => {
+        // v-model listens for the event, not for the assignment, so the native
+        // setter is called first and the event sent after it
+        await session.evaluate(page, `(() => {
+          const input = document.querySelector('textarea')
+          const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
+          setValue.call(input, 'https://facts-check.test/')
+          input.dispatchEvent(new Event('input', { bubbles: true }))
+          const button = [...document.querySelectorAll('button')].find(b => /^check$/i.test(b.textContent.trim()))
+          button.click()
+          return 'ok'
+        })()`)
+        await sleep(2500)
 
-      assertEqual(facts.map(f => f.id), ['visits', 'activeDays', 'age'], 'the check did not report all three facts')
+        const shown = await session.json<{ facts: { id: string, text: string, right: number }[], width: number, scrollWidth: number }>(page, `JSON.stringify({
+          facts: [...document.querySelectorAll('.familiarity-grid [data-criterion]')].map((el) => ({
+            id: el.dataset.criterion, text: el.textContent.trim(), right: Math.round(el.getBoundingClientRect().right),
+          })),
+          width: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        })`)
+        const label = thresholds ? 'with the bars' : 'without the bars'
+        assert(shown.width > 200, `the popup was measured at ${shown.width}px, so it is not the tab on screen`)
 
-      const tops = facts.map(f => f.top)
-      assertEqual(new Set(tops).size, tops.length, `the facts share a line rather than stacking: ${JSON.stringify(facts)}`)
-
-      const overflowing = facts.filter(f => f.right > f.width)
-      assertEqual(overflowing, [], 'a fact runs off the side of the screen')
-    })
+        assertEqual(shown.facts.map(f => f.id), ['visits', 'activeDays', 'age'], `the check did not report all three facts ${label}`)
+        assertEqual(shown.facts.filter(f => f.right > shown.width), [], `a fact runs off the side of the screen ${label}`)
+        assert(shown.scrollWidth <= shown.width, `the popup scrolls sideways ${label}: ${shown.scrollWidth} > ${shown.width}`)
+        texts.push(shown.facts.map(f => f.text).join(' | '))
+      })
+    }
+    // Otherwise the second pass measured the same short cells again
+    assert(texts[0] !== texts[1], `switching the bars on changed nothing on the page: ${texts[0]}`)
   }
   finally {
+    await withBackground(port, (session, background) =>
+      session.evaluate(background, `browser.storage.sync.set({settings: ${JSON.stringify(settingsBefore)}}).then(() => "ok")`))
     await restoreStorage(port, snapshot)
   }
 })

@@ -186,6 +186,10 @@ export async function withOptionsPage<T>(
 /**
  * Open an extension page and run something against it.
  *
+ * A tab left open by an earlier run is brought to the front rather than used
+ * where it lies: a tab in the background is laid out at no width at all, and
+ * anything measured there reads as overflowing.
+ *
  * The settings page is the common case and has its own helper. This is the same
  * move for the rest of them, the welcome page in particular, which only ever
  * appears at install and so has to be summoned to be looked at.
@@ -199,7 +203,7 @@ export async function withExtensionPage<T>(
     await session.json(background, `
       browser.tabs.query({}).then(ts => {
         const open = ts.filter(t => t.url.includes(${JSON.stringify(path)}));
-        if (open.length) return JSON.stringify(open[0].id);
+        if (open.length) return browser.tabs.update(open[0].id, {active: true}).then(t => JSON.stringify(t.id));
         return browser.tabs.create({url: browser.runtime.getURL(${JSON.stringify(path)})})
           .then(t => JSON.stringify(t.id));
       })`)
