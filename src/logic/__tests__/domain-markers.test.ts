@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   decodeHostname,
+  dropExplainedMarkers,
   findDomainMarkers,
   findEmbeddedPublicSuffix,
   findHostnameMarkers,
@@ -9,6 +10,7 @@ import {
   getUrlUserinfo,
   isIpHost,
 } from '../domain-markers'
+import { buildFamiliarIndex, findLookalikes } from '../domain-similarity'
 
 describe('getUrlUserinfo', () => {
   it('catches a brand name parked in the userinfo field', () => {
@@ -63,9 +65,29 @@ describe('isIpHost', () => {
 
 describe('findEmbeddedPublicSuffix', () => {
   it('catches a whole domain used as a subdomain', () => {
-    expect(findEmbeddedPublicSuffix('paypal.com.evil.net')).toBe('com')
-    expect(findEmbeddedPublicSuffix('login.microsoft.com.account.xyz')).toBe('com')
-    expect(findEmbeddedPublicSuffix('example.org.secure.top')).toBe('org')
+    expect(findEmbeddedPublicSuffix('paypal.com.evil.net')).toEqual({ imitated: 'paypal.com', site: 'evil.net' })
+    expect(findEmbeddedPublicSuffix('login.microsoft.com.account.xyz')).toEqual({ imitated: 'microsoft.com', site: 'account.xyz' })
+    expect(findEmbeddedPublicSuffix('example.org.secure.top')).toEqual({ imitated: 'example.org', site: 'secure.top' })
+  })
+
+  it('names everything after the ending as the site, whatever the case or trailing dot', () => {
+    expect(findEmbeddedPublicSuffix('YourBank.COM.Pay-Verify.top.')).toEqual({ imitated: 'yourbank.com', site: 'pay-verify.top' })
+    expect(findEmbeddedPublicSuffix('paypal.com.evil.co.uk')).toEqual({ imitated: 'paypal.com', site: 'evil.co.uk' })
+  })
+
+  it('never names a hosting platform as the site, which would read as reassurance', () => {
+    // Without the suffix list the registrable domain here would come out as github.io
+    expect(findEmbeddedPublicSuffix('paypal.com.evil.github.io')).toEqual({ imitated: 'paypal.com', site: 'evil.github.io' })
+  })
+
+  it('reads a country code after the ending as part of the imitated domain', () => {
+    expect(findEmbeddedPublicSuffix('paypal.com.au.evil.net')).toEqual({ imitated: 'paypal.com.au', site: 'evil.net' })
+    // The label after the ending is the site's own name here, not a country code
+    expect(findEmbeddedPublicSuffix('paypal.com.ab.net')).toEqual({ imitated: 'paypal.com', site: 'ab.net' })
+  })
+
+  it('leaves out an ending with no name in front, which spells no domain', () => {
+    expect(findEmbeddedPublicSuffix('com.evil.net')).toBeNull()
   })
 
   it('deliberately ignores country codes, which the lookalike pass covers instead', () => {
@@ -184,6 +206,12 @@ describe('findHostnameMarkers', () => {
     expect(markers.map(marker => marker.id)).toEqual(['embedded-public-suffix', 'deep-subdomains'])
   })
 
+  it('carries the ending and the site the address really belongs to', () => {
+    expect(findHostnameMarkers('something.com.evil.net')).toEqual([
+      { id: 'embedded-public-suffix', imitated: 'something.com', site: 'evil.net' },
+    ])
+  })
+
   it('does not flag a hostname sitting exactly on the depth limit', () => {
     expect(findHostnameMarkers('a.b.c.example.com')).toEqual([])
   })
@@ -197,5 +225,50 @@ describe('findDomainMarkers', () => {
 
   it('works without a URL', () => {
     expect(findDomainMarkers('www.example.com')).toEqual([])
+  })
+})
+
+describe('dropExplainedMarkers', () => {
+  const index = buildFamiliarIndex([
+    { domain: 'yourbank.com', label: 'yourbank', visits: 40 },
+    { domain: 'otherbank.org', label: 'otherbank', visits: 40 },
+  ])
+
+  function shown(hostname: string) {
+    const lookalikes = findLookalikes(hostname, index)
+    return {
+      markers: dropExplainedMarkers(findHostnameMarkers(hostname), lookalikes),
+      reasons: lookalikes.map(match => match.reason),
+    }
+  }
+
+  it('leaves only the lookalike line when a familiar domain is parked in front of the ending', () => {
+    const { markers, reasons } = shown('yourbank.com.pay-verify.top')
+    expect(reasons).toEqual(['familiar-as-subdomain'])
+    expect(markers).toEqual([])
+  })
+
+  it('keeps the marker, naming the real site, when nothing familiar is imitated', () => {
+    const { markers, reasons } = shown('something.com.evil.net')
+    expect(reasons).toEqual([])
+    expect(markers).toEqual([{ id: 'embedded-public-suffix', imitated: 'something.com', site: 'evil.net' }])
+  })
+
+  it('keeps the marker when the lookalike matched the bare name and not the ending', () => {
+    // otherbank.org is known, otherbank.com is not – the `.com` is a fact the
+    // lookalike line does not mention
+    const { markers, reasons } = shown('otherbank.com.pay-verify.top')
+    expect(reasons).toEqual(['familiar-as-subdomain'])
+    expect(markers.map(marker => marker.id)).toEqual(['embedded-public-suffix'])
+  })
+
+  it('keeps every other marker', () => {
+    const { markers } = shown('yourbank.com.a.b.c.pay-verify.top')
+    expect(markers.map(marker => marker.id)).toEqual(['deep-subdomains'])
+  })
+
+  it('changes nothing when the lookalike check gave no answer', () => {
+    const markers = findHostnameMarkers('yourbank.com.pay-verify.top')
+    expect(dropExplainedMarkers(markers, null)).toEqual(markers)
   })
 })

@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- Structural markers of the address's domain -->
-          <DomainMarkers :hostname="data.domain" class="tooltip-label" />
+          <DomainMarkers :hostname="data.domain" context="email" class="tooltip-label" />
           <LookalikeNotice :hostname="data.domain" context="email" class="tooltip-label" />
 
           <!-- Action buttons -->

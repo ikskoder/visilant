@@ -189,6 +189,17 @@ describe('findLookalikes – attack shapes that must be caught', () => {
     expect(match.reason).toBe('familiar-as-subdomain')
     expect(match.severity).toBe('high')
   })
+
+  it('names the site a subdomain lookalike really belongs to', () => {
+    expect(check('paypal.com.security-check.example.net')[0].site).toBe('example.net')
+    // The background passes the boundary from the suffix list, which knows a
+    // hosting platform's tenant is a site of its own
+    expect(findLookalikes('paypal.com.evil.github.io', index, 'evil.github.io')[0].site).toBe('evil.github.io')
+  })
+
+  it('names no site on any other kind of match', () => {
+    expect(check('paypa1.com')[0].site).toBeUndefined()
+  })
 })
 
 describe('findLookalikes – the same name under a different domain', () => {

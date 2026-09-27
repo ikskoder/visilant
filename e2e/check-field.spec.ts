@@ -182,8 +182,34 @@ test('an email address one letter off a familiar provider is flagged', async ({ 
   // One sentence, naming the site it is about. The reason used to sit on a line
   // of its own and say "that name", which told a first-time reader nothing.
   const notice = field(page).locator('[data-lookalike-source="history"]')
-  await expect(notice).toHaveText(/Looks like the familiar site\s*gmail\.com, but with a letter or two changed/, { timeout: 5000 })
+  await expect(notice).toHaveText(/Looks like the familiar\s*gmail\.com, but with a letter or two changed/, { timeout: 5000 })
   await expect(notice.locator('[data-lookalike-site]')).toHaveText('gmail.com')
+})
+
+test('a familiar domain parked in front of an ending is explained once, by the lookalike line', async ({ context, extensionId }) => {
+  await seedVisits(context, 'yourbank.com', 50, { activeDays: 30 })
+  const page = await openCheckPage(context, extensionId)
+  await page.evaluate(async () => chrome.runtime.sendMessage({ type: 'rebuild-familiar-index', data: {} }))
+
+  await check(page, 'https://yourbank.com.pay-verify.top/8842')
+
+  // Waited for first: the marker is held back until this answer is in, so
+  // checking for its absence any earlier would pass on a pending answer
+  const notice = field(page).locator('[data-lookalike-reason="familiar-as-subdomain"]')
+  await expect(notice).toBeVisible({ timeout: 5000 })
+  await expect(field(page).locator('[data-marker="embedded-public-suffix"]')).toHaveCount(0)
+  // The marker it replaces named the real site, so this line has to as well
+  await expect(notice).toHaveText(/Looks like the familiar\s*yourbank\.com, but here it is only a subdomain of\s*pay-verify\.top/)
+  await expect(notice.locator('[data-lookalike-real]')).toHaveText('pay-verify.top')
+
+  // Nothing familiar is imitated here, so the marker is the only line, and it
+  // names the site the address really belongs to
+  await check(page, 'https://something.com.evil.net/login')
+  const marker = field(page).locator('[data-marker="embedded-public-suffix"]')
+  await expect(marker).toHaveText(/Looks like\s*something\.com, but the real site is\s*evil\.net/, { timeout: 5000 })
+  await expect(marker.locator('[data-marker-imitated]')).toHaveText('something.com')
+  await expect(marker.locator('[data-marker-site]')).toHaveText('evil.net')
+  await expect(field(page).locator('[data-lookalike]')).toHaveCount(0)
 })
 
 test('lowering the familiarity threshold brings a domain into the comparison', async ({ context, extensionId }) => {

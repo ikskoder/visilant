@@ -864,8 +864,8 @@
     "description": "Marker: host is a raw IP address"
   },
   "domainMarkerEmbeddedSuffix": {
-    "message": "Domain ending used as a subdomain",
-    "description": "Marker: public suffix used as a subdomain label"
+    "message": "Looks like {domain}, but the real site is {site}",
+    "description": "Marker: a whole domain in the middle of the address, as in yourbank.com.pay-verify.top. {domain} is the domain the address reads as (yourbank.com), {site} is everything after it (pay-verify.top). Both are drawn as addresses"
   },
   "domainMarkerDeepSubdomains": {
     "message": "Too many subdomain levels",
@@ -876,7 +876,7 @@
     "description": "Marker: a hostname label mixes writing systems"
   },
   "lookalikeWhoFamiliar": {
-    "message": "the familiar site",
+    "message": "the familiar",
     "description": "Fills {who} in the lookalike sentences when the imitated domain comes from the user's own history"
   },
   "lookalikeWhoProvider": {
@@ -896,8 +896,8 @@
     "description": "Lookalike warning, one sentence. {who} and {site} as in lookalikeReasonConfusable. The address holds the real name with more text around it, like paypal-secure.com"
   },
   "lookalikeReasonSubdomain": {
-    "message": "Looks like {who} {site}, but here it is only a subdomain of a different site",
-    "description": "Lookalike warning, one sentence. {who} and {site} as in lookalikeReasonConfusable. The real name sits in front of somebody else's domain, like paypal.com.evil.net"
+    "message": "Looks like {who} {site}, but here it is only a subdomain of {real}",
+    "description": "Lookalike warning, one sentence. {who} and {site} as in lookalikeReasonConfusable, {real} is the site the address really belongs to, drawn as an address. The real name sits in front of somebody else's domain, like paypal.com.evil.net, where {real} is evil.net"
   },
   "lookalikeReasonSameName": {
     "message": "Looks like {who} {site}, but with a different ending",

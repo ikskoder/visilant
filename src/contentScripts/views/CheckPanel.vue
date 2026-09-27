@@ -246,7 +246,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
         </div>
 
         <!-- Structural markers -->
-        <DomainMarkers :hostname="data.hostname" class="panel-label" />
+        <DomainMarkers :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" class="panel-label" />
         <LookalikeNotice :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" class="panel-label" />
 
         <!-- Local display toggles -->

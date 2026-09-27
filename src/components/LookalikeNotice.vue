@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import type { LookalikeMatch, LookalikeReason } from '~/logic/domain-similarity'
-import { inject, ref, watch } from 'vue'
+import { computed, inject, ref } from 'vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
+import { useLookalikes } from '~/composables/useLookalikes'
+import { getRegistrableDomain } from '~/logic/domain-markers'
 
-// Does this address resemble one the user already knows? The comparison needs the
-// familiar-domain index, which only the background holds, so this asks rather
-// than computes. Results are memoised because the same address is checked again
-// on every hover, navigation and panel open.
+// Does this address resemble one the user already knows? The question and its
+// memoised answer live in useLookalikes, which the structural markers read too.
 const props = defineProps<{
   hostname: string
   /**
@@ -38,61 +38,22 @@ const REASON_KEYS: Record<LookalikeReason, string> = {
  * sentence and drawn as a filled block, so where the name starts and stops is
  * plain, and the reason follows it directly.
  */
-function sentence(match: LookalikeMatch): { before: string, glue: string, after: string } {
+function sentence(match: LookalikeMatch): { before: string, glue: string, after: string, real: string, end: string } {
   const who = t.value(match.source === 'provider' ? 'lookalikeWhoProvider' : 'lookalikeWhoFamiliar')
   const [before = '', rest = ''] = t.value(REASON_KEYS[match.reason]).replace('{who}', who).split('{site}')
   // The comma after the name stays with it. Left to wrap on its own it opened
   // the next line, which reads as a sentence starting with a comma.
   const glue = /^[^\s\p{L}\p{N}]*/u.exec(rest)?.[0] ?? ''
-  return { before, glue, after: rest.slice(glue.length) }
+  // `{real}` is the site the address actually belongs to, which only the
+  // subdomain sentence names
+  const [after = '', end] = rest.slice(glue.length).split('{real}')
+  const real = end === undefined ? '' : match.site || getRegistrableDomain(props.hostname)
+  return { before, glue, after, real, end: end ?? '' }
 }
 
-const CACHE_TTL_MS = 5 * 60_000
-const CACHE_LIMIT = 200
-const cache = new Map<string, { matches: LookalikeMatch[], at: number }>()
-
-const matches = ref<LookalikeMatch[]>([])
-
-async function lookup(hostname: string, context?: 'email'): Promise<LookalikeMatch[]> {
-  // Keyed by context too: the same address is compared against a wider set when
-  // it came out of an email, so one answer must not be served for the other
-  const key = `${context ?? 'page'}:${hostname}`
-  const cached = cache.get(key)
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS)
-    return cached.matches
-
-  try {
-    const result = await browser.runtime.sendMessage({
-      type: 'find-lookalikes',
-      data: { hostname, context },
-    }) as LookalikeMatch[] | undefined
-
-    const found = Array.isArray(result) ? result : []
-
-    // A plain FIFO trim: this only guards against unbounded growth on a page
-    // with thousands of distinct links, not against a hot-set eviction problem
-    if (cache.size >= CACHE_LIMIT)
-      cache.delete(cache.keys().next().value!)
-    cache.set(key, { matches: found, at: Date.now() })
-
-    return found
-  }
-  catch {
-    // Background asleep or unreachable – say nothing rather than guess
-    return []
-  }
-}
-
-watch(() => props.hostname, async (hostname) => {
-  matches.value = []
-  if (!hostname)
-    return
-
-  const found = await lookup(hostname, props.context)
-  // The hostname may have changed while the message was in flight
-  if (hostname === props.hostname)
-    matches.value = found
-}, { immediate: true })
+const answer = useLookalikes(() => props.hostname, () => props.context)
+// Background asleep or unreachable – say nothing rather than guess
+const matches = computed<LookalikeMatch[]>(() => answer.value?.status === 'answered' ? answer.value.matches : [])
 </script>
 
 <template>
@@ -120,13 +81,28 @@ watch(() => props.hostname, async (hostname) => {
             line with nowrap alone it still split at the dot, since Chrome breaks
             at the <wbr> SecureText puts there regardless. It only breaks inside
             when it is wider than the line on its own.
+
+            Grey whatever the severity. This is the site the user knows, not
+            the one to be wary of, and drawn in the warning's red it read as
+            though the familiar site were the danger. Not green either: a green
+            name inside a warning is the one thing a skimming eye would take
+            for "this link is fine".
           --><span
             data-lookalike-site
             class="inline-block max-w-full font-mono px-1 rounded whitespace-normal"
-            :class="match.severity === 'high'
-              ? (isDark ? 'bg-red-400/20 text-red-200' : 'bg-red-100 text-red-800')
-              : (isDark ? 'bg-amber-400/20 text-amber-100' : 'bg-amber-100 text-amber-900')"
-            ><SecureText :text="match.domain" force-highlight danger-only /></span>{{ sentence(match).glue }}</span>{{ sentence(match).after }}
+            :class="isDark ? 'bg-gray-700 text-gray-100' : 'bg-gray-100 text-gray-800'"
+            ><SecureText :text="match.domain" force-highlight danger-only /></span>{{ sentence(match).glue }}</span>{{ sentence(match).after }}<span
+            v-if="sentence(match).real"
+            class="whitespace-nowrap"
+          ><!--
+            The site the address really belongs to, and the one to be wary of,
+            so this block is the one in red. Blocked like the familiar name, so
+            where it starts and stops is as plain.
+          --><span
+            data-lookalike-real
+            class="inline-block max-w-full font-mono px-1 rounded whitespace-normal"
+            :class="isDark ? 'bg-red-400/20 text-red-200' : 'bg-red-100 text-red-800'"
+          ><SecureText :text="sentence(match).real" force-highlight danger-only /></span></span>{{ sentence(match).end }}
         </span>
         <!-- No visit count after it. "The familiar site" already gives the
              verdict, and a number at the end of a sentence about another address

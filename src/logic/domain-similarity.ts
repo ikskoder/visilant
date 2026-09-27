@@ -76,6 +76,12 @@ export interface LookalikeMatch {
    * site you know" are both untrue of a provider the user has never opened.
    */
   source?: FamiliarSource
+  /**
+   * The site the checked address really belongs to, set on
+   * `familiar-as-subdomain`. Saying only "a subdomain of a different site" left
+   * the one name worth knowing unsaid, and the line it replaces named it.
+   */
+  site?: string
 }
 
 /**
@@ -373,6 +379,7 @@ export function findLookalikes(
       return b.visits - a.visits
     })
     .slice(0, MAX_MATCHES)
+    .map(match => match.reason === 'familiar-as-subdomain' ? { ...match, site: registrable } : match)
 }
 
 /** Unicode rendering of a hostname; returns the input unchanged if it is not IDN. */

@@ -1,3 +1,4 @@
+import type { LookalikeMatch } from './domain-similarity'
 import punycode from 'punycode'
 
 /**
@@ -17,10 +18,27 @@ export type DomainMarkerId
     | 'deep-subdomains'
     | 'mixed-scripts'
 
-export interface DomainMarker {
-  id: DomainMarkerId
-  /** The concrete evidence, shown to the user next to the marker text */
-  detail: string
+export type DomainMarker
+  = | {
+    id: Exclude<DomainMarkerId, 'embedded-public-suffix'>
+    /** The concrete evidence, shown to the user next to the marker text */
+    detail: string
+  }
+  | ({ id: 'embedded-public-suffix' } & EmbeddedDomain)
+
+/**
+ * A whole domain in the middle of an address, and where the address really goes.
+ *
+ * The ending alone explained nothing: "Domain ending used as a subdomain: com"
+ * read as though `com` were the subdomain, when the whole point is that the eye
+ * stops at `yourbank.com` and never reaches the site that follows it. So both
+ * are named: the domain the eye stops at, and the site after it.
+ */
+export interface EmbeddedDomain {
+  /** The domain the address reads as, `yourbank.com` */
+  imitated: string
+  /** Everything after it, `pay-verify.top` – the site the address belongs to */
+  site: string
 }
 
 /** Subdomain levels above this are called out. `a.b.c.example.com` sits exactly on it. */
@@ -158,9 +176,56 @@ export function getRegistrableDomain(hostname: string): string {
 /**
  * A domain ending used as an ordinary label: `paypal.com.evil.net` puts a whole
  * domain where a subdomain belongs, so the eye stops reading at `paypal.com`.
+ *
+ * The imitated domain is the label in front of the ending plus the ending, and
+ * a two-letter country code after it when there is one, since `paypal.com.au`
+ * reads as one domain. Deeper labels in front are left out – `login.paypal.com`
+ * imitates `paypal.com`. An ending with no label in front, `com.evil.net`,
+ * spells no domain for the eye to stop at, and is not reported.
+ *
+ * The site named is everything after the imitated domain rather than the registrable
+ * domain. This module has no public suffix list, and its shape-based guess
+ * gets hosting platforms wrong in the one direction that matters here:
+ * `paypal.com.evil.github.io` would name `github.io`, which reads as
+ * reassurance. What follows the ending always contains the real site, and at
+ * worst names a level of it too many – `x.evil.net` rather than `evil.net`.
  */
-export function findEmbeddedPublicSuffix(hostname: string): string | null {
-  return getSubdomainLabels(hostname).find(label => DOMAIN_ENDING_LABELS.has(label)) ?? null
+export function findEmbeddedPublicSuffix(hostname: string): EmbeddedDomain | null {
+  const labels = hostname.toLowerCase().replace(/\.$/, '').split('.')
+  // The subdomain labels are the head of this same list, so the index carries over
+  const subdomain = getSubdomainLabels(hostname)
+  const at = subdomain.findIndex((label, index) => index > 0 && DOMAIN_ENDING_LABELS.has(label))
+  if (at < 0)
+    return null
+
+  const end = /^[a-z]{2}$/.test(subdomain[at + 1] ?? '') ? at + 2 : at + 1
+  return { imitated: labels.slice(at - 1, end).join('.'), site: labels.slice(end).join('.') }
+}
+
+/**
+ * Markers that something else on the same screen already explains.
+ *
+ * A domain in the middle of the address is the mechanism of the
+ * `familiar-as-subdomain` lookalike when the familiar domain is the one parked
+ * there – `yourbank.com.pay-verify.top` with `yourbank.com` known. The
+ * lookalike line says the same thing and says the domain is familiar, and the
+ * two in a row read as two different warnings. A match on the bare name,
+ * `yourbank` for a known `yourbank.org`, names a different domain from the one
+ * in the address and leaves the marker in.
+ *
+ * `null` means the lookalike check gave no answer, which is not the same as it
+ * finding nothing – the markers stay as they are either way.
+ */
+export function dropExplainedMarkers(
+  markers: DomainMarker[],
+  lookalikes: readonly LookalikeMatch[] | null,
+): DomainMarker[] {
+  if (!lookalikes?.length)
+    return markers
+
+  return markers.filter(marker => marker.id !== 'embedded-public-suffix'
+    || !lookalikes.some(match => match.reason === 'familiar-as-subdomain'
+      && match.evidence.toLowerCase() === marker.imitated))
 }
 
 /** How many labels sit above the registrable domain. */
@@ -204,7 +269,7 @@ export function findHostnameMarkers(hostname: string): DomainMarker[] {
 
   const embedded = findEmbeddedPublicSuffix(hostname)
   if (embedded)
-    markers.push({ id: 'embedded-public-suffix', detail: embedded })
+    markers.push({ id: 'embedded-public-suffix', ...embedded })
 
   const depth = getSubdomainDepth(hostname)
   if (depth > MAX_SUBDOMAIN_DEPTH)

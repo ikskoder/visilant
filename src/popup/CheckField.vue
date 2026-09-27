@@ -592,7 +592,7 @@ function payloadTypeLabel(payloadKind: string) {
              The lookup links for this name live in the checked-domain card
              below, once, rather than here as well. -->
         <div class="mt-1">
-          <DomainMarkers :hostname="result.analysis.domain" />
+          <DomainMarkers :hostname="result.analysis.domain" context="email" />
           <LookalikeNotice :hostname="result.analysis.domain" context="email" />
         </div>
 
