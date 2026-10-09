@@ -5,6 +5,7 @@
   "private": true,
   "packageManager": "pnpm@10.22.0",
   "description": "Browser-extension to provide protection against Homograph Attack & Clone Phishing based on your site visiting statistics",
+  "license": "Hippocratic-2.1",
   "engines": {
     "node": ">=22.21.1",
     "pnpm": ">=10.22.0"
@@ -92,7 +93,8 @@
     "overrides": {
       "adm-zip": "^0.6.1",
       "image-size": "^2.0.3",
-      "js-yaml@^4": "^4.3.2"
+      "js-yaml@^4": "^4.3.2",
+      "shell-quote": "^1.11.0"
     }
   },
   "simple-git-hooks": {

@@ -59,7 +59,7 @@
             root = ./.;
             fileset = lib.fileset.unions [ ./package.json ./pnpm-lock.yaml ./.npmrc ];
           };
-          hash = "sha256-wCutIWzQ6Fd2sR3NxETNqi6C/nIdt9Rps4yqVwNPcb4=";
+          hash = "sha256-sOHQl1RB/NW2S9HeQBhuL/C7bn3tLduWxCAa0YeinmY=";
         };
 
         # target: "chrome" | "firefox"
@@ -107,7 +107,14 @@
             meta = {
               description = "Visilant packed for ${target}";
               homepage = "https://github.com/ikskoder/visilant";
-              license = lib.licenses.mit;
+              # nixpkgs has no entry for 2.1, only for 3.0, and marks that one
+              # unfree, which would stop this flake from building its own
+              # release. Described here instead, with `free` left at its default.
+              license = {
+                fullName = "Hippocratic License 2.1";
+                spdxId = "Hippocratic-2.1";
+                url = "https://firstdonoharm.dev/version/2/1/license/";
+              };
               platforms = lib.platforms.all;
             };
           };
