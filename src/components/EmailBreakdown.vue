@@ -4,6 +4,7 @@ import type { EmailAnalysis } from '~/logic/email-safety'
 import { computed } from 'vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
+import { findEmbeddedPublicSuffix } from '~/logic/domain-markers'
 import { settings } from '~/logic/storage'
 
 const props = defineProps<{
@@ -21,6 +22,16 @@ const props = defineProps<{
    * reader would have to aim at through a shadow root.
    */
   caseControl?: boolean
+  /**
+   * Another block on the same screen already speaks for the domain: its name,
+   * both of its spellings and the embedded ending, as the check page's
+   * checked-domain card does. The breakdown then keeps to the account name, so
+   * the domain is not drawn twice. The embedded-ending line stays whenever the
+   * card's own test for it would miss the address, since the two tests do not
+   * agree on every ending, and a warning left to a card that will not draw it is
+   * a warning dropped.
+   */
+  domainElsewhere?: boolean
 }>()
 
 const { t } = useI18n()
@@ -51,6 +62,9 @@ function cycleAccountNameCase() {
   const at = ACCOUNT_CASES.indexOf(settings.value.accountNameCase)
   settings.value.accountNameCase = ACCOUNT_CASES[(at + 1) % ACCOUNT_CASES.length]
 }
+
+const showSuspiciousPattern = computed(() => Boolean(props.analysis.suspiciousPattern)
+  && !(props.domainElsewhere && findEmbeddedPublicSuffix(props.analysis.domain)))
 
 const MAX_PARAM_VALUE_LENGTH = 200
 
@@ -93,22 +107,24 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
       <div class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
         <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" account-name />
       </div>
-      <div class="email-label uppercase tracking-wider mt-1" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
-        {{ t('emailDomainLabel') }}
-      </div>
-      <div class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
-        <SecureText :text="analysis.domain" :force-highlight="true" :danger-only="true" />
-      </div>
+      <template v-if="!domainElsewhere">
+        <div class="email-label uppercase tracking-wider mt-1" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
+          {{ t('emailDomainLabel') }}
+        </div>
+        <div class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
+          <SecureText :text="analysis.domain" :force-highlight="true" :danger-only="true" />
+        </div>
+      </template>
     </template>
 
     <!-- Punycode of the domain -->
-    <div v-if="analysis.domainInfo.punycode" class="email-label mt-1" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
+    <div v-if="analysis.domainInfo.punycode && !domainElsewhere" class="email-label mt-1" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
       {{ t('linkTooltipPunycode') }}: {{ analysis.domainInfo.punycode }}
     </div>
 
     <!-- Embedded-TLD warning (paypal.com.evil.ru) -->
-    <div v-if="analysis.suspiciousPattern" class="email-label mt-1" :class="isDark ? 'text-red-400' : 'text-red-600'">
-      ⚠ {{ t('emailSuspiciousPattern') }} (.{{ analysis.suspiciousPattern.label }})
+    <div v-if="showSuspiciousPattern" class="email-label mt-1" :class="isDark ? 'text-red-400' : 'text-red-600'">
+      ⚠ {{ t('emailSuspiciousPattern') }} (.{{ analysis.suspiciousPattern?.label }})
     </div>
 
     <!-- Unicode in the local part -->

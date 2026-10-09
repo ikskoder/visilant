@@ -9,6 +9,7 @@ import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-bounda
 import { displayDomain } from '~/logic/domain-display'
 import { DOMAIN_METRICS, metricReading, metricSortValue } from '~/logic/domain-metric'
 import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
+import { getPunycodeInfo } from '~/logic/link-safety'
 import { applyListChanges } from '~/logic/list-sync'
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { popupWidthCap } from '~/logic/platform'
@@ -147,6 +148,18 @@ const isTabView = ref(false)
 const isPageView = computed(() => isStandalonePage.value || isTabView.value)
 const currentHostname = ref('')
 /**
+ * How the name was met. Set to `email` when the check field handed over the
+ * part after an @, so the card compares it against the mail providers as well,
+ * which is the question the field asked before the card took the line over.
+ */
+const currentContext = ref<'email' | undefined>()
+/**
+ * The whole link, when the name came out of one on the check page. Only for
+ * what the link says beyond its host – a name hidden before an @ – so the card
+ * carries that warning too and the field above it needs to draw nothing.
+ */
+const currentUrl = ref<string | undefined>()
+/**
  * The record this host's figures are kept under. The heading keeps the name as
  * the address bar has it, but `www.example.com` and `example.com` are one
  * record – see visitKey – so every lookup and every "is this the current host"
@@ -171,8 +184,23 @@ const unicodeHostname = computed(() => {
   return punycode.toUnicode(currentHostname.value)
 })
 
+/**
+ * The name as the browser sends it. Not always the one on screen: an email
+ * domain arrives in the letters it was typed in, and only a link's host comes
+ * already converted.
+ */
+const asciiHostname = computed(() => getPunycodeInfo(currentHostname.value).ascii ?? currentHostname.value)
+
+/**
+ * Whether suspicious characters in the name are marked even with highlighting
+ * switched off. For an address domain, which the check field used to draw that
+ * way before the card took it over: nobody visits an address domain, so it has
+ * no history to vouch for its letters.
+ */
+const highlightDanger = computed(() => currentContext.value === 'email')
+
 const isPunycode = computed(() => {
-  return currentHostname.value !== unicodeHostname.value
+  return asciiHostname.value !== unicodeHostname.value
 })
 
 /**
@@ -263,7 +291,7 @@ const currentStats = computed<SiteVisitData | undefined>(() => {
 /**
  * Everything recorded under the base domain, folded the way a verdict folds it.
  *
- * This is what the check field's chip is decided on – "have I been here" is one
+ * This is what a check's verdict is decided on – "have I been here" is one
  * question about `example.com` and `mail.example.com` – so the evidence for it
  * belongs under the base domain's own name rather than under one subdomain's.
  */
@@ -298,11 +326,13 @@ const isIgnoredHost = computed(() => {
  */
 async function setWarnings(ignored: boolean) {
   const host = currentHostname.value
+  const context = currentContext.value
+  const url = currentUrl.value
   if (!host)
     return
 
   await browser.runtime.sendMessage({ type: 'ignore-site', data: { hostname: host, ignored } })
-  await loadDomainData(host)
+  await loadDomainData(host, context, url)
 }
 
 const familiarityRules = computed(() => normalizeFamiliarity(settings.value.familiarity))
@@ -346,7 +376,7 @@ const showWarningsRow = computed(() =>
 // down keeps it to one or two lines instead of breaking a label apart, which is
 // exactly what someone reading a suspicious address must not have to untangle.
 const currentDomainFontSize = computed(() => {
-  const length = Math.max(currentHostname.value.length, unicodeHostname.value.length)
+  const length = Math.max(asciiHostname.value.length, unicodeHostname.value.length)
 
   if (length <= 24)
     return '1.8em'
@@ -560,8 +590,12 @@ function readingColor(met: boolean | undefined) {
     : 'text-red-500 dark:text-red-400'
 }
 
-async function loadDomainData(hostname: string) {
+async function loadDomainData(hostname: string, context?: 'email', url?: string) {
   currentHostname.value = hostname
+  // Before anything is awaited, so the card never asks about the new name in
+  // the old name's context
+  currentContext.value = context
+  currentUrl.value = url
   // An IP address and an intranet name have no site to belong to, so each is a
   // family of one. Leaving this empty used to hide a record that plainly exists:
   // the page had visits stored under `192.168.1.10` and showed nothing at all.
@@ -775,7 +809,13 @@ onMounted(async () => {
         <div i-carbon-qr-code />
         {{ translations.checkExternalButton }}
       </button>
-      <CheckField v-else :initial="checkPageInitial" @checked-domain="loadDomainData" />
+      <CheckField
+        v-else
+        :initial="checkPageInitial"
+        :panel-hostname="currentHostname"
+        :panel-context="currentContext"
+        @checked-domain="loadDomainData"
+      />
 
       <div v-if="currentHostname">
         <div
@@ -796,7 +836,7 @@ onMounted(async () => {
               <div class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-sans font-normal mb-0.5">
                 {{ translations.domainOriginal }}
               </div>
-              <SecureText :text="unicodeHostname" mark-wraps />
+              <SecureText :text="unicodeHostname" mark-wraps :force-highlight="highlightDanger" :danger-only="highlightDanger" />
               <div class="flex items-center gap-1 mt-2 mb-0.5">
                 <div class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-sans font-normal">
                   {{ translations.domainPunycode }}
@@ -808,10 +848,10 @@ onMounted(async () => {
                   ?
                 </button>
               </div>
-              <SecureText :text="currentHostname" mark-wraps />
+              <SecureText :text="asciiHostname" mark-wraps :force-highlight="highlightDanger" :danger-only="highlightDanger" />
             </template>
             <template v-else>
-              <SecureText :text="currentHostname" mark-wraps />
+              <SecureText :text="currentHostname" mark-wraps :force-highlight="highlightDanger" :danger-only="highlightDanger" />
             </template>
           </div>
 
@@ -828,9 +868,12 @@ onMounted(async () => {
             </p>
           </div>
 
-          <!-- Structural markers and resemblance to a domain the user knows -->
-          <DomainMarkers :hostname="currentHostname" :notes="hostNotes" class="mt-2" style="font-size: 0.85em;" />
-          <LookalikeNotice :hostname="currentHostname" style="font-size: 0.85em;" />
+          <!-- Structural markers and resemblance to a domain the user knows.
+               The only place they are drawn for this name: the check field above
+               leaves them out while this card is about the name it checked.
+               Both take the same context, because they read one shared answer. -->
+          <DomainMarkers :hostname="currentHostname" :url="currentUrl" :context="currentContext" :notes="hostNotes" class="mt-2" style="font-size: 0.85em;" />
+          <LookalikeNotice :hostname="currentHostname" :context="currentContext" style="font-size: 0.85em;" />
           <!-- Not scaled down like the two above it: this is the one place the
                lookup links are offered for the checked name, and a control the
                reader is meant to press does not want the size of a footnote -->

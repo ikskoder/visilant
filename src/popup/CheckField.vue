@@ -22,7 +22,7 @@ import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-bounda
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
-import { alternateSpelling, getHostnameFromHref } from '~/logic/link-safety'
+import { getHostnameFromHref } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
 import { collectMailSiteFamilies, loadMailSitesFromRecords } from '~/logic/mail-sites'
 import { classifyQrPayload } from '~/logic/payload-classify'
@@ -34,11 +34,30 @@ import { isTrackableHostname } from '~/logic/visit-stats'
 const props = defineProps<{
   /** Something to check straight away, when the page was opened about it. */
   initial?: string
+  /**
+   * The name the checked-domain card under this field is about, and the
+   * context it was asked in. The card draws the markers and the lookalike line
+   * for its name, so the field leaves them out for the same name rather than
+   * printing the same warning twice on one screen.
+   */
+  panelHostname?: string
+  panelContext?: 'email'
 }>()
 
 const emit = defineEmits<{
-  (e: 'checkedDomain', hostname: string): void
+  (e: 'checkedDomain', hostname: string, context?: 'email', url?: string): void
 }>()
+
+/**
+ * Whether the card below already speaks for this name, asked the same way.
+ *
+ * Usually it does, since every check hands the card its name. It stops doing so
+ * once a link has been expanded to another site: the card moves to where the
+ * link lands, and the name that was pasted is left with the field alone.
+ */
+function panelCovers(hostname: string, context?: 'email'): boolean {
+  return props.panelHostname === hostname && props.panelContext === context
+}
 
 const { t } = useI18n()
 const { isDark } = useTheme()
@@ -48,13 +67,11 @@ interface UrlResolveState {
   finalHostname?: string
   finalUrl?: string
   chain?: string[]
-  finalStats?: FamiliarityStats
-  finalIsSafe?: boolean
 }
 
 type CheckResult
-  = | { type: 'url', url: string, hostname: string, baseDomain: string, punycode: string | null, stats: FamiliarityStats, isSafe: boolean, isShortener: boolean, resolve: UrlResolveState, mailSites: MailSiteFamily[] }
-    | { type: 'email', analysis: EmailAnalysis, params: { key: string, value: string }[], stats: FamiliarityStats, isSafe: boolean, providerKind: EmailProviderKind, mailSites: MailSiteFamily[], recipients: EmailRecipientInfo[], recipientsNotChecked: number }
+  = | { type: 'url', url: string, hostname: string, stats: FamiliarityStats, isSafe: boolean, isShortener: boolean, resolve: UrlResolveState, mailSites: MailSiteFamily[] }
+    | { type: 'email', analysis: EmailAnalysis, params: { key: string, value: string }[], providerKind: EmailProviderKind, mailSites: MailSiteFamily[], recipients: EmailRecipientInfo[], recipientsNotChecked: number }
     | { type: 'raw', payloadKind: string, payload: string }
     | { type: 'invalid' }
     | { type: 'qr-error' }
@@ -182,15 +199,13 @@ async function checkUrl(url: string, generation = nextCheck()) {
     type: 'url',
     url,
     hostname,
-    baseDomain: siteDomainOrSelf(hostname),
-    punycode: alternateSpelling(hostname),
     stats: visitData.stats,
     isSafe: visitData.isSafe,
     isShortener: isShortenedUrl(hostname),
     resolve: { status: 'idle' },
     mailSites: visitData.mailSites,
   }
-  emit('checkedDomain', hostname)
+  emit('checkedDomain', hostname, undefined, url)
 }
 
 async function checkEmail(addrOrMailto: string, generation = nextCheck()) {
@@ -231,14 +246,12 @@ async function checkEmail(addrOrMailto: string, generation = nextCheck()) {
     type: 'email',
     analysis,
     params: parsed?.params ?? [],
-    stats: visitData.stats,
-    isSafe: visitData.isSafe,
     providerKind: classifyEmailDomain(analysis.domain),
     mailSites: visitData.mailSites,
     recipients,
     recipientsNotChecked: allRecipients.length - checked.length,
   }
-  emit('checkedDomain', analysis.domain)
+  emit('checkedDomain', analysis.domain, 'email')
 }
 
 async function runCheck(rawText: string) {
@@ -294,23 +307,15 @@ async function expandUrl() {
     if (result.value !== checked)
       return // a new check replaced this result meanwhile
     if (resolved && resolved.status === 'resolved' && resolved.finalHostname) {
-      const visitData = await getVisitData(resolved.finalHostname)
-      // Asked again after the second wait, not only after the first. A check
-      // started while the visits were being read would otherwise have this
-      // older answer written over it, and the dashboard sent to a domain the
-      // user had already moved on from.
-      if (result.value !== checked)
-        return
       checked.resolve = {
         status: 'resolved',
         finalHostname: resolved.finalHostname,
         finalUrl: resolved.finalUrl,
         chain: resolved.chain,
-        finalStats: visitData.stats,
-        finalIsSafe: visitData.isSafe,
       }
-      // The real destination is what matters – switch the dashboard to it
-      emit('checkedDomain', resolved.finalHostname)
+      // The real destination is what matters – switch the dashboard to it. Its
+      // name and its facts are drawn there, not here.
+      emit('checkedDomain', resolved.finalHostname, undefined, resolved.finalUrl)
     }
     else {
       checked.resolve = { status: 'error' }
@@ -457,41 +462,32 @@ function payloadTypeLabel(payloadKind: string) {
     <div v-if="result" class="mt-2">
       <!-- URL / domain -->
       <template v-if="result.type === 'url'">
-        <div class="flex items-center flex-wrap gap-1.5 mb-1">
-          <span
-            class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-            :class="result.isShortener ? 'bg-orange-500' : result.isSafe ? 'bg-green-500' : 'bg-red-500'"
-          />
-          <span class="font-medium break-words secure-domain-display">
-            <SecureText :text="result.hostname" />
-          </span>
-          <span v-if="result.isShortener" class="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">
-            {{ t('linkTooltipShortener') }}
-          </span>
-          <span v-else class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.stats.count, result.hostname).class">
-            {{ statusText(result.isSafe, result.stats.count, result.hostname).text.toLowerCase() }}
-          </span>
-        </div>
-
-        <div v-if="result.punycode && result.punycode !== result.hostname" class="text-xs text-yellow-600 dark:text-yellow-400 mb-0.5 break-all">
-          {{ t('linkTooltipPunycode') }}: {{ result.punycode }}
-        </div>
-
-        <!-- No facts here, and no base-domain line either. Both are drawn once,
-             below: this host's own numbers in the checked-domain card, the
-             family's under the base domain's own name, each under the name it is
-             about. This field used to print the family's fold under the
-             subdomain's name, a few pixels above the card printing the host's –
-             two rows headed `Visits` carrying different numbers. -->
-        <!-- Structural markers and resemblance to a domain the user knows.
-             No lookup links here: the checked-domain card below carries them for
-             this very name, and one screen offering the same control twice reads
-             as two different things. A mail site further down keeps its own,
-             because that is a different name. -->
-        <div>
+        <!-- Nothing about the checked name is drawn here while the card below
+             is about it: the name, the verdict, the facts, the other spelling,
+             the markers, the lookalike line and the lookup links are all the
+             card's, drawn once. Each of them used to be printed here as well,
+             so one screen said everything twice. The field names the host only
+             once the card is about another one, after Expand has moved the card
+             on to where the link lands and left the pasted name with nobody
+             else to speak for it. Its verdict comes with it then, because a
+             link that bounces a request on to a real, familiar site would
+             otherwise leave the page green all over, with the address that was
+             actually pasted unjudged. -->
+        <template v-if="!panelCovers(result.hostname)">
+          <div class="flex items-center flex-wrap gap-1.5 mb-1">
+            <span data-field-hostname class="font-medium break-words secure-domain-display">
+              <SecureText :text="result.hostname" />
+            </span>
+            <span v-if="result.isShortener" class="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">
+              {{ t('linkTooltipShortener') }}
+            </span>
+            <span v-else data-field-verdict class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.stats.count, result.hostname).class">
+              {{ statusText(result.isSafe, result.stats.count, result.hostname).text.toLowerCase() }}
+            </span>
+          </div>
           <DomainMarkers :hostname="result.hostname" :url="result.url" />
           <LookalikeNotice :hostname="result.hostname" />
-        </div>
+        </template>
 
         <!-- Nobody opens an address domain, so a zero of its own says nothing.
              The visits that mean anything are on the site its mail is read on –
@@ -533,24 +529,9 @@ function payloadTypeLabel(payloadKind: string) {
         </div>
 
         <div v-if="result.resolve.status === 'resolved'" class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-          <!-- Only where the redirect actually went somewhere else. A link that
-               lands on the host it started from is the ordinary case, and
-               repeating the name and its verdict for it put the same address on
-               screen twice, one line apart, each with its own `unfamiliar site`
-               beside it – which reads as two findings about two sites. The final
-               URL below is printed either way, since the path is what moved. -->
-          <div v-if="result.resolve.finalHostname && result.resolve.finalHostname !== result.hostname" class="flex items-center flex-wrap gap-1.5 mb-1">
-            <span
-              class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-              :class="result.resolve.finalIsSafe ? 'bg-green-500' : 'bg-red-500'"
-            />
-            <span class="font-medium break-words secure-domain-display">
-              <SecureText :text="result.resolve.finalHostname || ''" />
-            </span>
-            <span class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.resolve.finalIsSafe || false, result.resolve.finalStats?.count || 0, result.resolve.finalHostname || '').class">
-              {{ statusText(result.resolve.finalIsSafe || false, result.resolve.finalStats?.count || 0, result.resolve.finalHostname || '').text.toLowerCase() }}
-            </span>
-          </div>
+          <!-- The address only. The site it lands on is the card's now, with its
+               name, its facts and its warnings, and printed here as well it
+               was one more copy of each. -->
           <div class="text-xs opacity-60 break-all mb-1">
             {{ result.resolve.finalUrl }}
           </div>
@@ -567,19 +548,20 @@ function payloadTypeLabel(payloadKind: string) {
 
       <!-- Email -->
       <template v-else-if="result.type === 'email'">
-        <div class="flex items-center flex-wrap gap-1.5 mb-1">
-          <span class="text-xs opacity-50">{{ t('emailTooltipTitle') }}</span>
-          <span v-if="result.providerKind === 'disposable'" class="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">
-            {{ t('emailDisposableDomain') }}
-          </span>
-          <span v-else-if="result.providerKind === 'public'" class="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
-            {{ t('emailPublicProvider') }}
-          </span>
-          <span v-else class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.stats.count, result.analysis.domain).class">
-            {{ statusText(result.isSafe, result.stats.count, result.analysis.domain).text.toLowerCase() }}
-          </span>
+        <!-- What the text was read as, and nothing more. The verdict on the
+             domain is the card's, and whether it is a public or a throwaway
+             provider is said in words by the breakdown below. -->
+        <div class="text-xs opacity-50 mb-1">
+          {{ t('emailTooltipTitle') }}
         </div>
-        <EmailBreakdown :analysis="result.analysis" :params="result.params" :provider-kind="result.providerKind" :is-dark="isDark" case-control />
+        <EmailBreakdown
+          :analysis="result.analysis"
+          :params="result.params"
+          :provider-kind="result.providerKind"
+          :is-dark="isDark"
+          :domain-elsewhere="panelCovers(result.analysis.domain, 'email')"
+          case-control
+        />
 
         <!-- A mailto carries a list, cc and bcc included -->
         <MailRecipients :recipients="result.recipients" :not-checked="result.recipientsNotChecked" :is-dark="isDark" />
@@ -589,9 +571,10 @@ function payloadTypeLabel(payloadKind: string) {
              different name and no other block on the page carries it. -->
         <!-- The part after the @ is a domain like any other, and an address one
              letter off a provider the user knows is the whole point of checking.
-             The lookup links for this name live in the checked-domain card
-             below, once, rather than here as well. -->
-        <div class="mt-1">
+             The checked-domain card below asks that question for this name, in
+             the email context, and carries its lookup links, so this block is
+             only drawn when the card is about another name. -->
+        <div v-if="!panelCovers(result.analysis.domain, 'email')" class="mt-1">
           <DomainMarkers :hostname="result.analysis.domain" context="email" />
           <LookalikeNotice :hostname="result.analysis.domain" context="email" />
         </div>

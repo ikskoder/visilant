@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import browser from 'webextension-polyfill'
+import SecureText from '~/components/SecureText.vue'
+import { resetLookalikeCache } from '~/composables/useLookalikes'
 import { settings } from '~/logic/storage'
 import CheckField from '../CheckField.vue'
 import Popup from '../Popup.vue'
@@ -411,5 +413,137 @@ describe('hostnames that are never counted', () => {
 
     expect(wrapper.text()).not.toContain('untrackedHostTitle')
     expect(wrapper.text()).toContain('42')
+  })
+})
+
+/**
+ * The check page puts a field and a card about the same name on one screen, and
+ * both used to draw the markers and the lookalike line for it. The card owns
+ * them now, and the field keeps only what the card cannot know.
+ */
+describe('the check page draws each warning once', () => {
+  const SUBDOMAIN_MATCH = {
+    domain: 'yourbank.com',
+    visits: 40,
+    reason: 'familiar-as-subdomain',
+    evidence: 'yourbank.com',
+    severity: 'high',
+  }
+
+  /** The background's answers: a lookalike for one name, a landing for Expand. */
+  function answerBackground(lookalikeHost: string, match: unknown) {
+    vi.mocked(browser.runtime.sendMessage).mockImplementation(async (message: any) => {
+      if (message?.type === 'find-lookalikes')
+        return message.data.hostname === lookalikeHost ? [match] : []
+      if (message?.type === 'resolve-short-url')
+        return { status: 'resolved', finalHostname: 'landing.example', finalUrl: 'https://landing.example/', chain: [] }
+      return undefined
+    })
+  }
+
+  async function checkOnPage(text: string) {
+    stubLocalStorage({})
+    window.history.replaceState({}, '', '/dist/popup/index.html?check=1')
+    const wrapper = mount(Popup)
+    await flushPromises()
+    await wrapper.get('textarea').setValue(text)
+    await wrapper.findAll('button').find(button => button.text() === 'checkFieldButton')!.trigger('click')
+    await flushPromises()
+    return wrapper
+  }
+
+  beforeEach(() => {
+    resetLookalikeCache()
+    vi.mocked(browser.runtime.sendMessage).mockClear()
+  })
+
+  afterEach(() => {
+    vi.mocked(browser.runtime.sendMessage).mockReset()
+    vi.mocked(browser.runtime.sendMessage).mockResolvedValue(undefined)
+  })
+
+  it('leaves the lookalike line to the card for the name it checked', async () => {
+    answerBackground('yourbank.com.pay-verify.top', SUBDOMAIN_MATCH)
+    const wrapper = await checkOnPage('https://yourbank.com.pay-verify.top/8842')
+
+    expect(wrapper.findAll('[data-lookalike]')).toHaveLength(1)
+    expect(wrapper.get('[data-domain-panel]').find('[data-lookalike]').exists()).toBe(true)
+  })
+
+  it('draws what the link says in the card too, and nothing under the field', async () => {
+    answerBackground('none', SUBDOMAIN_MATCH)
+    const wrapper = await checkOnPage('https://paypal.com@a.b.c.d.evil.net/login')
+
+    const panel = wrapper.get('[data-domain-panel]')
+    const field = wrapper.getComponent(CheckField)
+    expect(wrapper.findAll('[data-marker="url-userinfo"]')).toHaveLength(1)
+    expect(panel.find('[data-marker="url-userinfo"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-marker="deep-subdomains"]')).toHaveLength(1)
+    expect(panel.find('[data-marker="deep-subdomains"]').exists()).toBe(true)
+    // Not the name either: the card spells it out a few pixels below
+    expect(field.find('[data-field-hostname]').exists()).toBe(false)
+    // A link's host keeps the highlighting the settings ask for, as it always had
+    expect(panel.getComponent(SecureText).props('forceHighlight')).toBe(false)
+  })
+
+  it('leaves the address domain, its verdict and its other spelling to the card', async () => {
+    answerBackground('none', SUBDOMAIN_MATCH)
+    const wrapper = await checkOnPage('billing@yourbank.com.pay-verify.top')
+
+    const field = wrapper.getComponent(CheckField)
+    expect(field.text()).not.toContain('emailDomainLabel')
+    expect(field.text()).not.toContain('linkTooltipNeverVisited')
+    // The card's test catches this ending, so the card says it and the
+    // breakdown does not
+    expect(field.text()).not.toContain('emailSuspiciousPattern')
+    const panel = wrapper.get('[data-domain-panel]')
+    expect(panel.find('[data-marker="embedded-public-suffix"]').exists()).toBe(true)
+    // The name keeps the marking the field used to give it, settings or not
+    const name = panel.getComponent(SecureText)
+    expect(name.props('forceHighlight')).toBe(true)
+    expect(name.props('dangerOnly')).toBe(true)
+  })
+
+  it('keeps the breakdown\'s ending warning where the card would not draw one', async () => {
+    answerBackground('none', SUBDOMAIN_MATCH)
+    // `info` is an ending to the email test and not to the card's
+    const wrapper = await checkOnPage('billing@paypal.info.evil.ru')
+
+    expect(wrapper.getComponent(CheckField).text()).toContain('emailSuspiciousPattern')
+    expect(wrapper.find('[data-marker="embedded-public-suffix"]').exists()).toBe(false)
+  })
+
+  it('asks the card about an address domain in the email context', async () => {
+    const provider = { ...SUBDOMAIN_MATCH, domain: 'gmail.com', reason: 'edit-distance', evidence: 'gmail.com', source: 'provider' }
+    answerBackground('gmal.com', provider)
+    const wrapper = await checkOnPage('someone@gmal.com')
+
+    const lines = wrapper.findAll('[data-lookalike]')
+    expect(lines).toHaveLength(1)
+    expect(wrapper.get('[data-domain-panel]').find('[data-lookalike-source="provider"]').exists()).toBe(true)
+    const contexts = vi.mocked(browser.runtime.sendMessage).mock.calls.filter(([message]: any[]) => message?.type === 'find-lookalikes').map(([message]: any[]) => message.data.context)
+    // One question, the one the card asks. The field asking it in the page
+    // context as well would be a second answer to draw.
+    expect(contexts).toEqual(['email'])
+  })
+
+  it('speaks for the pasted name again once the card moves to where the link lands', async () => {
+    answerBackground('yourbank.com.pay-verify.top', SUBDOMAIN_MATCH)
+    const wrapper = await checkOnPage('https://yourbank.com.pay-verify.top/8842')
+
+    await wrapper.findAll('button').find(button => button.text() === 'checkFieldExpand')!.trigger('click')
+    await flushPromises()
+
+    const panel = wrapper.get('[data-domain-panel]')
+    expect(panel.text()).toContain('landing.example')
+    expect(panel.find('[data-lookalike]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-lookalike]')).toHaveLength(1)
+    // Named beside its warning, since the card now names another host, and
+    // the landing host is named only there
+    const field = wrapper.getComponent(CheckField)
+    expect(field.get('[data-field-hostname]').text()).toContain('yourbank.com.pay-verify.top')
+    // With its verdict, or a link that lands on a familiar site would leave the
+    // address actually pasted unjudged on a page that is green everywhere else
+    expect(field.get('[data-field-verdict]').text()).toBe('linktooltipnevervisited')
   })
 })
