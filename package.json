@@ -5,7 +5,7 @@
   "private": true,
   "packageManager": "pnpm@10.22.0",
   "description": "Browser-extension to provide protection against Homograph Attack & Clone Phishing based on your site visiting statistics",
-  "license": "Hippocratic-2.1",
+  "license": "MIT",
   "engines": {
     "node": ">=22.21.1",
     "pnpm": ">=10.22.0"

@@ -107,14 +107,7 @@
             meta = {
               description = "Visilant packed for ${target}";
               homepage = "https://github.com/ikskoder/visilant";
-              # nixpkgs has no entry for 2.1, only for 3.0, and marks that one
-              # unfree, which would stop this flake from building its own
-              # release. Described here instead, with `free` left at its default.
-              license = {
-                fullName = "Hippocratic License 2.1";
-                spdxId = "Hippocratic-2.1";
-                url = "https://firstdonoharm.dev/version/2/1/license/";
-              };
+              license = lib.licenses.mit;
               platforms = lib.platforms.all;
             };
           };

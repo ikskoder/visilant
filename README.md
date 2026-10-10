@@ -30,6 +30,7 @@
 - [Reproducible Builds](#reproducible-builds)
 - [Limitations](#limitations)
 - [Contributing & Feedback](#contributing--feedback)
+- [License](#license)
 
 ## What is Visilant?
 
@@ -247,3 +248,7 @@ Visilant is open source, and contributions are welcome, with some considerations
 - Please check existing issues before creating new ones.
 - Pull requests adding third-party libraries should have strong justification.
 - The developer reserves the right to reject pull requests deemed unsafe or misaligned with project goals.
+
+## License
+
+Visilant is distributed under the [MIT License](https://opensource.org/license/mit), and the full text is in [LICENSE](LICENSE).
