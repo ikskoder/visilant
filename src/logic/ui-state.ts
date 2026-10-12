@@ -10,7 +10,14 @@ export const warningType = ref<'input' | 'copy'>('input')
 
 export const safetyLevel = ref<boolean | null>(null)
 export const isIgnored = ref(false)
-export const hasNotifiedOnThisPage = ref(false)
+/**
+ * Which warnings this page has already had, one of each kind.
+ *
+ * Kept apart rather than as one flag: a page that put something in the clipboard
+ * on the first click used up the one warning there was, and the password typed
+ * a minute later went by without a word.
+ */
+export const notifiedOnThisPage = ref({ input: false, copy: false })
 
 // Shortened URL resolution info
 export interface ShortUrlInfo {

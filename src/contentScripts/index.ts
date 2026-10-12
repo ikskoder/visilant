@@ -18,7 +18,7 @@ import { classifyQrPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { resolveTooltipTrigger } from '~/logic/platform'
 import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, parseStoredSettings, settings, settingsReady } from '~/logic/storage'
 import { applyHostStyles, createTamperWatch } from '~/logic/tamper-watch'
-import { checkPanelData, checkPanelVisible, hasNotifiedOnThisPage, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
+import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, notifiedOnThisPage, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
 import { addCustomShortener, isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
 import { isTrackableHostname } from '~/logic/visit-stats'
 import App from './views/App.vue'
@@ -107,10 +107,10 @@ let verdictSettled: Promise<void> = Promise.resolve()
  * moment of a page went unremarked and the warning only appeared if the user
  * happened to type again afterwards.
  */
-let warningOwedFor: 'input' | 'copy' | null = null
+const warningsOwed = new Set<'input' | 'copy'>()
 
 function noteUndecidedActivity(type: 'input' | 'copy') {
-  warningOwedFor ??= type
+  warningsOwed.add(type)
 }
 
 // Check if site is safe based on visit count
@@ -251,35 +251,49 @@ async function loadClassifiers(): Promise<void> {
 }
 
 // Show notifications based on user preferences
-async function showNotifications(type: 'input' | 'copy') {
+/**
+ * What became of a request for a warning. `later` means it was turned away for
+ * now and should be asked for again, which a frame needs to know: it stops
+ * sending a kind once the top document has settled it.
+ */
+type WarningOutcome = 'shown' | 'refused' | 'later'
+
+async function showNotifications(type: 'input' | 'copy'): Promise<WarningOutcome> {
   // Ensure settings are initialized
   if (!settings.value)
     applySettingsSnapshot(defaultSettings)
 
   // Check if this site is ignored
   if (isIgnored.value) {
-    return
+    return 'refused'
   }
 
   // Confirming a paste answers the same question this warning asks, so asking it
   // again straight afterwards is the noise the confirmation was meant to end
   if (pasteAllowedOnThisPage.value) {
-    return
+    return 'refused'
   }
 
-  // Check if we've already shown a notification on this page
-  if (hasNotifiedOnThisPage.value) {
-    return
+  // One warning of each kind per page
+  if (notifiedOnThisPage.value[type]) {
+    return 'refused'
   }
 
   // Check if the specific warning type is enabled
   if (type === 'input' && !settings.value.showInputWarning) {
-    return
+    return 'refused'
   }
 
   if (type === 'copy' && !settings.value.showCopyWarning) {
-    return
+    return 'refused'
   }
+
+  // One panel for two messages. A typing warning never takes the place of a
+  // copy warning still on screen: it would rewrite the text while somebody reads
+  // it, on exactly the page where it matters, and the next key after this one is
+  // closed raises it anyway. Its turn is not used up by being turned away.
+  if (type === 'input' && showWarning.value && warningType.value === 'copy')
+    return 'later'
 
   // Set the warning type
   warningType.value = type
@@ -287,7 +301,7 @@ async function showNotifications(type: 'input' | 'copy') {
   // Claimed here rather than at the end: a keystroke and the `beforeinput` it
   // produces arrive in the same tick, and both would clear the check above
   // before either had finished awaiting its way to setting the flag.
-  hasNotifiedOnThisPage.value = true
+  notifiedOnThisPage.value = { ...notifiedOnThisPage.value, [type]: true }
 
   const style = settings.value.notificationStyle || defaultSettings.notificationStyle
 
@@ -309,6 +323,7 @@ async function showNotifications(type: 'input' | 'copy') {
       showWarning.value = true
     }
   }
+  return 'shown'
 }
 
 // Handle keydown event
@@ -573,11 +588,44 @@ async function handleBeforeInput(event: Event) {
     noteUndecidedActivity('input')
 }
 
-window.addEventListener('keydown', handleKeydown, true)
-window.addEventListener('beforeinput', handleBeforeInput, true)
-window.addEventListener('paste', handlePaste, true)
-window.addEventListener('copy', handleCopyCut, true)
-window.addEventListener('cut', handleCopyCut, true)
+/**
+ * Every listener this script keeps on the window, in the order it was added.
+ *
+ * Kept so they can be put back. `document.open()` erases every listener on the
+ * window and on the document, a content script's as much as the page's, and
+ * before this the tab simply went quiet: no typing warning, no paste guard, no
+ * copy warning until it was reloaded. See `watchForDocumentOpen`.
+ */
+const pageListeners: [string, EventListener][] = []
+
+/** Listen on the window in the capture phase, ahead of the page, and remember it. */
+function onPage<E extends Event>(type: string, listener: (event: E) => unknown) {
+  const registered = listener as unknown as EventListener
+  pageListeners.push([type, registered])
+  window.addEventListener(type, registered, true)
+}
+
+/**
+ * Only what the browser raised.
+ *
+ * A page can dispatch a `keydown`, a `paste` or a `copy` of its own, which
+ * types nothing, pastes nothing and copies nothing. Each one still used to spend
+ * the warning the real one was owed, so a page could fire one at load and type
+ * its way past the warning about the password. Not for `click`: an untrusted
+ * click on a link still opens it.
+ */
+function trusted<E extends Event>(handler: (event: E) => unknown) {
+  return (event: E) => {
+    if (event.isTrusted)
+      return handler(event)
+  }
+}
+
+onPage('keydown', trusted(handleKeydown))
+onPage('beforeinput', trusted(handleBeforeInput))
+onPage('paste', trusted(handlePaste))
+onPage('copy', trusted(handleCopyCut))
+onPage('cut', trusted(handleCopyCut))
 // A page writing to the clipboard through `navigator.clipboard`, which fires no
 // `copy` event, so it gets the copy warning on exactly the path a copy takes.
 // Must stay a synchronous top-level call: it has to be listening before the page
@@ -605,14 +653,14 @@ let contextLink: ContextLinkSnapshot | null = null
 /** The last right-button press has not had its menu yet. */
 let contextPressPending = false
 
-window.addEventListener('pointerdown', (event) => {
+onPage<PointerEvent>('pointerdown', (event) => {
   if (!event.isTrusted)
     return
   contextPressPending = event.button === 2
   contextLink = contextPressPending ? snapshotContextLink(findAnchorFromEvent(event)) : null
-}, true)
+})
 
-window.addEventListener('contextmenu', (event) => {
+onPage<MouseEvent>('contextmenu', (event) => {
   if (!event.isTrusted)
     return
   const pressed = contextPressPending
@@ -621,7 +669,7 @@ window.addEventListener('contextmenu', (event) => {
   if (pressed && contextLink && typeof href === 'string' && href === contextLink.href)
     return
   contextLink = snapshotContextLink(findAnchorFromEvent(event))
-}, true)
+})
 
 // ==========================================
 // Link Safety – tooltip and intercept logic
@@ -1768,6 +1816,8 @@ const MOUNT_BODY_POLL_MS = 50
 // that rips the container out in the moments before Vue finishes mounting is
 // exactly the page worth catching.
 let isSelfRemoving = false
+/** Moved on by every teardown, so a mount that was under way can tell. */
+let uiGeneration = 0
 
 /**
  * Start the tamper watch on the UI that is already there.
@@ -1864,6 +1914,11 @@ async function mount(force = false) {
     return
 
   isMounting = true
+  // Which teardown this mount belongs to. A teardown in the middle of it, the
+  // page replacing its root while the stylesheet loads, leaves this mount
+  // holding a container that is no longer ours, and it stops at the next step
+  // rather than finishing it. See the `finally` below for what happens then.
+  const generation = uiGeneration
   try {
     // Check if current page is an internal page
     const hostname = window.location.hostname
@@ -1878,7 +1933,7 @@ async function mount(force = false) {
     for (let waited = 0; !document.body && waited < MOUNT_BODY_TIMEOUT_MS; waited += MOUNT_BODY_POLL_MS)
       await new Promise(resolve => setTimeout(resolve, MOUNT_BODY_POLL_MS))
 
-    if (!document.body)
+    if (!document.body || generation !== uiGeneration)
       return
 
     // Determine if we need to mount the UI
@@ -1912,6 +1967,12 @@ async function mount(force = false) {
     const styleEl = document.createElement('style')
     const response = await fetch(browser.runtime.getURL('dist/contentScripts/style.css'))
     const cssText = await response.text()
+    if (generation !== uiGeneration) {
+      // Never attached, and not ours to keep: the teardown that moved the
+      // generation on has already let go of everything else
+      container = null
+      return
+    }
     // `:host { all: initial }` stops inherited page styles (font, color,
     // letter-spacing, text-transform...) from leaking through the shadow
     // boundary. The inline host styles above still win for positioning.
@@ -1987,6 +2048,11 @@ async function mount(force = false) {
   }
   finally {
     isMounting = false
+    // Torn down while this was under way, and the teardown's own remount found
+    // this one still running and returned. Started again here, or a page that
+    // replaced its root at the right moment would be left with no UI at all.
+    if (generation !== uiGeneration && !container)
+      void mount(force)
   }
 }
 
@@ -2028,8 +2094,15 @@ async function mount(force = false) {
 
   // Anything typed or copied while this page was still being judged. Raised now
   // rather than never, since the answer has arrived and it is the bad one.
-  if (warningOwedFor && safetyLevel.value === false && settings.value?.showWarningNotification)
-    await showNotifications(warningOwedFor)
+  // A copy first: typing comes back with the next key and raises its own warning
+  // then, a copy happens once and its warning is the one a ClickFix page is read
+  // against. Typing next if the copy was not shown, so that with the copy warning
+  // switched off the owed typing warning does not go with it.
+  if (safetyLevel.value === false && settings.value?.showWarningNotification) {
+    const copied = warningsOwed.has('copy') ? await showNotifications('copy') : 'refused'
+    if (copied !== 'shown' && warningsOwed.has('input'))
+      await showNotifications('input')
+  }
 
   // Follow the settings for as long as this tab lives. The ref reads
   // `storage.sync` itself, so this works whether the change came from the
@@ -2079,12 +2152,14 @@ async function ensureTooltipUiMounted(): Promise<boolean> {
  * document cannot see – so a typed key is a typed key wherever it landed, and
  * the verdict is the one about the page.
  */
-async function showFrameWarning(kind: 'input' | 'copy') {
+async function showFrameWarning(kind: 'input' | 'copy'): Promise<WarningOutcome> {
+  if (safetyLevel.value === null)
+    return 'later'
   if (safetyLevel.value !== false || !settings.value?.showWarningNotification)
-    return
+    return 'refused'
 
   await ensureTooltipUiMounted()
-  await showNotifications(kind)
+  return showNotifications(kind)
 }
 
 /**
@@ -2142,8 +2217,10 @@ async function showFramePasteIntercept(data: { hostname?: string, status: 'unfam
 browser.runtime.onMessage.addListener(((message: any, _sender: any, sendResponse: (response?: any) => void) => {
   // Raised by an iframe on this page, which has no UI of its own
   if (message.type === 'frame-warning' && message.data) {
-    void showFrameWarning(message.data.kind === 'copy' ? 'copy' : 'input')
-    return undefined
+    // Answered, so the frame knows whether to ask again for this kind
+    showFrameWarning(message.data.kind === 'copy' ? 'copy' : 'input')
+      .then(outcome => sendResponse({ outcome }), () => sendResponse({ outcome: 'later' }))
+    return true
   }
   if (message.type === 'frame-paste-intercept' && message.data) {
     // The only message here that answers. The frame is holding a cancelled paste
@@ -2211,38 +2288,111 @@ browser.runtime.onMessage.addListener(((message: any, _sender: any, sendResponse
   }
 }) as Parameters<typeof browser.runtime.onMessage.addListener>[0])
 
-// Handle backward-forward cache
-window.addEventListener('pageshow', async (event) => {
-  if (event.persisted) {
-    // Clean up link safety listeners
-    if (linkSafetyCleanup) {
-      linkSafetyCleanup()
-      linkSafetyCleanup = null
-    }
+/**
+ * Take the whole in-page UI down, so `mount` can build it again from nothing.
+ *
+ * Anything that was waiting on a dialog is answered no. The dialog it was
+ * waiting on is gone, and a paste held for an answer nobody can give any more
+ * would stay held for the life of the page.
+ */
+function tearDownUi() {
+  uiGeneration++
+  linkSafetyCleanup?.()
+  linkSafetyCleanup = null
 
-    // Clean up existing instance if any. The flag has to be raised before the
-    // first teardown step and lowered after the last, or our own removal comes
-    // back as a tampering report.
-    isSelfRemoving = true
-    if (stopUiVisibilityWatch) {
-      stopUiVisibilityWatch()
-      stopUiVisibilityWatch = null
-    }
-    if (tamperWatch) {
-      tamperWatch.stop()
-      tamperWatch = null
-    }
-    if (app) {
-      app.unmount()
-      app = null
-    }
-    if (container) {
-      container.remove()
-      container = null
-    }
+  linkTooltipVisible.value = false
+  linkTooltipData.value = null
+  linkInterceptVisible.value = false
+  linkInterceptResolve.value?.(false)
+  linkInterceptResolve.value = null
+  linkInterceptData.value = null
+  pasteInterceptVisible.value = false
+  pasteInterceptResolve.value?.(false)
+  pasteInterceptResolve.value = null
+  pasteInterceptData.value = null
+  checkPanelVisible.value = false
+  checkPanelData.value = null
+
+  // The flag has to be raised before the first teardown step and lowered after
+  // the last, or our own removal comes back as a tampering report
+  isSelfRemoving = true
+  try {
+    stopUiVisibilityWatch?.()
+    tamperWatch?.stop()
+    app?.unmount()
+    container?.remove()
+  }
+  finally {
+    stopUiVisibilityWatch = null
+    tamperWatch = null
+    app = null
+    container = null
+    shadowRoot = null
+    guardedNodes = []
     isSelfRemoving = false
+  }
+}
 
-    // Re-mount
+// Handle backward-forward cache
+onPage<PageTransitionEvent>('pageshow', async (event) => {
+  if (event.persisted) {
+    tearDownUi()
     await mount()
   }
 })
+
+/**
+ * Put everything back after the page called `document.open()`.
+ *
+ * That call erases every listener on the window and on everything in the
+ * document, and nothing tells a content script it happened. The typing, paste
+ * and copy listeners went, the link check went, and so did the listeners inside
+ * our own panel, whose buttons stopped answering. The tamper watch was left
+ * watching a body that was no longer there. A MutationObserver is not a
+ * listener and survives it, and the call always ends with a new root element,
+ * which is what this watches for. Adding a listener that is already there does
+ * nothing, so a root replaced some other way costs nothing but a remount.
+ *
+ * What it cannot do is be first. The observer runs after the script that called
+ * `document.open()` has finished, and a page that adds its own listeners in
+ * that same script gets ahead of these. The README says so under Limitations.
+ * The clipboard signal does not depend on any of this: it travels on a node
+ * outside the document, see src/logic/clipboard-signal.ts.
+ */
+function watchForDocumentOpen() {
+  let root = document.documentElement
+  /** The UI was up when the root went, and goes back up with the next one. */
+  let rebuild = false
+  new MutationObserver(() => {
+    const now = document.documentElement
+    if (now === root)
+      return
+    const replaced = root !== null
+    root = now
+
+    // Root gone and none in its place yet, as when the page opens the document
+    // and writes to it later. Taken down now rather than left for the tamper
+    // watch to find missing and raise an alarm about an ordinary page.
+    if (!now) {
+      if (container || isMounting) {
+        tearDownUi()
+        rebuild = true
+      }
+      return
+    }
+
+    // The first root of a document that had none at document start is not a
+    // replacement, and there is nothing to put back yet
+    if (!replaced && !rebuild)
+      return
+    for (const [type, listener] of pageListeners)
+      window.addEventListener(type, listener, true)
+    if (container || isMounting || rebuild) {
+      rebuild = false
+      tearDownUi()
+      void mount()
+    }
+  }).observe(document, { childList: true })
+}
+
+watchForDocumentOpen()

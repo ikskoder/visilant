@@ -25,7 +25,9 @@ export function clickFixPage() {
 </script>
 <style>
   body { margin: 0; font: 16px sans-serif }
-  button { display: block; margin: 8px; padding: 10px 16px; font-size: 16px }
+  /* Kept short enough to need no scrollbar, which would move the warning off
+     the point the tests hit-test it at */
+  button { margin: 4px; padding: 6px 10px; font-size: 14px }
 </style>
 </head>
 <body>
@@ -38,6 +40,11 @@ export function clickFixPage() {
 <button id="steal-channel">I'm not a robot (steal the channel)</button>
 <button id="borrow-then-remove">I'm not a robot (borrow, then remove the frame)</button>
 <button id="borrow-remove-now">I'm not a robot (borrow, remove the frame at once)</button>
+<button id="synthetic">Fire made-up events</button>
+<button id="frame-reopen">Rewrite the blank frame</button>
+<button id="swap-root">Swap the root element</button>
+<input id="field" style="display:block;margin:8px;font-size:16px" placeholder="password">
+<iframe id="opened" style="width:320px;height:50px;border:1px solid #ccc;display:block"></iframe>
 <iframe id="inner" style="width:320px;height:70px;border:1px solid #ccc" srcdoc="<button id='frame-write' style='font-size:16px'>Verify in a frame</button><script>document.getElementById('frame-write').onclick = () => navigator.clipboard.writeText(${command.replace(/"/g, '&quot;')}).catch(() => {})</script>"></iframe>
 <script>
   const COMMAND = ${command}
@@ -105,6 +112,7 @@ export function clickFixPage() {
     // and stand on it. Too late: the content script's listener is already there.
     window.addEventListener(NAMES[0], (e) => {
       const node = e.relatedTarget
+      window.__stoleNode = Boolean(node)
       if (node)
         node.addEventListener(NAMES[2], (inner) => { inner.stopImmediatePropagation(); inner.preventDefault() }, true)
       e.stopImmediatePropagation()
@@ -125,16 +133,61 @@ export function clickFixPage() {
     record(borrowed().call(navigator.clipboard, COMMAND))
     document.getElementById('inner').remove()
   }
+  document.getElementById('synthetic').onclick = () => {
+    // Events the page makes up. None of them types, pastes or copies anything,
+    // and none of them may spend a warning the real thing is owed.
+    const field = document.getElementById('field')
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }))
+    field.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: 'a', bubbles: true }))
+    const data = new DataTransfer()
+    data.setData('text/plain', 'made up')
+    field.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }))
+    document.dispatchEvent(new ClipboardEvent('copy', { bubbles: true }))
+    document.dispatchEvent(new ClipboardEvent('cut', { bubbles: true }))
+    window.__syntheticFired = true
+  }
+  document.getElementById('swap-root').onclick = () => {
+    // Out with the root and back again, many times over, so that some swap
+    // lands while the extension is still rebuilding its UI from the last one
+    const original = document.documentElement
+    let swaps = 0
+    const timer = setInterval(() => {
+      const current = document.documentElement
+      document.replaceChild(current === original ? document.createElement('html') : original, current)
+      if (++swaps >= 40 && document.documentElement === original) {
+        clearInterval(timer)
+        window.__swapsDone = true
+      }
+    }, 15)
+  }
+  document.getElementById('frame-reopen').onclick = () => {
+    // The commonest document.open() there is: a page writing a form into a
+    // blank frame it made, after the frame guard had already started there
+    const doc = document.getElementById('opened').contentDocument
+    doc.open()
+    doc.write('<input id="opened-field" style="font-size:16px">')
+    doc.close()
+  }
   document.getElementById('reopen').onclick = () => {
     // document.open() erases every listener on the window and the document,
     // a content script's included, and the page then gets in first
     document.open()
     document.write('<!doctype html><html><body style="margin:0;font:16px sans-serif">'
-      + '<button id="after-reopen" style="margin:8px;padding:10px 16px;font-size:16px">I am not a robot (after document.open)</button></body></html>')
+      + '<button id="after-reopen" style="margin:8px;padding:10px 16px;font-size:16px">I am not a robot (after document.open)</button>'
+      + '<button id="after-copy" style="margin:8px;padding:10px 16px;font-size:16px">Copy (after document.open)</button>'
+      + '<input id="after-field" style="display:block;margin:8px;font-size:16px"></body></html>')
     document.close()
     swallowEverything()
     document.getElementById('after-reopen').onclick = () => {
       record(navigator.clipboard.writeText(COMMAND))
+    }
+    document.getElementById('after-copy').onclick = () => {
+      const area = document.createElement('textarea')
+      area.value = COMMAND
+      document.body.append(area)
+      area.select()
+      document.execCommand('copy')
+      area.remove()
     }
   }
 </script>

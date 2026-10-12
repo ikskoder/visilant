@@ -21,10 +21,16 @@
  * own code has run. The content script is declared ahead of the wrapper in the
  * manifest and runs first, so it is already listening when the wrapper
  * announces itself. Should the order ever come out the other way, the content
- * script asks, and the wrapper announces again. The node itself is no secret:
- * a page that gets hold of it can dispatch on it, which is a spoofed warning,
- * and can listen on it, which is too late to stop anything – ours was there
- * first, and nothing the page can do takes it off a node outside the document.
+ * script asks, and the wrapper announces again. Once the content script has the
+ * node it says so on the node itself, and from then on the wrapper answers no
+ * more asking, so in a document loaded with the extension already in place the
+ * page never sees the node, and its only way to raise the signal is a real write.
+ * That is all it buys: a page can still spend the copy warning with a harmless
+ * real write on its first click, but it can no longer do so with no write at all. A
+ * document the extension arrived in late, a tab open at install or update, is
+ * the exception, since its page was running before either script. Even there a
+ * page that listens on the node is too late to stop anything: ours was first,
+ * and a capturing listener at the node runs ahead of every bubbling one.
  *
  * Nothing in here may import anything. The page-world bundle includes it, and
  * that bundle must not pull in the polyfill or any of the extension's modules.
@@ -35,6 +41,9 @@ export const CLIPBOARD_HELLO = '__visilant-clipboard-hello'
 
 /** Sent on `window` by a content script that arrived after the wrapper. */
 export const CLIPBOARD_ASK = '__visilant-clipboard-ask'
+
+/** Sent on the channel node by the content script once it has the node. */
+export const CLIPBOARD_ACK = '__visilant-clipboard-ack'
 
 /** Sent on the channel node each time the page wrote to the clipboard. */
 export const CLIPBOARD_WRITE = '__visilant-clipboard-write'
@@ -67,6 +76,7 @@ export function listenForScriptedClipboardWrites(onWrite: () => void) {
     // so a page that got hold of the node could otherwise get in front of this.
     node.addEventListener(CLIPBOARD_WRITE, () => onWrite(), true)
     window.removeEventListener(CLIPBOARD_HELLO, onHello, true)
+    node.dispatchEvent(new Event(CLIPBOARD_ACK))
   }
 
   window.addEventListener(CLIPBOARD_HELLO, onHello, true)

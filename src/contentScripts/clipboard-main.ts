@@ -27,7 +27,7 @@
  * they fail and where the page can read them.
  */
 
-import { CLIPBOARD_ASK, CLIPBOARD_HELLO, CLIPBOARD_WRITE } from '~/logic/clipboard-signal'
+import { CLIPBOARD_ACK, CLIPBOARD_ASK, CLIPBOARD_HELLO, CLIPBOARD_WRITE } from '~/logic/clipboard-signal'
 
 function install() {
   // Absent outside a secure context, where there is nothing to wrap
@@ -124,8 +124,22 @@ function install() {
   wrap('writeText')
   wrap('write')
 
-  // A content script that arrived after this asks to be told again
-  apply(addEventListener, global, [CLIPBOARD_ASK, announce, true])
+  // Told once the content script has the node. After that nobody is asked
+  // about again, so the page never gets to see it. Nothing is read off the
+  // event: it is the page's world, and the fact that it arrived is enough.
+  let linked = false
+  apply(addEventListener, channel, [CLIPBOARD_ACK, () => {
+    linked = true
+  }])
+
+  // A content script that arrived after this asks to be told again. Unanswered
+  // once linked, which also means a second copy of the content script, as the
+  // dev build's reload injects, never hears clipboard writes. Production never
+  // injects twice.
+  apply(addEventListener, global, [CLIPBOARD_ASK, () => {
+    if (!linked)
+      announce()
+  }, true])
   announce()
 }
 

@@ -173,11 +173,37 @@ function install() {
     return pending
   }
 
-  window.addEventListener('pointerdown', prime, true)
-  window.addEventListener('focusin', prime, true)
+  /**
+   * Every listener this frame keeps on its window, so they can be put back.
+   *
+   * `document.open()` erases them all, and the commonest place it is called is
+   * exactly here: a page making a blank frame and writing a form into it. The
+   * frame then went deaf for good. See the observer at the end of `install`.
+   *
+   * Only events the browser raised count. A page can dispatch a `keydown` or a
+   * `copy` of its own, which types and copies nothing, and each used to spend
+   * the warning a real one was owed.
+   */
+  const listeners: [string, EventListener][] = []
+  function on<E extends Event>(type: string, handler: (event: E) => unknown) {
+    const listener = ((event: E) => {
+      if (event.isTrusted)
+        handler(event)
+    }) as unknown as EventListener
+    listeners.push([type, listener])
+    window.addEventListener(type, listener, true)
+  }
 
-  /** Raised at most once per frame, the same as the top document's warning. */
-  let warned = false
+  on('pointerdown', prime)
+  on('focusin', prime)
+
+  /**
+   * Raised at most once per frame and kind, the same as the top document's
+   * warnings. One kind cannot use up the other: with the copy warning switched
+   * off, a copy used to spend the flag and the form in this frame was never
+   * warned about.
+   */
+  const warned = { input: false, copy: false }
 
   /**
    * Forget what was worked out about this frame, so the next event asks again.
@@ -192,7 +218,8 @@ function install() {
   function forget() {
     settled = null
     pending = null
-    warned = false
+    warned.input = false
+    warned.copy = false
   }
 
   // Storage says all of this without a single message: the change is delivered
@@ -217,20 +244,40 @@ function install() {
   })
 
   async function warn(kind: 'input' | 'copy') {
-    if (warned)
+    if (warned[kind])
       return
 
     const answer = await prime()
     if (answer.isSafe !== false || answer.ignored || !answer.warn || !answer.hostname)
       return
 
-    warned = true
+    warned[kind] = true
     // Only the kind: the top document knows which page it is, and drawing the
     // frame's own name beside the warning is the claim this guard no longer makes
-    await send('frame-warning', { kind }).catch(() => undefined)
+    if (!await tellTop(kind))
+      warned[kind] = false
   }
 
-  window.addEventListener('keydown', (event) => {
+  /**
+   * Hand a warning to the top document, and say whether that settled it.
+   *
+   * Not settled when the top document turned it away for now, which it does to a
+   * typing warning while a copy warning is still on screen, or when it could not
+   * be reached. The flag then comes down again, or the typing warning for a form
+   * in this frame would be gone for good the moment the copy warning was closed.
+   */
+  async function tellTop(kind: 'input' | 'copy'): Promise<boolean> {
+    try {
+      const answer = await send<{ outcome?: string } | undefined>('frame-warning', { kind })
+      // Nothing back means the top document was not reached
+      return Boolean(answer) && answer?.outcome !== 'later'
+    }
+    catch {
+      return false
+    }
+  }
+
+  on<KeyboardEvent>('keydown', (event) => {
     // Copy and cut have events of their own, which say what happened instead of
     // guessing from a chord, and Meta is a menu key on macOS rather than typing
     if (event.ctrlKey || event.altKey || event.metaKey)
@@ -243,9 +290,9 @@ function install() {
     if (!isEditableEventTarget(event))
       return
     void warn('input')
-  }, true)
+  })
 
-  window.addEventListener('beforeinput', (event) => {
+  on('beforeinput', (event) => {
     // `beforeinput` only fires on something editable, but a page can raise one
     // of its own and this walks a path that is already in hand
     if (!isEditableEventTarget(event))
@@ -258,10 +305,10 @@ function install() {
     if (kind === 'insertFromPaste' || kind === 'insertFromPasteAsQuotation')
       return
     void warn('input')
-  }, true)
+  })
 
-  window.addEventListener('copy', () => void warn('copy'), true)
-  window.addEventListener('cut', () => void warn('copy'), true)
+  on('copy', () => void warn('copy'))
+  on('cut', () => void warn('copy'))
   // A write through `navigator.clipboard`, reported by the wrapper in the page's
   // world. Handed straight to the top document, without waiting for a verdict
   // here: the page above can call this frame's wrapper on its own clipboard and
@@ -276,7 +323,10 @@ function install() {
     if (clipboardReported)
       return
     clipboardReported = true
-    void send('frame-warning', { kind: 'copy' }).catch(() => undefined)
+    void tellTop('copy').then((settled) => {
+      if (!settled)
+        clipboardReported = false
+    })
   })
 
   /** Set while a dialog about this frame is on screen in the top document. */
@@ -326,7 +376,7 @@ function install() {
     }
   }
 
-  window.addEventListener('paste', (event) => {
+  on<ClipboardEvent>('paste', (event) => {
     const text = event.clipboardData?.getData('text/plain') || ''
     if (!text || allowed || !isPasteSink(event))
       return
@@ -365,7 +415,20 @@ function install() {
       event.stopImmediatePropagation()
       void hold('unfamiliar')
     }
-  }, true)
+  })
+
+  // Put the listeners back after `document.open()`, which leaves a new root
+  // element behind it. An observer is not a listener and survives the call, and
+  // adding a listener that is already there does nothing.
+  let root = document.documentElement
+  new MutationObserver(() => {
+    const now = document.documentElement
+    if (!now || now === root)
+      return
+    root = now
+    for (const [type, listener] of listeners)
+      window.addEventListener(type, listener, true)
+  }).observe(document, { childList: true })
 }
 
 // The top document has its own script, which does all of this and a great deal more

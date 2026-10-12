@@ -152,6 +152,9 @@ test('a page that steals the channel node cannot swallow the signal on it', asyn
   await openClickFix(page, context)
   await page.click('#steal-channel')
   await expectWarning(page)
+  // And it never got the node: the wrapper stops answering once the content
+  // script has it, so a page cannot fake a write on it to spend the warning
+  expect(await page.evaluate(() => (window as any).__stoleNode ?? false)).toBe(false)
 })
 
 test('a frame\'s wrapper borrowed by the page, frame removed after the write, still warns', async ({ page, context }) => {
@@ -174,5 +177,120 @@ test('a frame\'s wrapper borrowed by the page, frame removed at once, still warn
 test('a write from inside a blob frame raises the warning about the page', async ({ page, context }) => {
   await openClickFix(page, context)
   await page.frameLocator('#blob').locator('#blob-write').click()
+  await expectWarning(page)
+})
+
+/** The cross in the warning's corner. The panel lives in a closed shadow root, so it is found by where it is drawn. */
+async function closeWarning(page: any) {
+  // The panel slides in, and a click during that lands beside the button
+  await page.waitForTimeout(1000)
+  const { width } = page.viewportSize()
+  await page.mouse.click(width - 55, 48)
+}
+
+test('made-up events spend no warning, and the real ones still get theirs', async ({ page, context }) => {
+  // A page can dispatch keydown, beforeinput, paste, copy and cut of its own.
+  // None of them types or copies anything, and each used to use up the one
+  // warning the page had, before the password was typed.
+  await openClickFix(page, context)
+  await page.click('#synthetic')
+  expect(await page.evaluate(() => (window as any).__syntheticFired)).toBe(true)
+  await page.waitForTimeout(2000)
+  expect(await warningShowing(page)).toBe(false)
+
+  await page.click('#field')
+  await page.keyboard.type('hunter2')
+  await expectWarning(page)
+})
+
+test('a copy warning does not use up the typing warning', async ({ page, context }) => {
+  await openClickFix(page, context)
+  await page.click('#write-text')
+  await expectWarning(page)
+  await closeWarning(page)
+  await expect.poll(() => warningShowing(page), { timeout: 5000 }).toBe(false)
+
+  await page.click('#field')
+  await page.keyboard.type('hunter2')
+  await expectWarning(page)
+})
+
+test('after document.open() typing is still warned about', async ({ page, context }) => {
+  await openClickFix(page, context)
+  await page.click('#reopen')
+  await page.waitForTimeout(500)
+  await page.click('#after-field')
+  await page.keyboard.type('hunter2')
+  await expectWarning(page)
+})
+
+test('after document.open() a copy is still warned about', async ({ page, context }) => {
+  await openClickFix(page, context)
+  await page.click('#reopen')
+  await page.waitForTimeout(500)
+  await page.click('#after-copy')
+  await expectWarning(page)
+})
+
+test('a warning on screen through document.open() still closes', async ({ page, context }) => {
+  // Everything in the document loses its listeners, our panel's buttons too,
+  // so the panel is built again rather than put back
+  await openClickFix(page, context)
+  await page.click('#write-text')
+  await expectWarning(page)
+  // The page reopens itself, as a script would, while the warning is up
+  await page.evaluate(() => document.getElementById('reopen')!.click())
+  await page.waitForTimeout(1000)
+  await expectWarning(page)
+  await closeWarning(page)
+  await expect.poll(() => warningShowing(page), { timeout: 5000 }).toBe(false)
+})
+
+test('typing into a blank frame the page rewrote is warned about', async ({ page, context }) => {
+  await openClickFix(page, context)
+  await page.click('#frame-reopen')
+  await page.waitForTimeout(500)
+  await page.frameLocator('#opened').locator('#opened-field').click()
+  await page.keyboard.type('hunter2')
+  await expectWarning(page)
+})
+
+test('a made-up copy spends no copy warning', async ({ page, context }) => {
+  await openClickFix(page, context)
+  await page.click('#synthetic')
+  await page.waitForTimeout(1500)
+  expect(await warningShowing(page)).toBe(false)
+  await page.click('#exec-copy')
+  await expectWarning(page)
+})
+
+test('a page that keeps swapping its root still gets its UI back', async ({ page, context }) => {
+  // Each swap takes the UI down and builds it again, and a swap that lands while
+  // the last rebuild is still loading its stylesheet used to leave no UI at all
+  await openClickFix(page, context)
+  await page.evaluate(() => document.getElementById('swap-root')!.click())
+  await expect.poll(() => page.evaluate(() => (window as any).__swapsDone === true), { timeout: 10000 }).toBe(true)
+  await page.waitForTimeout(1500)
+  await page.click('#write-text')
+  await expectWarning(page)
+  await closeWarning(page)
+  await expect.poll(() => warningShowing(page), { timeout: 5000 }).toBe(false)
+})
+
+test('typing in a frame turned away under a copy warning is warned about once it closes', async ({ page, context }) => {
+  // The top document keeps a copy warning on screen rather than rewrite it, and
+  // tells the frame to ask again. The frame used to take the first refusal as
+  // final, and the password typed after the copy warning closed went unwarned.
+  await openClickFix(page, context)
+  await page.click('#write-text')
+  await expectWarning(page)
+  const input = page.frameLocator('#blob').locator('#blob-input')
+  await input.click()
+  await page.keyboard.type('hun')
+  await page.waitForTimeout(1000)
+  await closeWarning(page)
+  await expect.poll(() => warningShowing(page), { timeout: 5000 }).toBe(false)
+  await input.click()
+  await page.keyboard.type('ter2')
   await expectWarning(page)
 })

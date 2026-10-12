@@ -119,6 +119,14 @@ class Harness {
   }
 
   /** Silence, after proving the wrapper was there and the write went through. */
+  /** The cross in the warning's corner, found by where the panel draws it. */
+  async closeWarning() {
+    // The panel slides in, and a click during that lands beside the button
+    await sleep(1000)
+    const width = await this.evaluate<number>('window.innerWidth')
+    await this.firefox.clickAt(this.page, width - 55, 48)
+  }
+
   async expectNoWarning() {
     assert(await this.evaluate('window.wrapperInstalled()'), 'the clipboard wrapper is not in the page')
     await poll(() => this.evaluate('window.__lastWrite'), 'ok', 5000, 'the page\'s write')
@@ -233,6 +241,7 @@ test('a page that steals the channel node cannot swallow the signal on it', asyn
   await t.open(UNFAMILIAR)
   await t.click('#steal-channel')
   await t.expectWarning()
+  assert(!(await t.evaluate('window.__stoleNode || false')), 'the page got hold of the channel node')
 })
 
 test('a frame\'s wrapper borrowed by the page, frame removed after the write, still warns', async (t) => {
@@ -261,6 +270,100 @@ test('KNOWN LIMITATION: a clean writeText taken from a frame made this instant g
   await poll(() => t.evaluate('window.__lastWrite'), 'ok', 5000, 'the page\'s write')
   await sleep(2500)
   assert(!(await t.warningShowing()), 'a warning is showing: the limitation may be gone, update this test and the README')
+})
+
+test('made-up events spend no warning, and the real ones still get theirs', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.click('#synthetic')
+  assert(await t.evaluate('window.__syntheticFired'), 'the page did not fire its events')
+  await sleep(2000)
+  assert(!(await t.warningShowing()), 'a made-up event raised a warning')
+  await t.click('#field')
+  await t.firefox.type(t.page, 'hunter2')
+  await t.expectWarning()
+})
+
+test('a copy warning does not use up the typing warning', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.click('#write-text')
+  await t.expectWarning()
+  await t.closeWarning()
+  await poll(() => t.warningShowing(), false, 5000, 'the closed warning')
+  await t.click('#field')
+  await t.firefox.type(t.page, 'hunter2')
+  await t.expectWarning()
+})
+
+test('after document.open() typing is still warned about', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.click('#reopen')
+  await sleep(500)
+  await t.click('#after-field')
+  await t.firefox.type(t.page, 'hunter2')
+  await t.expectWarning()
+})
+
+test('after document.open() a copy is still warned about', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.click('#reopen')
+  await sleep(500)
+  await t.click('#after-copy')
+  await t.expectWarning()
+})
+
+test('a warning on screen through document.open() still closes', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.click('#write-text')
+  await t.expectWarning()
+  // The page reopens itself, as a script would, while the warning is up
+  await t.evaluate('document.getElementById(\'reopen\').click()')
+  await sleep(1000)
+  await t.expectWarning()
+  await t.closeWarning()
+  await poll(() => t.warningShowing(), false, 5000, 'the closed warning')
+})
+
+test('typing into a blank frame the page rewrote is warned about', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.click('#frame-reopen')
+  await sleep(500)
+  await t.click('#opened-field', '#opened')
+  await t.firefox.type(t.page, 'hunter2')
+  await t.expectWarning()
+})
+
+test('a made-up copy spends no copy warning', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.click('#synthetic')
+  await sleep(1500)
+  assert(!(await t.warningShowing()), 'a made-up event raised a warning')
+  await t.click('#exec-copy')
+  await t.expectWarning()
+})
+
+test('a page that keeps swapping its root still gets its UI back', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.evaluate('document.getElementById(\'swap-root\').click()')
+  await poll(() => t.evaluate('window.__swapsDone === true'), true, 10000, 'the swaps')
+  await sleep(1500)
+  await t.click('#write-text')
+  await t.expectWarning()
+  await t.closeWarning()
+  await poll(() => t.warningShowing(), false, 5000, 'the closed warning')
+})
+
+test('typing in a frame turned away under a copy warning is warned about once it closes', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.click('#write-text')
+  await t.expectWarning()
+  await t.click('#blob-input', '#blob')
+  await t.firefox.type(t.page, 'hun')
+  await sleep(1000)
+  await t.closeWarning()
+  await poll(() => t.warningShowing(), false, 5000, 'the closed warning')
+  await t.click('#blob-input', '#blob')
+  await t.firefox.type(t.page, 'ter2')
+  await t.expectWarning()
 })
 
 // ==========================================

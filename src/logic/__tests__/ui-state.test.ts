@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
-  hasNotifiedOnThisPage,
   isIgnored,
   linkInterceptData,
   linkInterceptResolve,
   linkInterceptVisible,
   linkTooltipData,
   linkTooltipVisible,
+  notifiedOnThisPage,
   onTooltipHoverEnter,
   onTooltipHoverLeave,
   safetyLevel,
@@ -33,8 +33,8 @@ describe('ui-state reactive refs', () => {
     expect(isIgnored.value).toBe(false)
   })
 
-  it('hasNotifiedOnThisPage defaults to false', () => {
-    expect(hasNotifiedOnThisPage.value).toBe(false)
+  it('notifiedOnThisPage starts with neither kind used', () => {
+    expect(notifiedOnThisPage.value).toEqual({ input: false, copy: false })
   })
 
   it('linkTooltipVisible defaults to false', () => {
