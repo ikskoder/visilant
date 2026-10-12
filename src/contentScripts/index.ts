@@ -5,6 +5,7 @@ import type { TamperWatch } from '~/logic/tamper-watch'
 import type { CheckPanelData, DomainFamilyInfo, EmailRecipientInfo, LinkTooltipData, RawPayloadInfo, ShortUrlInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { createApp, watch, watchEffect } from 'vue'
+import { listenForScriptedClipboardWrites } from '~/logic/clipboard-signal'
 import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
@@ -577,6 +578,11 @@ window.addEventListener('beforeinput', handleBeforeInput, true)
 window.addEventListener('paste', handlePaste, true)
 window.addEventListener('copy', handleCopyCut, true)
 window.addEventListener('cut', handleCopyCut, true)
+// A page writing to the clipboard through `navigator.clipboard`, which fires no
+// `copy` event, so it gets the copy warning on exactly the path a copy takes.
+// Must stay a synchronous top-level call: it has to be listening before the page
+// has run anything. See src/logic/clipboard-signal.ts.
+listenForScriptedClipboardWrites(() => void handleCopyCut())
 
 /**
  * The link the context menu was last opened on, as it read at the time.

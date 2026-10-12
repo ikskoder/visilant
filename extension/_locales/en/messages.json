@@ -16,8 +16,8 @@
     "description": "Warning message for input/paste actions"
   },
   "copyWarningMessage": {
-    "message": "You copied something from an unfamiliar site. A site can swap what you copy for something else, so check it before you paste it anywhere important.",
-    "description": "Warning message for copy/cut actions"
+    "message": "Something was just copied from an unfamiliar site. A site can swap what you copy for something else, or put its own text in your clipboard when you press a button, so check it before you paste it anywhere important.",
+    "description": "Warning message for copy/cut actions, and for a site writing to the clipboard by itself"
   },
   "avoidShell": {
     "message": "If the site told you to press some keys and paste (like Win+R), don't. That's a common trick to run commands on your computer.",
@@ -428,11 +428,11 @@
     "description": "Why the typing/pasting trigger matters"
   },
   "showCopyWarning": {
-    "message": "When cutting or copying",
+    "message": "When copying, or when a site copies something for you",
     "description": "Label for copy warning toggle"
   },
   "showCopyWarningDesc": {
-    "message": "Copying is the opposite direction, where the page hands something to you. The common trick is a site that asks you to copy a line and paste it into a terminal or a run box, and what actually landed in the clipboard is malicious code rather than the harmless line you saw on screen. A warning here gives you a reason to look at it once more before pasting.",
+    "message": "Copying is the opposite direction, where the page hands something to you. The common trick is a site that asks you to copy a line and paste it into a terminal or a run box, and what actually landed in the clipboard is malicious code rather than the harmless line you saw on screen. A site can also put text in your clipboard by itself, the moment you press one of its buttons, and that is warned about the same way. A warning here gives you a reason to look at it once more before pasting.",
     "description": "Why the copying/cutting trigger matters"
   },
   "bothWarningTriggers": {

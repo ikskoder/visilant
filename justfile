@@ -10,6 +10,7 @@ bf: build-firefox
 ad: android-devices
 ar: android-run
 ae: android-e2e
+fe: firefox-e2e
 nf: nix-firefox
 nc: nix-chrome
 nk: nix-check
@@ -135,6 +136,15 @@ android-e2e *ARGS:
   pnpm test:android {{ ARGS }}
 
 # === TESTING ===
+
+# FIREFOX names the browser binary, 140 or later. Pass part of a test name to
+# run only that, and SHOTS=<dir> to keep a screenshot of every warning.
+
+# Build for Firefox, then run the desktop Firefox e2e tests
+firefox-e2e *ARGS:
+  @test -x "${FIREFOX:-}" || { echo 'Set FIREFOX to a Firefox binary, 140 or later, e.g. FIREFOX=$(command -v firefox) just fe' >&2; exit 1; }
+  pnpm build-firefox
+  pnpm test:firefox {{ ARGS }}
 
 # Run unit tests
 test:

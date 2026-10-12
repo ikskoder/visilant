@@ -22,6 +22,7 @@
  * would be clipped to nothing.
  */
 
+import { listenForScriptedClipboardWrites } from '~/logic/clipboard-signal'
 import { isMessageError } from '~/logic/message-error'
 import { isEditableEventTarget, isPasteSink, shouldInterceptPaste } from '~/logic/paste-guard'
 import { parseStoredSettings } from '~/logic/storage'
@@ -261,6 +262,22 @@ function install() {
 
   window.addEventListener('copy', () => void warn('copy'), true)
   window.addEventListener('cut', () => void warn('copy'), true)
+  // A write through `navigator.clipboard`, reported by the wrapper in the page's
+  // world. Handed straight to the top document, without waiting for a verdict
+  // here: the page above can call this frame's wrapper on its own clipboard and
+  // remove the frame the moment the write is done, which ends a round trip half
+  // way. The top document judges it as it judges any frame warning, by its own
+  // verdict and settings. The one message this frame sends before anybody has
+  // touched it, since the page can raise it whenever it likes, and so it goes
+  // once per frame. A flag of its own, so that a write cannot use up the
+  // typing warning for a form in this frame.
+  let clipboardReported = false
+  listenForScriptedClipboardWrites(() => {
+    if (clipboardReported)
+      return
+    clipboardReported = true
+    void send('frame-warning', { kind: 'copy' }).catch(() => undefined)
+  })
 
   /** Set while a dialog about this frame is on screen in the top document. */
   let holding = false

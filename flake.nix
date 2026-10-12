@@ -41,6 +41,7 @@
             ./vite.config.background.mts
             ./vite.config.content.mts
             ./vite.config.frame.mts
+            ./vite.config.clipboard.mts
             ./scripts
             ./src
             ./extension/_locales

@@ -123,10 +123,32 @@ export async function getManifest() {
         // A frame the page wrote rather than fetched: `about:blank`, `srcdoc`,
         // a blob. Its events do not reach the top document either, and it has
         // no address of its own, so it is judged as the page that made it.
-        // Firefox reads the first key, Chrome needs the second for `srcdoc`.
+        // Both browsers need both keys: the first covers `about:` documents,
+        // the second a blob frame, which Firefox otherwise left with no script
+        // at all, and `srcdoc` in Chrome. Firefox has read the second since 128.
         match_about_blank: true,
-        ...(isFirefox ? {} : { match_origin_as_fallback: true }),
+        match_origin_as_fallback: true,
         run_at: 'document_start',
+      },
+      // The clipboard wrapper, in the page's own world rather than ours, because
+      // a call to `navigator.clipboard.writeText()` fires no event a content
+      // script could hear. Declared after the two above on purpose: they are
+      // already listening when it announces itself. Every frame, for the same
+      // reason as the frame guard, which is what hears it there. See
+      // src/contentScripts/clipboard-main.ts. `world` arrived in Chrome 111 and
+      // Firefox 128, both below the versions this manifest asks for.
+      {
+        matches: [
+          '<all_urls>',
+        ],
+        js: [
+          'dist/contentScripts/clipboard.global.js',
+        ],
+        all_frames: true,
+        match_about_blank: true,
+        match_origin_as_fallback: true,
+        run_at: 'document_start',
+        world: 'MAIN',
       },
     ],
     web_accessible_resources: [
