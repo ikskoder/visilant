@@ -137,6 +137,33 @@ if [[ -f pnpm-lock.yaml ]]; then
   fi
 fi
 
+# ── 5b. Firefox, for the desktop Firefox e2e suite ───────────────────────────
+# Baked into the image like Chromium, from pins in the installer. A pin moved in
+# git and an image not rebuilt since would have the suite test a different
+# Firefox from the one the installer names, and nothing would say so.
+installer=.devcontainer/dev-tools/install-firefox.sh
+if [[ -f "$installer" ]]; then
+  for which in ESR:FIREFOX_MIN RELEASE:FIREFOX; do
+    pin=${which%%:*}
+    var=${which##*:}
+    want_ff=$(grep -oE "^FIREFOX_${pin}_VERSION=\"[^\"]+\"" "$installer" | cut -d'"' -f2)
+    binary=${!var:-}
+    have_ff=''
+    if [[ -n "$binary" && -x "$binary" ]]; then
+      have_ff=$("$binary" --version 2>/dev/null | awk '{ print $NF }') || have_ff=''
+    fi
+    if [[ -z "$want_ff" ]]; then
+      fail "could not read FIREFOX_${pin}_VERSION out of $installer, so the Firefox check is not running."
+    elif [[ -z "$have_ff" ]]; then
+      fail "$var does not name a Firefox that runs (${binary:-unset}) - rebuild with 'just container-build'."
+    elif [[ "$want_ff" != "$have_ff" ]]; then
+      fail "Firefox $have_ff in the image, $installer pins $want_ff. Rebuild the container."
+    else
+      ok "firefox $have_ff ($var)"
+    fi
+  done
+fi
+
 # ── 6. The things a read-only root filesystem breaks ─────────────────────────
 # `test -w` on a path that does not exist is false for the wrong reason, so
 # create first and then ask.

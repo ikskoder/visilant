@@ -137,14 +137,17 @@ android-e2e *ARGS:
 
 # === TESTING ===
 
-# FIREFOX names the browser binary, 140 or later. Pass part of a test name to
-# run only that, and SHOTS=<dir> to keep a screenshot of every warning.
+# FIREFOX names the browser binary, 140 or later, and FIREFOX_MIN a second one
+# to run the same tests on, if set. The dev container sets both: the current
+# release and ESR 140. Pass part of a test name to run only that, and
+# SHOTS=<dir> to keep a screenshot of every warning.
 
 # Build for Firefox, then run the desktop Firefox e2e tests
 firefox-e2e *ARGS:
   @test -x "${FIREFOX:-}" || { echo 'Set FIREFOX to a Firefox binary, 140 or later, e.g. FIREFOX=$(command -v firefox) just fe' >&2; exit 1; }
   pnpm build-firefox
   pnpm test:firefox {{ ARGS }}
+  if [ -n "${FIREFOX_MIN:-}" ]; then FIREFOX="$FIREFOX_MIN" pnpm test:firefox {{ ARGS }}; fi
 
 # Run unit tests
 test:

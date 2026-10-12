@@ -63,7 +63,7 @@ Every line here was checked in a running container rather than trusted from the 
 - The default seccomp profile is on – `Seccomp: 2`. This is the one that quietly disappears if the image is ever rebased onto a Dev Container Features image, and the comment at the top of `Dockerfile` explains how.
 - `pids_limit: 1024`, `mem_limit: 8g`, `cpus: 8`, which is half the machine's cores so a build does not take the laptop with it. cgroup v2 counts threads rather than processes and Chromium has a great many of them, so the usual 512 was not obviously enough: sampled through a full e2e run (104 tests, 3.4 minutes) `pids.current` peaked at 178, and the limit is a wide margin over that rather than a guess.
 - `shm_size: 1gb`. Docker's default of 64 MB is not enough for Chromium: the renderer dies mid-test and Playwright reports it as a page closing on its own, which reads as a flaky test rather than as a missing megabyte.
-- No `ports:`. `pnpm dev` is five `vite build --watch` processes writing files, not a server, so there is nothing to publish. If one is ever needed, write it as `"127.0.0.1:3303:3303"` – the short form binds `0.0.0.0` and inserts its own firewall rules, so a host firewall does not save you.
+- No `ports:`. `pnpm dev` is six `vite build --watch` processes writing files, not a server, so there is nothing to publish. If one is ever needed, write it as `"127.0.0.1:3303:3303"` – the short form binds `0.0.0.0` and inserts its own firewall rules, so a host firewall does not save you.
 - `user: root` under **rootless** docker, which maps container uid 0 to your host account: files written into the bind are yours, and an escape lands as your account rather than as host root. On a rootful daemon this inverts and the service has to run as `node` instead. `check-workspace.sh` reads `/proc/self/uid_map` and says which daemon it found.
 
 ## No path from anybody's machine goes in here
@@ -88,8 +88,11 @@ Tools installed with `npm install -g` inside the container land in `/root/.local
 | pnpm | `node-tools/package.json` | must equal `packageManager` in `package.json` |
 | Playwright | `node-tools/package.json` | must equal what `pnpm-lock.yaml` resolves |
 | just, gitleaks | `dev-tools/install-tools.sh`, with sha256 | the projects' release pages |
+| Firefox ESR and release | `dev-tools/install-firefox.sh`, with sha512 | `https://product-details.mozilla.org/1.0/firefox_versions.json` (`FIREFOX_ESR`, `LATEST_FIREFOX_VERSION`), sums from that release's `SHA512SUMS` |
 
-The first four are compared against the project's own files on every container start, and a mismatch fails the start with the exact edit to make. Nothing compares the last two, so those are the ones to look at deliberately.
+The first four are compared against the project's own files on every container start, and a mismatch fails the start with the exact edit to make. The two Firefox builds are compared with the installer's pins on every start too, so a pin moved in git fails the start until the image is rebuilt. Nothing compares just and gitleaks, so those are the ones to look at deliberately.
+
+The Firefox builds are there for `just fe`, the desktop Firefox e2e suite, because Playwright cannot load an extension into Firefox. Two of them, since they behave differently in ways the suite has caught: ESR 140 is the oldest version the manifest admits, and the release is what most people run. `FIREFOX` and `FIREFOX_MIN` point at them. Updates and telemetry are switched off by policy. Firefox's content sandbox is left on. The container gives it no user namespaces, it says so once at start and carries on, and the suite passes that way.
 
 ## What this does NOT protect against
 
@@ -107,7 +110,7 @@ This is inherent to a bind-mounted dev container rather than a mistake in this o
 
 **`.eslintcache` is shared and keyed by absolute path.** It lives on the bind mount, and ESLint keys its entries by absolute file path - which differs between the host and `/workspaces/visilant`. Alternating sides means `pnpm lint` is always a cold cache and each run rewrites the file. Harmless, but it explains why the cache never seems to help.
 
-**Disk.** The image is 1.4 GB. The volumes start at roughly 1.6 GB and grow with whatever gets installed into them - the editor server alone is about 0.6 GB once VS Code has connected once, and anything installed globally inside the container lands on the `home` volume as well. Measured here after a while in use: 1.4 GB image, 1.3 GB `home`, 0.8 GB `node_modules`, 0.6 GB `vscode-server`, so about 4 GB, on top of the host's own 2.1 GB of `node_modules` that this design deliberately keeps. `just container-down` keeps the volumes, `docker compose -f .devcontainer/compose.yaml down -v` removes them.
+**Disk.** The image is 1.4 GB. The volumes start at roughly 1.6 GB and grow with whatever gets installed into them - the editor server alone is about 0.6 GB once VS Code has connected once, and anything installed globally inside the container lands on the `home` volume as well. The two Firefox builds add about 0.6 GB to the image. Measured here after a while in use, before Firefox was added: 1.4 GB image, 1.3 GB `home`, 0.8 GB `node_modules`, 0.6 GB `vscode-server`, so about 4 GB, on top of the host's own 2.1 GB of `node_modules` that this design deliberately keeps. `just container-down` keeps the volumes, `docker compose -f .devcontainer/compose.yaml down -v` removes them.
 
 ## The pnpm advisories
 

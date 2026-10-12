@@ -71,6 +71,16 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 RUN /opt/visilant-node-tools/node_modules/.bin/playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 
+# Firefox for the desktop Firefox e2e suite, which Playwright cannot drive with
+# an extension in it. ESR 140, the oldest the manifest admits, and the current
+# release, both official Mozilla builds checked against pinned sha512 sums. After
+# Chromium because these pins move about monthly, more often than Playwright, and
+# a layer above would rebuild Chromium every time. See the installer.
+COPY dev-tools/install-firefox.sh /tmp/install-firefox.sh
+RUN /tmp/install-firefox.sh && rm /tmp/install-firefox.sh
+ENV FIREFOX=/opt/firefox-release/firefox/firefox \
+    FIREFOX_MIN=/opt/firefox-esr/firefox/firefox
+
 # Everything that writes has to be under the home volume, because the root
 # filesystem is read-only at run time. pnpm keeps its content-addressed store
 # and its global bin directory here, npm its cache.
