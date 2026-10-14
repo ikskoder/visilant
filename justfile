@@ -11,6 +11,8 @@ ad: android-devices
 ar: android-run
 ae: android-e2e
 fe: firefox-e2e
+ss: shots
+sw: shots-watch
 nf: nix-firefox
 nc: nix-chrome
 nk: nix-check
@@ -148,6 +150,22 @@ firefox-e2e *ARGS:
   pnpm build-firefox
   pnpm test:firefox {{ ARGS }}
   if [ -n "${FIREFOX_MIN:-}" ]; then FIREFOX="$FIREFOX_MIN" pnpm test:firefox {{ ARGS }}; fi
+
+# === SCREENSHOTS ===
+# Every case the extension can draw, made up on purpose, for a person to look
+# through: most of them never come up in ordinary browsing. Each is drawn in
+# light, dark and at phone width into .tmp/shots/index.html, a catalogue with a
+# note per case. Nothing is compared or asserted. Built from a copy of the tree
+# under .tmp, so extension/ and a running `pnpm dev` are left alone. Extra args
+# go to Playwright, e.g. `just shots -g popup`. See e2e-shots/README.md.
+
+# Build, draw every case, write the catalogue
+shots *ARGS:
+  pnpm exec esno e2e-shots/run.ts {{ ARGS }}
+
+# Draw them again after every change to the sources
+shots-watch *ARGS:
+  pnpm exec esno e2e-shots/watch.ts {{ ARGS }}
 
 # Run unit tests
 test:

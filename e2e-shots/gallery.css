@@ -1,0 +1,77 @@
+* { box-sizing: border-box }
+body { font: 14px/1.45 system-ui, sans-serif; margin: 0; background: #f6f6f4; color: #222 }
+code { font-size: 12px }
+
+/* Contents */
+nav { position: fixed; top: 0; bottom: 0; left: 0; width: 300px; display: flex; flex-direction: column; border-right: 1px solid #ddd; background: #fff }
+nav header { padding: 14px 16px 10px; border-bottom: 1px solid #eee }
+nav h1 { font-size: 16px; margin: 0 0 2px }
+nav .meta { color: #666; font-size: 12px }
+nav .missing { color: #c00; cursor: pointer; text-decoration: underline dotted }
+nav .tools { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; font-size: 13px }
+nav .tools label { user-select: none; white-space: nowrap }
+nav input[type=search] { width: 100%; margin-top: 8px; padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit }
+.toc { overflow-y: auto; padding: 6px 8px 40px; flex: 1 }
+.surface { margin-top: 10px }
+.surface > .s-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #777; padding: 4px 8px; font-weight: 600 }
+.topic > a.t-link { display: flex; justify-content: space-between; gap: 8px; padding: 3px 8px; border-radius: 5px; color: #222; text-decoration: none; font-size: 13px; font-weight: 500 }
+.topic > a.t-link:hover { background: #f1f1ef }
+.topic.current > a.t-link { background: #e8f0fb; color: #1a5fb4 }
+.count { color: #999; font-weight: normal; font-variant-numeric: tabular-nums }
+.dot { color: #c00 }
+.cases { display: none; margin: 2px 0 6px 10px; border-left: 2px solid #e4e4e0 }
+.topic.open > .cases { display: block }
+.cases a { display: block; padding: 2px 8px; color: #444; text-decoration: none; font-size: 12.5px; border-left: 2px solid transparent; margin-left: -2px }
+.cases a:hover { color: #1a5fb4 }
+.cases a.active { border-left-color: #1a5fb4; color: #1a5fb4; font-weight: 600 }
+.cases a.bad::after { content: ' ●'; color: #c00 }
+
+/* Cards */
+main { margin-left: 300px; padding: 8px 24px 80px }
+h2 { font-size: 20px; margin: 32px 0 4px }
+h3 { font-size: 15px; margin: 18px 0 10px; color: #555; scroll-margin-top: 12px }
+.notices { background: #fff3f0; border: 1px solid #f0b8a8; border-radius: 8px; padding: 8px 16px 8px 32px }
+.card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; scroll-margin-top: 12px }
+.card.bad { border-color: #e7a0a0 }
+.card .head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap }
+.card h4 { margin: 0; font-size: 15px }
+.card code.name { color: #999 }
+.card .note { color: #555; margin: 4px 0 0; max-width: 90ch }
+button.copy { font: 12px system-ui, sans-serif; padding: 1px 8px; border: 1px solid #ccc; border-radius: 5px; background: #fafafa; color: #444; cursor: pointer }
+button.copy:hover { background: #eef3fb; border-color: #9bb7e0 }
+button.copy.done { background: #e7f6ea; border-color: #8ccf98; color: #1d6b2c }
+.row { display: flex; gap: 12px; margin-top: 10px; align-items: flex-start }
+figure { margin: 0; flex: 1 1 0; min-width: 0 }
+figure.phone { flex: 0 0 22% }
+figcaption { font-size: 11px; color: #888; margin-bottom: 3px }
+/* Never wider than the picture itself: a stretched screenshot is a blurred one */
+figure img { display: block; height: auto; max-width: 100%; border: 1px solid #ddd; border-radius: 4px; cursor: zoom-in }
+.failed, .skipped { font-size: 12px; padding: 10px; border-radius: 4px; border: 1px dashed #ccc; color: #777 }
+.failed { border-color: #e7a0a0; background: #fdf3f3; color: #922 }
+body.hide-light figure.light, body.hide-dark figure.dark, body.hide-phone figure.phone { display: none }
+.filtered-out { display: none !important }
+
+/* Full screen view */
+#lb { position: fixed; inset: 0; z-index: 10; background: rgba(18, 18, 20, .94); display: grid; grid-template-rows: 1fr auto; color: #eee }
+#lb[hidden] { display: none }
+#lb .stage { overflow: auto; display: flex; padding: 16px 64px 8px }
+#lb .stage img { margin: auto; display: block; width: auto; height: auto; max-width: none; flex: none; box-shadow: 0 4px 30px rgba(0, 0, 0, .5) }
+#lb[data-mode=fit] .stage img { max-width: 100%; max-height: 100% }
+#lb[data-mode=width] .stage img { max-width: 100%; margin-top: 0 }
+#lb[data-zoomable=true] .stage img { cursor: zoom-in }
+#lb[data-zoomable=true][data-mode=natural] .stage img { cursor: zoom-out }
+#lb .caption { padding: 10px 64px 14px; background: rgba(0, 0, 0, .35); border-top: 1px solid #333 }
+#lb .caption h4 { margin: 0; font-size: 16px }
+#lb .caption .note { color: #bbb; margin: 3px 0 0; max-width: 110ch }
+#lb .caption .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 6px; color: #999; font-size: 12px }
+#lb .caption code { color: #ccc }
+#lb .caption .proj { padding: 0 6px; border-radius: 4px; background: #333; color: #ddd }
+#lb button.copy { background: #2a2a2e; border-color: #555; color: #ddd }
+#lb button.copy.done { background: #1f4a2a; border-color: #3d8a52; color: #cfe9d5 }
+#lb .nav-btn { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 72px; border: 0; border-radius: 8px; background: rgba(255, 255, 255, .08); color: #eee; font-size: 34px; cursor: pointer }
+#lb .nav-btn:hover { background: rgba(255, 255, 255, .18) }
+#lb .prev { left: 8px }
+#lb .next { right: 8px }
+#lb .close { position: absolute; top: 8px; right: 8px; width: 40px; height: 40px; border: 0; border-radius: 8px; background: rgba(255, 255, 255, .08); color: #eee; font-size: 24px; cursor: pointer }
+#lb .keys { margin-left: auto; color: #777 }
+#lb kbd { font: 11px ui-monospace, monospace; padding: 0 4px; border: 1px solid #555; border-radius: 3px; color: #aaa }
