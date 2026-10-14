@@ -10,6 +10,7 @@ Nothing is compared or asserted. It is not a test suite, the tests in `e2e/` are
 |---|---|
 | Draw every case and write the catalogue | `just shots` (`just ss`) |
 | Only some of them | `just shots -g popup`, `just shots --project=dark tooltip` (arguments go to Playwright, a bare word picks scenario files) |
+| Everything at another text size (the popup's A- / A+, 80 to 150) | `SHOTS_SCALE=150 just shots popup check` |
 | Draw them again after every change to `src/` | `just shots-watch` (`just sw`) |
 
 Then open `.tmp/shots/index.html` in a browser. A full run draws about 340 cases three times each and takes a while, with three browsers at once. A filtered run is much quicker.

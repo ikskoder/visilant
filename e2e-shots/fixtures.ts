@@ -12,6 +12,7 @@
 import type { BrowserContext, Page } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
+import process from 'node:process'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { test as base, chromium } from '@playwright/test'
 
@@ -257,6 +258,13 @@ async function waitForImportToSettle(context: BrowserContext) {
  * five minutes, a family check for ten – is not reachable from here and stays,
  * so a scenario that depends on one of those should use a hostname of its own.
  */
+/**
+ * `SHOTS_SCALE=150 just shots …` draws every case at that popup text size (the
+ * A- / A+ setting, 80 to 150), to look for what a larger or smaller size breaks.
+ * A case that sets the size itself still wins.
+ */
+const SCALE = process.env.SHOTS_SCALE ? { popupFontSize: Number(process.env.SHOTS_SCALE) } : {}
+
 async function resetProfile(context: BrowserContext, theme: Theme) {
   await inWorker(context, async ({ key, state, settings }: any) => {
     const g = globalThis as any
@@ -277,7 +285,7 @@ async function resetProfile(context: BrowserContext, theme: Theme) {
     await chrome.storage.local.set({ [key]: state })
     await chrome.storage.sync.clear()
     await chrome.storage.sync.set({ settings: JSON.stringify(settings) })
-  }, { key: IMPORT_STATE_KEY, state: SETTLED_IMPORT, settings: { ...defaults.get(context), theme } })
+  }, { key: IMPORT_STATE_KEY, state: SETTLED_IMPORT, settings: { ...defaults.get(context), theme, ...SCALE } })
   await rebuildLookalikeIndex(context)
 }
 
