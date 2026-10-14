@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { blankPage, inWorker, serveSite } from './helpers'
+import { blankPage, inWorker, patchSettings, serveSite } from './helpers'
 
 // Evaluated inside the extension's service worker
 declare const chrome: any
@@ -151,6 +151,20 @@ test('the menu check on a mailto link checks the address', async ({ page, contex
 
   await rightClick(page, '#mail')
   await checkFromMenu(context, href)
+
+  await expect.poll(() => allText(page), { timeout: 15000, intervals: [300] }).toContain('Email address')
+})
+
+// The click trigger cancelled the click and then dropped the answer, because
+// the tooltip waited for a hover that this trigger never has. On a touchscreen
+// that is the only trigger, so a tapped mailto did nothing at all.
+test('a click on a mailto link with the click trigger shows the address', async ({ page, context }) => {
+  await patchSettings(context, {
+    linkSafety: { enabled: true, tooltipTrigger: 'click-left', hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
+  })
+  await open(page)
+
+  await page.locator('#mail').click()
 
   await expect.poll(() => allText(page), { timeout: 15000, intervals: [300] }).toContain('Email address')
 })

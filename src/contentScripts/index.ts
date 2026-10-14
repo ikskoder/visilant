@@ -1711,6 +1711,13 @@ function setupLinkSafety() {
     if (isMailtoHref(anchor.href)) {
       event.preventDefault()
       event.stopPropagation()
+      // The tooltip only opens over the link it is current for, and with this
+      // trigger no hover ever names one, so a click used to do nothing at all
+      if (tooltipGraceTimer) {
+        clearTimeout(tooltipGraceTimer)
+        tooltipGraceTimer = null
+      }
+      currentHoveredAnchor = anchor
       showEmailTooltip(anchor)
       return
     }
