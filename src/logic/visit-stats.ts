@@ -104,6 +104,15 @@ export function isTrackableHostname(hostname: string): boolean {
 }
 
 /**
+ * Why an address that is never counted is not counted, for the words shown in
+ * its place: a private IP address has no name at all, a local name has one
+ * that only means something inside one network.
+ */
+export function untrackedReason(hostname: string): 'ip' | 'local' {
+  return classifyHost(hostname) === 'private-ip' ? 'ip' : 'local'
+}
+
+/**
  * Fold a new visit into the stored record.
  *
  * `firstSeen` and `activeDays` stay `undefined` on records created before those

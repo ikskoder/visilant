@@ -1,5 +1,5 @@
 import type { FamiliarityCriterionId, FamiliarityStats } from '~/logic/familiarity'
-import { computed, inject, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { evaluateFamiliarity, normalizeFamiliarity } from '~/logic/familiarity'
 import { settings } from '~/logic/storage'
@@ -58,11 +58,15 @@ export interface FamiliaritySummary {
   title: string
 }
 
+export interface VerdictLabel {
+  verdict: 'familiar' | 'unfamiliar' | 'never'
+  text: string
+  tone: 'safe' | 'danger'
+  icon: 'pass' | 'alert'
+}
+
 export function useFamiliarityFacts() {
   const { t } = useI18n()
-  // The in-page surfaces live in a shadow root, where a `dark:` variant on the
-  // host page's html element never reaches them, so the theme is passed down
-  const isDark = inject('isDark', ref(false))
 
   const rules = computed(() => normalizeFamiliarity(settings.value.familiarity))
   const withThresholds = computed(() => settings.value.showFamiliarityThresholds === true)
@@ -121,36 +125,20 @@ export function useFamiliarityFacts() {
   }
 
   /**
-   * Green once a check passes, red while it does not.
+   * The verdict of a site as a badge: a word, an icon and a tone together.
    *
-   * A missing fact is red as well, because that is what it does to the verdict –
-   * an unrecorded criterion fails rather than being waived, and greying it out
-   * read as "this one does not count" while it was quietly deciding the answer.
-   * The italic is what says the number was never measured.
+   * Red for both kinds of not familiar. There is no yellow middle step: a reader
+   * cannot tell three warm colours apart at a glance, and a site seen three
+   * times is as much a stranger as one never seen when it asks for a password.
+   * The words still tell the two apart.
    */
-  function valueClass(met: boolean, known = true) {
-    if (met)
-      return isDark.value ? 'text-green-400' : 'text-green-600'
-    const failed = isDark.value ? 'text-red-400' : 'text-red-500'
-    return known ? failed : `${failed} italic`
-  }
-
-  /**
-   * The one-line verdict that goes above the facts.
-   *
-   * Both shades of every colour, because these surfaces are drawn inside a
-   * shadow root on somebody else's page: a `dark:` variant needs the class the
-   * app root puts there, and a bare `text-yellow-400` – which is what all four
-   * of these callers used to carry – is a dark-theme choice that all but
-   * disappears on the white card the light theme draws.
-   */
-  function statusLabel(isSafe: boolean, count: number) {
+  function statusLabel(isSafe: boolean, count: number): VerdictLabel {
     if (isSafe)
-      return { text: t.value('linkTooltipFamiliar'), class: isDark.value ? 'text-green-400' : 'text-green-700' }
+      return { verdict: 'familiar', text: t.value('linkTooltipFamiliar'), tone: 'safe', icon: 'pass' }
     if (count === 0)
-      return { text: t.value('linkTooltipNeverVisited'), class: isDark.value ? 'text-red-400' : 'text-red-600' }
-    return { text: t.value('linkTooltipUnfamiliar'), class: isDark.value ? 'text-yellow-400' : 'text-yellow-700' }
+      return { verdict: 'never', text: t.value('linkTooltipNeverVisited'), tone: 'danger', icon: 'alert' }
+    return { verdict: 'unfamiliar', text: t.value('linkTooltipUnfamiliar'), tone: 'danger', icon: 'alert' }
   }
 
-  return { t, rules, withThresholds, verdictFor, factsFor, summaryFor, valueClass, statusLabel }
+  return { t, rules, withThresholds, verdictFor, factsFor, summaryFor, statusLabel }
 }

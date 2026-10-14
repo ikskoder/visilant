@@ -1,7 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import browser from 'webextension-polyfill'
-import SecureText from '~/components/SecureText.vue'
 import { resetLookalikeCache } from '~/composables/useLookalikes'
 import { settings } from '~/logic/storage'
 import CheckField from '../CheckField.vue'
@@ -482,8 +481,6 @@ describe('the check page draws each warning once', () => {
     expect(panel.find('[data-marker="deep-subdomains"]').exists()).toBe(true)
     // Not the name either: the card spells it out a few pixels below
     expect(field.find('[data-field-hostname]').exists()).toBe(false)
-    // A link's host keeps the highlighting the settings ask for, as it always had
-    expect(panel.getComponent(SecureText).props('forceHighlight')).toBe(false)
   })
 
   it('leaves the address domain, its verdict and its other spelling to the card', async () => {
@@ -498,10 +495,6 @@ describe('the check page draws each warning once', () => {
     expect(field.text()).not.toContain('emailSuspiciousPattern')
     const panel = wrapper.get('[data-domain-panel]')
     expect(panel.find('[data-marker="embedded-public-suffix"]').exists()).toBe(true)
-    // The name keeps the marking the field used to give it, settings or not
-    const name = panel.getComponent(SecureText)
-    expect(name.props('forceHighlight')).toBe(true)
-    expect(name.props('dangerOnly')).toBe(true)
   })
 
   it('keeps the breakdown\'s ending warning where the card would not draw one', async () => {
@@ -544,6 +537,6 @@ describe('the check page draws each warning once', () => {
     expect(field.get('[data-field-hostname]').text()).toContain('yourbank.com.pay-verify.top')
     // With its verdict, or a link that lands on a familiar site would leave the
     // address actually pasted unjudged on a page that is green everywhere else
-    expect(field.get('[data-field-verdict]').text()).toBe('linktooltipnevervisited')
+    expect(field.get('[data-field-verdict]').text()).toBe('linkTooltipNeverVisited')
   })
 })

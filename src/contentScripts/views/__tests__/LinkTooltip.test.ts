@@ -64,34 +64,25 @@ describe('linkTooltip component', () => {
 
   it('shows go button when showGoButton=true', () => {
     const wrapper = mount(LinkTooltip, { props: defaultProps })
-    const buttons = wrapper.findAll('button')
-    const goButton = buttons.find(b => b.text().includes('→'))
-    expect(goButton).toBeTruthy()
+    expect(wrapper.find('[data-action="go"]').exists()).toBe(true)
   })
 
   it('hides go button when showGoButton=false', () => {
     const wrapper = mount(LinkTooltip, {
       props: { ...defaultProps, showGoButton: false },
     })
-    const buttons = wrapper.findAll('button')
-    const goButton = buttons.find(b => b.text().includes('→'))
-    expect(goButton).toBeUndefined()
+    expect(wrapper.find('[data-action="go"]').exists()).toBe(false)
   })
 
   it('emits go with href when go button is clicked', async () => {
     const wrapper = mount(LinkTooltip, { props: defaultProps })
-    const buttons = wrapper.findAll('button')
-    const goButton = buttons.find(b => b.text().includes('→'))
-    await goButton!.trigger('click')
+    await wrapper.get('[data-action="go"]').trigger('click')
     expect(wrapper.emitted('go')?.[0]).toEqual(['https://example.com/page'])
   })
 
   it('emits details with domain when details button is clicked', async () => {
     const wrapper = mount(LinkTooltip, { props: defaultProps })
-    const buttons = wrapper.findAll('button')
-    // Details button has bg-blue-700/60 class
-    const detailsButton = buttons.find(b => b.classes().some(c => c.includes('bg-blue')))
-    await detailsButton!.trigger('click')
+    await wrapper.get('[data-action="details"]').trigger('click')
     expect(wrapper.emitted('details')?.[0]).toEqual(['example.com'])
   })
 
@@ -177,8 +168,8 @@ describe('linkTooltip component', () => {
     const wrapper = mount(LinkTooltip, {
       props: { ...defaultProps, data: loadingData },
     })
-    // Should have a spinning indicator
-    expect(wrapper.find('.animate-spin').exists()).toBe(true)
+    // A disabled button that says it is checking, with the pending sign
+    expect(wrapper.find('button[disabled] .vz-icon--pending').exists()).toBe(true)
   })
 
   it('shows resolved domain when shortUrl is resolved', () => {
@@ -206,6 +197,6 @@ describe('linkTooltip component', () => {
       props: { ...defaultProps, fontSize: 120 },
     })
     const container = wrapper.find('.tooltip-container')
-    expect(container.attributes('style')).toContain('font-size: 1.2em')
+    expect(container.attributes('style')).toContain('--vz-scale: 1.2')
   })
 })

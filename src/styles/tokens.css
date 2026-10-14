@@ -1,0 +1,133 @@
+/*
+ * Design tokens: every colour, font, space, radius and size the interface uses.
+ *
+ * The source is the design system (see `.claude/CLAUDE.md`, "Look and feel").
+ * `src/styles/__tests__/tokens.test.ts` measures the contrast pairs it promises,
+ * so a colour changed here that drops below its ratio fails the tests.
+ *
+ * Declared on `:root` for the extension's own pages and on `.vz-root`, the
+ * wrapper inside the content script's shadow root. Never on `:host`: custom
+ * properties inherit across the shadow boundary and a page rule on the host
+ * element wins over `:host`, so the page could recolour a warning. Declaring
+ * them on the wrapper itself puts every value out of the page's reach.
+ */
+:root,
+.vz-root {
+  /* Declared here so the page cannot hand one down: custom properties inherit
+     across the shadow boundary. The popup and the in-page surfaces that follow
+     the text size setting set their own on an element inside. */
+  --vz-scale: 1;
+
+  /* Native controls (radios, checkboxes, the slider, a select's list, the
+     scrollbars) are drawn by the browser. Without these they keep its blue and
+     its light theme: a white radio on a dark card, a blue slider among cyan ones. */
+  color-scheme: light;
+  accent-color: var(--brand);
+
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-sunken: #eef1f6;
+  --surface-hover: #e6eaf2;
+  --line: #dde2eb;
+  --line-strong: #7b8498;
+  --ink: #121826;
+  --ink-2: #3d4659;
+  --ink-3: #5b6478;
+  --logo: #0891b2;
+  --brand: #0b6a84;
+  --brand-hover: #08566b;
+  --brand-tint: #e3f4f8;
+  --on-brand: #ffffff;
+  --focus-ring: #0b6a84;
+  --safe: #1a7f43;
+  --safe-text: #14673a;
+  --safe-tint: #e4f3ea;
+  --safe-line: #7fc29b;
+  --danger: #c8232c;
+  --danger-text: #a61b23;
+  --danger-tint: #fcebec;
+  --danger-line: #e99ca1;
+  --neutral: #6b7386;
+  --neutral-text: #4a5263;
+  --neutral-tint: #eceef3;
+  --neutral-line: #b9bfcc;
+  --on-fill: #ffffff;
+  --label-line: #7b8498;
+  --owner-line: #3d4659;
+  --owner-tint: #e6e9ef;
+  --char-digit: var(--brand);
+  --char-foreign: var(--danger-text);
+  --scrim: rgba(13, 18, 29, 0.45);
+  --shadow-overlay: 0 1px 2px rgba(13, 18, 29, 0.08), 0 8px 24px rgba(13, 18, 29, 0.16);
+
+  --font-sans: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+  --control-md: 36px;
+  --control-sm: 28px;
+  --icon-md: 16px;
+  --icon-lg: 20px;
+  --popup-width: 600px;
+  --tooltip-max: 360px;
+  --tooltip-wide: 560px;
+  --touch-target: 40px;
+}
+
+html.dark,
+.dark.vz-root,
+.dark .vz-root {
+  color-scheme: dark;
+  --bg: #0d121d;
+  --surface: #151b29;
+  --surface-sunken: #0f1420;
+  --surface-hover: #1d2436;
+  --line: #283043;
+  --line-strong: #6f7990;
+  --ink: #eef1f7;
+  --ink-2: #c3c9d6;
+  --ink-3: #9aa2b5;
+  --brand: #4cc9e0;
+  --brand-hover: #7ad8ea;
+  --brand-tint: #0f2e38;
+  --on-brand: #0d121d;
+  --focus-ring: #4cc9e0;
+  --safe: #45c27a;
+  --safe-text: #6fd99a;
+  --safe-tint: #10291b;
+  --safe-line: #2f6b47;
+  --danger: #f2616a;
+  --danger-text: #ff9095;
+  --danger-tint: #341418;
+  --danger-line: #7a2f35;
+  --neutral: #8a92a5;
+  --neutral-text: #b2b9c8;
+  --neutral-tint: #222838;
+  --neutral-line: #3a4256;
+  --on-fill: #0d121d;
+  --label-line: #6f7990;
+  --owner-line: #c3c9d6;
+  --owner-tint: #242b3b;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --shadow-overlay: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+/* Inside a web page: generic families only. A family named here would be looked
+   up among the page's own @font-face rules, so a hostile page could declare one
+   with the same name and redraw the letters of an address. */
+.vz-root--page {
+  --font-sans: system-ui, sans-serif;
+  /* Not `ui-monospace`: Chrome and Firefox do not know it as a generic family,
+     so to them it is an ordinary name a page could declare an @font-face for */
+  --font-mono: monospace;
+}

@@ -181,18 +181,18 @@ function close() {
 </script>
 
 <template>
-  <main class="px-4 py-10 text-gray-700 dark:text-gray-200">
+  <main class="px-4 py-10 text-ink">
     <div v-if="!isLoaded" class="flex justify-center items-center h-screen">
-      <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
+      <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand" />
     </div>
 
     <div v-else class="max-w-xl mx-auto space-y-6">
       <div class="text-center">
         <Logo style="max-width: 300px;" class="mx-auto" />
-        <h1 class="text-xl font-bold">
+        <h1 class="welcome-display">
           {{ t('welcomeTitle') }}
         </h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        <p class="vz-body mt-2">
           {{ nothingToImport ? t('welcomeSubtitleNoImport') : t('welcomeSubtitle') }}
         </p>
       </div>
@@ -201,58 +201,58 @@ function close() {
            nobody asked for needs its reason next to it, not in a FAQ. Where
            there was no import, the same slot answers the question that browser
            actually raises – why it knows nothing yet. -->
-      <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-2">
+      <section class="vz-card welcome-card">
+        <h2 class="vz-title mb-2">
           {{ nothingToImport ? t('welcomeWhyTitleNoImport') : t('welcomeWhyTitle') }}
         </h2>
-        <p class="text-sm leading-relaxed">
+        <p class="vz-body">
           {{ nothingToImport ? t('welcomeWhyBodyNoImport') : t('welcomeWhyBody') }}
         </p>
       </section>
 
       <!-- Import status -->
-      <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+      <section class="vz-card welcome-card">
         <template v-if="doneStats">
           <div class="flex gap-8">
             <div>
-              <div class="text-2xl font-bold">
+              <div class="welcome-figure">
                 {{ doneStats.domains.toLocaleString() }}
               </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">
+              <div class="vz-small">
                 {{ t('welcomeStatSites') }}
               </div>
             </div>
             <div>
-              <div class="text-2xl font-bold">
+              <div class="welcome-figure">
                 {{ doneStats.visits.toLocaleString() }}
               </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">
+              <div class="vz-small">
                 {{ t('welcomeStatVisits') }}
               </div>
             </div>
           </div>
-          <p class="text-sm mt-3">
+          <p class="vz-body mt-3">
             {{ t('welcomeStatusDone') }}
           </p>
         </template>
 
         <!-- What is still going on, under the numbers rather than instead of them -->
-        <div v-if="isRunning" :class="doneStats ? 'mt-4 pt-4 border-t border-gray-200 dark:border-gray-700' : ''">
+        <div v-if="isRunning" :class="doneStats ? 'mt-4 pt-4 border-t border-line' : ''">
           <div class="flex items-center gap-3">
-            <div class="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500 flex-shrink-0" />
-            <span class="text-sm" :class="doneStats ? 'text-gray-500 dark:text-gray-400' : 'font-medium'">
+            <div class="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-brand flex-shrink-0" />
+            <span class="text-sm" :class="doneStats ? 'text-ink-3' : 'font-medium'">
               {{ runningLabel }}
             </span>
           </div>
-          <div class="w-full h-1 mt-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div class="w-full h-1 mt-3 bg-surface-hover rounded-full overflow-hidden">
             <div
               v-if="progress !== null"
-              class="h-full bg-blue-500 transition-all duration-200"
+              class="h-full bg-brand transition-all duration-200"
               :style="{ width: `${progress}%` }"
             />
-            <div v-else class="h-full w-1/3 bg-blue-500 welcome-indeterminate" />
+            <div v-else class="h-full w-1/3 bg-brand welcome-indeterminate" />
           </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">
+          <p class="vz-small mt-3">
             {{ t('welcomeKeepOpen') }}
           </p>
         </div>
@@ -261,27 +261,27 @@ function close() {
              Nothing failed, so there is nothing to retry – the profile fills up
              as the user browses instead -->
         <template v-else-if="status === 'unsupported'">
-          <p class="text-sm text-amber-600 dark:text-amber-400">
+          <p class="vz-notice vz-notice--neutral">
             {{ t('welcomeStatusUnsupported') }}
           </p>
         </template>
 
         <!-- Nothing was imported at all: the extension really is blind until this is fixed -->
         <template v-else-if="!doneStats">
-          <p class="text-sm">
+          <p class="vz-body">
             {{ status === 'cancelled' ? t('welcomeStatusCancelled') : t('welcomeStatusFailed') }}
           </p>
-          <button class="btn-primary mt-3" @click="retry">
+          <button class="vz-btn vz-btn--primary mt-3" @click="retry">
             {{ t('welcomeRetry') }}
           </button>
         </template>
 
         <!-- Counted, but the detail pass gave up: worth saying, not worth alarming over -->
-        <div v-else-if="status !== 'done'" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-          <p class="text-sm text-gray-500 dark:text-gray-400">
+        <div v-else-if="status !== 'done'" class="mt-4 pt-4 border-t border-line">
+          <p class="vz-body">
             {{ t('welcomeDetailsFailed') }}
           </p>
-          <button class="btn-ghost btn-sm mt-3" @click="retry">
+          <button class="vz-btn vz-btn--sm mt-3" @click="retry">
             {{ t('welcomeRetry') }}
           </button>
         </div>
@@ -291,11 +291,11 @@ function close() {
            list is the honest answer either way – it is what a record holds –
            but with no import behind it, it is a description of what is about to
            be recorded rather than of what already was. -->
-      <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-2">
+      <section class="vz-card welcome-card">
+        <h2 class="vz-title mb-2">
           {{ nothingToImport ? t('welcomeSavedTitleNoImport') : t('welcomeSavedTitle') }}
         </h2>
-        <ul class="text-sm space-y-1 list-disc list-inside">
+        <ul class="vz-body space-y-1 list-disc pl-5">
           <li>{{ t('welcomeSavedHostname') }}</li>
           <li>{{ t('welcomeSavedCount') }}</li>
           <li>{{ t('welcomeSavedFirstSeen') }}</li>
@@ -308,42 +308,42 @@ function close() {
              the gap is a starting condition rather than a permanent one.
              Nothing of that applies where no history was read: there the depth
              is simply the day the extension arrived. -->
-        <p class="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
+        <p class="vz-small mt-3 leading-relaxed">
           {{ nothingToImport ? t('welcomeSavedNoImportNote') : t('welcomeSavedRetention') }}
         </p>
-        <h3 class="text-sm font-semibold mt-4 mb-1">
+        <h3 class="vz-heading mt-4 mb-1">
           {{ t('welcomeNotSavedTitle') }}
         </h3>
-        <p class="text-sm">
+        <p class="vz-body">
           {{ t('welcomeNotSaved') }}
         </p>
       </section>
 
-      <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-2">
+      <section class="vz-card welcome-card">
+        <h2 class="vz-title mb-2">
           {{ t('welcomeStorageTitle') }}
         </h2>
-        <p class="text-sm leading-relaxed">
+        <p class="vz-body">
           {{ t('welcomeStorageBody') }}
         </p>
       </section>
 
       <!-- Defaults are one person's guess without any data behind them, and the
            settings are where the extension explains itself best -->
-      <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-2">
+      <section class="vz-card welcome-card">
+        <h2 class="vz-title mb-2">
           {{ t('welcomeDefaultsTitle') }}
         </h2>
-        <p class="text-sm leading-relaxed">
+        <p class="vz-body">
           {{ t('welcomeDefaultsBody') }}
         </p>
       </section>
 
       <div class="flex gap-3 justify-center pb-6">
-        <button class="btn-primary" @click="close">
+        <button class="vz-btn vz-btn--primary" @click="close">
           {{ t('welcomeDone') }}
         </button>
-        <button class="btn-ghost" @click="openSettings">
+        <button class="vz-btn" @click="openSettings">
           {{ t('welcomeOpenSettings') }}
         </button>
       </div>
@@ -352,6 +352,25 @@ function close() {
 </template>
 
 <style scoped>
+.welcome-display {
+  margin-top: var(--space-4);
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
+}
+
+.welcome-card {
+  padding: var(--space-6);
+}
+
+.welcome-figure {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* The reading phase has no count to show, so the bar sweeps instead of filling */
 .welcome-indeterminate {
   animation: welcome-sweep 1.2s ease-in-out infinite;

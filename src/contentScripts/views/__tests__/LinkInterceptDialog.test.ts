@@ -1,6 +1,6 @@
 import type { LinkInterceptData } from '~/logic/ui-state'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import LinkInterceptDialog from '../LinkInterceptDialog.vue'
 
 const baseData: LinkInterceptData = {
@@ -23,6 +23,10 @@ const defaultProps = {
 }
 
 describe('linkInterceptDialog component', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('renders when visible with data', () => {
     const wrapper = mount(LinkInterceptDialog, { props: defaultProps })
     expect(wrapper.find('.dialog-container').exists()).toBe(true)
@@ -50,27 +54,51 @@ describe('linkInterceptDialog component', () => {
   it('emits cancel when close button is clicked', async () => {
     const wrapper = mount(LinkInterceptDialog, { props: defaultProps })
     // Close button is the X icon with close-x class
-    const closeBtn = wrapper.find('button.close-x')
+    const closeBtn = wrapper.get('button[aria-label="closeDialog"]')
     await closeBtn.trigger('click')
     expect(wrapper.emitted('cancel')).toBeTruthy()
   })
 
   it('emits continue when continue button is clicked', async () => {
+    vi.useFakeTimers()
     const wrapper = mount(LinkInterceptDialog, { props: defaultProps })
-    const buttons = wrapper.findAll('button')
-    // Continue button has red background
-    const continueBtn = buttons.find(b => b.classes().some(c => c.includes('bg-red')))
-    await continueBtn!.trigger('click')
+    await vi.advanceTimersByTimeAsync(500)
+    await wrapper.get('[data-action="continue"]').trigger('click')
+    expect(wrapper.emitted('continue')).toBeTruthy()
+  })
+
+  // The click that opened the dialog is often the first of a double click, and
+  // the second must not land on the way through
+  it('ignores continue for the first half second', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(LinkInterceptDialog, { props: defaultProps })
+    await wrapper.get('[data-action="continue"]').trigger('click')
+    expect(wrapper.emitted('continue')).toBeFalsy()
+    await vi.advanceTimersByTimeAsync(500)
+    await wrapper.get('[data-action="continue"]').trigger('click')
+    expect(wrapper.emitted('continue')).toBeTruthy()
+  })
+
+  // Going ahead is the risk button, the way back is the loud one
+  it('makes the way back the primary action and continuing the risk one', () => {
+    const wrapper = mount(LinkInterceptDialog, { props: defaultProps })
+    expect(wrapper.get('[data-action="back"]').classes()).toContain('vz-btn--primary')
+    expect(wrapper.get('[data-action="continue"]').classes()).toContain('vz-btn--risk')
+  })
+
+  // A familiar destination with nothing to weigh has a plain way through, and
+  // nothing to wait for
+  it('lets a calm "Go to link" through at once', async () => {
+    const wrapper = mount(LinkInterceptDialog, { props: { ...defaultProps, data: { ...baseData, isSafe: true, stats: { count: 50 } } } })
+    expect(wrapper.find('[data-action="back"]').exists()).toBe(false)
+    await wrapper.get('[data-action="continue"]').trigger('click')
     expect(wrapper.emitted('continue')).toBeTruthy()
   })
 
   it('shows details button when no mismatch', async () => {
     const wrapper = mount(LinkInterceptDialog, { props: defaultProps })
-    const buttons = wrapper.findAll('button')
-    const detailsBtn = buttons.find(b => b.classes().some(c => c.includes('bg-blue')))
-    expect(detailsBtn).toBeTruthy()
-
-    await detailsBtn!.trigger('click')
+    const detailsBtn = wrapper.get('[data-action="details"]')
+    await detailsBtn.trigger('click')
     expect(wrapper.emitted('details')?.[0]).toEqual(['suspicious.com'])
   })
 
@@ -154,9 +182,7 @@ describe('linkInterceptDialog component', () => {
     const wrapper = mount(LinkInterceptDialog, {
       props: { ...defaultProps, data: shortData },
     })
-    const buttons = wrapper.findAll('button')
-    const resolveBtn = buttons.find(b => b.classes().some(c => c.includes('bg-orange')))
-    expect(resolveBtn).toBeTruthy()
+    expect(wrapper.find('[data-action="resolve"]').exists()).toBe(true)
   })
 
   it('emits resolveShortUrl when resolve button is clicked', async () => {
@@ -176,9 +202,7 @@ describe('linkInterceptDialog component', () => {
     const wrapper = mount(LinkInterceptDialog, {
       props: { ...defaultProps, data: shortData },
     })
-    const buttons = wrapper.findAll('button')
-    const resolveBtn = buttons.find(b => b.classes().some(c => c.includes('bg-orange')))
-    await resolveBtn!.trigger('click')
+    await wrapper.get('[data-action="resolve"]').trigger('click')
     expect(wrapper.emitted('resolveShortUrl')).toBeTruthy()
   })
 

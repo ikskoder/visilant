@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyVisit, classifyHost, dayKey, isTrackableHostname, VISIT_DEBOUNCE_MS } from '../visit-stats'
+import { applyVisit, classifyHost, dayKey, isTrackableHostname, untrackedReason, VISIT_DEBOUNCE_MS } from '../visit-stats'
 
 // Local noon, so the day key cannot slip into a neighbouring day in any timezone
 function at(year: number, month: number, day: number, hour = 12, minute = 0) {
@@ -133,5 +133,19 @@ describe('isTrackableHostname', () => {
     expect(isTrackableHostname('::1')).toBe(false)
     expect(isTrackableHostname('localhost')).toBe(false)
     expect(isTrackableHostname('printer.lan')).toBe(false)
+  })
+})
+
+describe('untrackedReason', () => {
+  it('calls a private address an IP address, dots or not', () => {
+    // It used to be told it "has no dot in it", which 192.168.1.1 plainly has
+    expect(untrackedReason('192.168.1.1')).toBe('ip')
+    expect(untrackedReason('10.0.0.1')).toBe('ip')
+    expect(untrackedReason('[fe80::1]')).toBe('ip')
+  })
+
+  it('calls everything else that is not counted a local name', () => {
+    expect(untrackedReason('localhost')).toBe('local')
+    expect(untrackedReason('printer.lan')).toBe('local')
   })
 })

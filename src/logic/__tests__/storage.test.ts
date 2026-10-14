@@ -43,7 +43,6 @@ describe('defaultSettings', () => {
 
   it('has correct display defaults', () => {
     expect(defaultSettings.domainCase).toBe('lower')
-    expect(defaultSettings.domainHighlighting).toBe(false)
     expect(defaultSettings.punycodeListMode).toBe('unicode')
     expect(defaultSettings.popupFontSize).toBe(100)
   })
@@ -107,7 +106,6 @@ describe('defaultSettings', () => {
       'sortByName',
       'sortOrder',
       'domainCase',
-      'domainHighlighting',
       'punycodeListMode',
       'popupFontSize',
       'linkSafety',

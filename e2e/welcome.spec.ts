@@ -45,7 +45,7 @@ async function openWelcome(context: any, extensionId: string) {
 
 /** The two figures the page ends on, sites first. */
 function stats(page: any) {
-  return page.locator('.text-2xl.font-bold')
+  return page.locator('.welcome-figure')
 }
 
 test('installing the extension opens the welcome page by itself', async ({ context }) => {

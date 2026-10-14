@@ -76,7 +76,7 @@ describe('badgeText', () => {
 describe('toolbarLook', () => {
   it('draws an unfamiliar site in red', () => {
     expect(toolbarLook(false, false)).toBe('unfamiliar')
-    expect(BADGE_COLORS.unfamiliar).toBe('#ff4444')
+    expect(BADGE_COLORS.unfamiliar).toBe('#c8232c')
     expect(ACTION_ICONS.unfamiliar).toBe('site-danger')
   })
 
@@ -93,6 +93,6 @@ describe('toolbarLook', () => {
     // warning here to silence
     expect(toolbarLook(true, false)).toBe('familiar')
     expect(toolbarLook(true, true)).toBe('familiar')
-    expect(BADGE_COLORS.familiar).toBe('#00C851')
+    expect(BADGE_COLORS.familiar).toBe('#1a7f43')
   })
 })

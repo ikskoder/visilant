@@ -105,3 +105,54 @@ export function visitKey(hostname: string): string {
   }
   return key
 }
+
+/**
+ * How many labels from the right belong to the owner, and how many of those
+ * are the public suffix.
+ *
+ * What the address painter needs to draw the registrable domain's labels in
+ * heavier frames. Counts rather than strings, because a count survives the
+ * switch between the Unicode and the encoded (`xn--`) spelling of one name and
+ * a string does not – and owner frames that silently failed to appear would
+ * fail exactly on the international lookalikes they matter most for.
+ *
+ * Zero owner labels means there is no owner to speak of: an IP address, a
+ * dotless intranet name, a suffix on its own.
+ */
+export interface AddressShape {
+  ownerLabels: number
+  suffixLabels: number
+}
+
+/** The dots the address painter splits on, which IDNA treats as label separators. */
+const PAINTED_DOTS = /[.\u3002\uFF0E\uFF61]/
+
+export function addressShape(hostname: string): AddressShape {
+  const raw = hostname.trim().toLowerCase().replace(/[.\u3002\uFF0E\uFF61]$/, '')
+  let host = raw
+  // The suffix list is matched on the ASCII spelling, and the URL parser is
+  // also what folds the three other IDNA dots into a plain one, so the counts
+  // line up with the labels the painter splits on
+  try {
+    host = new URL(`http://${host}`).hostname
+  }
+  catch {
+    // Not a name a browser would open, so there is nobody it belongs to
+    return { ownerLabels: 0, suffixLabels: 0 }
+  }
+  host = host.replace(/\.$/, '')
+
+  const site = siteDomain(host)
+  if (!site)
+    return { ownerLabels: 0, suffixLabels: 0 }
+  // The parser also folds look-alike dots (U+2024, U+FE52…) into real ones.
+  // The painter does not split on those, so counts taken here would land the
+  // owner's frames on the wrong labels. No owner is the honest answer then.
+  if (raw.split(PAINTED_DOTS).length !== host.split('.').length)
+    return { ownerLabels: 0, suffixLabels: 0 }
+  const suffix = getPublicSuffix(host, BOUNDARY)
+  return {
+    ownerLabels: site.split('.').length,
+    suffixLabels: suffix ? suffix.split('.').length : 0,
+  }
+}

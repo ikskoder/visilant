@@ -81,10 +81,16 @@ export function toolbarLook(isFamiliar: boolean, silenced: boolean): ToolbarLook
   return silenced ? 'silenced' : 'unfamiliar'
 }
 
-/** Badge background per look. The browser picks the text colour to match. */
+/**
+ * Badge background per look. The browser picks the text colour to match, and
+ * all three are dark enough that it picks white. They are the design system's
+ * `safe` and `danger` in the light theme, fixed: the background script has no
+ * theme to follow, and the old bright green and red left white digits at about
+ * 2:1, too faint to read at badge size.
+ */
 export const BADGE_COLORS: Record<ToolbarLook, string> = {
-  familiar: '#00C851',
-  unfamiliar: '#ff4444',
+  familiar: '#1a7f43',
+  unfamiliar: '#c8232c',
   silenced: '#5f6368',
 }
 

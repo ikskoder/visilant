@@ -27,7 +27,7 @@ const CHECK_INPUT = 'textarea[placeholder="Paste a link, domain or email address
  * the wrong half of the page.
  */
 function field(page: any) {
-  return page.locator(`div:has(> div > ${CHECK_INPUT})`)
+  return page.locator('[data-check-field]')
 }
 
 /**

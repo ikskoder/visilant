@@ -24,7 +24,7 @@ test('popup page loads and shows logo', async ({ page, extensionId }) => {
 
 test('popup shows "visit a website" placeholder when no tab context', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html`)
-  await expect(page.locator('text=🌍')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('[data-no-site]')).toBeVisible({ timeout: 5000 })
 })
 
 test('popup has settings button', async ({ page, extensionId }) => {
@@ -48,7 +48,7 @@ test('popup shows visit count for domain', async ({ page, extensionId, context }
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)
   await expect(page.locator(`text=${SITE_HOST}`).first()).toBeVisible({ timeout: 5000 })
-  await expect(page.locator('.font-mono').filter({ hasText: /^3$/ }).first()).toBeAttached({ timeout: 5000 })
+  await expect(page.locator('[data-criterion="visits"]').filter({ hasText: /^3$/ }).first()).toBeAttached({ timeout: 5000 })
 })
 
 /**
@@ -81,7 +81,7 @@ test('popup shows "no visit data" for unvisited domain', async ({ page, extensio
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=never-visited-domain-12345.com`)
   await page.waitForTimeout(1000)
   // Should show the "no visit data" message since no related domains exist
-  const domainList = page.locator('.overflow-y-auto')
+  const domainList = page.locator('.popup-list')
   await expect(domainList).not.toBeAttached({ timeout: 3000 })
 })
 
@@ -98,11 +98,11 @@ test('popup font size increase/decrease buttons work', async ({ page, extensionI
   await expect(fontSizeDisplay).toBeAttached({ timeout: 5000 })
 
   // Click increase button (A+)
-  await page.locator('button[title="Increase font size"]').click()
+  await page.locator('button[title="Make text larger"]').click()
   await expect(page.locator('text=110%').first()).toBeAttached({ timeout: 3000 })
 
   // Click decrease button (A-)
-  await page.locator('button[title="Decrease font size"]').click()
+  await page.locator('button[title="Make text smaller"]').click()
   await expect(page.locator('text=100%').first()).toBeAttached({ timeout: 3000 })
 })
 
@@ -121,12 +121,12 @@ test('popup sort controls are visible for domain with data', async ({ page, exte
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)
 
-  // Sort order toggle button (↑ or ↓)
-  const sortToggle = page.locator('button:has-text("↑"), button:has-text("↓")')
+  // Sort order toggle button, an arrow icon either way up
+  const sortToggle = page.locator('button:has(.vz-icon--sort-asc), button:has(.vz-icon--sort-desc)')
   await expect(sortToggle.first()).toBeAttached({ timeout: 5000 })
 
-  // Highlighting toggle (🌈)
-  await expect(page.locator('button:has-text("🌈")')).toBeAttached({ timeout: 3000 })
+  // Address display toggles
+  await expect(page.locator('[data-toggle="frames"]')).toBeAttached({ timeout: 3000 })
 })
 
 // ==========================================
@@ -196,7 +196,7 @@ test('link safety section has master toggle', async ({ page, extensionId }) => {
 
   // Found by content rather than by position: the sections have been reordered
   // before and an index makes this assert whichever card happens to sit there
-  const linkSafetyCard = page.locator('.bg-white.rounded-lg.shadow')
+  const linkSafetyCard = page.locator('.vz-card')
     .filter({ has: page.locator('input[type="radio"][value="hover"]') })
   const linkSafetyCheckboxes = linkSafetyCard.locator('input[type="checkbox"]')
   expect(await linkSafetyCheckboxes.count()).toBeGreaterThanOrEqual(1)
@@ -334,7 +334,7 @@ test('visiting a page tracks the domain', async ({ page, extensionId, context })
   await popupPage.waitForTimeout(1000)
   await expect(popupPage.locator(`text=${SITE_HOST}`).first()).toBeVisible({ timeout: 5000 })
   // Counted once, rather than merely displayed
-  await expect(popupPage.locator('.font-mono').filter({ hasText: /^1$/ }).first()).toBeAttached({ timeout: 5000 })
+  await expect(popupPage.locator('[data-criterion="visits"]').filter({ hasText: /^1$/ }).first()).toBeAttached({ timeout: 5000 })
   await popupPage.close()
 })
 
@@ -388,9 +388,9 @@ test('popup shows anti-tampering status for domain', async ({ page, extensionId 
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await page.waitForTimeout(1000)
 
-  // Green dot (protected) or amber dot should be visible
-  const statusDot = page.locator('.bg-green-500, .bg-amber-400')
-  await expect(statusDot.first()).toBeAttached({ timeout: 5000 })
+  // The row says whether the site is protected, either way round
+  const status = page.locator('div:has(> [data-anti-tampering-toggle]) [data-status]')
+  await expect(status.first()).toBeAttached({ timeout: 5000 })
 })
 
 test('popup can toggle anti-tampering for domain', async ({ page, extensionId }) => {
@@ -402,20 +402,20 @@ test('popup can toggle anti-tampering for domain', async ({ page, extensionId })
   const toggleButton = page.locator('[data-anti-tampering-toggle]')
   const row = page.locator('div:has(> [data-anti-tampering-toggle])')
 
-  // Should show green dot (protected by default)
-  await expect(row.locator('.bg-green-500')).toBeAttached({ timeout: 5000 })
+  // Protected by default
+  await expect(row.locator('[data-status="on"]')).toBeAttached({ timeout: 5000 })
 
   // Click the toggle button (disable protection)
   await toggleButton.click()
   await page.waitForTimeout(500)
 
-  // Should now show amber dot (not protected)
-  await expect(row.locator('.bg-amber-400')).toBeAttached({ timeout: 3000 })
+  // Not protected now
+  await expect(row.locator('[data-status="off"]')).toBeAttached({ timeout: 3000 })
 
   // Toggle back
   await toggleButton.click()
   await page.waitForTimeout(500)
-  await expect(row.locator('.bg-green-500')).toBeAttached({ timeout: 3000 })
+  await expect(row.locator('[data-status="on"]')).toBeAttached({ timeout: 3000 })
 })
 
 // ==========================================
@@ -456,7 +456,7 @@ test('changing safety threshold in options affects visit count color in popup', 
   let popup = await context.newPage()
   await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await popup.waitForTimeout(1500)
-  await expect(popup.locator('.text-green-600').first()).toBeAttached({ timeout: 5000 })
+  await expect(popup.locator('[data-passed="visits"][data-result="pass"]').first()).toBeAttached({ timeout: 5000 })
   await popup.close()
 
   // Now set threshold to 999 (count 1 < 999, so red)
@@ -466,7 +466,7 @@ test('changing safety threshold in options affects visit count color in popup', 
   popup = await context.newPage()
   await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
   await popup.waitForTimeout(1500)
-  await expect(popup.locator('.text-red-500').first()).toBeAttached({ timeout: 5000 })
+  await expect(popup.locator('[data-passed="visits"][data-result="fail"]').first()).toBeAttached({ timeout: 5000 })
   await popup.close()
 
   // Reset threshold
@@ -491,7 +491,7 @@ test('excluding domain in popup appears in options anti-tampering textarea', asy
   const toggleBtn = popup.locator('[data-anti-tampering-toggle]')
   await toggleBtn.click()
   await popup.waitForTimeout(500)
-  await expect(popup.locator('.bg-amber-400').first()).toBeAttached({ timeout: 3000 })
+  await expect(popup.locator('div:has(> [data-anti-tampering-toggle]) [data-status="off"]').first()).toBeAttached({ timeout: 3000 })
   await popup.close()
 
   // Open options – the anti-tampering textarea should list it
@@ -570,9 +570,9 @@ test('popup font size setting persists', async ({ page, extensionId, context }) 
   await page.waitForTimeout(1000)
 
   // Increase font twice: 100% → 120%
-  await page.locator('button[title="Increase font size"]').click()
+  await page.locator('button[title="Make text larger"]').click()
   await page.waitForTimeout(300)
-  await page.locator('button[title="Increase font size"]').click()
+  await page.locator('button[title="Make text larger"]').click()
   await page.waitForTimeout(300)
   await expect(page.locator('text=120%').first()).toBeAttached({ timeout: 3000 })
 
@@ -584,9 +584,9 @@ test('popup font size setting persists', async ({ page, extensionId, context }) 
   await popup2.close()
 
   // Reset font size back to 100%
-  await page.locator('button[title="Decrease font size"]').click()
+  await page.locator('button[title="Make text smaller"]').click()
   await page.waitForTimeout(300)
-  await page.locator('button[title="Decrease font size"]').click()
+  await page.locator('button[title="Make text smaller"]').click()
 })
 
 // ==========================================
@@ -646,7 +646,7 @@ test('the options page has contents that scroll to a section', async ({ page, ex
  * still lands – which is exactly what `uncheck()` cannot cope with.
  */
 async function clickCriterion(scope: any, index: number) {
-  await scope.locator('#section-familiarity .space-y-3 > div').nth(index).locator('span.text-sm.font-medium').click()
+  await scope.locator('#section-familiarity .space-y-3 > div').nth(index).locator('span.vz-heading').click()
 }
 
 test('the familiarity section switches a check on and keeps the last one', async ({ page, extensionId }) => {
@@ -748,7 +748,7 @@ test('turning explanations off empties the settings page of them and nothing els
   const foldedBefore = await page.locator('#section-familiarity .hint').count()
 
   // The toggle sits last in General, next to the theme picker
-  await page.locator('#section-general label.cursor-pointer').last().click()
+  await page.locator('#section-general label.vz-switch').last().click()
   await page.waitForTimeout(700)
 
   // Everything except those is still in the markup, just not taking up the page
@@ -767,7 +767,7 @@ test('turning explanations off empties the settings page of them and nothing els
   await expect(popup.locator('.hint')).toHaveCount(0)
   await popup.close()
 
-  await page.locator('#section-general label.cursor-pointer').last().click()
+  await page.locator('#section-general label.vz-switch').last().click()
   await page.waitForTimeout(700)
   await expect(hints.first()).toBeVisible()
 })
@@ -1008,7 +1008,7 @@ test('wiping the visits updates what the page says about the import, without a r
 
   await page.locator('label', { hasText: 'All information about site visits' }).locator('input').check()
   await page.locator('button', { hasText: 'Reset selected data' }).click()
-  await page.locator('.btn-danger', { hasText: 'Reset' }).last().click()
+  await page.locator('.vz-btn--destroy', { hasText: 'Reset' }).last().click()
 
   // The import state was wiped along with the visits, and this page is the one
   // that wiped it – so it says so straight away rather than at the next reload
@@ -1092,7 +1092,7 @@ test('a reset takes the lookalike index down with the records', async ({ page, c
   await page.locator('#section-data').waitFor({ state: 'visible', timeout: 20000 })
   await page.locator('label', { hasText: 'All information about site visits' }).locator('input').check({ timeout: 20000 })
   await page.locator('button', { hasText: 'Reset selected data' }).click()
-  await page.locator('.btn-danger', { hasText: 'Reset' }).last().click()
+  await page.locator('.vz-btn--destroy', { hasText: 'Reset' }).last().click()
   await page.waitForTimeout(1500)
 
   // Nothing left to resemble
@@ -1303,7 +1303,8 @@ test('a site shortcut is not reported as typing, but typing into a field is', as
 })
 
 /**
- * The colour on the visit count in the checked-domain card.
+ * The mark on the visit count in the checked-domain card: a tick in green or a
+ * cross in red, read off the result it carries rather than its colour class.
  *
  * Asked for by criterion rather than by looking for a bold monospace number.
  * The card now draws one cell per check and a bolder one for the tally, so
@@ -1313,11 +1314,10 @@ test('a site shortcut is not reported as typing, but typing into a field is', as
  */
 async function countColour(page: any): Promise<string> {
   return page.evaluate(() => {
-    const el = document.querySelector('[data-criterion="visits"]')
-    const cls = el?.className ?? ''
-    if (cls.includes('text-green'))
+    const result = document.querySelector('[data-passed="visits"]')?.getAttribute('data-result')
+    if (result === 'pass')
       return 'green'
-    if (cls.includes('text-red'))
+    if (result === 'fail')
       return 'red'
     return 'none'
   })

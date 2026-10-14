@@ -143,7 +143,7 @@ describe('domainMarkers component', () => {
     })
     await flushPromises()
     // userinfo + embedded ending + depth
-    expect(wrapper.findAll('span[aria-hidden="true"]')).toHaveLength(3)
+    expect(wrapper.findAll('[data-marker]')).toHaveLength(3)
   })
 
   it('draws the subdomain depth as a plain number, not as part of an address', () => {
@@ -152,7 +152,7 @@ describe('domainMarkers component', () => {
     expect(count.text()).toBe('4')
     // No digit highlighting inside it, which is what SecureText would add
     expect(count.find('.secure-domain-display').exists()).toBe(false)
-    expect(count.html()).not.toContain('text-blue')
+    expect(count.find('.vz-ch--digit').exists()).toBe(false)
   })
 
   it('never echoes a password from the URL', () => {

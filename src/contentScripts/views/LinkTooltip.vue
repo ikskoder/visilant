@@ -7,6 +7,10 @@ import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import MailRecipients from '~/components/MailRecipients.vue'
 import SecureText from '~/components/SecureText.vue'
+import VzBadge from '~/components/VzBadge.vue'
+import VzIcon from '~/components/VzIcon.vue'
+import VzNotice from '~/components/VzNotice.vue'
+import VzSig from '~/components/VzSig.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import MismatchTable from './MismatchTable.vue'
@@ -20,7 +24,6 @@ const props = defineProps<{
   showFullUrl: boolean
   traceChain: boolean
   shortUrlMode: 'off' | 'button' | 'auto'
-  isDark: boolean
 }>()
 
 const emit = defineEmits<{
@@ -183,84 +186,64 @@ onBeforeUnmount(() => {
       @mouseenter="emit('hoverEnter')"
       @mouseleave="emit('close')"
     >
-      <div class="tooltip-container rounded-lg shadow-2xl p-3" :class="[isDark ? 'bg-gray-900 bg-opacity-95 border border-gray-700/50' : 'bg-white border border-gray-200', { 'tooltip-wide': data.mismatch || (data.shortUrl?.status === 'resolved' && traceChain && data.shortUrl.chain.length > 2) }]" :style="{ fontSize: `${fontScale}em` }">
+      <div
+        class="tooltip-container vz-overlay vz-tooltip"
+        :class="{ 'tooltip-wide': data.mismatch || (data.shortUrl?.status === 'resolved' && traceChain && data.shortUrl.chain.length > 2) }"
+        :style="{ '--vz-scale': fontScale }"
+      >
         <!-- Email address (mailto link, selection or QR payload) -->
         <template v-if="data.kind === 'email' && data.email">
-          <div class="flex items-center flex-wrap gap-1.5 mb-1">
-            <span class="tooltip-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">{{ t('emailTooltipTitle') }}</span>
-            <!-- Public/disposable providers: visit-based status is meaningless -->
-            <span v-if="data.email.providerKind === 'disposable'" class="tooltip-label px-1.5 py-0.5 rounded" :class="isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700'">
+          <div class="tooltip-head">
+            <VzSig />
+            <!-- Public and throwaway providers: a visit count says nothing about them -->
+            <VzBadge v-if="data.email.providerKind === 'disposable'" tone="danger" icon="alert" data-verdict="disposable">
               {{ t('emailDisposableDomain') }}
-            </span>
-            <span v-else-if="data.email.providerKind === 'public'" class="tooltip-label px-1.5 py-0.5 rounded" :class="isDark ? 'bg-blue-900/40 text-blue-400' : 'bg-blue-100 text-blue-700'">
+            </VzBadge>
+            <VzBadge v-else-if="data.email.providerKind === 'public'" tone="neutral" icon="email" data-verdict="public">
               {{ t('emailPublicProvider') }}
-            </span>
-            <span
-              v-else
-              class="tooltip-label px-1.5 py-0.5 rounded"
-              :class="data.isSafe
-                ? (isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700')
-                : data.stats.count === 0
-                  ? (isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700')
-                  : (isDark ? 'bg-yellow-900/40 text-yellow-400' : 'bg-yellow-100 text-yellow-700')"
-            >
-              <!-- Never "never visited" here: nobody visits an address, and beside
-                   "Email address" it read as though they could -->
-              {{ t(data.isSafe ? 'linkTooltipFamiliar' : 'linkTooltipUnfamiliar').toLowerCase() }}
-            </span>
+            </VzBadge>
+            <!-- Never "never visited" here: nobody visits an address, and beside
+                 "Email address" it read as though they could -->
+            <VzBadge v-else :tone="data.isSafe ? 'safe' : 'danger'" :icon="data.isSafe ? 'pass' : 'alert'" :data-verdict="data.isSafe ? 'familiar' : 'unfamiliar'">
+              {{ t(data.isSafe ? 'linkTooltipFamiliar' : 'linkTooltipUnfamiliar') }}
+            </VzBadge>
           </div>
+          <span class="vz-eyebrow">{{ t('emailTooltipTitle') }}</span>
 
           <!-- Visible text shows a different address than the actual mailto target -->
-          <div v-if="data.email.mismatch" class="mb-2 p-2 rounded" :class="isDark ? 'bg-red-900/30' : 'bg-red-50'">
-            <div class="flex items-center gap-1 mb-1 tooltip-label font-medium" :class="isDark ? 'text-red-400' : 'text-red-600'">
-              ⚠ {{ t('emailTooltipMismatchWarning') }}
-            </div>
-            <div class="tooltip-label" :class="isDark ? 'text-gray-300' : 'text-gray-700'">
-              {{ t('emailTooltipShownAddress') }}: <SecureText :text="data.email.mismatch.textAddress" :force-highlight="true" :danger-only="true" :preserve-case="true" />
-            </div>
-            <div class="tooltip-label" :class="isDark ? 'text-gray-300' : 'text-gray-700'">
-              {{ t('emailTooltipActualAddress') }}: <SecureText :text="data.email.analysis.raw" :force-highlight="true" :danger-only="true" :preserve-case="true" />
-            </div>
-          </div>
+          <VzNotice v-if="data.email.mismatch" tone="danger">
+            <p class="vz-body-strong">
+              {{ t('emailTooltipMismatchWarning') }}
+            </p>
+            <p>{{ t('emailTooltipShownAddress') }}: <SecureText kind="email" :text="data.email.mismatch.textAddress" size="s" preserve-case /></p>
+            <p>{{ t('emailTooltipActualAddress') }}: <SecureText kind="email" :text="data.email.analysis.raw" size="s" preserve-case /></p>
+          </VzNotice>
 
-          <EmailBreakdown :analysis="data.email.analysis" :params="data.email.params" :provider-kind="data.email.providerKind" :is-dark="isDark" compact />
+          <EmailBreakdown :analysis="data.email.analysis" :params="data.email.params" :provider-kind="data.email.providerKind" compact />
 
           <!-- A mailto carries a list. Only the first name used to be checked. -->
           <MailRecipients
             v-if="data.email.recipients"
             :recipients="data.email.recipients"
             :not-checked="data.email.recipientsNotChecked"
-            :is-dark="isDark"
           />
 
-          <!-- Visit count for the address's domain (regular domains only) -->
-          <div v-if="data.email.providerKind === 'regular' && shouldShowCount(data.isSafe)" class="tooltip-label mt-1 mb-2" :class="isDark ? 'text-white' : 'text-gray-800'">
-            <!-- Named, because the address printed just above is not what was visited -->
-            <div :class="isDark ? 'text-gray-400' : 'text-gray-500'">
-              {{ t('emailSiteFactsLabel') }}: <SecureText :text="data.domain" />
-            </div>
+          <!-- Visit facts for the address's domain (regular domains only).
+               Named, because the address printed above is not what was visited. -->
+          <div v-if="data.email.providerKind === 'regular' && shouldShowCount(data.isSafe)" class="grid gap-2">
+            <span class="vz-small">{{ t('emailSiteFactsLabel') }}: <SecureText :text="data.domain" size="s" /></span>
             <FamiliarityFacts :stats="data.stats" />
           </div>
 
           <!-- Structural markers of the address's domain -->
-          <DomainMarkers :hostname="data.domain" context="email" class="tooltip-label" />
-          <LookalikeNotice :hostname="data.domain" context="email" class="tooltip-label" />
+          <DomainMarkers :hostname="data.domain" context="email" bare />
+          <LookalikeNotice :hostname="data.domain" context="email" bare />
 
-          <!-- Action buttons -->
-          <div class="flex gap-2 mt-1">
-            <button
-              v-if="showGoButton"
-              class="flex-1 px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
-              @click="emit('go', data.href)"
-            >
-              {{ t('emailOpenMailApp') }} &rarr;
+          <div class="tooltip-actions">
+            <button v-if="showGoButton" class="vz-btn vz-btn--sm" data-action="go" @click="emit('go', data.href)">
+              {{ t('emailOpenMailApp') }}<VzIcon name="arrow-right" />
             </button>
-            <button
-              class="flex-1 px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 border-gray-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300'"
-              @click="emit('details', data.domain)"
-            >
+            <button class="vz-btn vz-btn--sm" data-action="details" @click="emit('details', data.domain)">
               {{ t('linkTooltipDetails') }}
             </button>
           </div>
@@ -268,29 +251,24 @@ onBeforeUnmount(() => {
 
         <!-- Raw payload (QR tel:/WIFI:/plain text or unrecognized selection) -->
         <template v-else-if="data.kind === 'text' && data.rawText">
-          <div class="tooltip-label mb-1" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+          <VzSig />
+          <span class="vz-eyebrow">
             {{ t('qrPayloadType') }}: {{ t(`qrType${data.rawText.payloadKind.charAt(0).toUpperCase()}${data.rawText.payloadKind.slice(1)}`) }}
-          </div>
-          <div
-            class="tooltip-label p-2 rounded break-all"
-            :class="isDark ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-800'"
-            style="word-break: break-all !important; max-height: 120px !important; overflow-y: auto !important;"
-          >
-            <SecureText :text="data.rawText.payload" :force-highlight="true" :danger-only="true" :preserve-case="true" />
+          </span>
+          <div class="vz-well tooltip-payload">
+            <SecureText kind="raw" :text="data.rawText.payload" size="m" />
           </div>
         </template>
 
         <!-- Mismatch: warning + comparison table -->
         <template v-else-if="data.mismatch">
-          <div class="flex items-center gap-2 mb-2">
-            <svg class="w-6 h-6 text-red-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <span class="tooltip-label font-medium" :class="isDark ? 'text-red-400' : 'text-red-600'">{{ t('linkTooltipMismatchWarning') }}</span>
+          <VzSig />
+          <div class="tooltip-title">
+            <VzIcon name="alert" large class="tone-danger" />
+            <span class="vz-body-strong">{{ t('linkTooltipMismatchWarning') }}</span>
           </div>
 
           <MismatchTable
-            class="tooltip-label mb-2"
             :text-domain="data.mismatch.textDomain"
             :text-domain-is-safe="data.mismatch.textDomainIsSafe"
             :text-domain-stats="data.mismatch.textDomainStats"
@@ -298,238 +276,151 @@ onBeforeUnmount(() => {
             :dest-is-safe="data.isSafe"
             :dest-stats="data.stats"
             :show-visit-count="showVisitCount"
-            cell-padding="p-1.5"
             @details="emit('details', $event)"
           />
 
-          <!-- Punycode warning. Skipped when it would repeat the domain verbatim,
-               which is what happens for links that already arrive in punycode form -->
-          <div v-if="data.punycode && data.punycode !== data.domain" class="flex items-center gap-1 mb-2 tooltip-label" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
-            <span>{{ t('linkTooltipPunycode') }}: {{ data.punycode }}</span>
-          </div>
+          <!-- Punycode. Skipped when it would repeat the domain verbatim, which is
+               what happens for links that already arrive in punycode form -->
+          <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" />
+          </VzNotice>
 
-          <!-- Structural markers -->
-          <DomainMarkers :hostname="data.domain" :url="data.href" class="tooltip-label" />
-          <LookalikeNotice :hostname="data.domain" class="tooltip-label" />
+          <DomainMarkers :hostname="data.domain" :url="data.href" bare />
+          <LookalikeNotice :hostname="data.domain" bare />
 
-          <!-- Go button -->
-          <button
-            v-if="showGoButton"
-            class="w-full px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
-            :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
-            @click="emit('go', data.href)"
-          >
-            {{ t('linkTooltipGoToLink') }} &rarr;
+          <button v-if="showGoButton" class="vz-btn vz-btn--sm vz-btn--block" data-action="go" @click="emit('go', data.href)">
+            {{ t('linkTooltipGoToLink') }}<VzIcon name="arrow-right" />
           </button>
         </template>
 
         <!-- No mismatch: standard view -->
         <template v-else>
-          <!-- Destination label + status -->
-          <div class="flex items-center flex-wrap gap-1.5 mb-1">
-            <span class="tooltip-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">{{ t('linkTooltipDestination') }}</span>
-            <!-- For known shorteners: only show orange "shortener" badge, never safe/unfamiliar -->
-            <template v-if="data.shortUrl?.isKnownShortener">
-              <span class="tooltip-label px-1.5 py-0.5 rounded" :class="isDark ? 'bg-orange-900/40 text-orange-400' : 'bg-orange-100 text-orange-700'">
-                {{ t('linkTooltipShortener') }}
-              </span>
-            </template>
-            <!-- For regular links: show safety status -->
-            <template v-else-if="!data.shortUrl || data.shortUrl.status !== 'resolved'">
-              <span
-                class="tooltip-label px-1.5 py-0.5 rounded"
-                :class="data.isSafe
-                  ? (isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700')
-                  : data.stats.count === 0
-                    ? (isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700')
-                    : (isDark ? 'bg-yellow-900/40 text-yellow-400' : 'bg-yellow-100 text-yellow-700')"
-              >
-                {{ statusLabel(data.isSafe, data.stats.count).text.toLowerCase() }}
-              </span>
-            </template>
+          <div class="tooltip-head">
+            <VzSig />
+            <!-- A known shortener says nothing about where it leads, so it gets
+                 its own badge and never a verdict on the shortener itself -->
+            <VzBadge v-if="data.shortUrl?.isKnownShortener" tone="danger" icon="link" data-verdict="shortener">
+              {{ t('linkTooltipShortener') }}
+            </VzBadge>
+            <VzBadge
+              v-else-if="!data.shortUrl || data.shortUrl.status !== 'resolved'"
+              :tone="statusLabel(data.isSafe, data.stats.count).tone"
+              :icon="statusLabel(data.isSafe, data.stats.count).icon"
+              :data-verdict="statusLabel(data.isSafe, data.stats.count).verdict"
+            >
+              {{ statusLabel(data.isSafe, data.stats.count).text }}
+            </VzBadge>
           </div>
 
-          <!-- Domain -->
-          <div class="flex items-center gap-2 mb-1">
-            <span
-              class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-              :class="data.shortUrl?.isKnownShortener
-                ? 'bg-orange-500'
-                : data.isSafe ? 'bg-green-500' : 'bg-red-500'"
-            />
-            <span class="font-medium tooltip-domain" :class="isDark ? 'text-white' : 'text-gray-900'">
-              <SecureText :text="data.domain" :force-highlight="true" :danger-only="true" />
-            </span>
+          <div class="grid gap-1">
+            <span class="vz-eyebrow">{{ t('linkTooltipDestination') }}</span>
+            <SecureText :text="data.domain" size="l" class="tooltip-domain" />
           </div>
 
-          <!-- Visit count: never show for known shorteners -->
-          <div v-if="!data.shortUrl?.isKnownShortener && shouldShowCount(data.isSafe)" class="tooltip-label mb-2" :class="isDark ? 'text-white' : 'text-gray-800'">
-            <FamiliarityFacts :stats="data.stats" />
-          </div>
+          <!-- Visit facts: never for a known shortener -->
+          <FamiliarityFacts v-if="!data.shortUrl?.isKnownShortener && shouldShowCount(data.isSafe)" :stats="data.stats" />
 
-          <!-- Short URL: idle state – resolve button -->
-          <div v-if="data.shortUrl?.status === 'idle'" class="mt-2 mb-1">
-            <div v-if="data.shortUrl.isKnownShortener" class="tooltip-label text-orange-400/80 mb-2">
+          <!-- Short link: idle, with the button that follows it -->
+          <template v-if="data.shortUrl?.status === 'idle'">
+            <VzNotice v-if="data.shortUrl.isKnownShortener" tone="danger" icon="link" bare>
               {{ t('linkTooltipShortUrlWarning') }}
-            </div>
-            <button
-              class="w-full px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-orange-700/60 hover:bg-orange-600/60 text-orange-100 border-orange-700/50' : 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300'"
-              @click.stop="handleResolveClick()"
-            >
-              {{ t('linkTooltipResolveButton') }}
+            </VzNotice>
+            <button class="vz-btn vz-btn--sm vz-btn--block" data-action="resolve" @click.stop="handleResolveClick()">
+              <VzIcon name="link" />{{ t('linkTooltipResolveButton') }}
             </button>
-          </div>
+          </template>
 
-          <!-- Short URL: loading -->
-          <div v-if="data.shortUrl?.status === 'loading'" class="mt-2 mb-1">
-            <button
-              class="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border tooltip-label text-center cursor-wait"
-              :class="isDark ? 'bg-gray-700 text-gray-400 border-gray-600' : 'bg-gray-100 text-gray-500 border-gray-300'"
-              disabled
-            >
-              <div class="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-              {{ t('linkTooltipResolvingUrl') }}
-            </button>
-          </div>
+          <!-- Short link: being followed -->
+          <button v-if="data.shortUrl?.status === 'loading'" class="vz-btn vz-btn--sm vz-btn--block" disabled>
+            <VzIcon name="pending" />{{ t('linkTooltipResolvingUrl') }}
+          </button>
 
-          <!-- Short URL: resolved -->
-          <div v-if="data.shortUrl?.status === 'resolved'" class="mt-2 mb-2 pt-2" :class="isDark ? 'border-t border-gray-700/50' : 'border-t border-gray-200'">
-            <div class="flex items-center gap-1 mb-1 tooltip-label" :class="isDark ? 'text-orange-400' : 'text-orange-600'">
-              <svg class="w-3.5 h-3.5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-              </svg>
-              <span>{{ t('linkTooltipShortenedUrl') }}</span>
+          <!-- Short link: followed to its end -->
+          <div v-if="data.shortUrl?.status === 'resolved'" class="tooltip-section">
+            <div class="tooltip-head">
+              <span class="vz-eyebrow inline-flex items-center gap-1"><VzIcon name="link" />{{ t('linkTooltipShortenedUrl') }}</span>
+              <VzBadge
+                :tone="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).tone"
+                :icon="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).icon"
+                :data-verdict="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).verdict"
+              >
+                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).text }}
+              </VzBadge>
             </div>
-
-            <!-- Resolved domain -->
-            <div class="flex items-center gap-2 mb-1">
-              <span
-                class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-                :class="data.shortUrl.resolvedIsSafe ? 'bg-green-500' : 'bg-red-500'"
-              />
-              <span class="font-medium tooltip-domain" :class="isDark ? 'text-white' : 'text-gray-900'">
-                <SecureText :text="data.shortUrl.resolvedDomain" :force-highlight="true" :danger-only="true" />
-              </span>
-            </div>
+            <SecureText :text="data.shortUrl.resolvedDomain" size="l" class="tooltip-domain" />
 
             <!-- Full URL if enabled -->
-            <div v-if="showFullUrl && data.shortUrl.resolvedUrl" class="tooltip-label mb-1 break-all" :class="isDark ? 'text-gray-400' : 'text-gray-500'" style="word-break: break-all !important; max-width: min(560px, 85vw) !important;">
+            <p v-if="showFullUrl && data.shortUrl.resolvedUrl" class="vz-small tooltip-url">
               {{ data.shortUrl.resolvedUrl }}
-            </div>
+            </p>
 
             <!-- The destination gets the same reading as the address the user
                  could see. It used to get a visit count and nothing else, so a
                  short link to a lookalike or to a punycode name came out as
                  "somewhere you have not been" and no more than that. -->
-            <div v-if="data.shortUrl.resolvedPunycode" class="tooltip-label mb-1" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
-              {{ t('linkTooltipPunycode') }}: {{ data.shortUrl.resolvedPunycode }}
-            </div>
-            <DomainMarkers :hostname="data.shortUrl.resolvedDomain" class="tooltip-label mb-1" />
-            <LookalikeNotice :hostname="data.shortUrl.resolvedDomain" class="tooltip-label mb-1" />
+            <VzNotice v-if="data.shortUrl.resolvedPunycode" tone="danger" bare>
+              {{ t('linkTooltipPunycode') }}: <SecureText :text="data.shortUrl.resolvedPunycode" size="s" />
+            </VzNotice>
+            <DomainMarkers :hostname="data.shortUrl.resolvedDomain" bare />
+            <LookalikeNotice :hostname="data.shortUrl.resolvedDomain" bare />
 
-            <!-- Status + visit count -->
-            <div class="flex items-center flex-wrap gap-1.5 mb-1">
-              <span
-                class="tooltip-label px-1.5 py-0.5 rounded"
-                :class="data.shortUrl.resolvedIsSafe
-                  ? (isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700')
-                  : data.shortUrl.resolvedStats.count === 0
-                    ? (isDark ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700')
-                    : (isDark ? 'bg-yellow-900/40 text-yellow-400' : 'bg-yellow-100 text-yellow-700')"
-              >
-                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).text.toLowerCase() }}
-              </span>
-            </div>
-            <div v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)" class="tooltip-label" :class="isDark ? 'text-white' : 'text-gray-800'">
-              <FamiliarityFacts :stats="data.shortUrl.resolvedStats" />
-            </div>
+            <FamiliarityFacts v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)" :stats="data.shortUrl.resolvedStats" />
 
             <!-- Redirect chain trace -->
-            <div v-if="traceChain && data.shortUrl.chain.length > 2" class="mt-2 pt-2" :class="isDark ? 'border-t border-gray-700/50' : 'border-t border-gray-200'">
-              <div class="tooltip-label mb-1" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
-                {{ t('linkTooltipRedirectChain') }} ({{ data.shortUrl.chain.length }})
-              </div>
-              <div class="tooltip-label space-y-0.5" :class="isDark ? 'text-gray-300' : 'text-gray-600'" style="max-height: 120px !important; overflow-y: auto !important;">
-                <div v-for="(hop, i) in data.shortUrl.chain" :key="i" class="flex items-start gap-1">
-                  <span class="text-gray-500 flex-shrink-0">{{ i + 1 }}.</span>
-                  <span class="break-all" style="word-break: break-all !important;">{{ hop }}</span>
-                </div>
-              </div>
+            <div v-if="traceChain && data.shortUrl.chain.length > 2" class="grid gap-1">
+              <span class="vz-eyebrow">{{ t('linkTooltipRedirectChain') }} ({{ data.shortUrl.chain.length }})</span>
+              <ol class="tooltip-chain vz-well">
+                <li v-for="(hop, i) in data.shortUrl.chain" :key="i">
+                  <span class="tooltip-chain__n">{{ i + 1 }}.</span>
+                  <span class="tooltip-url">{{ hop }}</span>
+                </li>
+              </ol>
             </div>
 
-            <!-- Disclaimer -->
-            <div class="mt-2 tooltip-label italic" :class="isDark ? 'text-white' : 'text-gray-600'" style="font-size: 0.75em !important;">
+            <p class="vz-small">
               {{ t('linkTooltipResolveDisclaimer') }}
-            </div>
+            </p>
 
-            <!-- Mark as shortener after successful resolve (only if not already known) -->
-            <button
-              v-if="!data.shortUrl.isKnownShortener"
-              class="w-full mt-2 px-3 py-1 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-orange-400 border-transparent' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-orange-600 border-gray-300'"
-              @click.stop="handleMarkAsShortener()"
-            >
+            <!-- Mark as shortener after a successful follow (only if not already known) -->
+            <button v-if="!data.shortUrl.isKnownShortener" class="vz-btn vz-btn--sm vz-btn--quiet vz-btn--flush justify-self-start" data-action="mark-shortener" @click.stop="handleMarkAsShortener()">
               {{ t('linkTooltipMarkAsShortener') }}
             </button>
           </div>
 
-          <!-- Short URL: error -->
-          <div v-if="data.shortUrl?.status === 'error'" class="mt-2 mb-1">
-            <div class="tooltip-label mb-2" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+          <!-- Short link: could not be followed. Said as what it is, never drawn
+               as an empty or a passed result -->
+          <template v-if="data.shortUrl?.status === 'error'">
+            <VzNotice tone="neutral" bare>
               {{ data.shortUrl.error === 'same_domain' ? t(data.shortUrl.isKnownShortener ? 'linkTooltipResolveSameDomainShortener' : 'linkTooltipResolveSameDomain') : t('linkTooltipResolveError') }}
-            </div>
-            <button
-              v-if="data.shortUrl.error !== 'same_domain'"
-              class="w-full px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
-              @click.stop="handleResolveClick()"
-            >
+            </VzNotice>
+            <button v-if="data.shortUrl.error !== 'same_domain'" class="vz-btn vz-btn--sm vz-btn--block" data-action="retry" @click.stop="handleResolveClick()">
               {{ t('linkTooltipRetryResolve') }}
             </button>
-          </div>
+          </template>
 
-          <!-- Punycode warning. Skipped when it would repeat the domain verbatim,
-               which is what happens for links that already arrive in punycode form -->
-          <div v-if="data.punycode && data.punycode !== data.domain" class="flex items-center gap-1 mb-2 tooltip-label" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
-            <span>{{ t('linkTooltipPunycode') }}: {{ data.punycode }}</span>
-          </div>
+          <!-- Punycode. Skipped when it would repeat the domain verbatim, which is
+               what happens for links that already arrive in punycode form -->
+          <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" />
+          </VzNotice>
 
-          <!-- Structural markers -->
-          <DomainMarkers :hostname="data.domain" :url="data.href" class="tooltip-label" />
-          <LookalikeNotice :hostname="data.domain" class="tooltip-label" />
+          <DomainMarkers :hostname="data.domain" :url="data.href" bare />
+          <LookalikeNotice :hostname="data.domain" bare />
 
-          <!-- Action buttons -->
-          <div class="flex gap-2 mt-1">
-            <button
-              v-if="showGoButton"
-              class="flex-1 px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
-              @click="emit('go', data.href)"
-            >
-              {{ t('linkTooltipGoToLink') }} &rarr;
+          <div class="tooltip-actions">
+            <button v-if="showGoButton" class="vz-btn vz-btn--sm" data-action="go" @click="emit('go', data.href)">
+              {{ t('linkTooltipGoToLink') }}<VzIcon name="arrow-right" />
             </button>
-            <button
-              class="flex-1 px-3 py-1.5 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 border-gray-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300'"
-              @click="emit('details', data.shortUrl?.status === 'resolved' ? data.shortUrl.resolvedDomain : data.domain)"
-            >
+            <button class="vz-btn vz-btn--sm" data-action="details" @click="emit('details', data.shortUrl?.status === 'resolved' ? data.shortUrl.resolvedDomain : data.domain)">
               {{ t('linkTooltipDetails') }}
             </button>
-          </div>
-
-          <!-- Resolve once: shown when the domain is not a known shortener and
-               short URL detection is enabled. "Mark as shortener" is not offered
-               here: nothing yet says this site is one, and a stray press would
-               hide every link from it. It appears once the check has shown the
-               link really leads somewhere else, in the resolved block above. -->
-          <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="flex gap-2 mt-2">
-            <button
-              class="flex-1 px-3 py-1 rounded-lg border transition-colors tooltip-label text-center"
-              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white border-transparent' : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 border-gray-300'"
-              @click.stop="handleResolveOnce()"
-            >
-              {{ t('linkTooltipResolveOnce') }}
+            <!-- Follow once: when the domain is not a known shortener and short
+                 link detection is on. "Mark as shortener" is not offered here:
+                 nothing yet says this site is one, and a stray press would hide
+                 every link from it. It appears once following has shown the link
+                 really leads somewhere else, in the block above. -->
+            <button v-if="!data.shortUrl && shortUrlMode !== 'off'" class="vz-btn vz-btn--sm vz-btn--quiet" data-action="resolve-once" @click.stop="handleResolveOnce()">
+              <VzIcon name="link" />{{ t('linkTooltipResolveOnce') }}
             </button>
           </div>
         </template>
@@ -539,51 +430,90 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-* {
-  font-family: Arial, Helvetica, sans-serif !important;
-}
-
-button {
-  box-shadow: none !important;
-  text-shadow: none !important;
-  outline: none !important;
-}
-
 .tooltip-container {
-  min-width: min(200px, 80vw) !important;
-  max-width: min(600px, 90vw) !important;
-  width: auto !important;
-  /* A resolved shortener with its redirect chain, or a mismatch table, makes
+  min-width: min(240px, 100vw - 32px);
+  max-width: min(var(--tooltip-max), 100vw - 32px);
+  /* A followed short link with its redirect chain, or a mismatch table, makes
      this far taller than the hover tooltip it started as – and on a phone it is
      opened by a tap and has buttons of its own. It gets the same cap and its
      own scroll as the panel does. `dvh` follows a soft keyboard, and the
      safe-area insets keep the bottom clear of the gesture bar. */
-  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
-  overflow-y: auto !important;
-  overscroll-behavior: contain !important;
-  box-sizing: border-box !important;
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .tooltip-container.tooltip-wide {
-  width: min(600px, 90vw) !important;
+  width: min(var(--tooltip-wide), 100vw - 32px);
+  max-width: min(var(--tooltip-wide), 100vw - 32px);
 }
 
-.tooltip-label {
-  font-size: 0.85em !important;
-  line-height: 1.3em !important;
+.tooltip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
-.tooltip-domain {
-  font-size: 1em !important;
-  line-height: 1.3em !important;
+.tooltip-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
+.tooltip-section {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.tooltip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tooltip-payload {
+  max-height: 120px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.tooltip-url {
+  overflow-wrap: anywhere;
+}
+
+.tooltip-chain {
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: calc(13px * var(--vz-scale, 1));
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.tooltip-chain li {
+  display: flex;
+  gap: 6px;
+}
+
+.tooltip-chain__n {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* Fade and lift by 8px, from the side the tooltip opens on */
 .tooltip-fade-enter-active {
-  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+  transition: opacity 150ms ease-out, transform 150ms ease-out;
 }
 
 .tooltip-fade-leave-active {
-  transition: opacity 0.1s ease-in, transform 0.1s ease-in;
+  transition: opacity 100ms ease-in, transform 100ms ease-in;
 }
 
 .tooltip-fade-enter-from,
@@ -599,5 +529,12 @@ button {
 .tooltip-placement-above.tooltip-fade-enter-from,
 .tooltip-placement-above.tooltip-fade-leave-to {
   transform: translateY(-8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tooltip-fade-enter-from,
+  .tooltip-fade-leave-to {
+    transform: none !important;
+  }
 }
 </style>

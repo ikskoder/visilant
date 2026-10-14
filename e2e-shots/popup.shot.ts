@@ -62,9 +62,9 @@ test('popup, shortener', async ({ context, extensionId, shot }) => {
 
 test('popup, larger text', async ({ context, extensionId, shot }) => {
   await seed(context, FAMILY)
-  await patchSettings(context, { popupFontSize: 140, domainHighlighting: true })
+  await patchSettings(context, { popupFontSize: 140 })
   const popup = await openPopup(context, extensionId, 'https://checkout.paypal.test/')
-  await shot(popup, { name: 'popup-large-text', title: 'Popup at 140% text with domain highlighting on', covers: [POPUP] }, { clip: 'main' })
+  await shot(popup, { name: 'popup-large-text', title: 'Popup at 140% text', covers: [POPUP] }, { clip: 'main' })
 })
 
 // ==========================================
@@ -84,6 +84,12 @@ test('details page', async ({ context, extensionId, shot }) => {
 test('check page, empty', async ({ context, extensionId, shot }) => {
   const page = await openPage(context, extensionId, 'check=1')
   await shot(page, { name: 'check-empty', title: 'Check page before anything is typed', covers: [CHECK] }, { fullPage: true })
+})
+
+test('check page, larger text', async ({ context, extensionId, shot }) => {
+  await patchSettings(context, { popupFontSize: 140 })
+  const page = await openPage(context, extensionId, 'check=1')
+  await shot(page, { name: 'check-empty-large', title: 'Check page at 140% text, nothing typed', note: 'The hint in the field stays on one line and ends in an ellipsis, it never wraps under the field\'s foot.', covers: [CHECK] }, { fullPage: true })
 })
 
 const CHECKS: { name: string, title: string, input: string, card?: string, then?: (page: Page) => Promise<void> }[] = [

@@ -1,6 +1,5 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import { ref } from 'vue'
 import MismatchTable from '../MismatchTable.vue'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -50,23 +49,16 @@ describe('mismatchTable component', () => {
   // green means here, so each side of the comparison carries a mark too
   it('marks each side of every check as passed or not', () => {
     const wrapper = mount(MismatchTable, { props: defaultProps })
-    const marks = wrapper.findAll('[data-passed="visits"]').map(node => node.text())
+    const marks = wrapper.findAll('[data-passed="visits"]').map(node => node.attributes('data-result'))
     // The familiar domain clears the visit check, the unvisited one does not
-    expect(marks).toEqual(['✓', '✗'])
+    expect(marks).toEqual(['pass', 'fail'])
   })
 
-  // These surfaces are drawn on somebody else's page in both themes, and the
-  // verdict used to be a flat text-yellow-400 – a dark-theme choice that all
-  // but vanishes on the white card the light theme draws
-  it('picks the verdict colour for the theme it is drawn in', () => {
-    const statusOf = (isDark: boolean) => mount(MismatchTable, {
-      props: defaultProps,
-      global: { provide: { isDark: ref(isDark) } },
-    // Row 0 is the head, row 1 the two domains, row 2 the verdict
-    }).findAll('tr')[2].findAll('td')[1].classes()
-
-    expect(statusOf(true)).toContain('text-green-400')
-    expect(statusOf(false)).toContain('text-green-700')
+  // A verdict is a word, a shape and a colour together, the same in both themes
+  it('gives each side its verdict as a badge', () => {
+    const wrapper = mount(MismatchTable, { props: defaultProps })
+    const badges = wrapper.findAll('[data-verdict]').map(node => node.attributes('data-verdict'))
+    expect(badges).toEqual(['familiar', 'never'])
   })
 
   it('hides visit counts when showVisitCount is never', () => {
@@ -99,14 +91,5 @@ describe('mismatchTable component', () => {
 
     await buttons[1].trigger('click')
     expect(wrapper.emitted('details')?.[1]).toEqual(['evil.com'])
-  })
-
-  it('applies custom cellPadding', () => {
-    const wrapper = mount(MismatchTable, {
-      props: { ...defaultProps, cellPadding: 'p-4' },
-    })
-    const cells = wrapper.findAll('td')
-    const hasCustomPadding = cells.some(c => c.classes().includes('p-4'))
-    expect(hasCustomPadding).toBe(true)
   })
 })

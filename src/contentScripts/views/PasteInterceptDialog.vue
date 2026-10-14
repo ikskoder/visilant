@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import type { PasteInterceptData } from '~/logic/ui-state'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import SecureText from '~/components/SecureText.vue'
+import VzBadge from '~/components/VzBadge.vue'
+import VzIcon from '~/components/VzIcon.vue'
+import VzNotice from '~/components/VzNotice.vue'
+import VzSig from '~/components/VzSig.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useModalDialog } from '~/composables/useModalDialog'
@@ -12,7 +16,6 @@ import { useModalDialog } from '~/composables/useModalDialog'
 const props = defineProps<{
   visible: boolean
   data: PasteInterceptData | null
-  isDark: boolean
 }>()
 
 const emit = defineEmits<{
@@ -71,6 +74,31 @@ useModalDialog({
   onEscape: () => emit('cancel'),
 })
 
+/**
+ * How long "Allow pasting" ignores a press after it appears, so the second
+ * half of a hurried double press cannot be the one that lets the paste through.
+ */
+const RISK_DELAY_MS = 500
+const armed = ref(false)
+let armTimer: ReturnType<typeof setTimeout> | undefined
+
+// Counted from the moment the button appears, not from when the dialog opened:
+// while the site is being checked there is only "Don't paste", and "Allow
+// pasting" takes its place on screen once the answer is in
+watch(() => props.visible && Boolean(props.data) && isDecision.value, (shown) => {
+  clearTimeout(armTimer)
+  armed.value = false
+  if (shown)
+    armTimer = setTimeout(() => armed.value = true, RISK_DELAY_MS)
+}, { immediate: true })
+
+onBeforeUnmount(() => clearTimeout(armTimer))
+
+function onAllow() {
+  if (armed.value)
+    emit('allow')
+}
+
 const payloadKind = computed(() => {
   const kind = props.data?.payload.kind
   return kind ? t.value(`pasteInterceptKind${kind.charAt(0).toUpperCase()}${kind.slice(1)}`) : ''
@@ -86,102 +114,84 @@ const payloadKind = computed(() => {
     >
       <!-- Backdrop. Transparent to clicks, or it would sit between the user and
            the overlay behind it and swallow every click-outside -->
-      <div class="absolute inset-0 bg-black/60 pointer-events-none" />
+      <div class="absolute inset-0 vz-scrim pointer-events-none" />
 
-      <!-- Dialog card -->
       <div
         ref="card"
         role="dialog"
         aria-modal="true"
         :aria-label="title"
-        class="relative dialog-container rounded-xl shadow-2xl px-5 pb-5 pt-4"
-        :class="isDark ? 'bg-gray-900 border border-gray-700/50' : 'bg-white border border-gray-200'"
+        class="relative dialog-container vz-overlay vz-dialog"
+        :data-status="status"
       >
-        <!-- Warning icon + title + close -->
-        <div class="flex items-center gap-2 mb-3">
-          <svg
-            class="w-5 h-5 flex-shrink-0"
-            :class="status === 'safe' ? 'text-green-500' : 'text-yellow-500'"
-            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-          >
-            <path v-if="status === 'safe'" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <h2 class="dialog-title font-bold flex-1" :class="isDark ? 'text-white' : 'text-gray-900'">
+        <VzSig />
+        <div class="vz-dialog__head">
+          <VzIcon v-if="status === 'safe'" name="pass" large class="tone-safe" />
+          <VzIcon v-else-if="status === 'checking'" name="pending" large class="tone-neutral" />
+          <VzIcon v-else-if="status === 'error'" name="unknown" large class="tone-neutral" />
+          <VzIcon v-else name="alert" large class="tone-danger" />
+          <h2 class="vz-title">
             {{ title }}
           </h2>
           <button
             :aria-label="t('closeDialog')"
-            class="close-x w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors"
-            :class="isDark ? 'text-gray-500 hover:text-white hover:bg-gray-700/50' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200/50'"
+            :title="t('closeDialog')"
+            class="vz-iconbtn"
             @click="emit('cancel')"
           >
-            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <VzIcon name="close" />
           </button>
         </div>
 
-        <p class="dialog-text mb-4" :class="isDark ? 'text-gray-300' : 'text-gray-600'">
+        <p class="vz-body">
           {{ message }}
         </p>
 
         <!-- The box is not part of the page the address bar names. That is the
              fact worth reading before anything about visit counts. -->
-        <p v-if="data.inFrame" class="dialog-text mb-4 font-bold" :class="isDark ? 'text-yellow-400' : 'text-yellow-700'">
-          {{ t('pasteInterceptInFrame') }}
-        </p>
+        <VzNotice v-if="data.inFrame" tone="danger">
+          <span class="vz-body-strong">{{ t('pasteInterceptInFrame') }}</span>
+        </VzNotice>
 
         <!-- The address is the point of the whole dialog, so it gets the weight.
              The facts under it are only shown once there are any: a dialog put up
              before the check finished has nothing to report but the name. -->
-        <div class="rounded-lg p-3 mb-4" :class="isDark ? 'bg-gray-800' : 'bg-gray-50 border border-gray-200'">
-          <div class="flex items-center gap-2" :class="status === 'unfamiliar' ? 'mb-2' : ''">
-            <span
-              class="inline-block w-3 h-3 rounded-full flex-shrink-0"
-              :class="status === 'safe' ? 'bg-green-500' : (status === 'unfamiliar' ? 'bg-red-500' : 'bg-gray-400')"
-            />
-            <span class="dialog-domain font-medium" :class="isDark ? 'text-white' : 'text-gray-900'">
-              <SecureText :text="data.domain" :force-highlight="true" :danger-only="true" />
-            </span>
+        <div class="vz-well grid gap-3">
+          <div class="dialog-address">
+            <SecureText :text="data.domain" size="l" />
+            <VzBadge v-if="status === 'safe'" tone="safe" icon="pass" data-verdict="familiar">
+              {{ t('linkTooltipFamiliar') }}
+            </VzBadge>
+            <VzBadge v-else-if="status === 'checking'" tone="neutral" icon="pending" data-verdict="checking">
+              {{ t('statusChecking') }}
+            </VzBadge>
+            <VzBadge v-else-if="status === 'unfamiliar'" :tone="statusLabel(false, data.stats.count).tone" :icon="statusLabel(false, data.stats.count).icon" :data-verdict="statusLabel(false, data.stats.count).verdict">
+              {{ statusLabel(false, data.stats.count).text }}
+            </VzBadge>
           </div>
-          <div v-if="status === 'unfamiliar'" class="dialog-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
-            <FamiliarityFacts :stats="data.stats">
-              <template #status>
-                <span :class="statusLabel(false, data.stats.count).class">
-                  {{ statusLabel(false, data.stats.count).text }}
-                </span>
-              </template>
-            </FamiliarityFacts>
-          </div>
+          <FamiliarityFacts v-if="status === 'unfamiliar'" :stats="data.stats" />
 
           <!-- Punycode. Skipped when it would repeat the domain verbatim -->
-          <div v-if="data.punycode && data.punycode !== data.domain" class="dialog-label mt-2" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
-            {{ t('linkTooltipPunycode') }}: {{ data.punycode }}
-          </div>
+          <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" />
+          </VzNotice>
 
           <!-- Structural markers. These read the name itself, so they are worth
                showing even when the visit history could not be reached. -->
-          <DomainMarkers :hostname="data.domain" class="dialog-label mt-2" />
-          <LookalikeNotice v-if="status !== 'checking'" :hostname="data.domain" class="dialog-label mt-2" />
+          <DomainMarkers :hostname="data.domain" bare />
+          <LookalikeNotice v-if="status !== 'checking'" :hostname="data.domain" bare />
         </div>
 
         <!-- What is on the clipboard, described before it is shown. A paste
              held in an iframe keeps its text there, so there is nothing to
              describe and nothing worth sending across for the sake of it. -->
-        <div v-if="!data.inFrame" class="rounded-lg p-3 mb-4" :class="isDark ? 'bg-gray-800' : 'bg-gray-50 border border-gray-200'">
+        <div v-if="!data.inFrame" class="vz-well grid gap-2">
           <div class="flex items-center justify-between gap-2">
-            <span class="dialog-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
-              {{ payloadKind }}
-              <span class="mx-1">&middot;</span>
-              {{ data.payload.length }} {{ t('pasteInterceptChars') }}
+            <span class="vz-small">
+              {{ payloadKind }} · {{ data.payload.length }} {{ t('pasteInterceptChars') }}
             </span>
-            <button
-              class="reveal-btn dialog-label px-2 py-1 rounded-lg transition-colors flex-shrink-0"
-              :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'"
-              @click="revealed = !revealed"
-            >
-              {{ revealed ? t('pasteInterceptHide') : t('pasteInterceptReveal') }}
+            <button class="vz-btn vz-btn--sm" data-action="reveal" @click="revealed = !revealed">
+              <VzIcon name="view" />{{ revealed ? t('pasteInterceptHide') : t('pasteInterceptReveal') }}
             </button>
           </div>
           <!-- v-text rather than interpolation: the preview renders with pre-wrap,
@@ -189,15 +199,14 @@ const payloadKind = computed(() => {
                as blank space in front of the payload -->
           <div
             v-if="revealed"
-            class="payload-preview dialog-label mt-2 rounded-lg px-2 py-1.5"
-            :class="isDark ? 'bg-gray-900 text-gray-300' : 'bg-white border border-gray-200 text-gray-700'"
+            class="payload-preview"
             v-text="data.payload.preview"
           />
         </div>
 
         <!-- Said before the button is pressed, so the paste not happening on its
              own reads as the design rather than as a bug -->
-        <p v-if="status === 'unfamiliar'" class="dialog-label mb-3" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+        <p v-if="status === 'unfamiliar'" class="vz-small">
           {{ t('pasteInterceptRepeatHint') }}
         </p>
 
@@ -208,147 +217,79 @@ const payloadKind = computed(() => {
           tick. Saying where the switch is costs the same one line and cannot be
           aimed. Nothing to say while there is no verdict.
         -->
-        <p v-if="status === 'unfamiliar'" class="dialog-label mb-4" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+        <p v-if="status === 'unfamiliar'" class="vz-small">
           {{ t('warningSilenceHint') }}
         </p>
 
-        <!-- Action buttons. Refusing is named rather than left to the close cross:
-             this dialog interrupts a real action, so the way out of it has to be
-             as obvious as the way through. -->
-        <button
-          v-if="status !== 'checking'"
-          class="w-full px-4 py-2.5 mb-3 rounded-lg border transition-colors dialog-button"
-          :class="isDark ? 'bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 border-gray-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300'"
-          @click="emit('details', data.domain)"
-        >
-          {{ t('linkInterceptDomainInfo') }}
-        </button>
-
-        <!-- One button where there is nothing to weigh up: the paste is already
-             cancelled either way, and the only thing left is to say so -->
-        <button
-          v-if="status === 'safe'"
-          ref="safeButton"
-          class="w-full px-4 py-2.5 rounded-lg border transition-colors dialog-button"
-          :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
-          @click="emit('allow')"
-        >
-          {{ t('pasteInterceptUnderstood') }}
-        </button>
-        <div v-else-if="isDecision" class="flex gap-3">
-          <button
-            ref="safeButton"
-            class="flex-1 px-4 py-2.5 rounded-lg border transition-colors dialog-button"
-            :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
-            @click="emit('cancel')"
-          >
+        <!-- The way out is the loud button. Refusing is named rather than left
+             to the close cross: this dialog interrupts a real action, so the way
+             out has to be as obvious as the way through. -->
+        <div class="vz-dialog__actions">
+          <!-- One button where there is nothing to weigh up: the paste is already
+               cancelled either way, and the only thing left is to say so -->
+          <template v-if="status === 'safe'">
+            <button class="vz-btn" data-action="details" @click="emit('details', data.domain)">
+              {{ t('linkInterceptDomainInfo') }}
+            </button>
+            <button ref="safeButton" class="vz-btn vz-btn--primary" data-action="understood" @click="emit('allow')">
+              {{ t('pasteInterceptUnderstood') }}
+            </button>
+          </template>
+          <template v-else-if="isDecision">
+            <button ref="safeButton" class="vz-btn vz-btn--primary" data-action="cancel" @click="emit('cancel')">
+              {{ t('pasteInterceptCancel') }}
+            </button>
+            <button class="vz-btn" data-action="details" @click="emit('details', data.domain)">
+              {{ t('linkInterceptDomainInfo') }}
+            </button>
+            <button class="vz-btn vz-btn--risk" data-action="allow" @click="onAllow">
+              {{ t('pasteInterceptAllow') }}
+            </button>
+          </template>
+          <button v-else ref="safeButton" class="vz-btn vz-btn--primary" data-action="cancel" @click="emit('cancel')">
             {{ t('pasteInterceptCancel') }}
           </button>
-          <button
-            class="flex-1 px-4 py-2.5 rounded-lg border transition-colors dialog-button"
-            :class="isDark ? 'bg-red-900/40 border-red-700 hover:bg-red-800/50 text-white' : 'bg-red-600 border-red-600 hover:bg-red-700 text-white'"
-            @click="emit('allow')"
-          >
-            {{ t('pasteInterceptAllow') }}
-          </button>
         </div>
-        <button
-          v-else
-          ref="safeButton"
-          class="w-full px-4 py-2.5 rounded-lg border transition-colors dialog-button"
-          :class="isDark ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'"
-          @click="emit('cancel')"
-        >
-          {{ t('pasteInterceptCancel') }}
-        </button>
       </div>
     </div>
   </Transition>
 </template>
 
 <style scoped>
-* {
-  font-family: Arial, Helvetica, sans-serif !important;
-}
-
-button {
-  box-shadow: none !important;
-  text-shadow: none !important;
-  outline: none !important;
-}
-
-.close-x,
-.reveal-btn {
-  border: none !important;
-}
-
 .dialog-container {
-  width: min(420px, 90vw) !important;
-  max-width: 90vw !important;
-  /* Allow and Cancel are at the bottom, and this dialog is raised by a paste –
+  width: min(440px, 100vw - 32px);
+  max-width: none;
+  /* The actions are at the bottom, and this dialog is raised by a paste –
      which on a phone means the keyboard is up and the viewport is already half
      of what it was. Without a cap of its own it grew past the visible area and
      took its buttons with it. `dvh` is the measurement that follows the
      keyboard, and the safe-area insets keep it clear of the gesture bar. */
-  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
-  overflow-y: auto !important;
-  overscroll-behavior: contain !important;
-  box-sizing: border-box !important;
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.dialog-title {
-  font-size: 18px !important;
-  line-height: 24px !important;
-}
-
-.dialog-text {
-  font-size: 14px !important;
-  line-height: 20px !important;
-}
-
-.dialog-domain {
-  font-size: 16px !important;
-  line-height: 20px !important;
-}
-
-.dialog-label {
-  font-size: 13px !important;
-  line-height: 18px !important;
-}
-
-.dialog-button {
-  font-size: 14px !important;
-  line-height: 20px !important;
+.dialog-address {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 /* The payload is arbitrary text from an untrusted page, so it is boxed in:
    wrapped rather than stretching the dialog, and scrolled rather than growing it */
 .payload-preview {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
-  white-space: pre-wrap !important;
-  word-break: break-all !important;
-  max-height: 120px !important;
-  overflow-y: auto !important;
-}
-
-.overlay-fade-enter-active {
-  transition: all 0.2s ease-out;
-}
-
-.overlay-fade-leave-active {
-  transition: all 0.15s ease-in;
-}
-
-.overlay-fade-enter-from,
-.overlay-fade-leave-to {
-  opacity: 0;
-}
-
-.overlay-fade-enter-from .dialog-container {
-  transform: scale(0.95);
-}
-
-.overlay-fade-leave-to .dialog-container {
-  transform: scale(0.95);
+  font-family: var(--font-mono);
+  font-size: calc(13px * var(--vz-scale, 1));
+  line-height: 1.4;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 120px;
+  overflow-y: auto;
 }
 </style>

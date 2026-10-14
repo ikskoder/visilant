@@ -181,7 +181,7 @@ test('the missing-dates card does not offer an import this browser cannot run', 
 
     await withOptionsPage(port, async (session, options) => {
       const card = String(await session.evaluate(options, `(() => {
-        const el = document.querySelector("#section-familiarity [class*=amber]");
+        const el = document.querySelector("#section-familiarity [data-stats-gap]");
         return el ? el.textContent.replace(/\\s+/g, " ").trim() : "";
       })()`))
       assert(card.length > 0, 'the missing-dates card did not appear')
@@ -332,7 +332,7 @@ test('wiping the visits leaves every list the user owns alone', async (port) => 
       })()`)
       await sleep(1000)
       await session.evaluate(options, `(() => {
-        const confirms = [...document.querySelectorAll(".btn-danger")].filter(b => b.textContent.trim() === "Reset");
+        const confirms = [...document.querySelectorAll(".vz-btn--destroy")].filter(b => b.textContent.trim() === "Reset");
         confirms[confirms.length - 1].click();
         return "confirmed";
       })()`)

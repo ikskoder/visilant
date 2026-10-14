@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FamiliarityStats } from '~/logic/familiarity'
-import { computed, inject, ref } from 'vue'
+import { computed } from 'vue'
 import SecureText from '~/components/SecureText.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
@@ -13,17 +13,14 @@ const props = defineProps<{
   destIsSafe: boolean
   destStats: FamiliarityStats
   showVisitCount: 'always' | 'never' | 'unfamiliar' | 'familiar'
-  cellPadding?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'details', domain: string): void
 }>()
 
-const isDark = inject('isDark', ref(true))
-
 const { t } = useI18n()
-const { factsFor, summaryFor, valueClass, withThresholds, statusLabel } = useFamiliarityFacts()
+const { factsFor, summaryFor, withThresholds, statusLabel } = useFamiliarityFacts()
 
 /**
  * One cell's worth of a fact.
@@ -35,8 +32,6 @@ const { factsFor, summaryFor, valueClass, withThresholds, statusLabel } = useFam
 function cell(fact: { value: string, combined: string }) {
   return withThresholds.value ? fact.combined : fact.value
 }
-
-const pad = computed(() => props.cellPadding || 'p-1.5')
 
 function shouldShowCount(isSafe: boolean) {
   switch (props.showVisitCount) {
@@ -71,108 +66,69 @@ const summaryRow = computed(() => {
 </script>
 
 <template>
-  <table class="w-full comparison-table">
+  <!-- The two addresses side by side, with the evidence for each under it. The
+       values are never coloured: the mark before each carries the result. -->
+  <table class="vz-table comparison-table">
     <thead>
       <tr>
-        <th class="text-gray-500 font-normal text-left" :class="[pad]" />
-        <th class="font-medium text-left" :class="[pad, isDark ? 'text-gray-400' : 'text-gray-500']">
-          {{ t('linkTooltipShowsDomain') }}
-        </th>
-        <th class="font-medium text-left" :class="[pad, isDark ? 'text-gray-400' : 'text-gray-500']">
-          {{ t('linkTooltipLeadsTo') }}
-        </th>
+        <th><span class="sr-only">{{ t('familiarityFactCheck') }}</span></th>
+        <th>{{ t('linkTooltipShowsDomain') }}</th>
+        <th>{{ t('linkTooltipLeadsTo') }}</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td :class="[pad, isDark ? 'text-gray-500' : 'text-gray-400']">
+        <th scope="row">
           {{ t('linkInterceptDomain') }}
-        </td>
-        <td class="font-medium" :class="[pad, isDark ? 'text-white' : 'text-gray-900']">
-          <SecureText :text="textDomain" :force-highlight="true" :danger-only="true" />
-        </td>
-        <td class="font-medium" :class="[pad, isDark ? 'text-white' : 'text-gray-900']">
-          <SecureText :text="destDomain" :force-highlight="true" :danger-only="true" />
-        </td>
+        </th>
+        <td><SecureText :text="textDomain" size="m" /></td>
+        <td><SecureText :text="destDomain" size="m" /></td>
       </tr>
       <tr>
-        <td :class="[pad, isDark ? 'text-gray-500' : 'text-gray-400']">
+        <th scope="row">
           {{ t('linkInterceptStatus') }}
-        </td>
-        <td class="font-medium" :class="[pad, statusLabel(textDomainIsSafe, textDomainStats.count).class]">
-          {{ statusLabel(textDomainIsSafe, textDomainStats.count).text }}
-        </td>
-        <td class="font-medium" :class="[pad, statusLabel(destIsSafe, destStats.count).class]">
-          {{ statusLabel(destIsSafe, destStats.count).text }}
+        </th>
+        <td v-for="side in [{ safe: textDomainIsSafe, stats: textDomainStats, key: 'shown' }, { safe: destIsSafe, stats: destStats, key: 'dest' }]" :key="side.key">
+          <VzBadge :tone="statusLabel(side.safe, side.stats.count).tone" :icon="statusLabel(side.safe, side.stats.count).icon" :data-verdict="statusLabel(side.safe, side.stats.count).verdict">
+            {{ statusLabel(side.safe, side.stats.count).text }}
+          </VzBadge>
         </td>
       </tr>
       <template v-if="shouldShowCount(textDomainIsSafe) || shouldShowCount(destIsSafe)">
-        <!-- The mark leads the cell, as it leads the line in FamiliarityFacts: the
-             verdict is read first and the column of marks lines up -->
         <tr v-for="row in factRows" :key="row.id">
-          <td :class="[pad, isDark ? 'text-gray-500' : 'text-gray-400']">
+          <th scope="row">
             {{ row.label }}
-          </td>
-          <td :class="[pad, shouldShowCount(textDomainIsSafe) ? `font-medium ${valueClass(row.left.met, row.left.known)}` : 'text-gray-500 italic']">
-            <template v-if="shouldShowCount(textDomainIsSafe)">
-              <span class="mr-1" :class="valueClass(row.left.met)" :data-passed="row.id">{{ row.left.met ? '✓' : '✗' }}</span>
-              {{ cell(row.left) }}
-            </template>
-            <template v-else>
-              {{ t('mismatchVisitsHidden') }}
-            </template>
-          </td>
-          <td :class="[pad, shouldShowCount(destIsSafe) ? `font-medium ${valueClass(row.right.met, row.right.known)}` : 'text-gray-500 italic']">
-            <template v-if="shouldShowCount(destIsSafe)">
-              <span class="mr-1" :class="valueClass(row.right.met)" :data-passed="row.id">{{ row.right.met ? '✓' : '✗' }}</span>
-              {{ cell(row.right) }}
-            </template>
-            <template v-else>
-              {{ t('mismatchVisitsHidden') }}
-            </template>
+          </th>
+          <td v-for="side in [{ fact: row.left, shown: shouldShowCount(textDomainIsSafe), key: 'shown' }, { fact: row.right, shown: shouldShowCount(destIsSafe), key: 'dest' }]" :key="side.key">
+            <span v-if="side.shown" class="comparison-fact">
+              <VzIcon :name="side.fact.met ? 'pass' : 'fail'" :label="t(side.fact.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="side.fact.met ? 'tone-safe' : 'tone-danger'" :data-passed="row.id" :data-result="side.fact.met ? 'pass' : 'fail'" />
+              <span class="vz-fact__value" :class="{ 'vz-fact__value--none': !side.fact.known }">{{ cell(side.fact) }}</span>
+            </span>
+            <span v-else class="text-ink-3">{{ t('mismatchVisitsHidden') }}</span>
           </td>
         </tr>
         <tr v-if="summaryRow">
-          <td :class="[pad, isDark ? 'text-gray-500' : 'text-gray-400']">
+          <th scope="row">
             {{ t('badgeContentChecks') }}
-          </td>
-          <td :class="[pad, shouldShowCount(textDomainIsSafe) ? `font-medium ${valueClass(summaryRow.left.met)}` : 'text-gray-500 italic']">
-            <template v-if="shouldShowCount(textDomainIsSafe)">
-              <span class="mr-1" :class="valueClass(summaryRow.left.met)" data-passed="checks">{{ summaryRow.left.met ? '✓' : '✗' }}</span>
-              {{ summaryRow.left.combined }}
-            </template>
-            <template v-else>
-              {{ t('mismatchVisitsHidden') }}
-            </template>
-          </td>
-          <td :class="[pad, shouldShowCount(destIsSafe) ? `font-medium ${valueClass(summaryRow.right.met)}` : 'text-gray-500 italic']">
-            <template v-if="shouldShowCount(destIsSafe)">
-              <span class="mr-1" :class="valueClass(summaryRow.right.met)" data-passed="checks">{{ summaryRow.right.met ? '✓' : '✗' }}</span>
-              {{ summaryRow.right.combined }}
-            </template>
-            <template v-else>
-              {{ t('mismatchVisitsHidden') }}
-            </template>
+          </th>
+          <td v-for="side in [{ fact: summaryRow.left, shown: shouldShowCount(textDomainIsSafe), key: 'shown' }, { fact: summaryRow.right, shown: shouldShowCount(destIsSafe), key: 'dest' }]" :key="side.key">
+            <span v-if="side.shown" class="comparison-fact font-bold">
+              <VzIcon :name="side.fact.met ? 'pass' : 'fail'" :label="t(side.fact.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="side.fact.met ? 'tone-safe' : 'tone-danger'" data-passed="checks" :data-result="side.fact.met ? 'pass' : 'fail'" />
+              <span class="vz-fact__value">{{ side.fact.combined }}</span>
+            </span>
+            <span v-else class="text-ink-3">{{ t('mismatchVisitsHidden') }}</span>
           </td>
         </tr>
       </template>
       <tr>
-        <td :class="pad" />
-        <td :class="pad">
-          <button
-            class="w-full px-2 py-1 rounded-lg border transition-colors text-center"
-            :class="isDark ? 'bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 border-gray-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300'"
-            @click="emit('details', textDomain)"
-          >
+        <td />
+        <td>
+          <button class="vz-btn vz-btn--sm vz-btn--block" data-action="details-shown" @click="emit('details', textDomain)">
             {{ t('linkTooltipDetails') }}
           </button>
         </td>
-        <td :class="pad">
-          <button
-            class="w-full px-2 py-1 rounded-lg border transition-colors text-center"
-            :class="isDark ? 'bg-blue-700/60 hover:bg-blue-600/60 text-blue-100 border-gray-600' : 'bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300'"
-            @click="emit('details', destDomain)"
-          >
+        <td>
+          <button class="vz-btn vz-btn--sm vz-btn--block" data-action="details-dest" @click="emit('details', destDomain)">
             {{ t('linkTooltipDetails') }}
           </button>
         </td>
@@ -182,19 +138,10 @@ const summaryRow = computed(() => {
 </template>
 
 <style scoped>
-button {
-  box-shadow: none !important;
-  text-shadow: none !important;
-  outline: none !important;
-}
-
-.comparison-table {
-  border-collapse: collapse !important;
-  border: 1px solid rgba(107, 114, 128, 0.4) !important;
-}
-
-.comparison-table th,
-.comparison-table td {
-  border: 1px solid rgba(107, 114, 128, 0.25) !important;
+.comparison-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 </style>

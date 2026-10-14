@@ -6,7 +6,7 @@ import { onMessage } from 'webext-bridge/background'
 import { applySilence, canAutoLift, familiarSilencedHosts, liftSilence, recordStats } from '~/logic/auto-unsilence'
 import { ACTION_ICONS, BADGE_COLORS, badgeText, toolbarLook } from '~/logic/badge'
 import { fetchBlobBounded } from '~/logic/bounded-fetch'
-import { belongsToSite, siteDomain, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
+import { addressShape, belongsToSite, siteDomain, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
 import { buildFamiliarIndex, findLookalikes } from '~/logic/domain-similarity'
 import { getProviderReferenceDomains } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, parseMailtoUrl } from '~/logic/email-safety'
@@ -1168,9 +1168,10 @@ async function handleTampering(tabId?: number, url?: string, tabUrl?: string) {
     })
   }
 
-  // Update badge to show error state (per-tab if available)
+  // Update badge to show error state (per-tab if available). The one warning red,
+  // told apart from an ordinary unfamiliar site by its "!!!" rather than a brighter shade
   await browser.action.setBadgeText({ text: '!!!', ...(tabId != null && { tabId }) })
-  await browser.action.setBadgeBackgroundColor({ color: '#FF0000', ...(tabId != null && { tabId }) })
+  await browser.action.setBadgeBackgroundColor({ color: BADGE_COLORS.unfamiliar, ...(tabId != null && { tabId }) })
   await browser.action.setIcon({ path: getIconPaths('site-danger'), ...(tabId != null && { tabId }) })
 
   return 'Tampering handled'
@@ -1348,10 +1349,27 @@ interface MessageContext {
 }
 
 // Centralized message handlers map
+/** At most this many per question, each no longer than a hostname can be. */
+const SHAPE_BATCH_LIMIT = 200
+
+function addressShapesLogic(hosts: unknown): Record<string, ReturnType<typeof addressShape>> {
+  const out: Record<string, ReturnType<typeof addressShape>> = {}
+  if (!Array.isArray(hosts))
+    return out
+  for (const host of hosts.slice(0, SHAPE_BATCH_LIMIT)) {
+    if (typeof host === 'string' && host.length > 0 && host.length <= 253)
+      out[host] = addressShape(host)
+  }
+  return out
+}
+
 const messageHandlers = {
   'get-visit-count': (data: any) => getVisitCountLogic(data.url),
   'get-domain-family': (data: any) => getDomainFamilyLogic(data.hostname),
   'find-lookalikes': (data: any) => findLookalikesLogic(data.hostname, data.context),
+  // Which labels of each address belong to its owner, for the heavier frames
+  // the in-page UI draws around them. The content script has no suffix list.
+  'address-shapes': (data: any) => addressShapesLogic(data?.hosts),
   // The options page calls this once a history import finishes, since an import
   // can move thousands of domains across the familiarity threshold at once
   'rebuild-familiar-index': async () => {

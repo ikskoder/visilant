@@ -309,7 +309,7 @@ const isAndroid = ref(false)
  * lists, the wholesale reset – is already spelled out there.
  */
 const SECTION_SETTINGS: Record<string, (keyof Settings)[]> = {
-  'general': ['theme', 'verboseOptions'],
+  'general': ['theme', 'addressFrames', 'verboseOptions'],
   'familiarity': ['familiarity', 'showFamiliarityThresholds'],
   'display': ['showBadge', 'badgeContent', 'changeIcon'],
   'notifications': ['showWarningNotification', 'notificationStyle', 'showInputWarning', 'showCopyWarning', 'blockPasteOnUnfamiliar', 'autoUnsilenceFamiliar'],
@@ -662,18 +662,21 @@ const importButtonLabel = computed(() => importHealth.value === 'never'
   ? translations.value.importHistoryFirstRun
   : translations.value.importHistoryRun)
 
-const importStatusColor = computed(() => ({
-  complete: 'bg-green-500',
-  running: 'bg-blue-500',
-  never: 'bg-gray-400',
-  partial: 'bg-amber-500',
-  interrupted: 'bg-amber-500',
-  cancelled: 'bg-amber-500',
-  failed: 'bg-red-500',
-  // Not a failure, but not a shrug either: nothing will ever be imported here,
-  // and that is worth seeing rather than reading past
-  unsupported: 'bg-amber-500',
-}[importHealth.value]))
+/**
+ * The sign beside the import status. An import is about Visilant, not about a
+ * site, so it never borrows a verdict colour: done is a plain tick, and every
+ * way of not finishing is information in grey that says what to do next.
+ */
+const importStatusIcon = computed(() => ({
+  complete: 'check-mark',
+  running: 'pending',
+  never: 'unknown',
+  partial: 'info',
+  interrupted: 'info',
+  cancelled: 'info',
+  failed: 'info',
+  unsupported: 'info',
+} as const)[importHealth.value])
 
 // Reset selection states
 // The shortener list is not here: it belongs to Link safety, and that section's
@@ -1250,17 +1253,17 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
   <!-- Left-aligned by default. The page used to centre everything and have each
        block opt out, which meant a new description was centred until somebody
        noticed – so the two things that really are centred say so themselves. -->
-  <main class="px-4 py-10 text-left text-gray-700 dark:text-gray-200" :class="{ 'hints-hidden': !settings.verboseOptions }">
+  <main class="px-4 py-10 text-left text-ink" :class="{ 'hints-hidden': !settings.verboseOptions }">
     <div v-if="!isLoaded || !settingsLoaded" class="flex justify-center items-center h-screen">
-      <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
+      <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand" />
     </div>
 
     <div v-else>
       <!-- A setting that looks changed but was never stored is the one failure
            this page must not keep to the console -->
-      <div v-if="settingsWriteError" class="max-w-md mx-auto mb-6 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200">
+      <VzNotice v-if="settingsWriteError" tone="danger" class="max-w-md mx-auto mb-6">
         {{ translations.settingsNotSaved }}
-      </div>
+      </VzNotice>
 
       <Logo style="max-width: 300px;" class="mx-auto" />
       <div class="text-xl font-bold mb-6 text-center">
@@ -1268,15 +1271,15 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
       </div>
 
       <!-- Too narrow for a column beside the settings, so it goes above them -->
-      <div class="xl:hidden max-w-md mx-auto mb-6 bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+      <div class="xl:hidden max-w-md mx-auto mb-6 vz-card">
         <SectionNav :sections="sections" :active-id="activeSection" :heading="translations.onThisPage" />
       </div>
 
       <div class="relative max-w-md mx-auto space-y-6">
         <!-- General Settings -->
-        <div id="section-general" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-general" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('general')" @reset="resetSection('general')" />
-          <h2 class="text-lg font-semibold text-center mb-4">
+          <h2 class="vz-title text-center mb-4">
             {{ translations.generalSettings }}
           </h2>
 
@@ -1284,10 +1287,10 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                cannot do anything, so it stays out of the way until a second
                language ships -->
           <div v-if="availableLanguages.length > 1" class="flex flex-col items-start mb-6">
-            <label class="text-sm font-medium mb-2">{{ translations.selectLanguage }}</label>
+            <label class="vz-heading mb-2">{{ translations.selectLanguage }}</label>
             <select
               v-model="currentLanguage"
-              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              class="vz-input w-full"
               @change="(e) => changeLanguage((e.target as HTMLSelectElement).value)"
             >
               <option v-for="lang in availableLanguages" :key="lang.code" :value="lang.code">
@@ -1298,10 +1301,10 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
           <!-- Theme Settings -->
           <div class="flex flex-col items-start mb-6">
-            <label class="text-sm font-medium mb-2">{{ translations.themeSettings }}</label>
+            <label class="vz-heading mb-2">{{ translations.themeSettings }}</label>
             <select
               v-model="settings.theme"
-              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              class="vz-input w-full"
             >
               <option value="system">
                 {{ translations.themeSystem }}
@@ -1315,42 +1318,56 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             </select>
           </div>
 
+          <!-- How every address in the extension is drawn. The same switch sits
+             beside the address in the popup, as the frames toggle -->
+          <div class="flex items-start justify-between gap-4 mb-6">
+            <div>
+              <label class="vz-heading">{{ t('addressFramesLabel') }}</label>
+              <p class="hint vz-small">
+                {{ t('addressFramesDesc') }}
+              </p>
+              <SecureText text="login.paypal.com.secure-check.test" size="m" class="mt-2 inline-block" />
+            </div>
+            <label class="vz-switch flex-shrink-0">
+              <input v-model="settings.addressFrames" type="checkbox" data-setting="addressFrames" :aria-label="t('addressFramesLabel')">
+              <span class="vz-switch__track" />
+            </label>
+          </div>
+
           <!-- Its own description is not a hint and never hides: switched off,
                it would be the one line explaining how to get the rest back -->
           <div class="flex items-start justify-between">
             <div>
-              <label class="text-sm font-medium">{{ translations.optionsVerbose }}</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
+              <label class="vz-heading">{{ translations.optionsVerbose }}</label>
+              <p class="vz-small">
                 {{ translations.optionsVerboseDesc }}
               </p>
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input v-model="settings.verboseOptions" type="checkbox" class="sr-only peer">
-              <div
-                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
-              />
+            <label class="vz-switch">
+              <input v-model="settings.verboseOptions" type="checkbox">
+              <span class="vz-switch__track" />
             </label>
           </div>
         </div>
 
         <!-- Familiarity – the one verdict everything else follows from, which is
              why it has a section of its own rather than a number in General -->
-        <div id="section-familiarity" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-familiarity" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('familiarity')" @reset="resetSection('familiarity')" />
-          <h2 class="text-lg font-semibold text-center mb-2">
+          <h2 class="vz-title text-center mb-2">
             {{ translations.familiaritySettings }}
           </h2>
-          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <p class="hint vz-small mb-4">
             {{ translations.familiarityIntro }}
           </p>
 
           <!-- How many checks have to agree, said before the checks themselves,
                because it is what they are being read against -->
           <div class="flex flex-col items-start mb-2">
-            <label class="text-sm font-medium mb-2">{{ translations.familiarityModeLabel }}</label>
+            <label class="vz-heading mb-2">{{ translations.familiarityModeLabel }}</label>
             <select
               :value="familiarity.mode"
-              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              class="vz-input w-full"
               @change="updateFamiliarityMode(($event.target as HTMLSelectElement).value)"
             >
               <option value="all">
@@ -1371,18 +1388,18 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <label class="text-sm">{{ translations.familiarityModeAtLeastLabel }}</label>
               <select
                 :value="familiarityRequired"
-                class="px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                class="vz-input vz-input--sm"
                 @change="updateFamiliarityAtLeast(($event.target as HTMLSelectElement).value)"
               >
                 <option v-for="n in familiarityEnabledCount" :key="n" :value="n">
                   {{ n }}
                 </option>
               </select>
-              <span class="text-sm text-gray-500 dark:text-gray-400">/ {{ familiarityEnabledCount }}</span>
+              <span class="text-sm text-ink-3">/ {{ familiarityEnabledCount }}</span>
             </div>
           </div>
 
-          <p class="text-sm mb-4 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300">
+          <p class="vz-notice vz-notice--info mb-4">
             {{ familiaritySummary }}
           </p>
 
@@ -1391,8 +1408,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               v-for="row in familiarityRows" :key="row.id"
               class="rounded-lg border p-3 transition-colors cursor-pointer"
               :class="row.criterion.enabled
-                ? 'border-blue-200 dark:border-blue-800/60 bg-blue-50/40 dark:bg-blue-900/10'
-                : 'border-gray-200 dark:border-gray-700'"
+                ? 'border-brand bg-brand-tint'
+                : 'border-line'"
               @click="onCriterionCardClick(row.id, $event)"
             >
               <!--
@@ -1413,7 +1430,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               -->
               <div class="flex gap-2" :class="settings.verboseOptions ? 'items-start' : 'items-center'">
                 <input
-                  type="checkbox" class="h-4 w-4 flex-shrink-0 pointer-events-none"
+                  type="checkbox" class="vz-check-box flex-shrink-0 pointer-events-none"
                   :class="{ 'mt-1': settings.verboseOptions }"
                   :checked="row.criterion.enabled"
                   :disabled="row.criterion.enabled && familiarityEnabledCount <= 1"
@@ -1423,13 +1440,13 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 >
                 <div class="flex-1">
                   <span v-if="settings.verboseOptions">
-                    <span class="text-sm font-medium">{{ row.title }}</span>
-                    <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ row.description }}</span>
+                    <span class="vz-heading">{{ row.title }}</span>
+                    <span class="hint block vz-small mt-0.5">{{ row.description }}</span>
                   </span>
 
                   <div
                     class="flex items-center gap-2"
-                    :class="[{ 'opacity-50': !row.criterion.enabled }, settings.verboseOptions ? 'mt-2' : '']"
+                    :class="[{ 'opacity-45': !row.criterion.enabled }, settings.verboseOptions ? 'mt-2' : '']"
                   >
                     <span class="text-sm">
                       {{ settings.verboseOptions ? translations.familiarityAtLeastLabel : row.compactBefore }}
@@ -1437,11 +1454,11 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     <input
                       :value="row.criterion.min" type="number" min="1"
                       :disabled="!row.criterion.enabled"
-                      class="w-14 px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-text"
+                      class="w-14 vz-input vz-input--sm cursor-text"
                       @input="updateCriterionMin(row.id, ($event.target as HTMLInputElement).value)"
                       @blur="restoreCriterionMin(row.id, $event.target as HTMLInputElement)"
                     >
-                    <span class="text-sm text-gray-500 dark:text-gray-400">
+                    <span class="text-sm text-ink-3">
                       {{ settings.verboseOptions ? row.unit : row.compactAfter }}
                     </span>
                   </div>
@@ -1453,18 +1470,16 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           <!-- How the checks above read on every other surface. It belongs with
                the rules rather than with the link tooltip, because the same line
                is drawn in the popup, the panel and both dialogs. -->
-          <div class="flex items-start justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div class="flex items-start justify-between mt-4 pt-4 border-t border-line">
             <div>
-              <label class="text-sm font-medium">{{ translations.familiarityShowThresholds }}</label>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400">
+              <label class="vz-heading">{{ translations.familiarityShowThresholds }}</label>
+              <p class="hint vz-small">
                 {{ translations.familiarityShowThresholdsDesc }}
               </p>
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input v-model="settings.showFamiliarityThresholds" type="checkbox" class="sr-only peer">
-              <div
-                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
-              />
+            <label class="vz-switch">
+              <input v-model="settings.showFamiliarityThresholds" type="checkbox">
+              <span class="vz-switch__track" />
             </label>
           </div>
 
@@ -1472,67 +1487,67 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                checks is on, and there are records that cannot answer it -->
           <div
             v-if="showStatsCoverageWarning"
-            class="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50"
+            class="mt-4 vz-notice vz-notice--neutral"
+            data-stats-gap
           >
-            <div class="text-sm font-medium text-amber-800 dark:text-amber-300">
-              {{ statsGapTitle }}
+            <VzIcon name="info" />
+            <div class="vz-notice__text">
+              <div class="vz-body-strong">
+                {{ statsGapTitle }}
+              </div>
+              <p class="mt-1">
+                {{ statsCoverage?.missing }} / {{ statsCoverage?.total }} – {{ statsGapText }}
+              </p>
+              <!-- No link once the import has run: there is nothing there to press -->
+              <a
+                v-if="!statsGapIsPermanent"
+                href="#section-data"
+                class="vz-link text-sm mt-1 inline-block"
+                @click.prevent="goToSection('data')"
+              >
+                {{ translations.familiarityNeedsImportLink }}
+              </a>
             </div>
-            <p class="text-xs text-amber-900/80 dark:text-amber-200/80 mt-1">
-              {{ statsCoverage?.missing }} / {{ statsCoverage?.total }} – {{ statsGapText }}
-            </p>
-            <!-- No link once the import has run: there is nothing there to press -->
-            <a
-              v-if="!statsGapIsPermanent"
-              href="#section-data"
-              class="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 inline-block"
-              @click.prevent="goToSection('data')"
-            >
-              {{ translations.familiarityNeedsImportLink }}
-            </a>
           </div>
         </div>
 
         <!-- Display Settings -->
-        <div id="section-display" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-display" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('display')" @reset="resetSection('display')" />
-          <h2 class="text-lg font-semibold text-center mb-2">
+          <h2 class="vz-title text-center mb-2">
             {{ translations.displaySettings }}
           </h2>
 
           <!-- Said once for the whole section: both toggles draw on the same
                icon, and neither shows anything while it is hidden in the menu -->
-          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <p class="hint vz-small mb-4">
             {{ isAndroid ? translations.displaySettingsPinNoteAndroid : translations.displaySettingsPinNote }}
           </p>
 
           <div class="space-y-4">
             <div class="flex items-start justify-between">
               <div>
-                <label class="text-sm font-medium">{{ translations.dynamicIcon }}</label>
-                <p class="hint text-xs text-gray-500 dark:text-gray-400">
+                <label class="vz-heading">{{ translations.dynamicIcon }}</label>
+                <p class="hint vz-small">
                   {{ translations.dynamicIconDesc }}
                 </p>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input v-model="settings.changeIcon" type="checkbox" class="sr-only peer">
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
-                />
+              <label class="vz-switch">
+                <input v-model="settings.changeIcon" type="checkbox">
+                <span class="vz-switch__track" />
               </label>
             </div>
 
             <div class="flex items-start justify-between">
               <div>
-                <label class="text-sm font-medium">{{ translations.showBadge }}</label>
-                <p class="hint text-xs text-gray-500 dark:text-gray-400">
+                <label class="vz-heading">{{ translations.showBadge }}</label>
+                <p class="hint vz-small">
                   {{ translations.showBadgeDesc }}
                 </p>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input v-model="settings.showBadge" type="checkbox" class="sr-only peer">
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
-                />
+              <label class="vz-switch">
+                <input v-model="settings.showBadge" type="checkbox">
+                <span class="vz-switch__track" />
               </label>
             </div>
 
@@ -1540,13 +1555,13 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                  nothing to choose between while a single check is on: the badge
                  can only be that check's number -->
             <div v-if="settings.showBadge && familiarityEnabledCount > 1" class="flex flex-col items-start">
-              <label class="text-sm font-medium mb-1">{{ translations.badgeContentLabel }}</label>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-2">
+              <label class="vz-heading mb-1">{{ translations.badgeContentLabel }}</label>
+              <p class="hint vz-small mb-2">
                 {{ translations.badgeContentDesc }}
               </p>
               <select
                 :value="shownBadgeContent"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                class="vz-input w-full"
                 @change="settings.badgeContent = ($event.target as HTMLSelectElement).value as BadgeContent"
               >
                 <option v-for="option in badgeContentOptions" :key="option.value" :value="option.value">
@@ -1558,31 +1573,29 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         </div>
 
         <!-- Notification Settings -->
-        <div id="section-notifications" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-notifications" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('notifications')" @reset="resetSection('notifications')" />
-          <h2 class="text-lg font-semibold text-center mb-4">
+          <h2 class="vz-title text-center mb-4">
             {{ translations.notificationSettings }}
           </h2>
 
           <!-- Show Notifications Toggle -->
           <div class="flex items-start justify-between mb-4">
             <div>
-              <label class="text-sm font-medium">{{ translations.showWarningNotification }}</label>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400">
+              <label class="vz-heading">{{ translations.showWarningNotification }}</label>
+              <p class="hint vz-small">
                 {{ translations.showWarningNotificationDesc }}
               </p>
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input v-model="settings.showWarningNotification" type="checkbox" class="sr-only peer">
-              <div
-                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
-              />
+            <label class="vz-switch">
+              <input v-model="settings.showWarningNotification" type="checkbox">
+              <span class="vz-switch__track" />
             </label>
           </div>
           <!-- <div> -->
           <div v-if="settings.showWarningNotification">
             <!-- Warning Trigger Events Section -->
-            <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
+            <div class="mt-6 border-t border-line pt-4">
               <h3 class="text-sm font-medium mb-3">
                 {{ translations.warningTriggerEventsTitle }}:
               </h3>
@@ -1592,14 +1605,14 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <input
                     type="radio" name="warningType" value="input"
                     :checked="settings.showInputWarning && !settings.showCopyWarning"
-                    class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;" @change="() => {
+                    class="vz-check-box flex-shrink-0 mt-0.5" @change="() => {
                       settings.showInputWarning = true;
                       settings.showCopyWarning = false;
                     }"
                   >
                   <span class="ml-2 text-sm">
                     <span class="block">{{ translations.showInputWarning }}</span>
-                    <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span class="hint block vz-small mt-0.5">
                       {{ translations.showInputWarningDesc }}
                     </span>
                   </span>
@@ -1608,14 +1621,14 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <input
                     type="radio" name="warningType" value="copy"
                     :checked="!settings.showInputWarning && settings.showCopyWarning"
-                    class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;" @change="() => {
+                    class="vz-check-box flex-shrink-0 mt-0.5" @change="() => {
                       settings.showInputWarning = false;
                       settings.showCopyWarning = true;
                     }"
                   >
                   <span class="ml-2 text-sm">
                     <span class="block">{{ translations.showCopyWarning }}</span>
-                    <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span class="hint block vz-small mt-0.5">
                       {{ translations.showCopyWarningDesc }}
                     </span>
                   </span>
@@ -1624,7 +1637,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <input
                     type="radio" name="warningType" value="both"
                     :checked="settings.showInputWarning && settings.showCopyWarning"
-                    class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;" @change="() => {
+                    class="vz-check-box flex-shrink-0 mt-0.5" @change="() => {
                       settings.showInputWarning = true;
                       settings.showCopyWarning = true;
                     }"
@@ -1635,18 +1648,16 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
               <!-- Only offered where it applies: holding a paste is meaningless
                    if pasting is not one of the moments being watched -->
-              <div v-if="settings.showInputWarning" class="flex items-start justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <div v-if="settings.showInputWarning" class="flex items-start justify-between mt-4 pt-4 border-t border-line">
                 <div class="pr-3">
-                  <label class="text-sm font-medium">{{ translations.blockPasteOnUnfamiliar }}</label>
-                  <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  <label class="vz-heading">{{ translations.blockPasteOnUnfamiliar }}</label>
+                  <p class="hint vz-small mt-0.5">
                     {{ translations.blockPasteOnUnfamiliarDesc }}
                   </p>
                 </div>
-                <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                  <input v-model="settings.blockPasteOnUnfamiliar" type="checkbox" class="sr-only peer">
-                  <div
-                    class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
-                  />
+                <label class="vz-switch flex-shrink-0">
+                  <input v-model="settings.blockPasteOnUnfamiliar" type="checkbox">
+                  <span class="vz-switch__track" />
                 </label>
               </div>
             </div>
@@ -1661,11 +1672,11 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <label class="flex items-start">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="browser"
-                      class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;"
+                      class="vz-check-box flex-shrink-0 mt-0.5"
                     >
                     <span class="ml-2 text-sm">
                       <span class="block">{{ translations.browserNotifications }}</span>
-                      <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      <span class="hint block vz-small mt-0.5">
                         {{ translations.browserNotificationsDesc }}
                       </span>
                     </span>
@@ -1673,11 +1684,11 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <label class="flex items-start">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="in-page"
-                      class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;"
+                      class="vz-check-box flex-shrink-0 mt-0.5"
                     >
                     <span class="ml-2 text-sm">
                       <span class="block">{{ translations.inPageNotifications }}</span>
-                      <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      <span class="hint block vz-small mt-0.5">
                         {{ translations.inPageNotificationsDesc }}
                       </span>
                     </span>
@@ -1685,7 +1696,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <label class="flex items-start">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="both"
-                      class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                      class="vz-check-box flex-shrink-0"
                     >
                     <span class="ml-2 text-sm">{{ translations.bothNotifications }}</span>
                   </label>
@@ -1694,7 +1705,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <!-- Below the options rather than beside one of them: it is a
                      remark on the choice as a whole, and the point only lands
                      once both trade-offs have been read -->
-                <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+                <p class="hint vz-small mt-4 pt-3 border-t border-line">
                   {{ translations.notificationStylePinNote }}
                 </p>
               </div>
@@ -1711,9 +1722,9 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             Emptying the box is how one goes, and clearing them all at once is
             the data section's business.
           -->
-          <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
-            <label class="text-sm font-medium">{{ translations.silencedSitesTitle }}</label>
-            <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <div class="mt-6 border-t border-line pt-4">
+            <label class="vz-heading">{{ translations.silencedSitesTitle }}</label>
+            <p class="hint vz-small mb-1">
               {{ translations.silencedSitesDesc }}
             </p>
             <!--
@@ -1730,7 +1741,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               data-silenced-list
               wrap="off"
               spellcheck="false"
-              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+              class="vz-input vz-input--addr settings-textarea w-full"
               rows="6"
               placeholder="example.com&#10;shop.example.org"
               @focus="startEditingSilenced"
@@ -1739,19 +1750,20 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <!-- Named rather than dropped in silence: a line that was meant to be
                  a hostname and is not would otherwise vanish on save with nothing
                  said, and the site would stay unsilenced -->
-            <p v-if="silencedRejected.length" class="text-xs text-amber-600 dark:text-amber-400 mt-1 break-all">
+            <p v-if="silencedRejected.length" class="vz-small text-ink mt-1 break-all">
+              <VzIcon name="alert" class="tone-danger mr-1" />
               {{ translations.silencedSitesRejected }} {{ silencedRejected.join(', ') }}
             </p>
             <!-- Reports state, so it keeps its place on a compact page like the
                  line above it. One button for all of them: the textarea is where
                  a single site is taken off -->
             <div v-if="familiarSilenced.length" data-familiar-silenced class="mt-2">
-              <p class="text-xs text-gray-600 dark:text-gray-300 break-words">
+              <p class="vz-small text-ink-2 break-words">
                 {{ translations.silencedFamiliarNote }}
                 <span class="font-mono">{{ familiarSilenced.join(', ') }}</span>
               </p>
               <button
-                class="btn-ghost btn-sm mt-2"
+                class="vz-btn vz-btn--sm mt-2"
                 data-unsilence-familiar
                 :disabled="unsilencingFamiliar"
                 @click="unsilenceFamiliar"
@@ -1762,39 +1774,37 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
             <div class="flex items-start justify-between mt-4">
               <div class="pr-3">
-                <label class="text-sm font-medium">{{ translations.autoUnsilenceFamiliar }}</label>
-                <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                <label class="vz-heading">{{ translations.autoUnsilenceFamiliar }}</label>
+                <p class="hint vz-small mt-0.5">
                   {{ translations.autoUnsilenceFamiliarDesc }}
                 </p>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                <input v-model="settings.autoUnsilenceFamiliar" data-auto-unsilence type="checkbox" class="sr-only peer">
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
-                />
+              <label class="vz-switch flex-shrink-0">
+                <input v-model="settings.autoUnsilenceFamiliar" data-auto-unsilence type="checkbox">
+                <span class="vz-switch__track" />
               </label>
             </div>
           </div>
         </div>
         <!-- Anti-Tampering Settings -->
-        <div id="section-tampering" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-tampering" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('tampering')" @reset="resetSection('tampering')" />
-          <h2 class="text-lg font-semibold text-center mb-2">
+          <h2 class="vz-title text-center mb-2">
             {{ translations.antiTamperingSettings }}
           </h2>
-          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <p class="hint vz-small mb-4">
             {{ translations.antiTamperingSettingsDesc }}
           </p>
 
           <div>
-            <label class="text-sm font-medium">{{ translations.antiTamperingExcludedDomains }}</label>
-            <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <label class="vz-heading">{{ translations.antiTamperingExcludedDomains }}</label>
+            <p class="hint vz-small mb-1">
               {{ translations.antiTamperingExcludedDomainsDesc }}
             </p>
             <textarea
               v-model="settings.antiTamperingExcludedDomains"
               wrap="off"
-              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              class="vz-input settings-textarea w-full"
               rows="3"
               placeholder="example.com&#10;another-site.org"
             />
@@ -1802,56 +1812,54 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         </div>
 
         <!-- Link Safety Settings -->
-        <div id="section-link-safety" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-link-safety" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('link-safety')" @reset="resetSection('link-safety')" />
-          <h2 class="text-lg font-semibold text-center mb-2">
+          <h2 class="vz-title text-center mb-2">
             {{ translations.linkSafetySettings }}
           </h2>
-          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <p class="hint vz-small mb-4">
             {{ translations.linkSafetySettingsDesc }}
           </p>
 
           <!-- Master Toggle -->
           <div class="flex items-start justify-between mb-4">
             <div>
-              <label class="text-sm font-medium">{{ translations.linkSafetyEnabled }}</label>
+              <label class="vz-heading">{{ translations.linkSafetyEnabled }}</label>
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input v-model="settings.linkSafety.enabled" type="checkbox" class="sr-only peer">
-              <div
-                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"
-              />
+            <label class="vz-switch">
+              <input v-model="settings.linkSafety.enabled" type="checkbox">
+              <span class="vz-switch__track" />
             </label>
           </div>
 
           <div v-if="settings.linkSafety.enabled">
             <!-- Scope Mode -->
-            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-              <h3 class="text-sm font-medium mb-1">
+            <div class="mt-4 border-t border-line pt-4">
+              <h3 class="vz-heading mb-1">
                 {{ translations.linkScopeMode }}:
               </h3>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-3">
+              <p class="hint vz-small mb-3">
                 {{ translations.linkScopeModeDesc }}
               </p>
               <div class="space-y-2">
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="everywhere"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                    class="vz-check-box flex-shrink-0"
                   >
                   <span class="ml-2 text-sm">{{ translations.linkScopeEverywhere }}</span>
                 </label>
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="whitelist"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                    class="vz-check-box flex-shrink-0"
                   >
                   <span class="ml-2 text-sm">{{ translations.linkScopeWhitelist }}</span>
                 </label>
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="blacklist"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                    class="vz-check-box flex-shrink-0"
                   >
                   <span class="ml-2 text-sm">{{ translations.linkScopeBlacklist }}</span>
                 </label>
@@ -1862,30 +1870,30 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <textarea
                   v-model="settings.linkSafety.scopeDomains"
                   wrap="off"
-                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  class="vz-input settings-textarea w-full"
                   rows="3"
                   :placeholder="translations.linkScopeDomains"
                 />
-                <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p class="hint vz-small mt-1">
                   {{ translations.linkScopeDomainsNote }}
                 </p>
               </div>
             </div>
 
             <!-- Tooltip Trigger -->
-            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+            <div class="mt-4 border-t border-line pt-4">
               <h3 class="text-sm font-medium mb-3">
                 {{ translations.linkTooltipTrigger }}:
               </h3>
               <!-- Said before the choice, not after it: on a touchscreen two of
                    the three options below cannot fire at all -->
-              <p v-if="!pointerCanHover" class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              <p v-if="!pointerCanHover" class="vz-small mb-3">
                 {{ translations.linkTooltipTriggerTouchNote }}
               </p>
               <!-- A pointer that can hover, on a browser with no menus API: the
                    note above does not apply and the right-click option below is
                    the only one that cannot fire -->
-              <p v-else-if="!canRightClick" class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              <p v-else-if="!canRightClick" class="vz-small mb-3">
                 {{ translations.linkTooltipTriggerNoMenusNote }}
               </p>
               <div class="space-y-2">
@@ -1901,14 +1909,15 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="hover"
                     :disabled="!pointerCanHover"
-                    class="h-4 w-4 flex-shrink-0" :class="{ 'opacity-50': !pointerCanHover }" style="accent-color: #3b82f6;"
+                    class="vz-check-box flex-shrink-0" :class="{ 'opacity-45': !pointerCanHover }"
                   >
                   <span class="ml-2 text-sm">
-                    <span :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerHover }}</span>
-                    <p class="hint text-xs text-gray-500 dark:text-gray-400" :class="{ 'opacity-50': !pointerCanHover }">{{ translations.linkTooltipTriggerHoverDesc }}</p>
+                    <span :class="{ 'opacity-45': !pointerCanHover }">{{ translations.linkTooltipTriggerHover }}</span>
+                    <p class="hint vz-small" :class="{ 'opacity-45': !pointerCanHover }">{{ translations.linkTooltipTriggerHoverDesc }}</p>
                     <!-- Full strength while the option it belongs to is dimmed: the
                          reason is the one thing here still worth reading -->
-                    <p v-if="!pointerCanHover" class="text-xs text-amber-600 dark:text-amber-400">
+                    <p v-if="!pointerCanHover" class="vz-small">
+                      <VzIcon name="info" class="tone-neutral mr-1" />
                       {{ translations.linkTooltipTriggerHoverUnavailable }}
                     </p>
                   </span>
@@ -1916,23 +1925,24 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-left"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                    class="vz-check-box flex-shrink-0"
                   >
                   <span class="ml-2 text-sm">
                     <span>{{ translations.linkTooltipTriggerClickLeft }}</span>
-                    <p class="hint text-xs text-gray-500 dark:text-gray-400">{{ translations.linkTooltipTriggerClickLeftDesc }}</p>
+                    <p class="hint vz-small">{{ translations.linkTooltipTriggerClickLeftDesc }}</p>
                   </span>
                 </label>
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-right"
                     :disabled="!canRightClick"
-                    class="h-4 w-4 flex-shrink-0" :class="{ 'opacity-50': !canRightClick }" style="accent-color: #3b82f6;"
+                    class="vz-check-box flex-shrink-0" :class="{ 'opacity-45': !canRightClick }"
                   >
                   <span class="ml-2 text-sm">
-                    <span :class="{ 'opacity-50': !canRightClick }">{{ translations.linkTooltipTriggerClickRight }}</span>
-                    <p class="hint text-xs text-gray-500 dark:text-gray-400" :class="{ 'opacity-50': !canRightClick }">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
-                    <p v-if="!canRightClick" class="text-xs text-amber-600 dark:text-amber-400">
+                    <span :class="{ 'opacity-45': !canRightClick }">{{ translations.linkTooltipTriggerClickRight }}</span>
+                    <p class="hint vz-small" :class="{ 'opacity-45': !canRightClick }">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
+                    <p v-if="!canRightClick" class="vz-small">
+                      <VzIcon name="info" class="tone-neutral mr-1" />
                       {{ translations.linkTooltipTriggerClickRightUnavailable }}
                     </p>
                   </span>
@@ -1945,56 +1955,56 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                    where hovering happens at all. -->
               <div v-if="settings.linkSafety.tooltipTrigger === 'hover' && pointerCanHover" class="mt-4">
                 <div class="flex items-center justify-between gap-3 mb-1">
-                  <label class="text-sm font-medium">{{ translations.linkHoverDelay }}</label>
+                  <label class="vz-heading">{{ translations.linkHoverDelay }}</label>
                   <span class="text-sm font-mono flex-shrink-0">{{ hoverDelayLabel }}</span>
                 </div>
                 <input
                   :value="settings.linkSafety.hoverDelay"
                   type="range" min="0" max="1500" step="50"
                   class="w-full"
-                  style="accent-color: #3b82f6;"
+
                   @input="updateHoverDelay(($event.target as HTMLInputElement).value)"
                 >
-                <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p class="hint vz-small mt-1">
                   {{ translations.linkHoverDelayDesc }}
                 </p>
               </div>
             </div>
 
             <!-- Show Visit Count -->
-            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-              <h3 class="text-sm font-medium mb-1">
+            <div class="mt-4 border-t border-line pt-4">
+              <h3 class="vz-heading mb-1">
                 {{ translations.linkShowVisitCount }}:
               </h3>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-3">
+              <p class="hint vz-small mb-3">
                 {{ translations.linkShowVisitCountDesc }}
               </p>
               <div class="space-y-2">
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="always"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                    class="vz-check-box flex-shrink-0"
                   >
                   <span class="ml-2 text-sm">{{ translations.linkShowVisitCountAlways }}</span>
                 </label>
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="unfamiliar"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                    class="vz-check-box flex-shrink-0"
                   >
                   <span class="ml-2 text-sm">{{ translations.linkShowVisitCountUnfamiliar }}</span>
                 </label>
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="familiar"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                    class="vz-check-box flex-shrink-0"
                   >
                   <span class="ml-2 text-sm">{{ translations.linkShowVisitCountFamiliar }}</span>
                 </label>
                 <label class="flex items-start">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="never"
-                    class="h-4 w-4 flex-shrink-0" style="accent-color: #3b82f6;"
+                    class="vz-check-box flex-shrink-0"
                   >
                   <span class="ml-2 text-sm">{{ translations.linkShowVisitCountNever }}</span>
                 </label>
@@ -2002,34 +2012,34 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             </div>
 
             <!-- Shortened URL Settings -->
-            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-              <h3 class="text-sm font-medium mb-1">
+            <div class="mt-4 border-t border-line pt-4">
+              <h3 class="vz-heading mb-1">
                 {{ translations.linkShortUrlSection }}
               </h3>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-3">
+              <p class="hint vz-small mb-3">
                 {{ translations.linkShortUrlSectionWarning }}
               </p>
 
               <!-- Mode: off / button / auto -->
               <div class="space-y-3 mb-3">
                 <label class="flex items-start cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="off" class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;">
+                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="off" class="vz-check-box flex-shrink-0 mt-0.5">
                   <span class="ml-2 text-sm">{{ translations.linkShortUrlModeOff }}</span>
                 </label>
                 <label class="flex items-start cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="button" class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;">
+                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="button" class="vz-check-box flex-shrink-0 mt-0.5">
                   <span class="ml-2 text-sm">
                     <span class="block">{{ translations.linkShortUrlModeButton }}</span>
-                    <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span class="hint block vz-small mt-0.5">
                       {{ translations.linkShortUrlModeButtonDesc }}
                     </span>
                   </span>
                 </label>
                 <label class="flex items-start cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="auto" class="h-4 w-4 flex-shrink-0 mt-0.5" style="accent-color: #3b82f6;">
+                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="auto" class="vz-check-box flex-shrink-0 mt-0.5">
                   <span class="ml-2 text-sm">
                     <span class="block">{{ translations.linkShortUrlModeAuto }}</span>
-                    <span class="hint block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span class="hint block vz-small mt-0.5">
                       {{ translations.linkShortUrlModeAutoDesc }}
                     </span>
                   </span>
@@ -2037,38 +2047,38 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               </div>
 
               <!-- Sub-options (only when not off) -->
-              <div v-if="settings.linkSafety.shortUrlMode !== 'off'" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
+              <div v-if="settings.linkSafety.shortUrlMode !== 'off'" class="space-y-3 border-t border-line pt-3">
                 <!-- Show full URL -->
                 <label class="flex items-center gap-2 cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlShowFullUrl" type="checkbox" class="flex-shrink-0 rounded" style="width: 16px; height: 16px; min-width: 16px; min-height: 16px; accent-color: #3b82f6;">
+                  <input v-model="settings.linkSafety.shortUrlShowFullUrl" type="checkbox" class="vz-check-box flex-shrink-0">
                   <span class="text-sm">{{ translations.linkShortUrlShowFullUrl }}</span>
                 </label>
 
                 <!-- Show redirect chain -->
                 <label class="flex items-center gap-2 cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlTraceChain" type="checkbox" class="flex-shrink-0 rounded" style="width: 16px; height: 16px; min-width: 16px; min-height: 16px; accent-color: #3b82f6;">
+                  <input v-model="settings.linkSafety.shortUrlTraceChain" type="checkbox" class="vz-check-box flex-shrink-0">
                   <span class="text-sm">{{ translations.linkShortUrlTraceChain }}</span>
                 </label>
 
                 <!-- Resolve any URL -->
                 <label class="flex items-center gap-2 cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlResolveAny" type="checkbox" class="flex-shrink-0 rounded" style="width: 16px; height: 16px; min-width: 16px; min-height: 16px; accent-color: #3b82f6;">
+                  <input v-model="settings.linkSafety.shortUrlResolveAny" type="checkbox" class="vz-check-box flex-shrink-0">
                   <span class="text-sm">{{ translations.linkShortUrlResolveAny }}</span>
                 </label>
-                <p v-if="settings.linkSafety.shortUrlResolveAny" class="text-xs text-gray-500 dark:text-gray-400 ml-6">
+                <p v-if="settings.linkSafety.shortUrlResolveAny" class="vz-small ml-6">
                   {{ translations.linkShortUrlResolveAnyDesc }}
                 </p>
 
                 <!-- Custom shortener domains -->
                 <div>
-                  <label class="text-sm font-medium">{{ translations.linkShortUrlCustomDomains }}</label>
-                  <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <label class="vz-heading">{{ translations.linkShortUrlCustomDomains }}</label>
+                  <p class="hint vz-small mb-1">
                     {{ translations.linkShortUrlCustomDomainsDesc }}
                   </p>
                   <textarea
                     v-model="customShortenersText"
                     wrap="off"
-                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    class="vz-input settings-textarea w-full"
                     rows="3"
                     placeholder="short.link&#10;go.example.com"
                   />
@@ -2076,8 +2086,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
                 <!-- Remote list update URLs -->
                 <div>
-                  <label class="text-sm font-medium">{{ translations.linkShortUrlListUpdateUrl }}</label>
-                  <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <label class="vz-heading">{{ translations.linkShortUrlListUpdateUrl }}</label>
+                  <p class="hint vz-small mb-1">
                     {{ translations.linkShortUrlListUpdateUrlDesc }}
                   </p>
                   <textarea
@@ -2085,17 +2095,18 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     wrap="off"
                     rows="3"
                     spellcheck="false"
-                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                    class="vz-input vz-input--addr settings-textarea w-full"
                     placeholder="https://raw.githubusercontent.com/...&#10;https://example.com/another-list.txt"
                   />
                   <button
-                    class="btn-primary btn-sm w-full mt-2 whitespace-nowrap"
+                    class="vz-btn vz-btn--primary vz-btn--sm w-full mt-2 whitespace-nowrap"
                     :disabled="shortenerUpdateStatus === 'loading' || !shortenerListUrls.length"
                     @click="updateShortenerListNow"
                   >
                     {{ translations.emailDisposableUpdateNow }}
                   </button>
-                  <p v-if="shortenerUpdateStatus === 'success' && shortenerRemoteInfo" class="text-xs mt-1" :class="shortenerRemoteInfo.failed ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'">
+                  <p v-if="shortenerUpdateStatus === 'success' && shortenerRemoteInfo" class="vz-small mt-1">
+                    <VzIcon :name="shortenerRemoteInfo.failed ? 'info' : 'check-mark'" class="tone-neutral mr-1" />
                     {{ translations.emailDisposableUpdateSuccess }}: {{ shortenerRemoteInfo.count }}
                     <template v-if="shortenerRemoteInfo.sources">
                       · {{ translations.emailDisposableSources }}: {{ shortenerRemoteInfo.sources }}
@@ -2104,10 +2115,11 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                       · {{ translations.emailDisposableSourcesFailed }}: {{ shortenerRemoteInfo.failed }}
                     </template>
                   </p>
-                  <p v-else-if="shortenerUpdateStatus === 'error'" class="text-xs text-red-500 dark:text-red-400 mt-1">
+                  <p v-else-if="shortenerUpdateStatus === 'error'" class="vz-small mt-1">
+                    <VzIcon name="info" class="tone-neutral mr-1" />
                     {{ translations.emailDisposableUpdateError }}
                   </p>
-                  <p v-else-if="shortenerRemoteInfo" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <p v-else-if="shortenerRemoteInfo" class="vz-small mt-1">
                     {{ translations.emailDisposableUpdateSuccess }}: {{ shortenerRemoteInfo.count }} ({{ new Date(shortenerRemoteInfo.updatedAt).toLocaleDateString() }})
                   </p>
                 </div>
@@ -2117,12 +2129,12 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         </div>
 
         <!-- Lookup links – links the user may follow, never requests the extension makes -->
-        <div id="section-lookups" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-lookups" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('lookups')" @reset="resetSection('lookups')" />
-          <h2 class="text-lg font-semibold text-center mb-2">
+          <h2 class="vz-title text-center mb-2">
             {{ translations.lookupServicesLabel }}
           </h2>
-          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <p class="hint vz-small mb-4">
             {{ translations.lookupServicesNote }}
           </p>
 
@@ -2132,35 +2144,35 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               wrap="off"
               rows="6"
               spellcheck="false"
-              class="w-full px-2 py-1.5 text-xs font-mono rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 bg-white"
+              class="vz-input vz-input--addr settings-textarea w-full"
             />
-            <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p class="hint vz-small mt-1">
               {{ translations.lookupServicesDesc }}
             </p>
           </div>
         </div>
 
         <!-- Email Domain Lists -->
-        <div id="section-email-lists" class="relative scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div id="section-email-lists" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('email-lists')" @reset="resetSection('email-lists')" />
-          <h2 class="text-lg font-semibold text-center mb-2">
+          <h2 class="vz-title text-center mb-2">
             {{ translations.emailListsTitle }}
           </h2>
-          <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <p class="hint vz-small mb-4">
             {{ translations.emailListsDesc }}
           </p>
 
           <div class="space-y-4">
             <!-- Public providers: what the user adds, then where more come from -->
             <div>
-              <label class="text-sm font-medium">{{ translations.emailCustomPublicLabel }}</label>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <label class="vz-heading">{{ translations.emailCustomPublicLabel }}</label>
+              <p class="hint vz-small mb-1">
                 {{ translations.emailCustomPublicDesc }}
               </p>
               <textarea
                 v-model="customPublicProvidersText"
                 wrap="off"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                class="vz-input settings-textarea w-full"
                 rows="3"
                 placeholder="mail.example.com"
               />
@@ -2168,8 +2180,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
             <!-- Remote public provider list update -->
             <div>
-              <label class="text-sm font-medium">{{ translations.emailPublicUpdateUrlLabel }}</label>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <label class="vz-heading">{{ translations.emailPublicUpdateUrlLabel }}</label>
+              <p class="hint vz-small mb-1">
                 {{ translations.emailPublicUpdateUrlDesc }}
               </p>
               <textarea
@@ -2177,17 +2189,18 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 wrap="off"
                 rows="3"
                 spellcheck="false"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                class="vz-input vz-input--addr settings-textarea w-full"
                 placeholder="https://raw.githubusercontent.com/.../free.txt&#10;https://example.com/another-list.txt"
               />
               <button
-                class="btn-primary btn-sm w-full mt-2 whitespace-nowrap"
+                class="vz-btn vz-btn--primary vz-btn--sm w-full mt-2 whitespace-nowrap"
                 :disabled="publicUpdateStatus === 'loading' || !publicListUrls.length"
                 @click="updatePublicListNow"
               >
                 {{ translations.emailDisposableUpdateNow }}
               </button>
-              <p v-if="publicUpdateStatus === 'success' && publicRemoteInfo" class="text-xs mt-1" :class="publicRemoteInfo.failed ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'">
+              <p v-if="publicUpdateStatus === 'success' && publicRemoteInfo" class="vz-small mt-1">
+                <VzIcon :name="publicRemoteInfo.failed ? 'info' : 'check-mark'" class="tone-neutral mr-1" />
                 {{ translations.emailDisposableUpdateSuccess }}: {{ publicRemoteInfo.count }}
                 <template v-if="publicRemoteInfo.sources">
                   · {{ translations.emailDisposableSources }}: {{ publicRemoteInfo.sources }}
@@ -2196,24 +2209,25 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   · {{ translations.emailDisposableSourcesFailed }}: {{ publicRemoteInfo.failed }}
                 </template>
               </p>
-              <p v-else-if="publicUpdateStatus === 'error'" class="text-xs text-red-500 dark:text-red-400 mt-1">
+              <p v-else-if="publicUpdateStatus === 'error'" class="vz-small mt-1">
+                <VzIcon name="info" class="tone-neutral mr-1" />
                 {{ translations.emailDisposableUpdateError }}
               </p>
-              <p v-else-if="publicRemoteInfo" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <p v-else-if="publicRemoteInfo" class="vz-small mt-1">
                 {{ translations.emailDisposableUpdateSuccess }}: {{ publicRemoteInfo.count }} ({{ new Date(publicRemoteInfo.updatedAt).toLocaleDateString() }})
               </p>
             </div>
 
             <!-- Disposable domains: the same pair, own list then sources -->
             <div>
-              <label class="text-sm font-medium">{{ translations.emailCustomDisposableLabel }}</label>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <label class="vz-heading">{{ translations.emailCustomDisposableLabel }}</label>
+              <p class="hint vz-small mb-1">
                 {{ translations.emailCustomDisposableDesc }}
               </p>
               <textarea
                 v-model="customDisposableText"
                 wrap="off"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                class="vz-input settings-textarea w-full"
                 rows="3"
                 placeholder="temp-mail.example&#10;trash.example.org"
               />
@@ -2221,8 +2235,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
             <!-- Remote disposable list update -->
             <div>
-              <label class="text-sm font-medium">{{ translations.emailDisposableUpdateUrlLabel }}</label>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <label class="vz-heading">{{ translations.emailDisposableUpdateUrlLabel }}</label>
+              <p class="hint vz-small mb-1">
                 {{ translations.emailDisposableUpdateUrlDesc }}
               </p>
               <textarea
@@ -2230,17 +2244,18 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 wrap="off"
                 rows="3"
                 spellcheck="false"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                class="vz-input vz-input--addr settings-textarea w-full"
                 placeholder="https://raw.githubusercontent.com/.../disposable_email_blocklist.conf&#10;https://example.com/another-list.txt"
               />
               <button
-                class="btn-primary btn-sm w-full mt-2 whitespace-nowrap"
+                class="vz-btn vz-btn--primary vz-btn--sm w-full mt-2 whitespace-nowrap"
                 :disabled="disposableUpdateStatus === 'loading' || !disposableListUrls.length"
                 @click="updateDisposableListNow"
               >
                 {{ translations.emailDisposableUpdateNow }}
               </button>
-              <p v-if="disposableUpdateStatus === 'success' && disposableRemoteInfo" class="text-xs mt-1" :class="disposableRemoteInfo.failed ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'">
+              <p v-if="disposableUpdateStatus === 'success' && disposableRemoteInfo" class="vz-small mt-1">
+                <VzIcon :name="disposableRemoteInfo.failed ? 'info' : 'check-mark'" class="tone-neutral mr-1" />
                 {{ translations.emailDisposableUpdateSuccess }}: {{ disposableRemoteInfo.count }}
                 <template v-if="disposableRemoteInfo.sources">
                   · {{ translations.emailDisposableSources }}: {{ disposableRemoteInfo.sources }}
@@ -2249,10 +2264,11 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   · {{ translations.emailDisposableSourcesFailed }}: {{ disposableRemoteInfo.failed }}
                 </template>
               </p>
-              <p v-else-if="disposableUpdateStatus === 'error'" class="text-xs text-red-500 dark:text-red-400 mt-1">
+              <p v-else-if="disposableUpdateStatus === 'error'" class="vz-small mt-1">
+                <VzIcon name="info" class="tone-neutral mr-1" />
                 {{ translations.emailDisposableUpdateError }}
               </p>
-              <p v-else-if="disposableRemoteInfo" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <p v-else-if="disposableRemoteInfo" class="vz-small mt-1">
                 {{ translations.emailDisposableUpdateSuccess }}: {{ disposableRemoteInfo.count }} ({{ new Date(disposableRemoteInfo.updatedAt).toLocaleDateString() }})
               </p>
             </div>
@@ -2260,8 +2276,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <!-- Where a mail domain is read, for the brands the built-in table
                  does not cover -->
             <div>
-              <label class="text-sm font-medium">{{ translations.emailMailSitesLabel }}</label>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <label class="vz-heading">{{ translations.emailMailSitesLabel }}</label>
+              <p class="hint vz-small mb-1">
                 {{ translations.emailMailSitesDesc }}
               </p>
               <textarea
@@ -2269,7 +2285,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 wrap="off"
                 rows="3"
                 spellcheck="false"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                class="vz-input vz-input--addr settings-textarea w-full"
                 placeholder="example.com = mail.example.com&#10;example.net = webmail.example.org"
               />
             </div>
@@ -2277,8 +2293,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <!-- Remote mapping sources. Empty by default, so this stays a way in
                  for somebody who keeps a list rather than a promise of one -->
             <div>
-              <label class="text-sm font-medium">{{ translations.emailMailSitesUpdateUrlLabel }}</label>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <label class="vz-heading">{{ translations.emailMailSitesUpdateUrlLabel }}</label>
+              <p class="hint vz-small mb-1">
                 {{ translations.emailMailSitesUpdateUrlDesc }}
               </p>
               <textarea
@@ -2286,17 +2302,18 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 wrap="off"
                 rows="3"
                 spellcheck="false"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                class="vz-input vz-input--addr settings-textarea w-full"
                 placeholder="https://example.com/mail-sites.txt"
               />
               <button
-                class="btn-primary btn-sm w-full mt-2 whitespace-nowrap"
+                class="vz-btn vz-btn--primary vz-btn--sm w-full mt-2 whitespace-nowrap"
                 :disabled="mailSiteUpdateStatus === 'loading' || !mailSiteListUrls.length"
                 @click="updateMailSiteListNow"
               >
                 {{ translations.emailDisposableUpdateNow }}
               </button>
-              <p v-if="mailSiteUpdateStatus === 'success' && mailSiteRemoteInfo" class="text-xs mt-1" :class="mailSiteRemoteInfo.failed ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'">
+              <p v-if="mailSiteUpdateStatus === 'success' && mailSiteRemoteInfo" class="vz-small mt-1">
+                <VzIcon :name="mailSiteRemoteInfo.failed ? 'info' : 'check-mark'" class="tone-neutral mr-1" />
                 {{ translations.emailDisposableUpdateSuccess }}: {{ mailSiteRemoteInfo.count }}
                 <template v-if="mailSiteRemoteInfo.sources">
                   · {{ translations.emailDisposableSources }}: {{ mailSiteRemoteInfo.sources }}
@@ -2305,10 +2322,11 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   · {{ translations.emailDisposableSourcesFailed }}: {{ mailSiteRemoteInfo.failed }}
                 </template>
               </p>
-              <p v-else-if="mailSiteUpdateStatus === 'error'" class="text-xs text-red-500 dark:text-red-400 mt-1">
+              <p v-else-if="mailSiteUpdateStatus === 'error'" class="vz-small mt-1">
+                <VzIcon name="info" class="tone-neutral mr-1" />
                 {{ translations.emailDisposableUpdateError }}
               </p>
-              <p v-else-if="mailSiteRemoteInfo" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <p v-else-if="mailSiteRemoteInfo" class="vz-small mt-1">
                 {{ translations.emailDisposableUpdateSuccess }}: {{ mailSiteRemoteInfo.count }} ({{ new Date(mailSiteRemoteInfo.updatedAt).toLocaleDateString() }})
               </p>
             </div>
@@ -2316,8 +2334,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         </div>
 
         <!-- Database Management -->
-        <div id="section-data" class="scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <h2 class="text-lg font-semibold text-center mb-4">
+        <div id="section-data" class="scroll-mt-6 vz-card settings-card">
+          <h2 class="vz-title text-center mb-4">
             {{ translations.databaseManagement }}
           </h2>
 
@@ -2327,21 +2345,16 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                    read as setup the user forgot to do. On a browser without a
                    history API there was no such run, and the status line below
                    is the whole story -->
-              <p v-if="canImportHistory" class="hint text-xs text-gray-500 dark:text-gray-400 mb-2">
+              <p v-if="canImportHistory" class="hint vz-small mb-2">
                 {{ translations.importHistoryIntro }}
               </p>
               <div class="flex items-start gap-2 mb-3">
-                <span class="mt-1.5 h-2 w-2 rounded-full flex-shrink-0" :class="importStatusColor" />
-                <p
-                  class="text-xs"
-                  :class="importHealth === 'unsupported'
-                    ? 'text-amber-600 dark:text-amber-400'
-                    : 'text-gray-600 dark:text-gray-300'"
-                >
+                <VzIcon :name="importStatusIcon" class="mt-0.5" :class="importHealth === 'running' ? 'tone-brand' : 'tone-neutral'" :data-import-health="importHealth" />
+                <p class="vz-small text-ink-2">
                   {{ importStatusText }}
                   <template v-if="lastImportLabel">
                     <br>
-                    <span class="text-gray-500 dark:text-gray-400">
+                    <span class="text-ink-3">
                       {{ translations.importLastRun }}: {{ lastImportLabel }} {{ translations.importSitesStored }}
                     </span>
                   </template>
@@ -2355,7 +2368,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                    the whole story there. -->
               <button
                 v-if="canImportHistory"
-                class="btn-primary w-full"
+                class="vz-btn vz-btn--primary w-full"
                 :disabled="isImporting" @click="importHistory()"
               >
                 <template v-if="!isImporting">
@@ -2365,45 +2378,45 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   {{ translations.importing }} {{ importProgress.current }}/{{ importProgress.total }}
                 </template>
               </button>
-              <p v-if="canImportHistory" class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <p v-if="canImportHistory" class="hint vz-small mt-1">
                 {{ translations.importHistoryRunDesc }}
               </p>
-              <div v-if="isImporting" class="w-full h-1 mt-2 bg-gray-200 rounded-full overflow-hidden">
+              <div v-if="isImporting" class="w-full h-1 mt-2 bg-surface-hover rounded-full overflow-hidden">
                 <div
-                  class="h-full bg-blue-500 transition-all duration-200"
+                  class="h-full bg-brand transition-all duration-200"
                   :style="{ width: `${importProgress.total ? (importProgress.current / importProgress.total) * 100 : 0}%` }"
                 />
               </div>
               <button
                 v-if="isImporting"
-                class="btn-ghost btn-sm w-full mt-2"
+                class="vz-btn vz-btn--sm w-full mt-2"
                 @click="cancelImport"
               >
                 {{ translations.cancel }}
               </button>
               <!-- Unlike the automatic import, this one runs in the page and dies with it -->
-              <p v-if="isImporting" class="hint text-xs text-gray-500 dark:text-gray-400 mt-2">
+              <p v-if="isImporting" class="hint vz-small mt-2">
                 {{ translations.importKeepPageOpen }}
               </p>
             </div>
 
             <div class="space-y-2">
               <div>
-                <h3 class="text-sm font-medium mb-2">
+                <h3 class="vz-heading mb-2">
                   {{ translations.resetData }}
                 </h3>
                 <div class="space-y-2">
                   <label class="flex items-start">
                     <input
                       v-model="resetSelections.visits" type="checkbox"
-                      class="h-4 w-4 flex-shrink-0 rounded" style="accent-color: #3b82f6;"
+                      class="vz-check-box flex-shrink-0"
                     >
                     <span class="ml-2 text-sm">{{ translations.visitsInfo }}</span>
                   </label>
                   <label class="flex items-start">
                     <input
                       v-model="resetSelections.settings" type="checkbox"
-                      class="h-4 w-4 flex-shrink-0 rounded" style="accent-color: #3b82f6;"
+                      class="vz-check-box flex-shrink-0"
                     >
                     <span class="ml-2 text-sm">{{ translations.allSettings }}</span>
                   </label>
@@ -2411,13 +2424,13 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               </div>
 
               <button
-                class="btn-danger w-full mt-4"
+                class="vz-btn vz-btn--destroy w-full mt-4"
                 :disabled="isImporting || !Object.values(resetSelections).some(Boolean)"
                 @click="showResetConfirm = true"
               >
                 {{ translations.resetSelectedData }}
               </button>
-              <p class="hint text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <p class="hint vz-small mt-1">
                 {{ translations.selectDataToReset }}
               </p>
             </div>
@@ -2446,37 +2459,35 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
     </div>
   </main>
 
-  <!-- Reset Confirmation Dialog -->
-  <div v-if="showResetConfirm" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full">
-      <h3 class="text-lg font-semibold mb-4">
-        {{ translations.confirmReset }}
-      </h3>
-      <p class="text-sm text-gray-600 dark:text-gray-300 mb-2">
-        {{ translations.confirmResetMessage }}
-      </p>
-      <ul class="list-disc list-inside mb-6 text-sm text-gray-600 dark:text-gray-300">
-        <li v-if="resetSelections.visits">
-          {{ translations.visitsInfo }}
-        </li>
-        <li v-if="resetSelections.settings">
-          {{ translations.allSettings }}
-        </li>
-      </ul>
-      <p class="text-sm text-gray-600 dark:text-gray-300 mb-6">
-        {{ translations.cannotBeUndone }}!
-      </p>
-      <div class="flex space-x-3">
-        <button
-          class="btn-primary flex-1"
-          @click="showResetConfirm = false"
-        >
+  <!-- Reset Confirmation Dialog. Cancelling is the plain button, erasing is the
+       one solid red button on the page: it destroys the user's own data -->
+  <div v-if="showResetConfirm" class="fixed inset-0 vz-scrim flex items-center justify-center p-4 z-50">
+    <div class="vz-overlay vz-dialog" role="dialog" aria-modal="true" :aria-label="translations.confirmReset">
+      <div class="vz-dialog__head">
+        <VzIcon name="alert" large class="tone-danger" />
+        <h3 class="vz-title">
+          {{ translations.confirmReset }}
+        </h3>
+      </div>
+      <div class="grid gap-2 vz-body">
+        <p>{{ translations.confirmResetMessage }}</p>
+        <ul class="list-disc pl-5">
+          <li v-if="resetSelections.visits">
+            {{ translations.visitsInfo }}
+          </li>
+          <li v-if="resetSelections.settings">
+            {{ translations.allSettings }}
+          </li>
+        </ul>
+        <p class="vz-body-strong">
+          {{ translations.cannotBeUndone }}
+        </p>
+      </div>
+      <div class="vz-dialog__actions">
+        <button class="vz-btn" data-action="cancel" @click="showResetConfirm = false">
           {{ translations.cancel }}
         </button>
-        <button
-          class="btn-danger flex-1"
-          @click="resetSelected"
-        >
+        <button class="vz-btn vz-btn--destroy" data-action="reset" @click="resetSelected">
           {{ translations.reset }}
         </button>
       </div>
@@ -2485,6 +2496,18 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 </template>
 
 <style>
+.settings-card {
+  position: relative;
+  padding: var(--space-6);
+}
+
+.settings-textarea {
+  height: auto;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  line-height: 1.45;
+}
+
 /**
  * The explanation under a setting, hidden in one place rather than by a `v-if`
  * on each of the forty of them. Marked by hand, so a line that reports state –

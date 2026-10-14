@@ -1,6 +1,6 @@
 import type { PasteInterceptData } from '~/logic/ui-state'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import PasteInterceptDialog from '../PasteInterceptDialog.vue'
 
 const data: PasteInterceptData = {
@@ -12,7 +12,7 @@ const data: PasteInterceptData = {
 
 function open(overrides: Partial<PasteInterceptData> = {}) {
   return mount(PasteInterceptDialog, {
-    props: { visible: true, data: { ...data, ...overrides }, isDark: false },
+    props: { visible: true, data: { ...data, ...overrides } },
   })
 }
 
@@ -41,7 +41,10 @@ describe('the paste dialog and the per-site silence', () => {
   })
 
   it('settles the paste either way without carrying a second decision', async () => {
+    vi.useFakeTimers()
     const wrapper = open()
+    // Allowing ignores a press for the first half second
+    await vi.advanceTimersByTimeAsync(500)
 
     const allow = wrapper.findAll('button').find(b => b.text() === 'pasteInterceptAllow')!
     await allow.trigger('click')
@@ -50,5 +53,29 @@ describe('the paste dialog and the per-site silence', () => {
     const cancel = wrapper.findAll('button').find(b => b.text() === 'pasteInterceptCancel')!
     await cancel.trigger('click')
     expect(wrapper.emitted('cancel')).toEqual([[]])
+    vi.useRealTimers()
+  })
+
+  // The verdict can take a while. "Allow pasting" then appears where "Don't
+  // paste" was, and must not already be live for a press aimed at the other one
+  it('counts the half second from when "Allow pasting" appears, not from when the dialog opened', async () => {
+    vi.useFakeTimers()
+    const wrapper = open({ status: 'checking' })
+    await vi.advanceTimersByTimeAsync(2000)
+    await wrapper.setProps({ data: { ...data, status: 'unfamiliar' } })
+    await wrapper.get('[data-action="allow"]').trigger('click')
+    expect(wrapper.emitted('allow')).toBeFalsy()
+    await vi.advanceTimersByTimeAsync(500)
+    await wrapper.get('[data-action="allow"]').trigger('click')
+    expect(wrapper.emitted('allow')).toBeTruthy()
+    vi.useRealTimers()
+  })
+
+  it('ignores "Allow pasting" for the first half second', async () => {
+    vi.useFakeTimers()
+    const wrapper = open()
+    await wrapper.get('[data-action="allow"]').trigger('click')
+    expect(wrapper.emitted('allow')).toBeFalsy()
+    vi.useRealTimers()
   })
 })

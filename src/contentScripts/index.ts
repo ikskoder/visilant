@@ -1965,11 +1965,9 @@ async function mount(force = false) {
 
     const root = document.createElement('div')
     // `all: initial` below resets the font to the browser default, which is a
-    // serif, so every component has to name its own or come out in Times. This
-    // is the floor under all of them, set on the wrapper inside the shadow root
-    // where no page rule can reach it – anything the stylesheet misses still
-    // reads as the extension rather than as the page's book type.
-    root.style.setProperty('font-family', 'Arial, Helvetica, sans-serif')
+    // serif. The app's own wrapper (`.vz-root--page` in App.vue) names the
+    // generic families and every token, so nothing is set here: a family named
+    // inline would be one the page can redefine with an @font-face of its own.
 
     const styleEl = document.createElement('style')
     const response = await fetch(browser.runtime.getURL('dist/contentScripts/style.css'))

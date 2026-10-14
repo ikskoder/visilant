@@ -336,7 +336,7 @@
     "description": "Description of the history import button"
   },
   "statsUnknown": {
-    "message": "unknown",
+    "message": "not recorded",
     "description": "Shown instead of a date that the extension cannot know"
   },
   "statsImportHint": {
@@ -349,11 +349,23 @@
   },
   "untrackedHostTitle": {
     "message": "Visits here aren't counted",
-    "description": "Heading of the notice shown for hostnames without a dot"
+    "description": "Heading of the notice shown for a name that only works inside one network (localhost, printer.lan)"
   },
   "untrackedHostText": {
-    "message": "This name has no dot in it, so it isn't a public address anyone could register, and it can't be a lookalike of somebody else's site. That resemblance is what Visilant is here to catch, so it keeps no count for names like localhost and never warns about them. None of this is a verdict on the machine itself, only on what an address alone can tell you.",
-    "description": "Explains why a dotless hostname has no visit count and never triggers a warning"
+    "message": "This name only works inside one network, like localhost or printer.lan. Nobody can register it on the internet, so it can't be a lookalike of somebody else's site. That resemblance is what Visilant is here to catch, so it keeps no count for names like this and never warns about them. None of this is a verdict on the machine itself, only on what an address alone can tell you.",
+    "description": "Explains why a local name (no dot, or a suffix like .lan) has no visit count and never triggers a warning"
+  },
+  "untrackedIpBadge": {
+    "message": "IP address",
+    "description": "Badge shown instead of a familiar/unfamiliar verdict for a private IP address, which is never counted"
+  },
+  "untrackedIpTitle": {
+    "message": "This is an IP address, not a domain name",
+    "description": "Heading of the notice shown for a private IP address such as 192.168.1.1"
+  },
+  "untrackedIpText": {
+    "message": "There is no domain name here at all, only the number of one machine on a private network, such as your home router. Nobody on the internet can own it, so there is no owner to look up and no site it could be a lookalike of. Visilant keeps no count for addresses like this and never warns about them. None of this is a verdict on the machine itself, only on what an address alone can tell you.",
+    "description": "Explains why a private IP address has no visit count and never triggers a warning"
   },
   "resetData": {
     "message": "Reset data",
@@ -507,6 +519,14 @@
     "message": "Checked domain",
     "description": "Heading of the domain card when the popup is opened as its own tab, where there is no current domain"
   },
+  "currentAddress": {
+    "message": "Current address",
+    "description": "Heading of the card when the site is an IP address, which is not a domain"
+  },
+  "checkedAddress": {
+    "message": "Checked address",
+    "description": "Heading of the card on the check page when what was checked is an IP address, which is not a domain"
+  },
   "baseDomain": {
     "message": "Base domain",
     "description": "Label preceding the base (registrable) domain"
@@ -591,14 +611,6 @@
     "message": "Show the account name as typed – currently uppercase",
     "description": "Account name case button tooltip while showing uppercase"
   },
-  "highlightingTurnOn": {
-    "message": "Turn highlighting on – currently off",
-    "description": "Highlighting button tooltip while highlighting is off"
-  },
-  "highlightingTurnOff": {
-    "message": "Turn highlighting off – currently on",
-    "description": "Highlighting button tooltip while highlighting is on"
-  },
   "punycodeShowAscii": {
     "message": "Show punycode (ASCII) – currently the original",
     "description": "Domain format button tooltip while showing the original"
@@ -606,10 +618,6 @@
   "punycodeShowUnicode": {
     "message": "Show the original – currently punycode (ASCII)",
     "description": "Domain format button tooltip while showing punycode"
-  },
-  "highlightingLegend": {
-    "message": "No highlighting: Latin letters and separators (-_.)\nBlue: numbers (0-9)\nRed: everything else",
-    "description": "What each highlight colour means, appended to the button tooltip"
   },
   "domainOriginal": {
     "message": "Original (Unicode)",
@@ -836,11 +844,11 @@
     "description": "Label when site has 0 visits"
   },
   "linkTooltipMismatchWarning": {
-    "message": "The link shows one site but leads to another!",
+    "message": "The link shows one site but leads to another.",
     "description": "Warning about mismatched link text and href"
   },
   "linkInterceptMismatchWarning": {
-    "message": "The link shows one site but leads to another!",
+    "message": "The link shows one site but leads to another.",
     "description": "Shown in the navigation dialog when the link text names a different site from the one the link opens"
   },
   "linkTooltipShowsDomain": {
@@ -960,7 +968,7 @@
     "description": "Context menu item to check link safety (shows intercept dialog)"
   },
   "linkTooltipShortener": {
-    "message": "shortener",
+    "message": "Short link",
     "description": "Label indicating a URL shortener domain"
   },
   "linkTooltipShortenedUrl": {
@@ -1092,7 +1100,7 @@
     "description": "Label for the email analysis tooltip"
   },
   "emailTooltipMismatchWarning": {
-    "message": "The link shows one address, but the email would go to another!",
+    "message": "The link shows one address, but the email would go to another.",
     "description": "Warning when visible link text shows a different email than the mailto target"
   },
   "emailTooltipShownAddress": {
@@ -1324,7 +1332,7 @@
     "description": "Status after a failed list update"
   },
   "checkPanelTitle": {
-    "message": "Visilant check",
+    "message": "Address check",
     "description": "Header of the in-page check panel"
   },
   "closeDialog": {
@@ -1686,5 +1694,77 @@
   "silencedSitesRejected": {
     "message": "Not saved, these aren't site names:",
     "description": "Precedes the lines of the list that could not be read as hostnames"
+  },
+  "addressCharInvisible": {
+    "message": "Invisible character $1. It is part of the address, but you cannot see it.",
+    "description": "Hover text on an invisible character inside an address; $1 is its code, like U+200B"
+  },
+  "addressCharNotPlain": {
+    "message": "$1 is not a to z, 0 to 9 or a hyphen",
+    "description": "Hover text on an unexpected character in a hostname; $1 is its code"
+  },
+  "addressCharNotAscii": {
+    "message": "$1 is not a plain Latin letter, digit or sign",
+    "description": "Hover text on a non-ASCII character in an account name or raw text; $1 is its code"
+  },
+  "addressNotPlainDot": {
+    "message": "$1 looks like a dot but is a different character",
+    "description": "Hover text on a label separator that is not a plain dot; $1 is its code"
+  },
+  "addressTrailingDot": {
+    "message": "A dot at the very end. It reaches the same site.",
+    "description": "Hover text on a dot at the very end of an address"
+  },
+  "familiarityFactPassed": {
+    "message": "Passed",
+    "description": "Read aloud for the mark of a check that passed"
+  },
+  "familiarityFactFailed": {
+    "message": "Failed",
+    "description": "Read aloud for the mark of a check that failed"
+  },
+  "familiarityFactResult": {
+    "message": "Result",
+    "description": "Hidden heading of the column of pass and fail marks"
+  },
+  "framesTurnOff": {
+    "message": "Turn frames around address parts off – currently on",
+    "description": "Tooltip of the frames toggle while frames are on"
+  },
+  "framesTurnOn": {
+    "message": "Turn frames around address parts on – currently off",
+    "description": "Tooltip of the frames toggle while frames are off"
+  },
+  "addressDisplayGroup": {
+    "message": "How addresses are shown",
+    "description": "Label of the group of address display toggles"
+  },
+  "dialogGoBack": {
+    "message": "Go back",
+    "description": "The safe way out of a warning dialog: closes it and stays on the page"
+  },
+  "statusChecking": {
+    "message": "Checking",
+    "description": "Badge while Visilant is still looking a site up"
+  },
+  "popupTextSize": {
+    "message": "Text size",
+    "description": "Label of the group of text size buttons in the popup"
+  },
+  "popupTextSmaller": {
+    "message": "Make text smaller",
+    "description": "Popup button that makes the text smaller"
+  },
+  "popupTextLarger": {
+    "message": "Make text larger",
+    "description": "Popup button that makes the text larger"
+  },
+  "addressFramesLabel": {
+    "message": "Frames around address parts",
+    "description": "Settings switch: draw a frame around each label of an address"
+  },
+  "addressFramesDesc": {
+    "message": "Draws a frame around each part of an address, so you can see where one part ends and the next begins. The part that shows who owns the site gets a heavier frame. Turned off, that part is in bold instead.",
+    "description": "Explanation under the address frames switch"
   }
 }

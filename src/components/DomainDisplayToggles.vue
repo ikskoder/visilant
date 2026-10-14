@@ -4,8 +4,8 @@ import { useI18n } from '~/composables/useI18n'
 import { settings } from '~/logic/storage'
 
 /**
- * How an address is drawn: case, highlighting, and which spelling of an
- * international name is shown.
+ * How an address is drawn: case, frames around its labels, and
+ * which spelling of an international name is shown.
  *
  * One row rather than three copies. The controls used to live inside the
  * related-domain list, which only exists once a site has visits – so the check page,
@@ -15,8 +15,7 @@ import { settings } from '~/logic/storage'
  *
  * Each button shows the state it is in and says the action in its tooltip: a
  * control that only shows state leaves the reader guessing what pressing it
- * does, and highlighting leaves a plain Latin address untouched, so without the
- * button's own state that one reads as broken.
+ * does.
  */
 const { t } = useI18n()
 
@@ -26,12 +25,9 @@ const caseTitle = computed(() => settings.value.domainCase === 'upper'
   ? t.value('caseToLower')
   : t.value('caseToUpper'))
 
-const highlightingTitle = computed(() => {
-  const action = settings.value.domainHighlighting
-    ? t.value('highlightingTurnOff')
-    : t.value('highlightingTurnOn')
-  return `${action}\n\n${t.value('highlightingLegend')}`
-})
+const framesTitle = computed(() => settings.value.addressFrames !== false
+  ? t.value('framesTurnOff')
+  : t.value('framesTurnOn'))
 
 const punycodeTitle = computed(() => settings.value.punycodeListMode === 'unicode'
   ? t.value('punycodeShowAscii')
@@ -41,8 +37,8 @@ function toggleDomainCase() {
   settings.value.domainCase = settings.value.domainCase === 'upper' ? 'lower' : 'upper'
 }
 
-function toggleHighlighting() {
-  settings.value.domainHighlighting = !settings.value.domainHighlighting
+function toggleFrames() {
+  settings.value.addressFrames = settings.value.addressFrames === false
 }
 
 function togglePunycodeListMode() {
@@ -51,32 +47,38 @@ function togglePunycodeListMode() {
 </script>
 
 <template>
-  <div class="flex items-center gap-1">
+  <!-- Each one shows the state it is in by being pressed or not, and says in its
+       tooltip what a press will do next -->
+  <div class="vz-toggles" role="group" :aria-label="t('addressDisplayGroup')">
     <button
-      class="btn-ghost btn-sm !rounded w-6 flex items-center justify-center"
+      class="vz-toggle"
       :title="caseTitle"
       :aria-label="caseTitle"
+      :aria-pressed="settings.domainCase === 'upper'"
+      data-toggle="case"
       @click="toggleDomainCase"
     >
-      {{ settings.domainCase === 'upper' ? 'AA' : 'aa' }}
+      <VzIcon name="case" />
     </button>
     <button
-      class="btn-ghost btn-sm !rounded w-6 flex items-center justify-center"
-      :class="settings.domainHighlighting ? '!bg-blue-100 !border-blue-200 dark:!bg-blue-900/40 dark:!border-blue-700' : 'grayscale opacity-60'"
-      :title="highlightingTitle"
-      :aria-label="highlightingTitle"
-      :aria-pressed="settings.domainHighlighting"
-      @click="toggleHighlighting"
+      class="vz-toggle"
+      :title="framesTitle"
+      :aria-label="framesTitle"
+      :aria-pressed="settings.addressFrames !== false"
+      data-toggle="frames"
+      @click="toggleFrames"
     >
-      🌈
+      <VzIcon name="frames" />
     </button>
     <button
-      class="btn-ghost btn-sm !rounded w-6 flex items-center justify-center font-bold"
+      class="vz-toggle"
       :title="punycodeTitle"
       :aria-label="punycodeTitle"
+      :aria-pressed="settings.punycodeListMode === 'ascii'"
+      data-toggle="script"
       @click="togglePunycodeListMode"
     >
-      {{ settings.punycodeListMode === 'unicode' ? 'O' : 'P' }}
+      <VzIcon name="script" />
     </button>
   </div>
 </template>

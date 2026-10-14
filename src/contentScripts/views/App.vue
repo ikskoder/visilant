@@ -1,6 +1,6 @@
 <!-- eslint-disable no-console -->
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { isMessageError } from '~/logic/message-error'
 import { resolveTooltipTrigger } from '~/logic/platform'
@@ -14,6 +14,8 @@ import LinkTooltip from './LinkTooltip.vue'
 import PasteInterceptDialog from './PasteInterceptDialog.vue'
 // The same rule the extension's own pages get, since the in-page surfaces carry
 // the same titled facts and load none of `main.css`
+import '~/styles/tokens.css'
+import '~/styles/vz.css'
 import '~/styles/help-cursor.css'
 import 'uno.css'
 
@@ -49,8 +51,6 @@ watch(() => settings.value?.theme, resolveTheme, { immediate: true })
 onBeforeUnmount(() => {
   mediaQuery.removeEventListener('change', onSystemThemeChange)
 })
-
-provide('isDark', computed(() => isDark.value))
 
 // Helper to send message safely (fallback to runtime.sendMessage)
 async function sendMessageSafe<T = any>(id: string, data: any): Promise<T | null> {
@@ -187,21 +187,18 @@ onMounted(async () => {
 
 <template>
   <!--
-    The .dark class activates UnoCSS dark: variants inside the shadow DOM,
-    matching how useTheme toggles it on documentElement in popup/options.
-
-    The colour beside it is not decoration. `color` is an inherited property and
-    inheritance crosses the shadow boundary, so any text in here that does not
-    name its own colour takes the host page's – and a page whose text is near
-    black rendered invisibly on the dark cards. Everything below still overrides
-    it where it means something, this only decides what plain text looks like.
+    `.vz-root` carries every design token, declared here on the wrapper rather
+    than inherited from the host element, so no rule on the page can reach them.
+    `.vz-root--page` swaps the named fonts for generic ones, and `.dark` the
+    colours. It also gives plain text its colour: `color` inherits across the
+    shadow boundary, and a page whose text is near black used to draw invisibly
+    on the dark cards.
   -->
-  <div :class="[{ dark: isDark }, isDark ? 'text-gray-100' : 'text-gray-900']">
+  <div class="vz-root vz-root--page" :class="{ dark: isDark }">
     <InputWarning
       :safety-level="safetyLevel"
       :show="showWarning"
       :warning-type="warningType"
-      :is-dark="isDark"
       @close="showWarning = false"
     />
 
@@ -214,7 +211,6 @@ onMounted(async () => {
       :show-full-url="settings.linkSafety?.shortUrlShowFullUrl ?? false"
       :trace-chain="settings.linkSafety?.shortUrlTraceChain ?? false"
       :short-url-mode="settings.linkSafety?.shortUrlMode ?? 'off'"
-      :is-dark="isDark"
       @hover-enter="handleTooltipHoverEnter"
       @close="handleTooltipClose"
       @go="handleTooltipGo"
@@ -225,7 +221,6 @@ onMounted(async () => {
       :visible="checkPanelVisible"
       :data="checkPanelData"
       :font-size="settings.popupFontSize"
-      :is-dark="isDark"
       @close="checkPanelVisible = false; checkPanelData = null"
       @details="handleTooltipDetails"
     />
@@ -237,7 +232,6 @@ onMounted(async () => {
       :show-full-url="settings.linkSafety?.shortUrlShowFullUrl ?? false"
       :trace-chain="settings.linkSafety?.shortUrlTraceChain ?? false"
       :short-url-mode="settings.linkSafety?.shortUrlMode ?? 'off'"
-      :is-dark="isDark"
       @continue="handleInterceptContinue"
       @cancel="handleInterceptCancel"
       @details="handleTooltipDetails"
@@ -247,7 +241,6 @@ onMounted(async () => {
     <PasteInterceptDialog
       :visible="pasteInterceptVisible"
       :data="pasteInterceptData"
-      :is-dark="isDark"
       @allow="resolvePasteIntercept(true)"
       @cancel="resolvePasteIntercept(false)"
       @details="handleTooltipDetails"

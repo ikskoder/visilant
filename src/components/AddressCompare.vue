@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { compareAddresses } from '~/logic/address-compare'
 import { extractEmailFromText } from '~/logic/email-safety'
@@ -20,7 +20,6 @@ const props = defineProps<{
   address: string
 }>()
 
-const isDark = inject('isDark', ref(false))
 const { t } = useI18n()
 
 const expanded = ref(false)
@@ -51,40 +50,36 @@ const verdict = computed(() => {
   }
 })
 
+/** A differing pair is marked like an unexpected character in an address. */
 function cellClass(same: boolean) {
-  if (same)
-    return isDark.value ? 'text-gray-300' : 'text-gray-600'
-  return isDark.value ? 'bg-red-900/50 text-red-300' : 'bg-red-100 text-red-700'
+  return same ? 'text-ink-2' : 'vz-ch--foreign'
 }
 </script>
 
 <template>
-  <div class="mt-2">
+  <div class="address-compare">
     <button
-      class="flex items-center gap-1 text-left opacity-70 hover:opacity-100 transition-opacity"
+      class="vz-btn vz-btn--quiet vz-btn--sm vz-btn--flush"
       :aria-expanded="expanded"
       @click="expanded = !expanded"
     >
-      <span aria-hidden="true">{{ expanded ? '▾' : '▸' }}</span>
+      <VzIcon :name="expanded ? 'chevron-down' : 'chevron-right'" />
       <span>{{ t('addressCompareTitle') }}</span>
     </button>
 
-    <div v-if="expanded" class="mt-1">
-      <p class="opacity-60 leading-snug mb-1">
+    <div v-if="expanded" class="mt-1 grid gap-2">
+      <p class="vz-small">
         {{ t('addressCompareHint') }}
       </p>
 
       <input
         v-model="pasted"
         type="text"
-        class="w-full px-2 py-1 rounded border"
-        :class="isDark
-          ? 'bg-gray-900 border-gray-600 text-gray-200'
-          : 'bg-white border-gray-300 text-gray-800'"
+        class="vz-input vz-input--addr w-full"
         :placeholder="t('addressComparePlaceholder')"
       >
 
-      <p v-if="pasted.trim() && !known" class="mt-1 opacity-60">
+      <p v-if="pasted.trim() && !known" class="vz-small">
         {{ t('addressCompareNotAnAddress') }}
       </p>
 
@@ -92,12 +87,12 @@ function cellClass(same: boolean) {
         <!-- One grid so both rows share their columns: a character and the one it
              is being held against always sit in the same place. Scrolls sideways
              rather than wrapping, because a wrapped row would break that. -->
-        <div class="mt-1.5 overflow-x-auto">
-          <div class="inline-grid gap-y-0.5 font-mono" style="grid-auto-flow: column; grid-template-rows: auto auto;">
-            <div class="pr-2 opacity-50 whitespace-nowrap">
+        <div class="vz-well vz-scroll-x">
+          <div class="vz-addr inline-grid gap-y-1" style="grid-auto-flow: column; grid-template-rows: auto auto;">
+            <div class="pr-2 vz-eyebrow whitespace-nowrap self-center">
               {{ t('addressCompareChecked') }}
             </div>
-            <div class="pr-2 opacity-50 whitespace-nowrap">
+            <div class="pr-2 vz-eyebrow whitespace-nowrap self-center">
               {{ t('addressCompareKnown') }}
             </div>
 
@@ -114,15 +109,9 @@ function cellClass(same: boolean) {
           </div>
         </div>
 
-        <p
-          v-if="verdict"
-          class="mt-1 leading-snug"
-          :class="verdict.good
-            ? (isDark ? 'text-green-400' : 'text-green-700')
-            : (isDark ? 'text-red-400' : 'text-red-600')"
-        >
+        <VzNotice v-if="verdict" :tone="verdict.good ? 'neutral' : 'danger'" :icon="verdict.good ? 'pass' : 'alert'">
           {{ verdict.text }}
-        </p>
+        </VzNotice>
       </template>
     </div>
   </div>

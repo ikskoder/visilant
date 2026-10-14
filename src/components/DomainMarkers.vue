@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DomainMarkerId, EmbeddedDomain } from '~/logic/domain-markers'
-import { computed, inject, ref } from 'vue'
+import { computed } from 'vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import { useLookalikes } from '~/composables/useLookalikes'
@@ -21,10 +21,11 @@ const props = defineProps<{
    * the host, say. Drawn first, in the same shape, so a notice and a marker under
    * one address read as one list rather than two blocks with a gap between them.
    */
-  notes?: { id: string, text: string }[]
+  notes?: { id: string, text: string, icon?: 'link' }[]
+  /** No box around each line, for the tooltip where space is tight. */
+  bare?: boolean
 }>()
 
-const isDark = inject('isDark', ref(false))
 const { t } = useI18n()
 
 const TRANSLATION_KEYS: Record<DomainMarkerId, string> = {
@@ -101,52 +102,52 @@ function embeddedSentence(marker: EmbeddedDomain): SentencePart[] {
 </script>
 
 <template>
-  <div v-if="markers.length || notes?.length" class="mb-2 flex flex-col gap-1">
-    <div
+  <!-- Every line here is a warning, so every line is red with the one warning
+       sign. There used to be an amber step below red, and a reader cannot tell
+       three warm colours apart at a glance. -->
+  <div v-if="markers.length || notes?.length" class="domain-markers grid gap-2">
+    <VzNotice
       v-for="note in notes"
       :key="note.id"
+      tone="danger"
+      :icon="note.icon"
+      :bare="bare"
       :data-marker-note="note.id"
-      class="flex items-start gap-1 leading-snug"
-      :class="isDark ? 'text-amber-400' : 'text-amber-700'"
     >
-      <span class="flex-shrink-0" aria-hidden="true">⚠</span>
-      <span class="break-words">{{ note.text }}</span>
-    </div>
-    <div
+      {{ note.text }}
+    </VzNotice>
+    <VzNotice
       v-for="marker in markers"
       :key="marker.id"
+      tone="danger"
+      :bare="bare"
       :data-marker="marker.id"
-      class="flex items-start gap-1 leading-snug"
-      :class="isDark ? 'text-amber-400' : 'text-amber-700'"
     >
-      <span class="flex-shrink-0" aria-hidden="true">⚠</span>
-      <!-- break-words, not break-all: wrap between words, and only ever split a
-           word that cannot fit on its own. An address or an IPv4 stays intact. -->
-      <span v-if="marker.id === 'embedded-public-suffix'" class="break-words">
+      <template v-if="marker.id === 'embedded-public-suffix'">
         <template v-for="(part, index) in embeddedSentence(marker)" :key="index">
-          <template v-if="'text' in part">{{ part.text }}</template><span v-else class="whitespace-nowrap"><!--
-            Blocked like the names in the lookalike line, so where each
-            starts and stops is as plain.
-          --><span
+          <template v-if="'text' in part">
+            {{ part.text }}
+          </template><span v-else class="vz-nobr"><SecureText
+            :text="part.name"
+            size="s"
+
             :data-marker-imitated="part.kind === 'imitated' ? '' : undefined"
             :data-marker-site="part.kind === 'site' ? '' : undefined"
-            class="inline-block max-w-full font-mono px-1 rounded whitespace-normal"
-            :class="part.kind === 'imitated'
-              ? (isDark ? 'bg-gray-700 text-gray-100' : 'bg-gray-100 text-gray-800')
-              : (isDark ? 'bg-amber-400/20 text-amber-100' : 'bg-amber-100 text-amber-900')"
-            ><SecureText :text="part.name" force-highlight danger-only /></span>{{ part.glue }}</span>
+          />{{ part.glue }}</span>
         </template>
-      </span>
-      <span v-else class="break-words">
-        {{ t(TRANSLATION_KEYS[marker.id]) }}<template v-if="marker.detail">:
-          <!-- The depth is a count, not a piece of the address. Through
-               SecureText its digits came out blue and bold, the colour that
-               marks a digit standing in for a letter, as though the number
-               itself were suspect. -->
-          <span v-if="marker.id === 'deep-subdomains'" data-marker-count>{{ marker.detail }}</span>
-          <SecureText v-else :text="marker.detail" force-highlight danger-only class="font-mono whitespace-nowrap" />
+      </template>
+      <template v-else>
+        {{ `${t(TRANSLATION_KEYS[marker.id])}${marker.detail ? ':' : ''}` }}
+        <template v-if="marker.detail">
+          <!-- The depth is a count, not a piece of the address, so it is not
+               drawn as one -->
+          <b v-if="marker.id === 'deep-subdomains'" data-marker-count>{{ marker.detail }}</b>
+          <!-- The part before @ is ignored by the browser and dressed as a
+               site, so it is struck through rather than framed -->
+          <span v-else-if="marker.id === 'url-userinfo'" class="vz-addr vz-addr--s vz-decoy">{{ marker.detail }}</span>
+          <SecureText v-else :text="marker.detail" :kind="marker.id === 'mixed-scripts' ? 'raw' : 'host'" size="s" />
         </template>
-      </span>
-    </div>
+      </template>
+    </VzNotice>
   </div>
 </template>

@@ -75,7 +75,7 @@ const CASES: Case[] = [
   { name: 'opt-fam-last-locked', section: 'familiarity', title: 'Familiarity: only visits left on', note: 'The last check cannot be switched off: its tick box is disabled, with a tooltip saying at least one check has to stay on.', settings: { familiarity: { activeDays: { enabled: false, min: 5 }, age: { enabled: false, min: 10 } } } },
   { name: 'opt-fam-compact-one-off', section: 'familiarity', title: 'Familiarity, compact page, one check off', note: 'With explanations turned off the checks become short sentences like "At least 10 visits".', settings: { verboseOptions: false, familiarity: { activeDays: { enabled: false, min: 5 } } } },
   { name: 'opt-fam-huge-thresholds', section: 'familiarity', title: 'Familiarity: extreme thresholds', note: '999999 visits and 100000 days in narrow number boxes. Look for numbers cut off or spilling out.', settings: { familiarity: { visits: { enabled: true, min: 999999 }, activeDays: { enabled: true, min: 1 }, age: { enabled: true, min: 100000 } } } },
-  { name: 'opt-fam-coverage-import', section: 'familiarity', title: 'Familiarity: some sites have no dates, import can fix it', note: 'Records from before dates were kept, and the full import has not run. An amber box counts them and links to the history import.', local: undatedRecords, importState: { mode: 'quick', fullDoneAt: 0 } },
+  { name: 'opt-fam-coverage-import', section: 'familiarity', title: 'Familiarity: some sites have no dates, import can fix it', note: 'Records from before dates were kept, and the full import has not run. A grey notice counts them and links to the history import.', local: undatedRecords, importState: { mode: 'quick', fullDoneAt: 0 } },
   { name: 'opt-fam-coverage-permanent', section: 'familiarity', title: 'Familiarity: some sites are older than the browser remembers', note: 'The same records after a complete import: the box explains that nothing more can be done, with no link.', local: undatedRecords },
   { name: 'opt-fam-coverage-never', section: 'familiarity', title: 'Familiarity: sites without dates, nothing ever imported', note: 'No import has ever run. The box offers the import.', local: undatedRecords, importState: null },
 
@@ -134,7 +134,7 @@ const CASES: Case[] = [
     name: 'opt-notif-silenced-rejected',
     section: 'notifications',
     title: 'Notifications: names typed into the silenced list that are not sites',
-    note: 'After typing "not a host!" and a URL into the list, an amber line says they were not saved.',
+    note: 'After typing "not a host!" and a URL into the list, a line with the red triangle says they were not saved.',
     local: now => ({ 'shop.example.org': dated(now, 4, { ignored: true, firstSeen: now - 9 * DAY, activeDays: 2 }) }),
     act: async (page) => {
       const box = page.locator('#section-notifications textarea').first()
@@ -169,7 +169,7 @@ const CASES: Case[] = [
     name: 'opt-ls-list-success',
     section: 'link-safety',
     title: 'Short links: list just updated',
-    note: 'After pressing "Update now": a green line with the count.',
+    note: 'After pressing "Update now": a line with a tick and the count.',
     act: async (page) => {
       await page.route(SHORTENER_LIST, route => route.fulfill({ status: 200, body: 'a.test\nb.test\nc.test\n' }))
       await page.locator('#section-link-safety button', { hasText: 'Update now' }).click()
@@ -189,7 +189,7 @@ const CASES: Case[] = [
     name: 'opt-ls-list-partial',
     section: 'link-safety',
     title: 'Short links: one of two sources failed',
-    note: 'An amber line: loaded from one source, one failed.',
+    note: 'A grey line with the info sign: loaded from one source, one failed.',
     settings: { linkSafety: { shortUrlListUpdateUrl: `${SHORTENER_LIST}\nhttps://lists.example.test/short.txt` } },
     act: async (page) => {
       await page.route(SHORTENER_LIST, route => route.fulfill({ status: 200, body: 'a.test\nb.test\n' }))
@@ -223,7 +223,7 @@ const CASES: Case[] = [
     name: 'opt-email-mixed',
     section: 'email-lists',
     title: 'Email lists: one updated, one failed',
-    note: 'Public services updated (green), disposable failed (red), side by side.',
+    note: 'Public services updated (tick), disposable failed (grey info sign), side by side.',
     act: async (page) => {
       await page.route(PUBLIC_LIST, route => route.fulfill({ status: 200, body: 'a.test\nb.test\n' }))
       await page.route(DISPOSABLE_LIST, route => route.fulfill({ status: 404, body: '' }))
@@ -237,14 +237,14 @@ const CASES: Case[] = [
   // ==========================================
   // Your data: the history import as the page finds it
   // ==========================================
-  { name: 'opt-data-never', section: 'data', title: 'Your data: nothing imported yet', note: 'Grey dot, the button reads "Import history", and there is no "last import" line.', importState: null },
-  { name: 'opt-data-running', section: 'data', title: 'Your data: an import is running in the background', note: 'Blue dot. No progress bar, since that only appears for an import started from this page.', importState: { status: 'running', mode: 'quick', phase: 'reading', current: 0, total: 0, finishedAt: 0, domains: 0 } },
-  { name: 'opt-data-interrupted', section: 'data', title: 'Your data: an import that was cut short', note: 'Its last sign of life was five minutes ago. Amber dot.', importState: { status: 'running', finishedAt: 0, updatedAt: -5 * 60 * 1000 } },
-  { name: 'opt-data-partial', section: 'data', title: 'Your data: visit counts in, dates missing', note: 'The quick pass finished, the full one did not. Amber dot and the last import line.', importState: { mode: 'quick', fullDoneAt: 0 } },
-  { name: 'opt-data-cancelled', section: 'data', title: 'Your data: import stopped by the user', note: 'Amber dot, "The import was stopped".', importState: { status: 'cancelled', mode: 'full', fullDoneAt: 0, domains: 150 } },
-  { name: 'opt-data-failed', section: 'data', title: 'Your data: import failed', note: 'Red dot, no last import line.', importState: { status: 'failed', domains: 0 } },
+  { name: 'opt-data-never', section: 'data', title: 'Your data: nothing imported yet', note: 'Dashed grey ring, the button reads "Import history", and there is no "last import" line.', importState: null },
+  { name: 'opt-data-running', section: 'data', title: 'Your data: an import is running in the background', note: 'Pending sign in the interface colour. No progress bar, since that only appears for an import started from this page.', importState: { status: 'running', mode: 'quick', phase: 'reading', current: 0, total: 0, finishedAt: 0, domains: 0 } },
+  { name: 'opt-data-interrupted', section: 'data', title: 'Your data: an import that was cut short', note: 'Its last sign of life was five minutes ago. Grey info sign.', importState: { status: 'running', finishedAt: 0, updatedAt: -5 * 60 * 1000 } },
+  { name: 'opt-data-partial', section: 'data', title: 'Your data: visit counts in, dates missing', note: 'The quick pass finished, the full one did not. Grey info sign and the last import line.', importState: { mode: 'quick', fullDoneAt: 0 } },
+  { name: 'opt-data-cancelled', section: 'data', title: 'Your data: import stopped by the user', note: 'Grey info sign, "The import was stopped".', importState: { status: 'cancelled', mode: 'full', fullDoneAt: 0, domains: 150 } },
+  { name: 'opt-data-failed', section: 'data', title: 'Your data: import failed', note: 'Grey info sign, no last import line. A failed import is about Visilant, not about a site, so it is not red.', importState: { status: 'failed', domains: 0 } },
   { name: 'opt-data-huge', section: 'data', title: 'Your data: a very large history', note: '1,234,567 sites in the last import line.', importState: { domains: 1234567, visits: 98765432 } },
-  { name: 'opt-data-no-history', section: 'data', title: 'Your data: a browser that cannot read history', note: 'As in Firefox for Android: the import button and its explanation are gone, and an amber line says why.', init: hide('history') },
+  { name: 'opt-data-no-history', section: 'data', title: 'Your data: a browser that cannot read history', note: 'As in Firefox for Android: the import button and its explanation are gone, and a grey notice says why.', init: hide('history') },
   {
     name: 'opt-data-ticked',
     section: 'data',

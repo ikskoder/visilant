@@ -19,12 +19,26 @@ defineEmits<{ reset: [] }>()
 <template>
   <button
     type="button"
-    class="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+    class="vz-iconbtn section-reset"
     :title="label"
     :aria-label="label"
     :disabled="disabled"
     @click="$emit('reset')"
   >
-    <div class="i-carbon-reset text-lg" />
+    <VzIcon name="reset" />
   </button>
 </template>
+
+<style scoped>
+.section-reset {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+}
+
+.section-reset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: transparent;
+}
+</style>

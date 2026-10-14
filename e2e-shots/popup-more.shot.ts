@@ -8,6 +8,7 @@ import type { Page } from '@playwright/test'
 import type { Seed } from './fixtures'
 import { FAMILIAR, patchSettings, seed, test } from './fixtures'
 import { DAY, openPage, openPopup, seedRaw, setLocal } from './helpers'
+import { t } from './messages'
 
 const POPUP = 'src/popup/Popup.vue'
 
@@ -41,10 +42,10 @@ const CASES: Case[] = [
   // ==========================================
   // How the address is drawn
   // ==========================================
-  { name: 'pp-font-70', title: 'Popup at the smallest text size', note: '70%: the "A-" button is greyed out.', settings: { popupFontSize: 70 }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
+  { name: 'pp-font-80', title: 'Popup at the smallest text size', note: '80%: the "A-" button is greyed out.', settings: { popupFontSize: 80 }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
   { name: 'pp-font-150', title: 'Popup at the largest text size', note: '150%: "A+" greyed out, rows and the sort bar wrap.', settings: { popupFontSize: 150 }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
   { name: 'pp-upper', title: 'Popup with names in capitals', note: 'The case toggle reads "AA".', settings: { domainCase: 'upper' }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
-  { name: 'pp-highlight', title: 'Popup with digits and punctuation highlighted', note: 'The rainbow toggle is pressed: digits blue and bold, dots and dashes bold, in the heading and the list.', settings: { domainHighlighting: true }, seed: { 'bank24.test': FAMILIAR, 'login-2fa.bank24.test': { visits: 9 }, 'my-acct.bank24.test': { visits: 4 } }, url: 'https://login-2fa.bank24.test/' },
+  { name: 'pp-highlight', title: 'Popup, addresses with digits', note: 'Digits bold in their own colour, in the heading and the list. Three display toggles: case, frames, script.', seed: { 'bank24.test': FAMILIAR, 'login-2fa.bank24.test': { visits: 9 }, 'my-acct.bank24.test': { visits: 4 } }, url: 'https://login-2fa.bank24.test/' },
   { name: 'pp-idn-list-unicode', title: 'Popup: a relative named in another alphabet', note: 'bücher.idn.test in the list, in its own letters. The punycode toggle reads "O".', seed: { 'idn.test': FAMILIAR, 'xn--bcher-kva.idn.test': { visits: 6 } }, url: 'https://shop.idn.test/' },
   { name: 'pp-idn-list-ascii', title: 'Popup: the same relative in its xn-- spelling', note: 'Setting "punycode list: ascii". The toggle reads "P".', settings: { punycodeListMode: 'ascii' }, seed: { 'idn.test': FAMILIAR, 'xn--bcher-kva.idn.test': { visits: 6 } }, url: 'https://shop.idn.test/' },
   { name: 'pp-name-30', title: 'Popup: a 30-character name', note: 'The heading steps down a size.', url: 'https://secure-account-login.example.test/' },
@@ -57,7 +58,7 @@ const CASES: Case[] = [
     note: 'The "?" next to the Punycode spelling pressed.',
     url: 'https://пример.рф/',
     act: async (page) => {
-      await page.locator('button', { hasText: /^\s*\?\s*$/ }).first().click()
+      await page.locator(`button[aria-label="${t('punycodeHelpTitle')}"]`).first().click()
       await page.waitForTimeout(400)
     },
   },
@@ -81,17 +82,17 @@ const CASES: Case[] = [
   // ==========================================
   { name: 'pp-metric-days', title: 'Popup list showing active days', note: 'The dropdown on "Active days".', settings: { listMetric: 'activeDays' }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
   { name: 'pp-metric-age', title: 'Popup list showing days known', note: 'The dropdown on "Days known".', settings: { listMetric: 'age' }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
-  { name: 'pp-metric-checks', title: 'Popup list showing passed checks', note: 'Values like "2 / 3", green or red.', settings: { listMetric: 'checks' }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
+  { name: 'pp-metric-checks', title: 'Popup list showing passed checks', note: 'Values like "2 / 3", each followed by a pass or fail mark.', settings: { listMetric: 'checks' }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
   { name: 'pp-metric-uncoloured', title: 'Popup list showing a check that is switched off', note: 'Days known, with that check off: plain numbers, no colour, since they decide nothing.', settings: { listMetric: 'age', familiarity: { age: { enabled: false, min: 10 } } }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
   { name: 'pp-sort-name-asc', title: 'Popup list sorted by name, A to Z', note: '"Name" and an up arrow.', settings: { sortByName: true, sortOrder: 'asc' }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
   { name: 'pp-sort-name-desc', title: 'Popup list sorted by name, Z to A', note: '"Name" and a down arrow.', settings: { sortByName: true, sortOrder: 'desc' }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
   { name: 'pp-sort-number-asc', title: 'Popup list, smallest number first', note: '"Number" and an up arrow.', settings: { sortOrder: 'asc' }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
-  { name: 'pp-legacy', title: 'Popup: records from before dates were kept', note: 'Active days and days known read "unknown" in red. In a list showing active days, those rows read "unknown" and sink to the bottom.', settings: { listMetric: 'activeDays' }, raw: now => ({ 'legacy.test': { count: 80, lastSeen: now - 2 * DAY, ignored: false }, 'www2.legacy.test': { count: 5, lastSeen: now - 2 * DAY, ignored: false }, 'new.legacy.test': { count: 4, lastSeen: now - DAY, ignored: false, activeDays: 2, firstSeen: now - 10 * DAY } }), url: 'https://legacy.test/' },
+  { name: 'pp-legacy', title: 'Popup: records from before dates were kept', note: 'Active days and days known read "not recorded" with a failed mark. In a list showing active days, those rows read "not recorded" and sink to the bottom.', settings: { listMetric: 'activeDays' }, raw: now => ({ 'legacy.test': { count: 80, lastSeen: now - 2 * DAY, ignored: false }, 'www2.legacy.test': { count: 5, lastSeen: now - 2 * DAY, ignored: false }, 'new.legacy.test': { count: 4, lastSeen: now - DAY, ignored: false, activeDays: 2, firstSeen: now - 10 * DAY } }), url: 'https://legacy.test/' },
 
   // ==========================================
   // Familiarity rules
   // ==========================================
-  { name: 'pp-rule-any', title: 'Popup under the rule "any one check"', note: 'A fourth cell "Passed checks 1 / 3" in green next to red facts.', settings: { familiarity: { mode: 'any' } }, seed: { 'half.test': { visits: 40, activeDays: 2, ageDays: 3 } }, url: 'https://half.test/' },
+  { name: 'pp-rule-any', title: 'Popup under the rule "any one check"', note: 'A fourth cell "Passed checks 1 / 3" with a pass mark next to failed facts.', settings: { familiarity: { mode: 'any' } }, seed: { 'half.test': { visits: 40, activeDays: 2, ageDays: 3 } }, url: 'https://half.test/' },
   { name: 'pp-rule-2of3', title: 'Popup under "at least 2 of 3"', note: '"Passed checks 1 / 3" in red, and the warnings row.', settings: { familiarity: { mode: 'atLeast', atLeast: 2 } }, seed: { 'half.test': { visits: 40, activeDays: 2, ageDays: 3 } }, url: 'https://half.test/' },
   { name: 'pp-rule-visits-only', title: 'Popup with only the visits check on', note: 'A single cell.', settings: { familiarity: { activeDays: { enabled: false, min: 5 }, age: { enabled: false, min: 10 } } }, seed: { 'half.test': { visits: 40, activeDays: 2, ageDays: 3 } }, url: 'https://half.test/' },
   { name: 'pp-rule-two', title: 'Popup with two checks on', note: 'Two cells.', settings: { familiarity: { visits: { enabled: false, min: 10 } } }, seed: { 'half.test': { visits: 40, activeDays: 2, ageDays: 3 } }, url: 'https://half.test/' },
@@ -100,16 +101,16 @@ const CASES: Case[] = [
   // ==========================================
   // Warnings and anti-tampering
   // ==========================================
-  { name: 'pp-warnings-on', title: 'Popup: warnings on for an unfamiliar site', note: 'Green dot, "Warnings are on", a "Turn off" button.', seed: { 'few.test': LOW }, url: 'https://few.test/' },
+  { name: 'pp-warnings-on', title: 'Popup: warnings on for an unfamiliar site', note: '"Warnings are on for this site" in plain text, a "Turn off" button.', seed: { 'few.test': LOW }, url: 'https://few.test/' },
   { name: 'pp-silenced-familiar', title: 'Popup: a familiar site whose warnings were turned off', note: 'Still says warnings are off, with "Turn back on".', seed: { 'trusted.test': { ...FAMILIAR, ignored: true } }, url: 'https://trusted.test/' },
-  { name: 'pp-tamper-off', title: 'Popup: anti-tampering off for this site', note: 'Amber dot, "Anti-tampering: off", an "Enable" button.', settings: { antiTamperingExcludedDomains: 'shop.test' }, url: 'https://shop.test/' },
+  { name: 'pp-tamper-off', title: 'Popup: anti-tampering off for this site', note: 'Grey "Anti-tampering: off" badge, an "Enable" button.', settings: { antiTamperingExcludedDomains: 'shop.test' }, url: 'https://shop.test/' },
   { name: 'pp-tamper-parent', title: 'Popup: anti-tampering off by a rule for the parent site', note: '"turned off by a rule for paypal.test".', settings: { antiTamperingExcludedDomains: 'paypal.test' }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
-  { name: 'pp-details-both-off', title: 'Site details: warnings and anti-tampering both off', note: 'Two amber rows together.', settings: { antiTamperingExcludedDomains: 'x-off.test' }, seed: { 'x-off.test': { visits: 2, ignored: true } }, details: 'x-off.test' },
+  { name: 'pp-details-both-off', title: 'Site details: warnings and anti-tampering both off', note: 'Two grey badges together.', settings: { antiTamperingExcludedDomains: 'x-off.test' }, seed: { 'x-off.test': { visits: 2, ignored: true } }, details: 'x-off.test' },
 
   // ==========================================
   // Names that are not counted, and numbers
   // ==========================================
-  { name: 'pp-localhost', title: 'Popup on localhost', note: 'A blue box: visits here are not counted. No facts, no warnings row.', url: 'http://localhost:3000/' },
+  { name: 'pp-localhost', title: 'Popup on localhost', note: 'A grey notice: visits here are not counted. No facts, no warnings row.', url: 'http://localhost:3000/' },
   { name: 'pp-dotted-local', title: 'Popup on a local network name with a dot', note: 'nas.local. Not counted either. Note the box still says the name has no dot in it.', url: 'http://nas.local/' },
   { name: 'pp-private-ip', title: 'Popup on a home router address', note: '192.168.1.1: not counted, and marked as a numeric address.', url: 'http://192.168.1.1/' },
   { name: 'pp-public-ipv4', title: 'Popup on a public IP address', note: '8.8.8.8 is counted. Marked as a numeric address, never visited.', url: 'http://8.8.8.8/' },
@@ -127,7 +128,7 @@ const CASES: Case[] = [
   // What the address gives away
   // ==========================================
   { name: 'pp-mark-deep', title: 'Popup: too many subdomain levels', note: 'a.b.c.d.e.example.test.', url: 'https://a.b.c.d.e.example.test/' },
-  { name: 'pp-mark-embedded', title: 'Popup: a well-known name parked in front', note: 'paypal.com.secure-login.test, with paypal.com unknown to the user. An amber sentence names the real site.', url: 'https://paypal.com.secure-login.test/' },
+  { name: 'pp-mark-embedded', title: 'Popup: a well-known name parked in front', note: 'paypal.com.secure-login.test, with paypal.com unknown to the user. A red notice names the real site.', url: 'https://paypal.com.secure-login.test/' },
   { name: 'pp-mark-embedded-known', title: 'Popup: the same, when paypal.com is familiar', note: 'Replaced by a red lookalike line.', seed: { 'paypal.com': FAMILIAR }, url: 'https://paypal.com.secure-login.test/' },
   { name: 'pp-mixed-script', title: 'Popup: mixed alphabets, nothing known to compare with', note: 'аpple.test with a Cyrillic а and nothing in history: the mixed-alphabet marker only.', url: 'https://аpple.test/' },
   { name: 'pp-custom-shortener', title: 'Popup on a short-link site the user listed', note: 'go.corp.test, from the user\'s own shortener list: the shortener note appears.', local: { customShorteners: ['go.corp.test'] }, url: 'https://go.corp.test/x' },
@@ -136,9 +137,9 @@ const CASES: Case[] = [
   // Lookalikes of paypal.test
   // ==========================================
   { name: 'pp-look-extra', title: 'Popup lookalike: extra text', note: 'paypal-secure.test. Red.', seed: { 'paypal.test': FAMILIAR }, url: 'https://paypal-secure.test/' },
-  { name: 'pp-look-contains', title: 'Popup lookalike: the name inside a longer one', note: 'mypaypalhelp.test. Amber.', seed: { 'paypal.test': FAMILIAR }, url: 'https://mypaypalhelp.test/' },
-  { name: 'pp-look-two-edits', title: 'Popup lookalike: two letters different', note: 'paypqx.test. Amber.', seed: { 'paypal.test': FAMILIAR }, url: 'https://paypqx.test/' },
-  { name: 'pp-look-ending', title: 'Popup lookalike: different ending', note: 'paypal.example. Amber.', seed: { 'paypal.test': FAMILIAR }, url: 'https://paypal.example/' },
+  { name: 'pp-look-contains', title: 'Popup lookalike: the name inside a longer one', note: 'mypaypalhelp.test. Red notice.', seed: { 'paypal.test': FAMILIAR }, url: 'https://mypaypalhelp.test/' },
+  { name: 'pp-look-two-edits', title: 'Popup lookalike: two letters different', note: 'paypqx.test. Red notice.', seed: { 'paypal.test': FAMILIAR }, url: 'https://paypqx.test/' },
+  { name: 'pp-look-ending', title: 'Popup lookalike: different ending', note: 'paypal.example. Red notice.', seed: { 'paypal.test': FAMILIAR }, url: 'https://paypal.example/' },
   { name: 'pp-look-label-sub', title: 'Popup lookalike: the name used as a subdomain', note: 'paypal.evil-host.test. Red, with the real site in a red block.', seed: { 'paypal.test': FAMILIAR }, url: 'https://paypal.evil-host.test/' },
   { name: 'pp-look-domain-sub', title: 'Popup lookalike: the whole known domain as a subdomain', note: 'paypal.test.evil-host.example. Red.', seed: { 'paypal.test': FAMILIAR }, url: 'https://paypal.test.evil-host.example/' },
   { name: 'pp-look-three', title: 'Popup lookalike of three known sites', note: 'paypal-apple-amazon.test. Three lines, the most there can be.', seed: { 'paypal.test': FAMILIAR, 'apple.test': FAMILIAR, 'amazon.test': FAMILIAR }, url: 'https://paypal-apple-amazon.test/' },

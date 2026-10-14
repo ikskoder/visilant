@@ -2,7 +2,7 @@
 import type { DomainMetric, MetricReading } from '~/logic/domain-metric'
 import type { SiteVisitData } from '~/logic/storage'
 import punycode from 'punycode'
-import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
 import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
@@ -16,22 +16,19 @@ import { popupWidthCap } from '~/logic/platform'
 import { STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
 import { editSettingsThroughBackground, settings } from '~/logic/storage'
 import { isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
-import { isTrackableHostname } from '~/logic/visit-stats'
+import { classifyHost, isTrackableHostname, untrackedReason } from '~/logic/visit-stats'
 import Logo from '../components/Logo.vue'
 import SecureText from '../components/SecureText.vue'
 import CheckField from './CheckField.vue'
 
 const { t, isLoaded, loadedTranslations } = useI18n()
-const { isDark } = useTheme()
+useTheme()
 
 // The sort order, the case of the names, the punycode toggle: small edits, sent
 // to the background like every other. Written from here they carried the rest of
 // the settings as this window read them, which for a window left open is a copy
 // from before whatever was changed in the settings page since.
 editSettingsThroughBackground()
-// Shared components read the theme through this key, because inside the
-// content script's shadow DOM the `dark` class on <html> does not reach them
-provide('isDark', isDark)
 
 // Reactive translations
 const translations = ref<Record<string, string>>({})
@@ -44,6 +41,8 @@ function updateTranslations() {
   const translationKeys = [
     'currentDomain',
     'checkedDomain',
+    'currentAddress',
+    'checkedAddress',
     'baseDomain',
     'relatedDomains',
     'familySummaryTitle',
@@ -86,6 +85,8 @@ function updateTranslations() {
     'externalLookupsTitle',
     'untrackedHostTitle',
     'untrackedHostText',
+    'untrackedIpTitle',
+    'untrackedIpText',
     'familiarityRequiredAtLeast',
     'familiarityDaysUnit',
     // The metric chips are named after the checks themselves – these are the
@@ -197,7 +198,6 @@ const asciiHostname = computed(() => getPunycodeInfo(currentHostname.value).asci
  * way before the card took it over: nobody visits an address domain, so it has
  * no history to vouch for its letters.
  */
-const highlightDanger = computed(() => currentContext.value === 'email')
 
 const isPunycode = computed(() => {
   return asciiHostname.value !== unicodeHostname.value
@@ -251,18 +251,9 @@ const showBaseDomainCard = computed(() =>
 const isUntrackedHost = computed(() => {
   return Boolean(currentHostname.value) && !isTrackableHostname(currentHostname.value)
 })
-
-/**
- * Whether anything at all is drawn under the domain panel.
- *
- * The base domain card, the family list or the "nothing recorded" notice. The
- * card also stands alone, under a subdomain that is the only host on record,
- * and leaving it out here pressed the two cards against each other. With none
- * of the three, the panel is the last thing on the page and the space kept for
- * what would follow it is space kept for nothing.
- */
-const hasBlockBelowPanel = computed(() =>
-  showBaseDomainCard.value || showFamily.value || (!familyHosts.value.length && !isUntrackedHost.value))
+const untrackedIsIp = computed(() => untrackedReason(currentHostname.value) === 'ip')
+/** An IP address is not a domain, so the card is not headed as one. */
+const isIpHost = computed(() => ['ipv4', 'ipv6', 'private-ip'].includes(classifyHost(currentHostname.value)))
 
 /**
  * This exact host's own record, and nothing borrowed.
@@ -371,21 +362,25 @@ const warningsCanFire = computed(() => {
 const showWarningsRow = computed(() =>
   !isCheckPage.value && (isIgnoredHost.value || warningsCanFire.value))
 
-// The domain display is deliberately wide – a hyperlegible face at 0.25em letter
-// spacing – so a long hostname cannot fit at the headline size. Stepping the size
-// down keeps it to one or two lines instead of breaking a label apart, which is
-// exactly what someone reading a suspicious address must not have to untangle.
+// A long hostname cannot fit at the headline size. Stepping the size down keeps
+// it to one or two lines instead of breaking a label apart, which is exactly
+// what someone reading a suspicious address must not have to untangle. Absent,
+// the address keeps its own `address-xl`.
+/**
+ * The text size the popup is drawn at. Below 80% the smallest labels fall to
+ * about 9px, too small to read, so a size saved under the old 70% floor is
+ * drawn at 80% rather than kept.
+ */
+const TEXT_SIZE_MIN = 80
+const TEXT_SIZE_MAX = 150
+const textSize = computed(() => Math.min(TEXT_SIZE_MAX, Math.max(TEXT_SIZE_MIN, settings.value.popupFontSize || 100)))
+
 const currentDomainFontSize = computed(() => {
   const length = Math.max(asciiHostname.value.length, unicodeHostname.value.length)
-
-  if (length <= 24)
-    return '1.8em'
-  if (length <= 34)
-    return '1.45em'
-  if (length <= 46)
-    return '1.15em'
-
-  return '0.95em'
+  const size = length <= 24 ? undefined : length <= 34 ? 22 : length <= 46 ? 18 : 15
+  return size === undefined
+    ? undefined
+    : { fontSize: `calc(${size}px * var(--vz-scale, 1))`, lineHeight: '1.5' }
 })
 
 function formatTimestamp(timestamp?: number) {
@@ -581,15 +576,6 @@ function toggleAntiTampering() {
  * Uncoloured when that check is switched off, since a number with no say in the
  * verdict has no business being tinted as though it had one.
  */
-function readingColor(met: boolean | undefined) {
-  if (met === undefined)
-    return ''
-
-  return met
-    ? 'text-green-600 dark:text-green-400'
-    : 'text-red-500 dark:text-red-400'
-}
-
 async function loadDomainData(hostname: string, context?: 'email', url?: string) {
   currentHostname.value = hostname
   // Before anything is awaited, so the card never asks about the new name in
@@ -665,7 +651,7 @@ const isShortenerHost = computed(() => {
  * though, and a count drawn over one without a word reads as if they did.
  */
 const hostNotes = computed(() => isShortenerHost.value
-  ? [{ id: 'shortener', text: translations.value.shortenerHostNotice }]
+  ? [{ id: 'shortener', text: translations.value.shortenerHostNotice, icon: 'link' as const }]
   : [])
 
 const SHORTENER_KEYS = new Set(['customShorteners', STORAGE_KEY_REMOTE_SHORTENERS])
@@ -741,72 +727,76 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div :class="isStandalonePage ? 'min-h-screen flex justify-center bg-gray-50 dark:bg-gray-900 py-8' : ''">
+  <!-- items-start: a flex child stretches to the full height by default, and the
+       grid inside then shares the empty space out between its rows -->
+  <div :class="isStandalonePage ? 'min-h-screen flex justify-center items-start bg-bg py-8 px-4' : ''">
     <!-- The 600px column is the desktop popup, whose window sizes itself to the
          document. Firefox for Android has no such window – the popup is a panel
          the width of the screen, so the column has to be capped at the display
          or the whole dashboard hangs off the right edge -->
     <!-- The same margin at the sides and at the foot, so the last block on the
-         page sits as far from the bottom edge as it does from the left one. The
-         page kept a deeper band below than beside, which the popup window –
-         sizing itself to the document – then drew as empty space of its own.
-         What separates the blocks from one another is their own margin, and
-         only the block that has something under it spends it. -->
+         page sits as far from the bottom edge as it does from the left one. What
+         separates the blocks from one another is the gap of the column, so no
+         block has to remember whether something follows it. -->
     <main
-      class="px-3 pt-5 pb-3 text-gray-700 dark:text-gray-200 relative"
+      class="popup-main relative"
       :class="isStandalonePage
-        ? 'w-full max-w-[600px] bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700'
+        ? 'w-full max-w-[600px] vz-card'
         : (isTabView ? 'w-full' : 'w-[600px]')"
       :style="{
-        fontSize: `${settings.popupFontSize}%`,
+        'fontSize': `${textSize}%`,
+        '--vz-scale': textSize / 100,
         ...(isPageView ? {} : { maxWidth: popupMaxWidth }),
       }"
     >
-      <div class="flex justify-between items-center mb-4">
-        <Logo class="h-8 w-auto" />
-        <div class="flex items-center gap-2">
+      <header class="popup-header">
+        <Logo class="popup-logo" />
+        <div class="flex items-center gap-2 flex-wrap justify-end">
           <!-- How an address is drawn. Here rather than by the related-domain
                list, which is not on screen at all until a site has visits – and the
                check page, where somebody is reading an address they do not
-               know, is exactly where the three are worth reaching -->
+               know, is exactly where they are worth reaching -->
           <DomainDisplayToggles />
-          <!-- Font size controls -->
-          <div class="flex items-center gap-1 text-gray-400 dark:text-gray-500">
-            <button
-              class="tap-target w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-sm font-bold"
-              title="Decrease font size"
-              aria-label="Decrease font size"
-              :disabled="settings.popupFontSize <= 70"
-              :class="{ 'opacity-30 cursor-not-allowed': settings.popupFontSize <= 70 }"
-              @click="settings.popupFontSize = Math.max(70, settings.popupFontSize - 10)"
-            >
-              A-
-            </button>
-            <span class="text-xs w-8 text-center tabular-nums">{{ settings.popupFontSize }}%</span>
-            <button
-              class="tap-target w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-sm font-bold"
-              title="Increase font size"
-              aria-label="Increase font size"
-              :disabled="settings.popupFontSize >= 150"
-              :class="{ 'opacity-30 cursor-not-allowed': settings.popupFontSize >= 150 }"
-              @click="settings.popupFontSize = Math.min(150, settings.popupFontSize + 10)"
-            >
-              A+
+          <!-- Text size, with the gear kept beside it: when the row wraps at a
+               large size on a phone, the gear alone on a third line looked lost.
+               The readout between the two is not a toggle, it only says where
+               the size stands -->
+          <div class="flex items-center gap-2">
+            <div class="vz-toggles" role="group" :aria-label="t('popupTextSize')">
+              <button
+                class="vz-toggle tap-target"
+                :title="t('popupTextSmaller')"
+                :aria-label="t('popupTextSmaller')"
+                :disabled="textSize <= TEXT_SIZE_MIN"
+                @click="settings.popupFontSize = Math.max(TEXT_SIZE_MIN, textSize - 10)"
+              >
+                A−
+              </button>
+              <span class="popup-size-readout">{{ textSize }}%</span>
+              <button
+                class="vz-toggle tap-target"
+                :title="t('popupTextLarger')"
+                :aria-label="t('popupTextLarger')"
+                :disabled="textSize >= TEXT_SIZE_MAX"
+                @click="settings.popupFontSize = Math.min(TEXT_SIZE_MAX, textSize + 10)"
+              >
+                A+
+              </button>
+            </div>
+            <button class="vz-iconbtn tap-target" :title="translations.settings" :aria-label="translations.settings" @click="openOptionsPage">
+              <VzIcon name="settings" />
             </button>
           </div>
-          <button class="icon-btn tap-target text-2xl" :title="translations.settings" :aria-label="translations.settings" @click="openOptionsPage">
-            <div i-carbon-settings />
-          </button>
         </div>
-      </div>
+      </header>
 
-      <!-- Popup: compact button opening the full check page; standalone: the field itself -->
+      <!-- In the popup, a button opening the full check page. On the standalone page, the field itself -->
       <button
         v-if="!isStandalonePage"
-        class="w-full mb-4 px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-blue-400 dark:hover:border-blue-500 transition-colors flex items-center justify-center gap-2"
+        class="vz-btn vz-btn--block"
         @click="openCheckPage"
       >
-        <div i-carbon-qr-code />
+        <VzIcon name="qr-code" />
         {{ translations.checkExternalButton }}
       </button>
       <CheckField
@@ -817,78 +807,90 @@ onMounted(async () => {
         @checked-domain="loadDomainData"
       />
 
-      <div v-if="currentHostname">
-        <div
-          data-domain-panel
-          class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700"
-          :class="{ 'mb-4': hasBlockBelowPanel }"
-        >
-          <div class="uppercase tracking-wider opacity-60 mb-1" style="font-size: 0.75em;">
-            {{ isStandalonePage ? translations.checkedDomain : translations.currentDomain }}
-          </div>
+      <template v-if="currentHostname">
+        <section data-domain-panel class="vz-card popup-card">
+          <span class="vz-eyebrow">
+            {{ isIpHost
+              ? (isStandalonePage ? translations.checkedAddress : translations.currentAddress)
+              : (isStandalonePage ? translations.checkedDomain : translations.currentDomain) }}
+          </span>
           <!-- The address gets the whole width. The visit count used to sit at
                the right of this line, where it was the same number the facts
                below already give – in a column that says which check it belongs
                to and how far it is from the bar, which a lone figure beside the
                hostname never did. -->
-          <div class="secure-domain-display font-bold break-words min-w-0 leading-tight" :style="{ fontSize: currentDomainFontSize }">
+          <div class="popup-address">
             <template v-if="isPunycode">
-              <div class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-sans font-normal mb-0.5">
-                {{ translations.domainOriginal }}
-              </div>
-              <SecureText :text="unicodeHostname" mark-wraps :force-highlight="highlightDanger" :danger-only="highlightDanger" />
-              <div class="flex items-center gap-1 mt-2 mb-0.5">
-                <div class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-sans font-normal">
-                  {{ translations.domainPunycode }}
-                </div>
+              <span class="vz-eyebrow">{{ translations.domainOriginal }}</span>
+              <SecureText :text="unicodeHostname" size="xl" :style="currentDomainFontSize" />
+              <div class="flex items-center gap-1 mt-2">
+                <span class="vz-eyebrow">{{ translations.domainPunycode }}</span>
                 <button
-                  class="w-4 h-4 flex items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600 text-[10px] font-sans font-bold transition-colors"
+                  class="vz-iconbtn vz-iconbtn--sm"
+                  :title="translations.punycodeHelpTitle"
+                  :aria-label="translations.punycodeHelpTitle"
                   @click="showPunycodeHelp = !showPunycodeHelp"
                 >
-                  ?
+                  <VzIcon name="help" />
                 </button>
               </div>
-              <SecureText :text="asciiHostname" mark-wraps :force-highlight="highlightDanger" :danger-only="highlightDanger" />
+              <SecureText :text="asciiHostname" size="xl" :style="currentDomainFontSize" />
             </template>
-            <template v-else>
-              <SecureText :text="currentHostname" mark-wraps :force-highlight="highlightDanger" :danger-only="highlightDanger" />
-            </template>
+            <SecureText v-else :text="currentHostname" size="xl" :style="currentDomainFontSize" />
           </div>
 
           <!-- Said before the numbers, because it explains why there are none -->
-          <div
-            v-if="isUntrackedHost"
-            class="mt-2 p-2 rounded-lg text-left bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50"
-          >
-            <div class="font-medium text-blue-800 dark:text-blue-300" style="font-size: 0.85em;">
-              {{ translations.untrackedHostTitle }}
-            </div>
-            <p class="mt-0.5 leading-snug text-blue-900/70 dark:text-blue-200/80" style="font-size: 0.8em;">
-              {{ translations.untrackedHostText }}
+          <VzNotice v-if="isUntrackedHost" tone="neutral" icon="unknown">
+            <p class="vz-body-strong">
+              {{ untrackedIsIp ? translations.untrackedIpTitle : translations.untrackedHostTitle }}
             </p>
-          </div>
+            <p>{{ untrackedIsIp ? translations.untrackedIpText : translations.untrackedHostText }}</p>
+          </VzNotice>
 
           <!-- Structural markers and resemblance to a domain the user knows.
                The only place they are drawn for this name: the check field above
                leaves them out while this card is about the name it checked.
                Both take the same context, because they read one shared answer. -->
-          <DomainMarkers :hostname="currentHostname" :url="currentUrl" :context="currentContext" :notes="hostNotes" class="mt-2" style="font-size: 0.85em;" />
-          <LookalikeNotice :hostname="currentHostname" :context="currentContext" style="font-size: 0.85em;" />
-          <!-- Not scaled down like the two above it: this is the one place the
-               lookup links are offered for the checked name, and a control the
-               reader is meant to press does not want the size of a footnote -->
-          <ExternalLookups :hostname="currentHostname" />
+          <DomainMarkers :hostname="currentHostname" :url="currentUrl" :context="currentContext" :notes="hostNotes" />
+          <LookalikeNotice :hostname="currentHostname" :context="currentContext" />
+          <!-- Not for an address that only means something inside one network:
+               no site elsewhere has anything to say about the reader's router -->
+          <ExternalLookups v-if="!isUntrackedHost" :hostname="currentHostname" />
 
           <!-- Visit history facts, for this exact host and nothing else. The
                family's own figures are under the base domain further down, which
                is the name they are about. firstSeen/activeDays stay empty until
-               a full history import supplies them – we never guess a date. -->
+               a full history import supplies them – nothing guesses a date. -->
           <FamiliarityGrid
             v-if="currentStats"
             :stats="currentStats"
-            class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700"
-            style="font-size: 0.85em;"
+            class="popup-rule"
           />
+
+          <!--
+            Whether the warnings are on here. Both ways round, on a site the
+            warnings have something to say about – see `showWarningsRow`. Not
+            only once they are off: this is the only place they can be turned
+            off at all, so a row that appeared solely when there was something
+            to undo would leave the switch with nowhere to live.
+          -->
+          <div v-if="showWarningsRow" class="popup-row popup-rule">
+            <span
+              class="popup-state"
+              :data-status="isIgnoredHost ? 'off' : 'on'"
+              :title="isIgnoredHost ? translations.ignoredSiteTooltip : translations.warningsActiveTooltip"
+            >
+              <VzBadge v-if="isIgnoredHost" tone="neutral" icon="silenced">{{ translations.ignoredSiteNotice }}</VzBadge>
+              <template v-else>{{ translations.warningsActiveNotice }}</template>
+            </span>
+            <button
+              class="vz-btn vz-btn--sm vz-btn--quiet"
+              :title="isIgnoredHost ? translations.warningsActiveTooltip : translations.ignoredSiteTooltip"
+              @click="setWarnings(!isIgnoredHost)"
+            >
+              {{ isIgnoredHost ? translations.ignoredSiteResume : translations.ignoredSiteSilence }}
+            </button>
+          </div>
 
           <!--
             Anti-tampering status, and only where there is a site it is about.
@@ -901,53 +903,22 @@ onMounted(async () => {
             there is a claim about nothing. The exclusion list stays reachable
             from the details page and from the settings either way.
           -->
-          <!-- Both ways round, on a site the warnings have something to say
-               about – see `showWarningsRow`. Not only once they are off: this
-               is the only place they can be turned off at all, so a row that
-               appeared solely when there was something to undo would leave the
-               switch with nowhere to live. -->
-          <div v-if="showWarningsRow" class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <div
-              class="flex items-center gap-1.5"
-              :title="isIgnoredHost ? translations.ignoredSiteTooltip : translations.warningsActiveTooltip"
-            >
-              <div
-                class="w-2 h-2 rounded-full flex-shrink-0"
-                :class="isIgnoredHost ? 'bg-amber-400' : 'bg-green-500'"
-              />
-              <span style="font-size: 0.8em;" :class="isIgnoredHost ? 'text-amber-600' : 'text-gray-400'">
-                {{ isIgnoredHost ? translations.ignoredSiteNotice : translations.warningsActiveNotice }}
-              </span>
-            </div>
-            <button
-              class="text-blue-700 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-200 hover:underline transition-colors" style="font-size: 0.8em;"
-              :title="isIgnoredHost ? translations.warningsActiveTooltip : translations.ignoredSiteTooltip"
-              @click="setWarnings(!isIgnoredHost)"
-            >
-              {{ isIgnoredHost ? translations.ignoredSiteResume : translations.ignoredSiteSilence }}
-            </button>
-          </div>
-
-          <div v-if="!isCheckPage" class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <div
-              class="flex items-center gap-1.5"
+          <div v-if="!isCheckPage" class="popup-row popup-rule">
+            <span
+              class="popup-state"
+              :data-status="isAntiTamperingExcluded ? 'off' : 'on'"
               :title="`${translations.antiTamperingTooltipWhat}\n\n${isAntiTamperingExcluded ? translations.antiTamperingTooltipOff : translations.antiTamperingTooltipOn}`"
             >
-              <div
-                class="w-2 h-2 rounded-full flex-shrink-0"
-                :class="isAntiTamperingExcluded ? 'bg-amber-400' : 'bg-green-500'"
-              />
-              <span style="font-size: 0.8em;" :class="isAntiTamperingExcluded ? 'text-amber-600' : 'text-gray-400'">
-                {{ isAntiTamperingExcluded ? translations.antiTamperingNotProtected : translations.antiTamperingProtected }}
-                <!-- Named, because the switch removes this line and that puts
-                     protection back on every host under it, not just this one -->
-                <template v-if="antiTamperingRuleIsParent">
-                  – {{ translations.antiTamperingParentRule }} <span class="break-all">{{ antiTamperingRule }}</span>
-                </template>
-              </span>
-            </div>
+              <VzBadge v-if="isAntiTamperingExcluded" tone="neutral" icon="unknown">{{ translations.antiTamperingNotProtected }}</VzBadge>
+              <template v-else>{{ translations.antiTamperingProtected }}</template>
+              <!-- Named, because the switch removes this line and that puts
+                   protection back on every host under it, not just this one -->
+              <template v-if="antiTamperingRuleIsParent">
+                – {{ translations.antiTamperingParentRule }} <SecureText :text="antiTamperingRule" size="s" />
+              </template>
+            </span>
             <button
-              class="text-blue-700 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-200 hover:underline transition-colors" style="font-size: 0.8em;"
+              class="vz-btn vz-btn--sm vz-btn--quiet"
               data-anti-tampering-toggle
               :title="isAntiTamperingExcluded ? translations.antiTamperingTooltipOn : translations.antiTamperingTooltipOff"
               @click="toggleAntiTampering"
@@ -955,7 +926,7 @@ onMounted(async () => {
               {{ isAntiTamperingExcluded ? translations.antiTamperingEnableForSite : translations.antiTamperingDisableForSite }}
             </button>
           </div>
-        </div>
+        </section>
 
         <!-- The base domain, and the family's own figures under it.
 
@@ -965,30 +936,23 @@ onMounted(async () => {
              subdomain's name it read as that host's own count and disagreed with
              the card above it by however much the rest of the family came to.
              The same card and the same grid as the checked domain, deliberately,
-             so the two rows can be compared rather than puzzled over – two rows
-             of facts, one framed and one loose on the page, read as a block and
-             a footnote instead.
+             so the two rows can be compared rather than puzzled over.
 
              The name and its lookups are skipped where the base domain is the
              address already spelled out at the top of the page. The figures are
              skipped where nothing but this host is recorded under it, since the
              fold would then be the card above, number for number. -->
-        <div v-if="showBaseDomainCard" data-base-domain class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+        <section v-if="showBaseDomainCard" data-base-domain class="vz-card popup-card">
           <template v-if="baseDomain !== currentKey">
-            <div class="uppercase tracking-wider mb-1 opacity-50" style="font-size: 0.75em;">
-              {{ translations.baseDomain }}
-            </div>
-            <div class="secure-domain-display font-bold break-words" style="font-size: 1.1em;">
-              <SecureText :text="baseDomain" />
-            </div>
+            <span class="vz-eyebrow">{{ translations.baseDomain }}</span>
+            <SecureText :text="baseDomain" size="l" />
             <ExternalLookups :hostname="baseDomain" />
             <!-- Where the figures would be. Only when this host is on record: with
                  nothing recorded at all, the notice further down says so -->
             <p
               v-if="!showFamily && familyHosts.includes(currentKey)"
               data-family-only-host
-              class="mt-2 leading-snug opacity-60"
-              style="font-size: 0.8em;"
+              class="vz-small"
             >
               {{ onlyThisHostText }}
             </p>
@@ -999,58 +963,32 @@ onMounted(async () => {
                used to leave this card as a bare row of figures with nothing at
                all to say what they were about or what they covered. -->
           <template v-if="showFamily && familyStats">
-            <div
-              class="uppercase tracking-wider opacity-50"
-              :class="baseDomain === currentKey ? '' : 'mt-2'"
-              style="font-size: 0.75em;"
-            >
-              {{ translations.familySummaryTitle }}
-            </div>
+            <span class="vz-eyebrow" :class="{ 'mt-2': baseDomain !== currentKey }">{{ translations.familySummaryTitle }}</span>
             <FamiliarityGrid
               :stats="familyStats"
               aggregated
               data-family-stats
-              class="mt-1"
-              style="font-size: 0.85em;"
             />
           </template>
-        </div>
+        </section>
 
         <!-- The rest of the family, and only where there is one. A list holding
              nothing but the address already on show above says nothing that
              panel has not said, so it and its heading stay away. -->
-        <div v-if="showFamily">
+        <section v-if="showFamily" class="grid gap-2">
           <!-- One row, two questions. On the left, what order the rows are in:
                by the hostname or by the number, and which way up. On the right,
-               which number that is – chips named after the checks the verdict
-               is made of. Keeping them apart is what lets a list be
-               alphabetical without also having to give up the number it shows:
-               as one control, `Name` was a chip among the others and choosing
-               it meant falling back to visits.
-
-               The order button carries no highlight, because it has no off
-               state to be dim about – it names the thing being sorted by, and
-               `Number` is the same word that stands over the chips saying which
-               one. Its width is held steady so that the arrow beside it does
-               not move as the word changes.
+               which number that is. Keeping them apart is what lets a list be
+               alphabetical without also having to give up the number it shows.
 
                Each group is one item of the outer row rather than a run of
                loose buttons, so a row too narrow for both breaks between them
-               and not through the middle of the chips – which used to leave a
-               lone `Passed checks` under the word `Sort`, reading as if it
-               belonged to it.
-
-               The four chips are a dropdown. Laid out one beside the other they
-               took a line of their own and sometimes two, which is a lot of the
-               narrowest thing on the page to spend on a choice that is made once
-               and then left alone. The two labels grew as the chips shrank: they
-               name what each control is for, and at the size of the buttons they
-               were the smallest text on the page. -->
-          <div class="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 mb-2" style="font-size: 0.8em;">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="opacity-70">{{ translations.listSortLabel }}</span>
+               and not through the middle of a group. -->
+          <div class="popup-list-controls">
+            <div class="flex items-center gap-2">
+              <span class="vz-small">{{ translations.listSortLabel }}</span>
               <button
-                class="btn-ghost btn-sm !rounded min-w-[4.5em]"
+                class="vz-btn vz-btn--sm popup-sort-by"
                 data-sort-by-name
                 :title="sortByNameTitle"
                 :aria-pressed="settings.sortByName"
@@ -1059,111 +997,104 @@ onMounted(async () => {
                 {{ settings.sortByName ? translations.sortByName : translations.listNumberLabel }}
               </button>
               <button
-                class="btn-ghost btn-sm !rounded w-6 flex items-center justify-center"
+                class="vz-iconbtn vz-iconbtn--sm vz-iconbtn--outline tap-target"
                 :title="sortOrderTitle"
                 :aria-label="sortOrderTitle"
                 @click="toggleSortOrder"
               >
-                {{ settings.sortOrder === 'asc' ? '↑' : '↓' }}
+                <VzIcon :name="settings.sortOrder === 'asc' ? 'sort-asc' : 'sort-desc'" />
               </button>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="opacity-70">{{ translations.listNumberLabel }}</span>
-              <select
-                class="btn-ghost btn-sm !rounded !text-[1.05em]"
-                data-list-metric
-                :value="listMetric"
-                :aria-label="translations.listNumberLabel"
-                @change="onListMetricChange"
-              >
-                <option v-for="metric in DOMAIN_METRICS" :key="metric" :value="metric">
-                  {{ metricLabel(metric) }}
-                </option>
-              </select>
+            <div class="flex items-center gap-2">
+              <span class="vz-small">{{ translations.listNumberLabel }}</span>
+              <span class="vz-selectbox">
+                <select
+                  class="vz-select vz-select--sm"
+                  data-list-metric
+                  :value="listMetric"
+                  :aria-label="translations.listNumberLabel"
+                  @change="onListMetricChange"
+                >
+                  <option v-for="metric in DOMAIN_METRICS" :key="metric" :value="metric">
+                    {{ metricLabel(metric) }}
+                  </option>
+                </select>
+              </span>
             </div>
           </div>
 
           <!-- No family figure beside this heading any more: it was the same
                fold, for the same family, as the grid under the base domain a few
                lines above – and for visits it was the very same number. -->
-          <div class="uppercase tracking-wider mb-1 opacity-50" style="font-size: 0.75em;">
-            {{ translations.relatedDomains }}
-          </div>
-          <div
-            class="overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700 shadow-sm"
-            :class="isPageView ? '' : 'max-h-[265px]'"
-            style="font-size: 1.1em;"
+          <span class="vz-eyebrow">{{ translations.relatedDomains }}</span>
+          <ul
+            class="vz-list popup-list"
+            :class="isPageView ? '' : 'popup-list--capped'"
           >
-            <div
-              v-for="domain in sortedFamilyHosts" :key="domain"
-              class="p-2.5 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              :class="{ 'bg-blue-50 hover:bg-blue-50 dark:bg-blue-900/30 dark:hover:bg-blue-900/30': domain === currentKey }"
+            <li
+              v-for="domain in sortedFamilyHosts"
+              :key="domain"
+              class="vz-list__row"
+              :class="{ 'vz-list__row--current': domain === currentKey }"
             >
               <!-- No hover repeating the name: it said exactly what the row
-                   already says. It was there because the name was cut off at the
-                   width of the row, so the name is allowed to wrap instead –
-                   which is the better answer to a name too long to fit anyway,
-                   since it needs no mouse and no second look.
+                   already says. The name is allowed to wrap instead, which needs
+                   no mouse and no second look.
 
                    The one hover left is for a name whose two spellings differ:
                    the row draws whichever the header's toggle asked for, and the
                    other one is not on screen to be read. -->
+              <div class="vz-list__main" :title="displayDomain(domain) === domain ? undefined : domain">
+                <SecureText :text="displayDomain(domain)" size="m" />
+                <VzBadge v-if="domain === currentKey" tone="brand">
+                  {{ translations.current }}
+                </VzBadge>
+              </div>
+              <!-- The number first and its mark after it, so the numbers line up
+                   on the right edge. A number nobody judges by has no mark. -->
               <span
-                class="flex-1 mr-3 secure-domain-display break-all"
-                :title="displayDomain(domain) === domain ? undefined : domain"
-              >
-                <SecureText :text="displayDomain(domain)" />
-                <!-- Solid, not a tint. This badge sits on the one row that is
-                     itself tinted blue, so a translucent blue chip with blue
-                     letters on it was very nearly the row it was printed on.
-
-                     Letter spacing set back to normal, inline because the rule
-                     it is overriding is a class of the same weight: the word is
-                     a label, not an address, and the quarter-em that makes a
-                     hostname readable character by character only makes a label
-                     look stretched. -->
-                <span
-                  v-if="domain === currentKey"
-                  class="ml-1.5 text-[10px] font-semibold bg-blue-600 text-white dark:bg-blue-400 dark:text-blue-950 px-1.5 py-0.5 rounded font-sans"
-                  style="letter-spacing: normal;"
-                >{{ translations.current }}</span>
-              </span>
-              <span
-                class="font-mono font-bold whitespace-nowrap" data-family-value
-                :class="readingColor(readingFor(domain).met)"
+                class="vz-list__num"
+                data-family-reading
                 :title="readingTitle(readingFor(domain))"
               >
-                {{ readingText(readingFor(domain)) }}
+                <span data-family-value :class="{ 'vz-fact__value--none': readingFor(domain).value === undefined }">{{ readingText(readingFor(domain)) }}</span>
+                <VzIcon
+                  v-if="readingFor(domain).met !== undefined"
+                  :name="readingFor(domain).met ? 'pass' : 'fail'"
+                  :label="t(readingFor(domain).met ? 'familiarityFactPassed' : 'familiarityFactFailed')"
+                  :class="readingFor(domain).met ? 'tone-safe' : 'tone-danger'"
+                  :data-result="readingFor(domain).met ? 'pass' : 'fail'"
+                />
               </span>
-            </div>
-          </div>
-        </div>
+            </li>
+          </ul>
+        </section>
         <!-- Skipped for untracked hosts: "no visit data" reads as a gap waiting
              to be filled, and the notice above has already said why it never will be -->
-        <div v-else-if="!familyHosts.length && !isUntrackedHost" class="mt-4 text-sm opacity-50 text-center py-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+        <p v-else-if="!familyHosts.length && !isUntrackedHost" class="vz-well vz-small text-center">
           {{ translations.noVisitData }}
-        </div>
-      </div>
+        </p>
+      </template>
       <!-- Hidden on the standalone check page until something is checked -->
-      <div v-else-if="!isStandalonePage" class="py-8 text-center opacity-50">
-        <div class="text-4xl mb-2">
-          🌍
-        </div>
-        <div>{{ translations.visitWebsite }}</div>
-      </div>
+      <p v-else-if="!isStandalonePage" class="vz-body text-center py-8" data-no-site>
+        {{ translations.visitWebsite }}
+      </p>
 
-      <!-- Punycode Help Modal -->
-      <div v-if="showPunycodeHelp" class="absolute inset-0 bg-black/10 dark:bg-black/30 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-[90%] border border-gray-100 dark:border-gray-700 relative text-left">
-          <button class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" @click="showPunycodeHelp = false">
-            <div i-carbon-close class="text-lg" />
-          </button>
-          <h3 class="font-bold text-base mb-3 text-gray-900 dark:text-gray-100 font-sans pr-6">
-            {{ translations.punycodeHelpTitle }}
-          </h3>
-          <div class="text-xs text-gray-600 dark:text-gray-400 font-sans whitespace-pre-wrap leading-relaxed">
-            {{ translations.punycodeHelpContent }}
+      <!-- What punycode is, over the card -->
+      <div v-if="showPunycodeHelp" class="absolute inset-0 vz-scrim flex items-center justify-center z-50 p-4">
+        <div class="vz-overlay vz-dialog relative" role="dialog" aria-modal="true" :aria-label="translations.punycodeHelpTitle">
+          <div class="vz-dialog__head">
+            <VzIcon name="script" large class="tone-brand" />
+            <h3 class="vz-title">
+              {{ translations.punycodeHelpTitle }}
+            </h3>
+            <button class="vz-iconbtn" :title="t('closeDialog')" :aria-label="t('closeDialog')" @click="showPunycodeHelp = false">
+              <VzIcon name="close" />
+            </button>
           </div>
+          <p class="vz-body whitespace-pre-wrap">
+            {{ translations.punycodeHelpContent }}
+          </p>
         </div>
       </div>
     </main>
@@ -1180,11 +1111,11 @@ html:not(.standalone-page) body {
 
 /* Inner lists hide their scrollbar in the popup, where space is tight. On the
    standalone page they have no height cap, so there is nothing to hide. */
-html:not(.standalone-page) .overflow-y-auto::-webkit-scrollbar {
+html:not(.standalone-page) .popup-list--capped::-webkit-scrollbar {
   display: none;
 }
 
-html:not(.standalone-page) .overflow-y-auto {
+html:not(.standalone-page) .popup-list--capped {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
@@ -1196,8 +1127,111 @@ html:not(.standalone-page) .overflow-y-auto {
    not change size – only the area that answers the tap. */
 @media (pointer: coarse) {
   .tap-target {
-    min-width: 44px !important;
-    min-height: 44px !important;
+    min-width: var(--touch-target) !important;
+    min-height: var(--touch-target) !important;
   }
+}
+
+.popup-main {
+  /* Below 100% the spacing shrinks with the text, or a small text size floats in
+     wide margins. Above it the spacing stays, since a phone has no room for more. */
+  --space-1: calc(4px * min(1, var(--vz-scale, 1)));
+  --space-2: calc(8px * min(1, var(--vz-scale, 1)));
+  --space-3: calc(12px * min(1, var(--vz-scale, 1)));
+  --space-4: calc(16px * min(1, var(--vz-scale, 1)));
+  --space-5: calc(20px * min(1, var(--vz-scale, 1)));
+  --space-6: calc(24px * min(1, var(--vz-scale, 1)));
+  --space-8: calc(32px * min(1, var(--vz-scale, 1)));
+  display: grid;
+  /* minmax(0, …): an auto track grows to its widest child, so at a large text
+     size on a phone the header pushed every card past the right edge */
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-3) var(--space-3);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.popup-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.popup-logo {
+  flex: none;
+  /* Follows the text size like the controls beside it */
+  height: calc(32px * var(--vz-scale, 1));
+  width: auto;
+}
+
+.popup-size-readout {
+  align-self: center;
+  min-width: 3.2em;
+  text-align: center;
+  font-size: calc(13px * var(--vz-scale, 1));
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.popup-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  min-width: 0;
+}
+
+.popup-address {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.popup-rule {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.popup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The action keeps to the right, on a line of its own if it has to wrap */
+.popup-row > .vz-btn { flex: none; margin-left: auto; }
+
+.popup-state {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  font-size: calc(13px * var(--vz-scale, 1));
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.popup-list-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.popup-sort-by {
+  min-width: 5.5em;
+}
+
+.popup-list--capped {
+  max-height: 265px;
+  overflow-y: auto;
 }
 </style>

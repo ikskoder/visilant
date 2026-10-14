@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, ref } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { openInBackgroundTab } from '~/logic/lookup-services'
 
@@ -16,7 +16,6 @@ import { openInBackgroundTab } from '~/logic/lookup-services'
  *
  * Collapsed, because it is five paragraphs and most checks do not need them.
  */
-const isDark = inject('isDark', ref(false))
 const { t } = useI18n()
 
 const expanded = ref(false)
@@ -60,31 +59,23 @@ function segments(text: string) {
 </script>
 
 <template>
-  <div class="mt-2">
+  <div class="email-caveat">
     <!--
       Set apart rather than dimmed like the other disclosures, because this one
       is addressed to somebody who arrived worried and it is the only thing on
-      screen written for them.
-
-      Amber and not red: red on these surfaces means a check did not pass, and
-      spending it on a line that is advice rather than a verdict would make the
-      real reds count for less.
+      screen written for them. Advice, not a verdict, so it is brand rather than
+      red: red on these surfaces means something looks wrong.
     -->
     <button
-      class="flex items-center gap-1 text-left font-bold hover:underline"
-      :class="isDark ? 'text-amber-400' : 'text-amber-700'"
+      class="vz-btn vz-btn--quiet vz-btn--sm vz-btn--flush"
       :aria-expanded="expanded"
       @click="expanded = !expanded"
     >
-      <span aria-hidden="true">{{ expanded ? '▾' : '▸' }}</span>
+      <VzIcon :name="expanded ? 'chevron-down' : 'chevron-right'" />
       <span>{{ t('emailCaveatTitle') }}</span>
     </button>
 
-    <div
-      v-if="expanded"
-      class="mt-1 flex flex-col gap-1.5 leading-snug"
-      :class="isDark ? 'text-gray-300' : 'text-gray-600'"
-    >
+    <div v-if="expanded" class="mt-1 grid gap-2 vz-body">
       <p v-for="key in PARAGRAPHS" :key="key">
         <template v-for="(segment, index) in segments(t(key))" :key="index">
           <a
@@ -92,8 +83,7 @@ function segments(text: string) {
             :href="segment.link.url"
             target="_blank"
             rel="noreferrer noopener"
-            class="underline"
-            :class="isDark ? 'text-blue-300' : 'text-blue-700'"
+            class="vz-link"
             @click="openInBackgroundTab($event, segment.link.url)"
           >{{ segment.text }}</a>
           <template v-else>

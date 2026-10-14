@@ -1,28 +1,40 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import type { FunctionalComponent } from 'vue'
+import { computed, h, inject } from 'vue'
+import { useI18n } from '~/composables/useI18n'
+import { ADDRESS_FRAMES_KEY, ADDRESS_SHAPE_KEY, askBackgroundShape } from '~/logic/address-shape'
 import { settings } from '~/logic/storage'
 
+/**
+ * An address, drawn as the evidence it is.
+ *
+ * Every label sits in a frame of its own, so the reader sees where one label
+ * ends and the next begins: most people do not know a dot is a boundary, and a
+ * frame is hard to miss. The labels of the registrable domain – the part one
+ * party controls – get heavier frames on a neutral ground. That is what turns
+ * `paypal.com.secure-login.test` from "PayPal" into "secure-login.test with a
+ * decoy in front". The frames say who controls the name, never whether they can
+ * be trusted. The reader can switch them off (`settings.addressFrames`), and
+ * then the owner's labels go bold instead.
+ *
+ * Whatever the settings say, every character that has no business in a
+ * hostname is marked: outside a to z, 0 to 9 and the hyphen in a host, outside
+ * ASCII in an account name or a raw payload. Digits are drawn bold in a colour
+ * of their own, since `paypa1` and `g00gle` are made of them.
+ */
 const props = withDefaults(defineProps<{
   text: string
-  forceHighlight?: boolean
-  dangerOnly?: boolean
-  // Per-instance overrides – when set, they win over the global settings
-  highlightOverride?: boolean
+  /**
+   * What the text is. `host` gets frames, `email` is an account name, an `@`
+   * and a framed host, `account` an account name on its own. `raw` is text that
+   * is not an address at all – a QR payload, a Wi-Fi password – and only has its
+   * invisible and non-ASCII characters marked.
+   */
+  kind?: 'host' | 'email' | 'account' | 'raw'
+  /** One of the address type sizes. Without it the address takes the size around it. */
+  size?: 'xl' | 'l' | 'm' | 's'
+  /** When set, wins over the case setting. */
   caseOverride?: 'lower' | 'upper'
-  /**
-   * Show where a wrapped address continues onto the next line. Costs a layout
-   * measurement, so it is opt-in and belongs on the large displays that actually
-   * wrap, not on every inline mention of a domain.
-   */
-  markWraps?: boolean
-  /**
-   * This text is the account name of an email address, the half before the @.
-   *
-   * It follows `settings.accountNameCase` rather than the domain setting, and
-   * that one has a third position which leaves the name as it was written. A
-   * domain reads the same in either case, a name somebody chose does not.
-   */
-  accountName?: boolean
   /**
    * Leave the letters exactly as they are.
    *
@@ -31,260 +43,239 @@ const props = withDefaults(defineProps<{
    * they do not: the raw output of a QR code, a Wi-Fi password, and the two
    * halves of an address mismatch, which are on screen precisely so the reader
    * can hold one against the other character by character. Changing the case of
-   * those is not a display choice, it is changing the evidence - and for a
+   * those is not a display choice, it is changing the evidence – and for a
    * password it is changing the value.
-   *
-   * The account name is not on that list any more. It has a control of its own,
-   * `accountName` above, which defaults to leaving the name alone and can be
-   * moved without touching the domains.
    */
   preserveCase?: boolean
+  /** Positions (in code points) of the characters a lookalike changed, underlined. */
+  diff?: number[]
 }>(), {
-  // Absent boolean props default to false in Vue. Keeping undefined lets the
-  // ?? fallback to global settings still work when the prop is not passed
-  highlightOverride: undefined,
+  kind: 'host',
 })
-const RE_ALPHA = /[a-z]/i
-const RE_DIGIT = /\d/
-const RE_SPECIAL = /[.\-_]/
+
+const { t } = useI18n()
+const lookupShape = inject(ADDRESS_SHAPE_KEY, askBackgroundShape)
+const localFrames = inject(ADDRESS_FRAMES_KEY, undefined)
 
 /**
  * Characters that are there but cannot be seen.
  *
  * Right-to-left overrides reverse the text after them, so `annexe\u202Efdp.exe`
- * reads as `annexeexe.pdf` on screen while being something else entirely. Zero
- * width characters split a name without leaving a mark, so `paypa\u200Bl.com`
- * looks like `paypal.com` and is not. A CSS class cannot make either of them
- * visible - there is no glyph to style - so they are replaced by a token that
- * says which character is sitting there.
+ * reads as `annexeexe.pdf` on screen. Zero width characters split a name without
+ * leaving a mark, so `paypa\u200Bl.com` looks like `paypal.com` and is not.
+ * There is no glyph to style, so the name of the character is drawn beside it by
+ * CSS. The character itself stays in the text, so a copy is still the real
+ * address – but inside an inline block of no width, which isolates it: an
+ * override there has nothing left to reorder, and a line separator nothing to
+ * break.
  */
-const INVISIBLE = new Set([
-  0x00AD, // soft hyphen
-  0x061C, // arabic letter mark
-  0x180E, // mongolian vowel separator
-  0x200B, // zero width space
-  0x200C, // zero width non-joiner
-  0x200D, // zero width joiner
-  0x200E, // left-to-right mark
-  0x200F, // right-to-left mark
-  0x2028, // line separator
-  0x2029, // paragraph separator
-  0x202A, // left-to-right embedding
-  0x202B, // right-to-left embedding
-  0x202C, // pop directional formatting
-  0x202D, // left-to-right override
-  0x202E, // right-to-left override
-  0x2060, // word joiner
-  0x2066, // left-to-right isolate
-  0x2067, // right-to-left isolate
-  0x2068, // first strong isolate
-  0x2069, // pop directional isolate
-  0xFEFF, // zero width no-break space
-])
+const INVISIBLE = /[\p{Default_Ignorable_Code_Point}\p{Cf}\p{Zl}\p{Zp}]/u
+/** The four dots IDNA treats as a label separator. */
+const DOTS = /[.。．｡]/
+const PLAIN_HOST = /^[a-z0-9-]$/i
+const DIGIT = /\d/
+const IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}$/
 
-/** The same red as an unexpected letter: it is the same kind of surprise. */
-const INVISIBLE_CLASS = 'text-red-600 dark:text-red-400 font-bold bg-red-100 dark:bg-red-900/30 rounded px-0.5 mx-0.5'
-
-function invisibleToken(codePoint: number): string {
-  return `<U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}>`
+interface Run {
+  text: string
+  cls?: string
+  title?: string
+  cp?: string
+  invisible?: boolean
 }
 
-const segments = computed(() => {
-  const text = props.text
-  if (!text)
-    return []
+interface Segment {
+  runs: Run[]
+  suffix: boolean
+  /** The separator after this label, absent on the last one. */
+  sep?: Run
+}
 
-  // Helper to get class for a character
-  function getClass(char: string): string {
-    const highlightOn = props.highlightOverride ?? (props.forceHighlight || settings.value.domainHighlighting)
-    if (!highlightOn)
-      return ''
-    // Latin letters are left alone deliberately. Colouring them green reads as a
-    // verdict – "this part is fine" – when all it means is "this is the ordinary
-    // case". Highlighting exists to make the unexpected characters stand out, and
-    // painting the majority of an address in a reassuring colour works against
-    // exactly that.
-    if (RE_ALPHA.test(char))
-      return ''
-    if (RE_DIGIT.test(char))
-      return 'text-blue-600 dark:text-blue-400 font-bold'
-    if (RE_SPECIAL.test(char))
-      return props.dangerOnly ? '' : (props.forceHighlight ? 'text-gray-300 font-bold' : 'text-gray-900 dark:text-gray-100 font-bold')
-    // Other characters (Cyrillic, etc.)
-    return 'text-red-600 dark:text-red-400 font-bold bg-red-100 dark:bg-red-900/30 rounded px-0.5 mx-0.5'
-  }
+interface Model {
+  /** The whole text as one line of characters: an account name or a raw payload. */
+  flat?: Run[]
+  account?: Run[]
+  ip?: Run[]
+  before?: Segment[]
+  owner?: Segment[]
+  trailing?: Run
+}
 
-  // Helper to apply case transformation
-  function transform(char: string): string {
-    if (props.preserveCase)
-      return char
-    const mode = props.caseOverride
-      ?? (props.accountName ? settings.value.accountNameCase : settings.value.domainCase)
-    if (mode === 'upper')
-      return char.toUpperCase()
-    if (mode === 'lower')
-      return char.toLowerCase()
-    // `as-typed`, which only the account name setting has
+/** A run of characters: plain text as a text node, a marked one in its span. */
+const Runs: FunctionalComponent<{ runs: Run[] }> = ({ runs }) => runs.map((run) => {
+  if (!run.cls)
+    return run.text
+  return h('span', { 'class': run.cls, 'title': run.title, 'data-cp': run.cp }, run.invisible ? [h('span', { class: 'vz-ch__raw' }, run.text)] : run.text)
+})
+Runs.props = ['runs']
+
+function codePointName(char: string): string {
+  return `U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}`
+}
+
+const framesOn = computed(() => localFrames?.value ?? settings.value.addressFrames !== false)
+
+function transform(char: string, account: boolean): string {
+  if (props.preserveCase || props.kind === 'raw')
     return char
+  const mode = props.caseOverride ?? (account ? settings.value.accountNameCase : settings.value.domainCase)
+  if (mode === 'upper')
+    return char.toUpperCase()
+  if (mode === 'lower')
+    return char.toLowerCase()
+  // `as-typed`, which only the account name setting has
+  return char
+}
+
+/**
+ * One label's characters as runs: plain characters merged, every marked one on
+ * its own. `start` is the code point position of the first one, for `diff`.
+ */
+function runsOf(chars: string[], start: number, mode: 'host' | 'account' | 'raw'): Run[] {
+  const runs: Run[] = []
+  const diff = props.diff ?? []
+  const translate = t.value
+
+  chars.forEach((char, offset) => {
+    const classes: string[] = []
+    let title: string | undefined
+    if (INVISIBLE.test(char)) {
+      const cp = codePointName(char)
+      runs.push({ text: char, cls: 'vz-ch vz-ch--invisible', cp, title: translate('addressCharInvisible').replace('$1', cp), invisible: true })
+      return
+    }
+    if (diff.includes(start + offset))
+      classes.push('vz-ch--diff')
+    // Judged on the character as written, before the case setting touches it
+    const odd = mode === 'host' ? !PLAIN_HOST.test(char) : (char.codePointAt(0) ?? 0) > 0x7F
+    if (odd) {
+      classes.push('vz-ch--foreign')
+      title = translate(mode === 'host' ? 'addressCharNotPlain' : 'addressCharNotAscii').replace('$1', codePointName(char))
+    }
+    else if (mode !== 'raw' && DIGIT.test(char)) {
+      classes.push('vz-ch--digit')
+    }
+
+    const shown = transform(char, mode === 'account')
+    if (classes.length) {
+      runs.push({ text: shown, cls: `vz-ch ${classes.join(' ')}`, title })
+      return
+    }
+    const last = runs.at(-1)
+    if (last && !last.cls)
+      last.text += shown
+    else
+      runs.push({ text: shown })
+  })
+  return runs
+}
+
+const model = computed<Model>(() => {
+  const text = props.text ?? ''
+  if (props.kind === 'raw' || props.kind === 'account')
+    return { flat: runsOf(Array.from(text), 0, props.kind) }
+
+  let host = text
+  let account: Run[] | undefined
+  let position = 0
+  if (props.kind === 'email') {
+    const at = text.lastIndexOf('@')
+    if (at > 0) {
+      const name = Array.from(text.slice(0, at))
+      account = runsOf(name, 0, 'account')
+      host = text.slice(at + 1)
+      position = name.length + 1
+    }
   }
 
-  const result: { text: string, class: string }[] = []
-  let currentClass: string | null = null
-  let currentText = ''
+  // An IP address is one frame: its dots are not boundaries between owners
+  if (IPV4.test(host) || host.includes(':'))
+    return { account, ip: runsOf(Array.from(host), position, 'raw') }
 
-  const push = () => {
-    if (currentText)
-      result.push({ text: currentText, class: currentClass ?? '' })
+  // A dot at the very end reaches the same site, and is drawn outside the frames
+  let trailing: Run | undefined
+  const chars = Array.from(host)
+  if (chars.length > 1 && DOTS.test(chars.at(-1)!)) {
+    const dot = chars.pop()!
+    trailing = {
+      text: dot,
+      cls: dot === '.' ? 'vz-dot vz-dot--trailing' : 'vz-dot vz-dot--trailing vz-ch--foreign',
+      title: t.value('addressTrailingDot'),
+    }
   }
 
-  // Walked by code point rather than by code unit, so a character outside the
-  // basic plane is one character here rather than two halves of one
-  for (const char of Array.from(text)) {
-    const codePoint = char.codePointAt(0) ?? 0
-    const shown = INVISIBLE.has(codePoint) ? invisibleToken(codePoint) : transform(char)
-    const charClass = INVISIBLE.has(codePoint) ? INVISIBLE_CLASS : getClass(char)
-
-    if (charClass === currentClass) {
-      currentText += shown
+  const labels: string[][] = [[]]
+  const seps: string[] = []
+  for (const char of chars) {
+    if (DOTS.test(char)) {
+      seps.push(char)
+      labels.push([])
     }
     else {
-      push()
-      currentClass = charClass
-      currentText = shown
+      labels.at(-1)!.push(char)
     }
   }
 
-  push()
-  return result
-})
+  const shape = host ? lookupShape(chars.join('')) : undefined
+  const count = labels.length
+  const owned = Math.min(shape?.ownerLabels ?? 0, count)
+  const suffix = Math.min(shape?.suffixLabels ?? 0, owned)
 
-// A hostname contains no spaces, so a browser has nowhere to wrap it and ends up
-// splitting mid-label. Marking a break opportunity after every dot lets long
-// names wrap at label boundaries instead. <wbr> is an element rather than a
-// character, so copying the domain still yields exactly what is on screen.
-const parts = computed(() => {
-  const result: { text: string, class: string, breakAfter: boolean }[] = []
-
-  for (const segment of segments.value) {
-    // Where the continuation marker is wanted, every character gets its own span
-    // so that a line break always falls between two of them. Grouping instead
-    // would hide any break landing inside a run, which is most of them – and how
-    // coarse the runs are happens to depend on whether highlighting is on, so the
-    // marker would come and go with an unrelated setting.
-    //
-    // Adjacent inline boxes introduce no wrap opportunities of their own, and
-    // ligatures are already disabled on this face, so the text lays out the same
-    // either way.
-    if (props.markWraps) {
-      for (const char of segment.text)
-        result.push({ text: char, class: segment.class, breakAfter: char === '.' })
-      continue
+  const segments: Segment[] = labels.map((label, index) => {
+    const runs = runsOf(label, position, 'host')
+    position += label.length
+    const sepChar = seps[index]
+    let sep: Run | undefined
+    if (sepChar !== undefined) {
+      sep = sepChar === '.'
+        ? { text: '.', cls: 'vz-dot' }
+        : { text: sepChar, cls: 'vz-dot vz-ch--foreign', title: t.value('addressNotPlainDot').replace('$1', codePointName(sepChar)) }
+      position += 1
     }
+    return { runs, sep, suffix: owned > 0 && index >= count - suffix }
+  })
 
-    let buffer = ''
-
-    for (const char of segment.text) {
-      buffer += char
-      if (char === '.') {
-        result.push({ text: buffer, class: segment.class, breakAfter: true })
-        buffer = ''
-      }
-    }
-
-    if (buffer)
-      result.push({ text: buffer, class: segment.class, breakAfter: false })
+  return {
+    account,
+    before: segments.slice(0, count - owned),
+    owner: segments.slice(count - owned),
+    trailing,
   }
-
-  return result
 })
-
-// Which parts a line actually ended on. Only the browser knows where the wrap
-// landed, so this is measured after layout rather than derived from the text.
-const root = ref<HTMLElement | null>(null)
-const endsLine = ref<Set<number>>(new Set())
-let observer: ResizeObserver | null = null
-
-function measureWraps() {
-  const element = root.value
-  if (!element)
-    return
-
-  const spans = [...element.querySelectorAll<HTMLElement>(':scope > span')]
-  const found = new Set<number>()
-  let previousTop: number | null = null
-
-  for (let index = 0; index < spans.length; index++) {
-    const { top } = spans[index].getBoundingClientRect()
-    // A tolerance, because subpixel layout puts same-line boxes fractions apart
-    if (previousTop !== null && top > previousTop + 1)
-      found.add(index - 1)
-    previousTop = top
-  }
-
-  // Replacing the set unconditionally would re-render on every measurement
-  if (found.size !== endsLine.value.size || [...found].some(index => !endsLine.value.has(index)))
-    endsLine.value = found
-}
-
-watch([root, () => props.markWraps], ([element, enabled]) => {
-  observer?.disconnect()
-  observer = null
-  endsLine.value = new Set()
-
-  if (!element || !enabled)
-    return
-
-  // Fires on font-size changes and container resizes alike, both of which move
-  // where the address breaks. Absent in environments without layout, where there
-  // is nothing to measure anyway.
-  if (typeof ResizeObserver !== 'undefined') {
-    observer = new ResizeObserver(() => measureWraps())
-    observer.observe(element)
-  }
-
-  nextTick(measureWraps)
-}, { immediate: true })
-
-watch(parts, () => {
-  if (props.markWraps)
-    nextTick(measureWraps)
-})
-
-onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <template>
   <!--
-    Held to one direction on purpose. A bidi control inside the text is shown as
-    a token rather than obeyed, and the isolation keeps whatever is left from
-    reordering the ordinary words around it on the page.
+    Held to one direction on purpose. A bidi control inside the text is shown,
+    not obeyed, and the isolation keeps whatever is left from reordering the
+    ordinary words around it on the page.
   -->
-  <span ref="root" class="secure-domain-display" dir="ltr">
-    <template v-for="(part, index) in parts" :key="index"><span :class="[part.class, { 'wraps-here': endsLine.has(index) }]">{{ part.text }}</span><wbr v-if="part.breakAfter"></template>
+  <span
+    class="secure-domain-display vz-addr"
+    :class="[size ? `vz-addr--${size}` : '', { 'vz-addr--noframes': !framesOn }]"
+    dir="ltr"
+  >
+    <template v-if="model.flat">
+      <Runs :runs="model.flat" />
+    </template>
+    <template v-else>
+      <template v-if="model.account">
+        <span class="vz-addr__acct"><Runs :runs="model.account" /></span><span class="vz-addr__at">@</span><wbr>
+      </template>
+      <span v-if="model.ip" class="vz-lbl vz-lbl--ip"><Runs :runs="model.ip" /></span>
+      <template v-else>
+        <!-- A label and the dot after it never part, so no line starts with a dot.
+             The dot that leads into the owner's labels stays outside them. -->
+        <template v-for="(segment, s) in model.before" :key="`b${s}`">
+          <span class="vz-seg"><span class="vz-lbl"><Runs :runs="segment.runs" /></span><span v-if="segment.sep" :class="segment.sep.cls" :title="segment.sep.title">{{ segment.sep.text }}</span></span><wbr>
+        </template>
+        <span v-if="model.owner?.length" class="vz-own" data-owner>
+          <template v-for="(segment, s) in model.owner" :key="`o${s}`">
+            <span class="vz-seg"><span class="vz-lbl" :class="{ 'vz-lbl--sfx': segment.suffix }"><Runs :runs="segment.runs" /></span><span v-if="segment.sep" :class="segment.sep.cls" :title="segment.sep.title">{{ segment.sep.text }}</span></span><wbr v-if="segment.sep">
+          </template>
+        </span>
+        <span v-if="model.trailing" :class="model.trailing.cls" :title="model.trailing.title">{{ model.trailing.text }}</span>
+      </template>
+    </template>
   </span>
 </template>
-
-<style scoped>
-.secure-domain-display {
-  unicode-bidi: isolate;
-}
-
-/*
- * The continuation marker is absolutely positioned on purpose: laid out in flow
- * it would take up space, change where the line breaks, and move the very wrap
- * it is marking.
- */
-.wraps-here {
-  position: relative;
-}
-
-.wraps-here::after {
-  content: '↩';
-  position: absolute;
-  margin-left: 0.1em;
-  font-size: 0.95em;
-  line-height: 1;
-  letter-spacing: normal;
-  opacity: 0.55;
-}
-</style>

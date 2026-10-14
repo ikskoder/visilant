@@ -39,8 +39,7 @@ describe('inputWarning component', () => {
 
   it('emits close when close button is clicked', async () => {
     const wrapper = mount(InputWarning, { props: defaultProps })
-    // Close button is the last button with sr-only text
-    const closeBtn = wrapper.find('button.flex-shrink-0')
+    const closeBtn = wrapper.get('button[aria-label="dismiss"]')
     await closeBtn.trigger('click')
     expect(wrapper.emitted('close')).toBeTruthy()
   })
@@ -54,7 +53,7 @@ describe('inputWarning component', () => {
   it('offers nothing that turns the warnings off', () => {
     const wrapper = mount(InputWarning, { props: defaultProps })
     expect(wrapper.findAll('button')).toHaveLength(1)
-    expect(wrapper.find('button.flex-shrink-0').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="dismiss"]').exists()).toBe(true)
   })
 
   it('says where the switch actually is', () => {

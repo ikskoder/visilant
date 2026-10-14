@@ -14,44 +14,9 @@ body,
  * one makes both agree, and the popup's own A- / A+ scales from it. */
 body {
   font-size: 14px;
-}
-
-html.dark body {
-  background-color: #111827; /* gray-900 */
-  color: #e5e7eb; /* gray-200 */
-}
-
-.btn-primary {
-  @apply px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer
-    hover:bg-blue-700 transition-colors
-    dark:bg-blue-500 dark:hover:bg-blue-600
-    disabled:bg-gray-400 disabled:cursor-not-allowed disabled:opacity-50;
-}
-
-.btn-danger {
-  @apply px-4 py-2 bg-red-600 text-white rounded-lg cursor-pointer
-    hover:bg-red-700 transition-colors
-    dark:bg-red-500 dark:hover:bg-red-700
-    disabled:bg-gray-400 disabled:cursor-not-allowed disabled:opacity-50;
-}
-
-.btn-ghost {
-  @apply px-4 py-2 bg-transparent border border-gray-300 text-gray-700 rounded-lg cursor-pointer
-    hover:bg-gray-100 transition-colors
-    dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700
-    disabled:opacity-50 disabled:cursor-not-allowed;
-}
-
-.btn-sm {
-  @apply px-2 py-1 text-sm;
-}
-
-.icon-btn {
-  @apply inline-block cursor-pointer select-none
-    opacity-75 transition duration-200 ease-in-out
-    hover:opacity-100 hover:text-teal-600
-    dark:hover:text-teal-400;
-  font-size: 0.9em;
+  font-family: var(--font-sans);
+  background-color: var(--bg);
+  color: var(--ink);
 }
 
 /* Scrollbars in the extension's own palette instead of the platform default.
@@ -60,7 +25,7 @@ html.dark body {
    selector. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+  scrollbar-color: var(--line-strong) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -74,7 +39,7 @@ html.dark body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.5); /* slate-400 */
+  background-color: var(--line-strong);
   border-radius: 9999px;
   /* Transparent border + content-box clip keeps the thumb clear of the track */
   border: 2px solid transparent;
@@ -82,35 +47,5 @@ html.dark body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(100, 116, 139, 0.8); /* slate-500 */
-}
-
-/* `*` above sets the colour on every element, so it has to be re-set the same
-   way for dark – a rule on `html` alone would never reach the descendants */
-html.dark,
-html.dark * {
-  scrollbar-color: rgba(100, 116, 139, 0.6) transparent;
-}
-
-html.dark ::-webkit-scrollbar-thumb {
-  background-color: rgba(100, 116, 139, 0.6);
-}
-
-html.dark ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(148, 163, 184, 0.85);
-}
-
-.secure-domain-display {
-  font-family: 'Atkinson Hyperlegible', monospace;
-  
-  /* Disable ligatures for security */
-  font-variant-ligatures: none;
-  
-  /* OpenType Features for maximum distinctiveness: */
-  /* 'zero' - slashed or dotted zero */
-  /* 'ss02' - stylistic sets (depends on font) */
-  font-feature-settings: "zero" 1, "ss02" 1; 
-  
-  /* Additional readability */
-  letter-spacing: 0.25em;
+  background-color: var(--ink-3);
 }

@@ -30,12 +30,18 @@ const props = defineProps<{
   aggregated?: boolean
 }>()
 
-const { t, factsFor, summaryFor, valueClass, withThresholds } = useFamiliarityFacts()
+const { t, factsFor, summaryFor, withThresholds } = useFamiliarityFacts()
 
 function foldLabel(metric: DomainMetric) {
   if (!props.aggregated)
     return ''
-  return ` · ${t.value(metricAggregation(metric) === 'total' ? 'foldTotal' : 'foldMax')}`
+  // Held to the word before it, so a wrapped heading never starts with the dot
+  return `\u00A0·\u00A0${t.value(metricAggregation(metric) === 'total' ? 'foldTotal' : 'foldMax')}`
+}
+
+/** "10 days" never splits into "10" and "days" when a narrow cell wraps. */
+function keepUnits(text: string) {
+  return text.replace(/(\d) (?=\p{L})/gu, '$1\u00A0')
 }
 
 const facts = computed(() => factsFor(props.stats))
@@ -66,35 +72,28 @@ const ageTitle = computed(() => {
 <template>
   <!-- Cells rather than columns: the row holds three facts, or four once the
        tally joins them, and a fixed column count would leave the fourth alone on
-       a line of its own in a popup this narrow. -->
-  <div class="familiarity-grid grid gap-2 text-left">
-    <div v-for="fact in facts" :key="fact.id">
-      <div class="uppercase tracking-wider opacity-50">
-        {{ fact.label }}<span v-if="aggregated" class="opacity-80" :data-fold="fact.id">{{ foldLabel(fact.id) }}</span>
+       a line of its own in a popup this narrow. The figure is never coloured,
+       the mark beside it carries the result. -->
+  <div class="familiarity-grid vz-grid">
+    <div v-for="fact in facts" :key="fact.id" class="vz-grid__cell">
+      <div class="vz-eyebrow">
+        {{ fact.label }}<span v-if="aggregated" :data-fold="fact.id">{{ foldLabel(fact.id) }}</span>
       </div>
-      <div
-        class="font-mono"
-        :class="valueClass(fact.met, fact.known)"
-        :data-criterion="fact.id"
-        :title="fact.id === 'age' ? ageTitle : fact.title"
-      >
-        {{ withThresholds ? fact.combined : fact.value }}
+      <div class="vz-grid__value">
+        <VzIcon :name="fact.met ? 'pass' : 'fail'" :label="t(fact.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="fact.met ? 'tone-safe' : 'tone-danger'" :data-passed="fact.id" :data-result="fact.met ? 'pass' : 'fail'" />
+        <span :class="{ 'vz-fact__value--none': !fact.known }" :data-criterion="fact.id" :title="fact.id === 'age' ? ageTitle : fact.title">{{ keepUnits(withThresholds ? fact.combined : fact.value) }}</span>
       </div>
     </div>
 
     <!-- Only where the tally is a question: under "all" every check has to pass
-         and the colours have already said so. -->
-    <div v-if="summary">
-      <div class="uppercase tracking-wider opacity-50">
-        {{ t('badgeContentChecks') }}<span v-if="aggregated" class="opacity-80" data-fold="checks">{{ foldLabel('checks') }}</span>
+         and the marks have already said so. -->
+    <div v-if="summary" class="vz-grid__cell">
+      <div class="vz-eyebrow">
+        {{ t('badgeContentChecks') }}<span v-if="aggregated" data-fold="checks">{{ foldLabel('checks') }}</span>
       </div>
-      <div
-        class="font-mono font-bold"
-        :class="valueClass(summary.met)"
-        data-criterion="checks"
-        :title="summary.title"
-      >
-        {{ summary.combined }}
+      <div class="vz-grid__value">
+        <VzIcon :name="summary.met ? 'pass' : 'fail'" :label="t(summary.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="summary.met ? 'tone-safe' : 'tone-danger'" data-passed="checks" :data-result="summary.met ? 'pass' : 'fail'" />
+        <span data-criterion="checks" :title="summary.title">{{ summary.combined }}</span>
       </div>
     </div>
   </div>
@@ -102,6 +101,6 @@ const ageTitle = computed(() => {
 
 <style scoped>
 .familiarity-grid {
-  grid-template-columns: repeat(auto-fit, minmax(5.5em, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr));
 }
 </style>

@@ -26,20 +26,17 @@ function goTo(id: string) {
 </script>
 
 <template>
-  <nav :aria-label="heading">
-    <div class="text-xs uppercase tracking-wider opacity-50 mb-2">
-      {{ heading }}
-    </div>
-    <ul class="space-y-0.5">
+  <nav :aria-label="heading" class="section-nav">
+    <span class="vz-eyebrow">{{ heading }}</span>
+    <ul class="grid gap-0.5 mt-2">
       <li v-for="section in sections" :key="section.id">
         <!-- A real link rather than a button, so it is reached by keyboard and
-             read out as navigation -->
+             read out as navigation. The current section is a tinted row in the
+             interface colour, not a border on a rounded box. -->
         <a
           :href="`#section-${section.id}`"
-          class="block px-2 py-1 rounded-lg text-sm transition-colors border-l-2"
-          :class="activeId === section.id
-            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
-            : 'border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'"
+          class="section-nav__link"
+          :class="{ 'section-nav__link--current': activeId === section.id }"
           :aria-current="activeId === section.id ? 'true' : undefined"
           @click.prevent="goTo(section.id)"
         >
@@ -49,3 +46,28 @@ function goTo(id: string) {
     </ul>
   </nav>
 </template>
+
+<style scoped>
+.section-nav__link {
+  display: block;
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  text-decoration: none;
+  transition: background-color 120ms ease;
+}
+
+.section-nav__link:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.section-nav__link--current,
+.section-nav__link--current:hover {
+  background: var(--brand-tint);
+  color: var(--brand);
+  font-weight: 600;
+}
+</style>

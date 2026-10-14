@@ -18,7 +18,6 @@ import { useI18n } from '~/composables/useI18n'
 const props = defineProps<{
   recipients: EmailRecipientInfo[]
   notChecked?: number
-  isDark: boolean
 }>()
 
 const { t } = useI18n()
@@ -33,64 +32,48 @@ const show = computed(() => props.recipients.length > 1 || (props.notChecked ?? 
 </script>
 
 <template>
-  <div v-if="show" class="mail-recipients mt-2">
-    <div class="recipients-label uppercase tracking-wider" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
-      {{ t('emailRecipientsTitle') }} ({{ recipients.length + (notChecked ?? 0) }})
-    </div>
+  <div v-if="show" class="mail-recipients grid gap-2">
+    <span class="vz-eyebrow">{{ t('emailRecipientsTitle') }} ({{ recipients.length + (notChecked ?? 0) }})</span>
 
-    <div
-      v-for="(recipient, index) in recipients"
-      :key="`${recipient.field}-${index}`"
-      class="recipient-row flex items-start gap-1 mt-0.5"
-    >
-      <span
-        class="recipient-field shrink-0 px-1 rounded"
-        :class="isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'"
-      >{{ t(fieldLabel[recipient.field]) }}</span>
-      <span class="break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
-        <SecureText :text="recipient.analysis.localPart" :force-highlight="true" :danger-only="true" account-name /><span :class="isDark ? 'text-gray-400' : 'text-gray-500'">@</span><SecureText :text="recipient.analysis.domain" :force-highlight="true" :danger-only="true" />
-      </span>
-    </div>
+    <ul class="grid gap-1">
+      <li
+        v-for="(recipient, index) in recipients"
+        :key="`${recipient.field}-${index}`"
+        class="recipient-row flex items-start gap-2"
+      >
+        <span class="vz-badge vz-badge--neutral recipient-field">{{ t(fieldLabel[recipient.field]) }}</span>
+        <SecureText kind="email" :text="`${recipient.analysis.localPart}@${recipient.analysis.domain}`" size="m" class="min-w-0" />
+      </li>
+    </ul>
 
     <!-- Every marker that would have gone unsaid if only the first address had
          been looked at. Each names the recipient it belongs to. -->
-    <div
-      v-for="(recipient, index) in recipients"
-      :key="`mark-${recipient.field}-${index}`"
-      class="recipient-note"
-    >
-      <div v-if="recipient.providerKind === 'disposable'" class="mt-0.5" :class="isDark ? 'text-red-400' : 'text-red-600'">
-        ⚠ {{ recipient.analysis.domain }} – {{ t('emailDisposableHint') }}
-      </div>
-      <div v-if="recipient.analysis.domainInfo.punycode" class="mt-0.5" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
-        ⚠ {{ recipient.analysis.domain }} – {{ recipient.analysis.domainInfo.punycode }}
-      </div>
-      <div v-if="recipient.analysis.suspiciousPattern" class="mt-0.5" :class="isDark ? 'text-red-400' : 'text-red-600'">
-        ⚠ {{ recipient.analysis.domain }} – {{ t('emailSuspiciousPattern') }} (.{{ recipient.analysis.suspiciousPattern.label }})
-      </div>
-      <div v-if="recipient.providerKind === 'regular' && !recipient.isSafe" class="mt-0.5" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
-        {{ recipient.analysis.domain }} – {{ t('emailRecipientUnfamiliar') }}
-      </div>
-    </div>
+    <template v-for="(recipient, index) in recipients" :key="`mark-${recipient.field}-${index}`">
+      <VzNotice v-if="recipient.providerKind === 'disposable'" tone="danger" bare>
+        <SecureText :text="recipient.analysis.domain" size="s" /> – {{ t('emailDisposableHint') }}
+      </VzNotice>
+      <VzNotice v-if="recipient.analysis.domainInfo.punycode" tone="danger" bare>
+        <SecureText :text="recipient.analysis.domain" size="s" /> – <SecureText :text="recipient.analysis.domainInfo.punycode" size="s" />
+      </VzNotice>
+      <VzNotice v-if="recipient.analysis.suspiciousPattern" tone="danger" bare>
+        <SecureText :text="recipient.analysis.domain" size="s" /> – {{ t('emailSuspiciousPattern') }} (.{{ recipient.analysis.suspiciousPattern.label }})
+      </VzNotice>
+      <VzNotice v-if="recipient.providerKind === 'regular' && !recipient.isSafe" tone="danger" bare>
+        <SecureText :text="recipient.analysis.domain" size="s" /> – {{ t('emailRecipientUnfamiliar') }}
+      </VzNotice>
+    </template>
 
-    <div v-if="notChecked" class="mt-0.5" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+    <p v-if="notChecked" class="vz-small">
       +{{ notChecked }} {{ t('emailRecipientsNotChecked') }}
-    </div>
+    </p>
   </div>
 </template>
 
 <style scoped>
-.mail-recipients {
-  font-size: 0.75rem;
-  line-height: 1.3;
-}
-
-.recipients-label {
-  font-size: 0.625rem;
-}
-
 .recipient-field {
-  font-size: 0.625rem;
-  line-height: 1.4;
+  /* Centred on the first line of the address beside it */
+  margin-top: calc(3px * var(--vz-scale, 1));
+  padding: calc(1px * var(--vz-scale, 1)) calc(6px * var(--vz-scale, 1));
+  font-size: calc(12px * var(--vz-scale, 1));
 }
 </style>

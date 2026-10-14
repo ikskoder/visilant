@@ -10,7 +10,6 @@ import { settings } from '~/logic/storage'
 const props = defineProps<{
   analysis: EmailAnalysis
   params: { key: string, value: string }[]
-  isDark: boolean
   compact?: boolean
   providerKind?: EmailProviderKind
   /**
@@ -75,106 +74,111 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
 </script>
 
 <template>
-  <div class="email-breakdown">
-    <!-- Full address with per-char highlighting, @ kept neutral. Only where a
-         two-row breakdown would not fit – the link tooltip is one line wide. -->
-    <div v-if="compact" class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
-      <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" account-name /><span :class="isDark ? 'text-gray-400' : 'text-gray-500'">@</span><SecureText :text="analysis.domain" :force-highlight="true" :danger-only="true" />
-    </div>
+  <div class="email-breakdown grid gap-2">
+    <!-- The whole address on one line, where a two-row breakdown would not fit:
+         the link tooltip is one line wide -->
+    <SecureText v-if="compact" kind="email" :text="`${analysis.localPart}@${analysis.domain}`" size="l" />
 
     <!--
       Named halves wherever there is room, the way the in-page check panel has
       always shown them. The two answer different questions: anyone can take any
       name at a public provider, while the domain is a site the history can say
       something about – and picking one out of the other in a single run of
-      letter-spaced characters is the mistake this check exists to prevent.
+      characters is the mistake this check exists to prevent.
     -->
     <template v-else>
-      <div class="email-label uppercase tracking-wider flex items-center gap-1.5" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
-        {{ t('emailAccountName') }}
-        <!-- Beside the name it acts on, rather than up in the header where it
-             read as a control for the whole page -->
-        <button
-          v-if="caseControl"
-          class="btn-ghost btn-sm !rounded normal-case leading-none px-1 py-0.5"
-          :title="accountCaseTitle"
-          :aria-label="accountCaseTitle"
-          @click="cycleAccountNameCase"
-        >
-          {{ accountCaseLabel }}
-        </button>
-      </div>
-      <div class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
-        <SecureText :text="analysis.localPart" :force-highlight="true" :danger-only="true" account-name />
-      </div>
-      <template v-if="!domainElsewhere">
-        <div class="email-label uppercase tracking-wider mt-1" :class="isDark ? 'text-gray-500' : 'text-gray-400'">
-          {{ t('emailDomainLabel') }}
+      <div class="grid gap-1">
+        <div class="flex items-center gap-2">
+          <span class="vz-eyebrow">{{ t('emailAccountName') }}</span>
+          <!-- Beside the name it acts on, rather than up in the header where it
+               read as a control for the whole page -->
+          <button
+            v-if="caseControl"
+            class="vz-toggle"
+            :title="accountCaseTitle"
+            :aria-label="accountCaseTitle"
+            @click="cycleAccountNameCase"
+          >
+            {{ accountCaseLabel }}
+          </button>
         </div>
-        <div class="font-bold email-address break-all" :class="isDark ? 'text-white' : 'text-gray-900'">
-          <SecureText :text="analysis.domain" :force-highlight="true" :danger-only="true" />
-        </div>
-      </template>
+        <SecureText :text="analysis.localPart" kind="account" size="l" />
+      </div>
+      <div v-if="!domainElsewhere" class="grid gap-1">
+        <span class="vz-eyebrow">{{ t('emailDomainLabel') }}</span>
+        <SecureText :text="analysis.domain" size="l" />
+      </div>
     </template>
 
-    <!-- Punycode of the domain -->
-    <div v-if="analysis.domainInfo.punycode && !domainElsewhere" class="email-label mt-1" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
-      {{ t('linkTooltipPunycode') }}: {{ analysis.domainInfo.punycode }}
-    </div>
+    <!-- The encoded spelling of an international domain -->
+    <VzNotice v-if="analysis.domainInfo.punycode && !domainElsewhere" tone="danger" :bare="compact">
+      {{ t('linkTooltipPunycode') }}: <SecureText :text="analysis.domainInfo.punycode" size="s" />
+    </VzNotice>
 
     <!-- Embedded-TLD warning (paypal.com.evil.ru) -->
-    <div v-if="showSuspiciousPattern" class="email-label mt-1" :class="isDark ? 'text-red-400' : 'text-red-600'">
-      ⚠ {{ t('emailSuspiciousPattern') }} (.{{ analysis.suspiciousPattern?.label }})
-    </div>
+    <VzNotice v-if="showSuspiciousPattern" tone="danger" :bare="compact">
+      {{ t('emailSuspiciousPattern') }} (.{{ analysis.suspiciousPattern?.label }})
+    </VzNotice>
 
     <!-- Unicode in the local part -->
-    <div v-if="analysis.local.hasUnicode" class="email-label mt-1" :class="isDark ? 'text-yellow-400' : 'text-yellow-600'">
-      ⚠ {{ t('emailLocalUnicodeWarning') }}
-    </div>
+    <VzNotice v-if="analysis.local.hasUnicode" tone="danger" :bare="compact">
+      {{ t('emailLocalUnicodeWarning') }}
+    </VzNotice>
 
-    <!-- Provider hints: judge the name, not the domain / disposable warning -->
-    <div v-if="providerKind === 'public'" class="email-label mt-1" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
+    <!-- Provider hints: judge the name, not the domain / throwaway warning -->
+    <VzNotice v-if="providerKind === 'public'" tone="neutral" icon="email" :bare="compact">
       {{ t('emailPublicProviderHint') }}
-    </div>
-    <div v-else-if="providerKind === 'disposable'" class="email-label mt-1" :class="isDark ? 'text-red-400' : 'text-red-600'">
-      ⚠ {{ t('emailDisposableHint') }}
-    </div>
+    </VzNotice>
+    <VzNotice v-else-if="providerKind === 'disposable'" tone="danger" :bare="compact">
+      {{ t('emailDisposableHint') }}
+    </VzNotice>
 
     <!-- mailto query params (cc, bcc, subject, body...) -->
-    <div v-if="displayParams.length" class="mt-2">
-      <div class="email-label" :class="isDark ? 'text-gray-400' : 'text-gray-500'">
-        {{ t('emailTooltipParams') }}:
-      </div>
-      <div
-        class="email-label space-y-0.5"
-        :class="isDark ? 'text-gray-300' : 'text-gray-600'"
-        :style="compact ? 'max-height: 100px; overflow-y: auto;' : ''"
-      >
-        <div v-for="param in displayParams" :key="param.key" class="break-all">
-          <span :class="isDark ? 'text-gray-500' : 'text-gray-400'">{{ param.key }}:</span> {{ param.value }}
+    <div v-if="displayParams.length" class="grid gap-1">
+      <span class="vz-eyebrow">{{ t('emailTooltipParams') }}</span>
+      <dl class="email-params vz-well" :class="{ 'email-params--compact': compact }">
+        <div v-for="param in displayParams" :key="param.key" class="email-param">
+          <dt>{{ param.key }}</dt>
+          <dd>{{ param.value }}</dd>
         </div>
-      </div>
+      </dl>
     </div>
   </div>
 </template>
 
 <style scoped>
-.email-address {
-  /* The two halves of the address are what the whole check is about, and they
-     were set at the same size as the labels naming them. Everything else here
-     is context for these two lines. */
-  font-size: 1.3em !important;
-  line-height: 1.25em !important;
-  word-break: break-all !important;
+.email-params {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-size: calc(13px * var(--vz-scale, 1));
+  line-height: 1.4;
+  color: var(--ink-2);
 }
 
-.email-label {
-  font-size: 0.85em !important;
-  line-height: 1.3em !important;
-  /* These lines are sentences, so they wrap between words. Only something that
-     cannot fit on a line of its own – a long address, a mailto parameter – is
-     split, and mid-word breaks stop happening to ordinary prose. */
-  word-break: normal !important;
-  overflow-wrap: anywhere !important;
+.email-params--compact {
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.email-param {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.email-param dt {
+  color: var(--ink-3);
+  flex: none;
+}
+
+.email-param dt::after {
+  content: ':';
+}
+
+.email-param dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 </style>

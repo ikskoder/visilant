@@ -1,4 +1,7 @@
+import { config } from '@vue/test-utils'
 import { vi } from 'vitest'
+import { ADDRESS_SHAPE_KEY } from '~/logic/address-shape'
+import { addressShape } from '~/logic/domain-boundary'
 
 // Polyfill ResizeObserver for jsdom (not available natively)
 if (typeof globalThis.ResizeObserver === 'undefined') {
@@ -89,3 +92,9 @@ vi.mock('webextension-polyfill', () => {
   }
   return { ...mock, default: mock }
 })
+
+// Components get the shape of an address the way the extension's own pages give
+// it, straight from the suffix list. Without this every mounted address would
+// ask the background through the mocked `sendMessage`, and tests that drive
+// that mock by hand would answer the wrong question.
+config.global.provide = { ...config.global.provide, [ADDRESS_SHAPE_KEY as symbol]: addressShape }

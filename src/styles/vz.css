@@ -1,0 +1,790 @@
+/*
+ * Visilant components: the classes every surface is built from, on the
+ * extension's own pages and inside the content script's shadow root alike.
+ * Every colour, space, radius and size comes from tokens.css.
+ *
+ * Sizes are px, scaled by `--vz-scale` where the reader can make text larger
+ * (the popup's A- / A+ and the in-page surfaces that follow it). Not rem:
+ * inside a web page's shadow root, rem is whatever the page chose. Not em
+ * either, because a badge inside a notice would then shrink twice.
+ *
+ * Plain CSS on purpose. UnoCSS does not process this file, so `@apply` would
+ * do nothing here, and it never looks inside .ts files, so a tone that only a
+ * script names has to live here to reach the build at all.
+ */
+
+.vz-root,
+.vz-root * {
+  box-sizing: border-box;
+}
+
+/* Inherited text properties a page can force on the host element, which wins
+   over `:host { all: initial }`. Each one pinned, or the page could make every
+   word transparent, masked or reordered while the colour still looks right. */
+.vz-root--page {
+  -webkit-text-fill-color: currentColor;
+  -webkit-text-security: none;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-transform: none;
+  text-indent: 0;
+  text-shadow: none;
+  font-style: normal;
+  font-weight: 400;
+  font-feature-settings: normal;
+  font-variation-settings: normal;
+  font-kerning: auto;
+  writing-mode: horizontal-tb;
+  white-space: normal;
+  visibility: visible;
+}
+
+.vz-root {
+  direction: ltr;
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: calc(14px * var(--vz-scale, 1));
+  line-height: calc(20px * var(--vz-scale, 1));
+  color: var(--ink);
+}
+
+/* The shadow root has no reset. Without these a <div> border draws nothing and
+   a <button> draws the browser's own outset edge. :where() keeps them at zero
+   specificity, so every utility and component class still wins. */
+:where(.vz-root--page) *,
+:where(.vz-root--page) *::before,
+:where(.vz-root--page) *::after {
+  border-width: 0;
+  border-style: solid;
+  border-color: var(--line);
+}
+
+:where(.vz-root--page) :is(button, input, select, textarea) {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  letter-spacing: inherit;
+  text-transform: none;
+}
+
+:where(.vz-root--page) button {
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+:where(.vz-root--page) :is(h1, h2, h3, h4, p, ul, ol, table) {
+  margin: 0;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/* One focus ring, everywhere. Never remove an outline without drawing this */
+:where(.vz-root, html) :focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ---------- Icons ---------- */
+
+.vz-icon {
+  width: calc(var(--icon-md) * var(--vz-scale, 1));
+  height: calc(var(--icon-md) * var(--vz-scale, 1));
+  flex: none;
+  fill: currentColor;
+  vertical-align: -3px;
+}
+
+.vz-icon--lg { width: calc(var(--icon-lg) * var(--vz-scale, 1)); height: calc(var(--icon-lg) * var(--vz-scale, 1)); }
+
+.tone-safe { color: var(--safe); }
+.tone-danger { color: var(--danger); }
+.tone-neutral { color: var(--neutral); }
+.tone-brand { color: var(--brand); }
+
+/* ---------- Address ---------- */
+
+.vz-addr {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  font-variant-ligatures: none;
+  unicode-bidi: isolate;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.vz-seg { white-space: nowrap; }
+
+.vz-lbl {
+  display: inline-block;
+  /* A label that fills the line still leaves room for the dot after it, which
+     would otherwise hang past the edge of the card */
+  max-width: calc(100% - 1em);
+  white-space: normal;
+  border: 1px solid var(--label-line);
+  border-radius: var(--radius-xs);
+  padding: 0 0.28em;
+  line-height: 1.3;
+  background: var(--surface);
+  max-width: 100%;
+}
+
+.vz-lbl--sfx { color: var(--ink-2); }
+
+.vz-dot {
+  color: var(--ink-3);
+  padding: 0 0.1em;
+}
+
+/* The registrable domain: one frame per label, like the rest, only heavier and on a tint */
+.vz-own .vz-lbl {
+  border: 1.5px solid var(--owner-line);
+  background: var(--owner-tint);
+}
+
+/* Keeps the comma or full stop after an address on the address's line */
+.vz-nobr { white-space: nowrap; }
+
+.vz-addr__acct { color: var(--ink); }
+.vz-addr__at { color: var(--ink-3); padding: 0 0.12em; }
+
+.vz-ch--digit { color: var(--char-digit); font-weight: 800; }
+
+.vz-ch--foreign {
+  /* A right-to-left letter must not reorder its neighbours */
+  unicode-bidi: isolate;
+  color: var(--char-foreign);
+  background: var(--danger-tint);
+  font-weight: 800;
+  text-decoration: underline 2px;
+  text-underline-offset: 2px;
+  border-radius: 2px;
+}
+
+.vz-ch--diff {
+  text-decoration: underline 2px var(--danger);
+  text-underline-offset: 3px;
+}
+
+.vz-ch--invisible { unicode-bidi: isolate; }
+
+/* The invisible character itself, kept in the text so a copy is the real
+   address. An inline block of no width: atomic, so a bidi override inside it
+   has nothing to reorder, and a line separator nothing to break. */
+.vz-ch__raw {
+  display: inline-block;
+  width: 0;
+  height: 1em;
+  line-height: 1em;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+
+.vz-ch--invisible::before {
+  /* The name is drawn, not written: the real character stays in the text, so a copy is the real address */
+  content: attr(data-cp);
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: max(calc(12px * var(--vz-scale, 1)), 0.62em);
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--char-foreign);
+  background: var(--danger-tint);
+  border: 1px solid var(--danger);
+  border-radius: 3px;
+  padding: 0 3px;
+  margin: 0 2px;
+  vertical-align: 0.1em;
+}
+
+.vz-dot--trailing { color: var(--danger); font-weight: 800; }
+
+/* The user name of a URL (paypal.com in paypal.com@evil.test): ignored by the browser, struck through */
+.vz-decoy {
+  color: var(--ink-3);
+  text-decoration: line-through 2px var(--danger);
+}
+
+.vz-lbl--ip { letter-spacing: 0.04em; }
+
+.vz-addr--xl { font-size: calc(26px * var(--vz-scale, 1)); line-height: calc(36px * var(--vz-scale, 1)); }
+.vz-addr--l { font-size: calc(18px * var(--vz-scale, 1)); line-height: calc(28px * var(--vz-scale, 1)); }
+.vz-addr--m { font-size: calc(14px * var(--vz-scale, 1)); line-height: calc(24px * var(--vz-scale, 1)); }
+.vz-addr--s { font-size: calc(13px * var(--vz-scale, 1)); line-height: calc(20px * var(--vz-scale, 1)); }
+
+.vz-addr--s .vz-lbl,
+.vz-addr--m .vz-lbl { padding: 0 0.22em; }
+
+/* Frames switched off in the settings: plain letters, the owner's labels in bold */
+.vz-addr--noframes .vz-lbl,
+.vz-addr--noframes .vz-own .vz-lbl {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.vz-addr--noframes .vz-own .vz-lbl { font-weight: 700; }
+.vz-addr--noframes .vz-dot { padding: 0 0.04em; }
+
+/* Inside a sentence the frames must not push the lines apart */
+.vz-addr--s .vz-lbl { line-height: 1.15; }
+
+.vz-addr--l .vz-lbl,
+.vz-addr--xl .vz-lbl { border-radius: var(--radius-sm); }
+
+
+/* ---------- Links ---------- */
+
+.vz-link {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.vz-link:hover { color: var(--brand-hover); }
+
+/* ---------- Badge ---------- */
+
+.vz-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-sans);
+  font-size: calc(13px * var(--vz-scale, 1));
+  line-height: calc(16px * var(--vz-scale, 1));
+  font-weight: 600;
+  padding: calc(3px * var(--vz-scale, 1)) calc(8px * var(--vz-scale, 1)) calc(3px * var(--vz-scale, 1)) calc(6px * var(--vz-scale, 1));
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.vz-badge .vz-icon { width: calc(14px * var(--vz-scale, 1)); height: calc(14px * var(--vz-scale, 1)); vertical-align: 0; }
+
+.vz-badge--safe { background: var(--safe-tint); border-color: var(--safe-line); color: var(--safe-text); }
+.vz-badge--safe .vz-icon { color: var(--safe); }
+.vz-badge--danger { background: var(--danger-tint); border-color: var(--danger-line); color: var(--danger-text); }
+.vz-badge--danger .vz-icon { color: var(--danger); }
+.vz-badge--neutral { background: var(--neutral-tint); border-color: var(--neutral-line); color: var(--neutral-text); }
+.vz-badge--neutral .vz-icon { color: var(--neutral); }
+.vz-badge--brand { background: var(--brand-tint); border-color: var(--brand); color: var(--brand); }
+
+/* ---------- Facts ---------- */
+
+.vz-facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+}
+
+.vz-fact {
+  display: flex;
+  /* The mark stays beside the first line when a value wraps */
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: calc(14px * var(--vz-scale, 1));
+  line-height: calc(20px * var(--vz-scale, 1));
+}
+
+.vz-fact > .vz-icon { margin-top: calc(2px * var(--vz-scale, 1)); }
+
+.vz-fact__label { color: var(--ink-2); }
+
+.vz-fact__value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.vz-fact__need {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+.vz-fact__value--none { font-family: var(--font-sans); font-weight: 400; color: var(--ink-3); }
+
+.vz-fact--pass .vz-icon { color: var(--safe); }
+.vz-fact--fail .vz-icon { color: var(--danger); }
+.vz-fact--unknown .vz-icon,
+.vz-fact--off .vz-icon { color: var(--neutral); }
+.vz-fact--off .vz-fact__label,
+.vz-fact--off .vz-fact__value { color: var(--ink-3); }
+
+.vz-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* Each cell takes two rows of the grid, the heading and the value, so every
+   value in a row starts on one line even when one heading wraps to two */
+.vz-grid__cell { display: grid; grid-template-rows: subgrid; grid-row: span 2; row-gap: 2px; min-width: 0; }
+.vz-grid__cell > .vz-eyebrow { align-self: end; }
+
+.vz-grid__value {
+  display: flex;
+  align-items: flex-start;
+  align-self: start;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: calc(18px * var(--vz-scale, 1));
+  line-height: calc(24px * var(--vz-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.vz-grid__value .vz-fact__value--none { font-size: calc(14px * var(--vz-scale, 1)); line-height: calc(24px * var(--vz-scale, 1)); }
+
+.vz-grid__value > .vz-icon { margin-top: calc(4px * var(--vz-scale, 1)); }
+
+.vz-grid__need { font-family: var(--font-sans); font-size: calc(13px * var(--vz-scale, 1)); line-height: calc(18px * var(--vz-scale, 1)); color: var(--ink-3); }
+
+/* ---------- Eyebrow, text ---------- */
+
+.vz-eyebrow {
+  font-family: var(--font-sans);
+  font-size: calc(12px * var(--vz-scale, 1));
+  line-height: calc(16px * var(--vz-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0;
+}
+
+.vz-body-strong { font-size: calc(14px * var(--vz-scale, 1)); line-height: calc(20px * var(--vz-scale, 1)); font-weight: 600; color: var(--ink); margin: 0; }
+.vz-title { font-size: calc(18px * var(--vz-scale, 1)); line-height: calc(24px * var(--vz-scale, 1)); font-weight: 700; margin: 0; color: var(--ink); }
+.vz-heading { font-size: calc(15px * var(--vz-scale, 1)); line-height: calc(20px * var(--vz-scale, 1)); font-weight: 700; margin: 0; color: var(--ink); }
+.vz-body { font-size: calc(14px * var(--vz-scale, 1)); line-height: calc(20px * var(--vz-scale, 1)); color: var(--ink-2); margin: 0; }
+.vz-small { font-size: calc(13px * var(--vz-scale, 1)); line-height: calc(18px * var(--vz-scale, 1)); color: var(--ink-3); margin: 0; }
+
+/* ---------- Notice ---------- */
+
+.vz-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) 10px;
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  font-size: calc(13px * var(--vz-scale, 1));
+  line-height: calc(20px * var(--vz-scale, 1));
+  color: var(--ink);
+}
+
+.vz-notice .vz-icon { margin-top: 2px; }
+.vz-notice__text { min-width: 0; }
+.vz-notice__text b { font-weight: 700; }
+
+.vz-notice--danger { background: var(--danger-tint); border-color: var(--danger-line); }
+.vz-notice--danger > .vz-icon { color: var(--danger); }
+.vz-notice--info { background: var(--brand-tint); border-color: var(--line); }
+.vz-notice--neutral { background: var(--neutral-tint); border-color: var(--neutral-line); }
+.vz-notice--neutral > .vz-icon { color: var(--neutral); }
+.vz-notice--info > .vz-icon { color: var(--brand); }
+
+/* A notice inside a tight space: no box, the icon carries the tone, the words stay ink */
+.vz-notice--bare { background: none; border: 0; padding: 0; }
+
+/* ---------- Buttons ---------- */
+
+.vz-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: calc(var(--control-md) * var(--vz-scale, 1));
+  padding: 0 14px;
+  font-family: var(--font-sans);
+  font-size: calc(14px * var(--vz-scale, 1));
+  line-height: calc(20px * var(--vz-scale, 1));
+  font-weight: 600;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.vz-btn:hover { background: var(--surface-hover); }
+
+.vz-btn:focus-visible,
+.vz-iconbtn:focus-visible,
+.vz-toggle:focus-visible,
+.vz-input:focus-visible,
+.vz-select:focus-visible,
+.vz-switch input:focus-visible + .vz-switch__track,
+.vz-check input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.vz-btn--primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+.vz-btn--primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+
+.vz-btn--risk { color: var(--danger-text); border-color: var(--danger); background: var(--surface); }
+.vz-btn--risk:hover { background: var(--danger-tint); }
+
+.vz-btn--destroy { background: var(--danger); border-color: var(--danger); color: var(--on-fill); }
+.vz-btn--destroy:hover { background: var(--danger-text); border-color: var(--danger-text); }
+
+.vz-btn--quiet { background: transparent; border-color: transparent; color: var(--brand); }
+.vz-btn--quiet:hover { background: var(--brand-tint); }
+
+.vz-btn--sm { min-height: calc(var(--control-sm) * var(--vz-scale, 1)); padding: 0 10px; font-size: calc(13px * var(--vz-scale, 1)); }
+.vz-btn--block { width: 100%; }
+/* A quiet button that lines up with the text edge above it */
+/* A flush button reads as a line of text, a disclosure most often, and wraps like
+   one: kept on one line it set the width of the whole card at a large text size */
+.vz-btn--flush { margin-inline: -10px; white-space: normal; text-align: start; align-items: flex-start; padding-block: calc(4px * var(--vz-scale, 1)); }
+/* Beside the first line of a title that wraps, not between its lines */
+.vz-btn--flush > .vz-icon { margin-top: calc(2px * var(--vz-scale, 1)); }
+.vz-btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+.vz-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(32px * var(--vz-scale, 1));
+  height: calc(32px * var(--vz-scale, 1));
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.vz-iconbtn:hover { background: var(--surface-hover); color: var(--ink); }
+.vz-iconbtn .vz-icon { width: calc(20px * var(--vz-scale, 1)); height: calc(20px * var(--vz-scale, 1)); vertical-align: 0; }
+.vz-iconbtn--sm { width: calc(var(--control-sm) * var(--vz-scale, 1)); height: calc(var(--control-sm) * var(--vz-scale, 1)); }
+.vz-iconbtn--sm .vz-icon { width: calc(16px * var(--vz-scale, 1)); height: calc(16px * var(--vz-scale, 1)); }
+/* Outlined, a plain icon button takes the height of the controls beside it.
+   A small one stays small, so the sort button matches the chip next to it. */
+.vz-iconbtn--outline { border-color: var(--line-strong); background: var(--surface); }
+.vz-iconbtn--outline:not(.vz-iconbtn--sm) { width: calc(var(--control-md) * var(--vz-scale, 1)); height: calc(var(--control-md) * var(--vz-scale, 1)); }
+
+/* ---------- Toggle group ---------- */
+
+.vz-toggles {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 2px;
+  gap: 2px;
+}
+
+.vz-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: calc(var(--control-sm) * var(--vz-scale, 1));
+  min-width: calc(var(--control-sm) * var(--vz-scale, 1));
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--font-sans);
+  font-size: calc(13px * var(--vz-scale, 1));
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vz-toggle:hover { background: var(--surface-hover); color: var(--ink); }
+/* A- at the smallest size, A+ at the largest */
+.vz-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+.vz-toggle:disabled:hover { background: transparent; color: var(--ink-3); }
+.vz-toggle .vz-icon { width: calc(20px * var(--vz-scale, 1)); height: calc(20px * var(--vz-scale, 1)); vertical-align: 0; }
+/* Pressed is the tinted ground and the icon in brand. No edge of its own: inside
+   the group's frame a second frame read as a button within a button. */
+.vz-toggle[aria-pressed="true"] { background: var(--brand-tint); color: var(--brand); }
+
+/* ---------- Forms ---------- */
+
+.vz-input,
+.vz-select {
+  height: calc(var(--control-md) * var(--vz-scale, 1));
+  padding: 0 10px;
+  font-family: var(--font-sans);
+  font-size: calc(14px * var(--vz-scale, 1));
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+.vz-input::placeholder { color: var(--ink-3); }
+
+.vz-input--sm { height: calc(var(--control-sm) * var(--vz-scale, 1)); padding: 0 8px; font-size: calc(13px * var(--vz-scale, 1)); }
+.vz-select { appearance: none; padding-right: calc(32px * var(--vz-scale, 1)); width: 100%; }
+.vz-select--sm { height: calc(var(--control-sm) * var(--vz-scale, 1)); font-size: calc(13px * var(--vz-scale, 1)); }
+.vz-selectbox { position: relative; display: inline-grid; }
+
+/* Chevron drawn from two borders, so it follows the ink colour in both themes */
+.vz-selectbox::after {
+  content: "";
+  position: absolute;
+  right: calc(13px * var(--vz-scale, 1));
+  top: 50%;
+  width: calc(7px * var(--vz-scale, 1));
+  height: calc(7px * var(--vz-scale, 1));
+  margin-top: calc(-6px * var(--vz-scale, 1));
+  border-right: 2px solid var(--ink-2);
+  border-bottom: 2px solid var(--ink-2);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.vz-input--addr { font-family: var(--font-mono); letter-spacing: 0.02em; }
+
+.vz-field { display: grid; align-content: start; gap: 6px; }
+.vz-field__row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.vz-field__row .vz-input { flex: 1; }
+
+.vz-switch { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+.vz-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+
+.vz-switch__track {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line-strong);
+  transition: background-color 120ms ease;
+}
+
+.vz-switch__track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: var(--ink-3);
+  transition: transform 120ms ease;
+}
+
+.vz-switch input:checked + .vz-switch__track { background: var(--brand); border-color: var(--brand); }
+.vz-switch input:checked + .vz-switch__track::after { transform: translateX(16px); background: var(--on-brand); }
+
+.vz-check { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+.vz-check input,
+.vz-check-box { width: 18px; height: 18px; margin: 0; accent-color: var(--brand); }
+
+/* ---------- Surfaces ---------- */
+
+.vz-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+.vz-well {
+  background: var(--surface-sunken);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+/* Sideways scrolling that shows itself: a shade at whichever edge has more
+   behind it, which slides away once that edge is reached */
+.vz-scroll-x {
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--surface-sunken) 30%, transparent) left / 24px 100% no-repeat local,
+    linear-gradient(to left, var(--surface-sunken) 30%, transparent) right / 24px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.22), transparent) left / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.22), transparent) right / 10px 100% no-repeat scroll,
+    var(--surface-sunken);
+}
+
+.vz-rule { border: 0; border-top: 1px solid var(--line); margin: 0; }
+
+/* Anything Visilant draws over a web page */
+.vz-overlay {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+  color: var(--ink);
+}
+
+/* The signature line: says whose box this is. A page can copy it, so it proves nothing on its own */
+.vz-sig {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: calc(12px * var(--vz-scale, 1));
+  line-height: calc(16px * var(--vz-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.vz-sig svg,
+.vz-sig img { width: 14px; height: 16px; display: block; }
+
+.vz-tooltip {
+  width: max-content;
+  max-width: min(var(--tooltip-max), 100vw - 32px);
+  padding: var(--space-3);
+  display: grid;
+  gap: 10px;
+}
+
+.vz-dialog {
+  width: 440px;
+  max-width: 100%;
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-4);
+}
+
+.vz-dialog__head { display: flex; align-items: center; gap: var(--space-2); }
+.vz-dialog__head .vz-title { flex: 1; }
+.vz-dialog__actions { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
+
+.vz-toast {
+  width: 380px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.vz-toast__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px var(--space-2) 10px var(--space-4);
+}
+
+.vz-toast__head .vz-title { flex: 1; }
+.vz-toast--danger .vz-toast__head { background: var(--danger-tint); border-bottom: 1px solid var(--danger-line); }
+.vz-toast__body { padding: var(--space-3) var(--space-4) var(--space-4); display: grid; gap: var(--space-2); }
+
+.vz-scrim { background: var(--scrim); }
+
+/* Dialogs over a web page fade in and lift by 8px, nothing more */
+.overlay-fade-enter-active,
+.overlay-fade-leave-active { transition: opacity 150ms ease; }
+.overlay-fade-enter-active .vz-dialog,
+.overlay-fade-leave-active .vz-dialog { transition: transform 150ms ease; }
+.overlay-fade-enter-from,
+.overlay-fade-leave-to { opacity: 0; }
+.overlay-fade-enter-from .vz-dialog,
+.overlay-fade-leave-to .vz-dialog { transform: translateY(8px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-fade-enter-from .vz-dialog,
+  .overlay-fade-leave-to .vz-dialog { transform: none; }
+}
+
+/* ---------- Lists and tables ---------- */
+
+.vz-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.vz-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  min-height: calc(44px * var(--vz-scale, 1));
+}
+
+.vz-list__row + .vz-list__row { border-top: 1px solid var(--line); }
+.vz-list__row:hover { background: var(--surface-hover); }
+.vz-list__row--current { background: var(--brand-tint); }
+.vz-list__row--current:hover { background: var(--brand-tint); }
+
+/* Lists and tables clip their corners, so their focus rings are drawn inside */
+.vz-list :focus-visible,
+.vz-table :focus-visible { outline-offset: -2px; }
+.vz-list__main { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+.vz-list__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.vz-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-size: calc(13px * var(--vz-scale, 1));
+  line-height: calc(18px * var(--vz-scale, 1));
+}
+
+.vz-table th,
+.vz-table td { padding: calc(7px * var(--vz-scale, 1)) calc(10px * var(--vz-scale, 1)); text-align: left; vertical-align: middle; }
+.vz-table thead th { background: var(--surface-sunken); }
+.vz-table tbody th { font-weight: 400; color: var(--ink-2); }
+.vz-table tr + tr > * { border-top: 1px solid var(--line); }
+.vz-table td + td,
+.vz-table th + td,
+.vz-table th + th { border-left: 1px solid var(--line); }
+
+/* ---------- Phone and touch ---------- */
+
+/* On a phone the actions stack full width, the primary one on top */
+@media (max-width: 480px) {
+  .vz-dialog { padding: var(--space-4); }
+  .vz-dialog__actions { flex-direction: column; }
+  .vz-dialog__actions .vz-btn { width: 100%; }
+  .vz-dialog__actions .vz-btn--primary { order: -1; }
+}
+
+@media (pointer: coarse) {
+  .vz-btn,
+  .vz-input,
+  .vz-select { min-height: var(--touch-target); }
+  .vz-iconbtn,
+  .vz-toggle { min-width: var(--touch-target); min-height: var(--touch-target); }
+  .vz-switch,
+  .vz-check { min-height: var(--touch-target); }
+}
+
+/* ---------- Forced colours ---------- */
+
+@media (forced-colors: active) {
+  .vz-own .vz-lbl { border: 3px double CanvasText; }
+  .vz-lbl { border-color: CanvasText; }
+  .vz-badge,
+  .vz-notice { border-color: CanvasText; }
+  /* The tint is gone in forced colours, so a pressed toggle needs an edge again */
+  .vz-toggle[aria-pressed="true"] { border-color: Highlight; }
+}

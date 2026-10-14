@@ -3,9 +3,9 @@
  * The wordmark, drawn into the page rather than loaded as an image.
  *
  * An `<img>` is a closed document: nothing outside it can reach the letters, so
- * a blue that reads at 9.3:1 on white and 1.9:1 on the dark page could only be
- * fixed by shipping a second file. Inlined, the same one file is repainted by
- * the theme – the rule below is the whole difference.
+ * letters dark enough for a white page could only be made light for the dark
+ * one by shipping a second file. Inlined, the same one file is repainted by the
+ * theme – the rule below is the whole difference.
  */
 import { ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
@@ -41,9 +41,9 @@ watch([currentLanguage, isLoaded], () => {
   max-height: 100%;
 }
 
-/* The letters are blue on a light background and white on a dark one. The shield
-   keeps its colours in both – it carries its own white outline already. */
-.dark .logo-mark .logo-wordmark {
-  fill: #ffffff;
+/* The letters take the ink of the theme. The shield keeps its cyan in both: it
+   holds 3:1 or more on the light and the dark page alike. */
+.logo-mark .logo-wordmark {
+  fill: var(--ink);
 }
 </style>

@@ -17,7 +17,6 @@ import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import MailRecipients from '~/components/MailRecipients.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
-import { useTheme } from '~/composables/useTheme'
 import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
@@ -29,7 +28,7 @@ import { classifyQrPayload } from '~/logic/payload-classify'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings } from '~/logic/storage'
 import { isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
-import { isTrackableHostname } from '~/logic/visit-stats'
+import { isTrackableHostname, untrackedReason } from '~/logic/visit-stats'
 
 const props = defineProps<{
   /** Something to check straight away, when the page was opened about it. */
@@ -60,7 +59,6 @@ function panelCovers(hostname: string, context?: 'email'): boolean {
 }
 
 const { t } = useI18n()
-const { isDark } = useTheme()
 
 interface UrlResolveState {
   status: 'idle' | 'loading' | 'resolved' | 'error'
@@ -101,6 +99,25 @@ function growInput() {
 // Not every address arrives by typing – a QR code, a drop, a paste and the value
 // the check page is opened with all set the text from the outside
 watch(inputText, () => nextTick(growInput))
+
+// And whenever the field's width changes. Measured once at a width the page had
+// not settled on yet, a prefilled address on a phone left a field many times
+// taller than its four lines.
+let widthWatch: ResizeObserver | null = null
+let lastWidth = 0
+onMounted(() => {
+  if (!checkInput.value || typeof ResizeObserver === 'undefined')
+    return
+  widthWatch = new ResizeObserver(([entry]) => {
+    const width = entry.contentRect.width
+    if (width !== lastWidth) {
+      lastWidth = width
+      growInput()
+    }
+  })
+  widthWatch.observe(checkInput.value)
+})
+onUnmounted(() => widthWatch?.disconnect())
 
 /** Set once the lists this page classifies by have actually been read. */
 let stopWatchingLists: (() => void) | null = null
@@ -386,12 +403,12 @@ function onFileSelected(event: Event) {
 // "never visited" would be a verdict on the user's own machine.
 function statusText(isSafe: boolean, count: number, hostname: string) {
   if (!isTrackableHostname(hostname))
-    return { text: t.value('untrackedHostBadge'), class: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' }
+    return { text: t.value(untrackedReason(hostname) === 'ip' ? 'untrackedIpBadge' : 'untrackedHostBadge'), tone: 'neutral', icon: 'unknown', verdict: 'untracked' } as const
   if (isSafe)
-    return { text: t.value('linkTooltipFamiliar'), class: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' }
+    return { text: t.value('linkTooltipFamiliar'), tone: 'safe', icon: 'pass', verdict: 'familiar' } as const
   if (count === 0)
-    return { text: t.value('linkTooltipNeverVisited'), class: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' }
-  return { text: t.value('linkTooltipUnfamiliar'), class: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400' }
+    return { text: t.value('linkTooltipNeverVisited'), tone: 'danger', icon: 'alert', verdict: 'never' } as const
+  return { text: t.value('linkTooltipUnfamiliar'), tone: 'danger', icon: 'alert', verdict: 'unfamiliar' } as const
 }
 
 function payloadTypeLabel(payloadKind: string) {
@@ -401,20 +418,19 @@ function payloadTypeLabel(payloadKind: string) {
 </script>
 
 <template>
-  <div
-    class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700"
+  <section
+    class="vz-card check-field"
+    data-check-field
     @paste="onPaste"
     @dragover.prevent
     @drop.prevent="onDrop"
   >
-    <div class="text-xs uppercase tracking-wider opacity-50 mb-1.5">
-      {{ t('checkFieldTitle') }}
-    </div>
+    <span class="vz-eyebrow">{{ t('checkFieldTitle') }}</span>
 
     <!-- Aligned to the top rather than the middle, so the buttons stay beside
          the first line of an address instead of sliding down the middle of a
          long one. -->
-    <div class="flex gap-1.5 items-start">
+    <div class="vz-field__row items-start">
       <!-- A box that grows, not a one-line field that scrolls. The whole point
            of this field is to read an address closely, and the part of a long
            URL that matters – where the host ends, what the path really says – is
@@ -428,62 +444,62 @@ function payloadTypeLabel(payloadKind: string) {
         v-model="inputText"
         rows="1"
         spellcheck="false"
-        class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm leading-snug resize-none overflow-hidden break-all focus:outline-none focus:border-blue-400 dark:focus:border-blue-500"
+        class="vz-input vz-input--addr check-input"
         :placeholder="t('checkFieldPlaceholder')"
         @input="growInput"
         @keydown.enter.prevent="onSubmit"
       />
       <!-- The only name this button had was a `title`, which a touchscreen never
-           shows: on a phone it was a 32 px picture of a QR code and nothing
-           else. `tap-target` comes from the popup and grows the hit area to
-           44 px where the pointer is a finger. -->
+           shows, so it has an aria-label too. `tap-target` grows the hit area
+           where the pointer is a finger. -->
       <button
-        class="tap-target w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400"
+        class="vz-iconbtn vz-iconbtn--outline tap-target"
         :title="t('checkFieldSelectFile')"
         :aria-label="t('checkFieldSelectFile')"
         @click="fileInput?.click()"
       >
-        <div i-carbon-qr-code />
+        <VzIcon name="qr-code" />
       </button>
-      <button
-        class="px-3 h-8 flex-shrink-0 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-sm transition-colors"
-        @click="onSubmit"
-      >
+      <button class="vz-btn vz-btn--primary" @click="onSubmit">
         {{ t('checkFieldButton') }}
       </button>
       <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFileSelected">
     </div>
 
-    <div class="text-[11px] opacity-40 mt-1">
+    <p class="vz-small">
       {{ t('checkFieldPasteHint') }}
-    </div>
+    </p>
 
     <!-- Results -->
-    <div v-if="result" class="mt-2">
+    <div v-if="result" class="check-result">
       <!-- URL / domain -->
       <template v-if="result.type === 'url'">
         <!-- Nothing about the checked name is drawn here while the card below
              is about it: the name, the verdict, the facts, the other spelling,
              the markers, the lookalike line and the lookup links are all the
-             card's, drawn once. Each of them used to be printed here as well,
-             so one screen said everything twice. The field names the host only
-             once the card is about another one, after Expand has moved the card
-             on to where the link lands and left the pasted name with nobody
-             else to speak for it. Its verdict comes with it then, because a
-             link that bounces a request on to a real, familiar site would
-             otherwise leave the page green all over, with the address that was
-             actually pasted unjudged. -->
+             card's, drawn once. The field names the host only once the card is
+             about another one, after Expand has moved the card on to where the
+             link lands and left the pasted name with nobody else to speak for
+             it. Its verdict comes with it then, because a link that bounces a
+             request on to a real, familiar site would otherwise leave the page
+             green all over, with the address that was actually pasted unjudged. -->
         <template v-if="!panelCovers(result.hostname)">
-          <div class="flex items-center flex-wrap gap-1.5 mb-1">
-            <span data-field-hostname class="font-medium break-words secure-domain-display">
-              <SecureText :text="result.hostname" />
+          <div class="flex items-center flex-wrap gap-2">
+            <span data-field-hostname class="min-w-0">
+              <SecureText :text="result.hostname" size="l" />
             </span>
-            <span v-if="result.isShortener" class="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">
+            <VzBadge v-if="result.isShortener" tone="danger" icon="link" data-verdict="shortener">
               {{ t('linkTooltipShortener') }}
-            </span>
-            <span v-else data-field-verdict class="text-xs px-1.5 py-0.5 rounded" :class="statusText(result.isSafe, result.stats.count, result.hostname).class">
-              {{ statusText(result.isSafe, result.stats.count, result.hostname).text.toLowerCase() }}
-            </span>
+            </VzBadge>
+            <VzBadge
+              v-else
+              data-field-verdict
+              :tone="statusText(result.isSafe, result.stats.count, result.hostname).tone"
+              :icon="statusText(result.isSafe, result.stats.count, result.hostname).icon"
+              :data-verdict="statusText(result.isSafe, result.stats.count, result.hostname).verdict"
+            >
+              {{ statusText(result.isSafe, result.stats.count, result.hostname).text }}
+            </VzBadge>
           </div>
           <DomainMarkers :hostname="result.hostname" :url="result.url" />
           <LookalikeNotice :hostname="result.hostname" />
@@ -493,15 +509,11 @@ function payloadTypeLabel(payloadKind: string) {
              The visits that mean anything are on the site its mail is read on –
              and they are the ones worth judging, so that site gets the same
              evidence every other check surface shows rather than one number. -->
-        <div v-if="result.mailSites.length" class="mail-sites mb-1">
-          <span class="opacity-60">{{ t('mailSiteLabel') }}:</span>
-          <div v-for="site in result.mailSites" :key="site.site" class="mt-0.5">
-            <!-- Same weight as the address halves above: this is the other name
-                 the reader is here to look at, not a caption on the table -->
-            <div class="font-bold text-[1.3em] leading-tight break-all">
-              <SecureText :text="site.site" :force-highlight="true" :danger-only="true" />
-            </div>
-            <FamiliarityFacts :stats="site.stats" class="mt-0.5" />
+        <div v-if="result.mailSites.length" class="mail-sites grid gap-2">
+          <span class="vz-eyebrow">{{ t('mailSiteLabel') }}</span>
+          <div v-for="site in result.mailSites" :key="site.site" class="grid gap-2">
+            <SecureText :text="site.site" size="l" />
+            <FamiliarityFacts :stats="site.stats" />
             <!-- The address domain is a name on an envelope, this is a site
                  somebody actually opens – so it is the one worth looking up -->
             <ExternalLookups :hostname="site.site" />
@@ -511,37 +523,34 @@ function payloadTypeLabel(payloadKind: string) {
         <!-- Expand shortened URL -->
         <button
           v-if="result.resolve.status === 'idle' || result.resolve.status === 'error'"
-          class="mt-1 px-3 py-1 rounded-lg border text-xs transition-colors"
-          :class="result.isShortener
-            ? 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300 dark:bg-orange-700/60 dark:hover:bg-orange-600/60 dark:text-orange-100 dark:border-orange-700/50'
-            : 'bg-gray-100 hover:bg-gray-200 text-gray-600 border-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300 dark:border-gray-600'"
+          class="vz-btn vz-btn--sm justify-self-start"
+          data-action="expand"
           @click="expandUrl"
         >
-          {{ t('checkFieldExpand') }}
+          <VzIcon name="link" />{{ t('checkFieldExpand') }}
         </button>
-        <div v-if="result.resolve.status === 'error'" class="text-xs opacity-60 mt-1">
+        <VzNotice v-if="result.resolve.status === 'error'" tone="neutral" bare>
           {{ t('linkTooltipResolveError') }}
-        </div>
+        </VzNotice>
 
-        <div v-if="result.resolve.status === 'loading'" class="flex items-center gap-2 mt-1 text-xs opacity-70">
-          <div class="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-          {{ t('linkTooltipResolvingUrl') }}
-        </div>
+        <button v-if="result.resolve.status === 'loading'" class="vz-btn vz-btn--sm justify-self-start" disabled>
+          <VzIcon name="pending" />{{ t('linkTooltipResolvingUrl') }}
+        </button>
 
-        <div v-if="result.resolve.status === 'resolved'" class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+        <div v-if="result.resolve.status === 'resolved'" class="check-resolved">
           <!-- The address only. The site it lands on is the card's now, with its
                name, its facts and its warnings, and printed here as well it
                was one more copy of each. -->
-          <div class="text-xs opacity-60 break-all mb-1">
+          <p class="vz-small check-url">
             {{ result.resolve.finalUrl }}
-          </div>
-          <div v-if="result.resolve.chain && result.resolve.chain.length > 2" class="text-xs opacity-70">
-            <div class="opacity-70 mb-0.5">
-              {{ t('linkTooltipRedirectChain') }} ({{ result.resolve.chain.length }})
-            </div>
-            <div v-for="(hop, i) in result.resolve.chain" :key="i" class="break-all">
-              {{ i + 1 }}. {{ hop }}
-            </div>
+          </p>
+          <div v-if="result.resolve.chain && result.resolve.chain.length > 2" class="grid gap-1">
+            <span class="vz-eyebrow">{{ t('linkTooltipRedirectChain') }} ({{ result.resolve.chain.length }})</span>
+            <ol class="check-chain vz-well">
+              <li v-for="(hop, i) in result.resolve.chain" :key="i" class="check-url">
+                {{ i + 1 }}. {{ hop }}
+              </li>
+            </ol>
           </div>
         </div>
       </template>
@@ -551,47 +560,37 @@ function payloadTypeLabel(payloadKind: string) {
         <!-- What the text was read as, and nothing more. The verdict on the
              domain is the card's, and whether it is a public or a throwaway
              provider is said in words by the breakdown below. -->
-        <div class="text-xs opacity-50 mb-1">
-          {{ t('emailTooltipTitle') }}
-        </div>
+        <span class="vz-eyebrow">{{ t('emailTooltipTitle') }}</span>
         <EmailBreakdown
           :analysis="result.analysis"
           :params="result.params"
           :provider-kind="result.providerKind"
-          :is-dark="isDark"
           :domain-elsewhere="panelCovers(result.analysis.domain, 'email')"
           case-control
         />
 
         <!-- A mailto carries a list, cc and bcc included -->
-        <MailRecipients :recipients="result.recipients" :not-checked="result.recipientsNotChecked" :is-dark="isDark" />
+        <MailRecipients :recipients="result.recipients" :not-checked="result.recipientsNotChecked" />
 
-        <!-- The address domain's own facts are in the checked-domain card below,
-             once. A mail site further down keeps its own, because that is a
-             different name and no other block on the page carries it. -->
         <!-- The part after the @ is a domain like any other, and an address one
              letter off a provider the user knows is the whole point of checking.
              The checked-domain card below asks that question for this name, in
              the email context, and carries its lookup links, so this block is
              only drawn when the card is about another name. -->
-        <div v-if="!panelCovers(result.analysis.domain, 'email')" class="mt-1">
+        <template v-if="!panelCovers(result.analysis.domain, 'email')">
           <DomainMarkers :hostname="result.analysis.domain" context="email" />
           <LookalikeNotice :hostname="result.analysis.domain" context="email" />
-        </div>
+        </template>
 
         <!-- Nobody opens an address domain, so a zero of its own says nothing.
              The visits that mean anything are on the site its mail is read on –
              and they are the ones worth judging, so that site gets the same
              evidence every other check surface shows rather than one number. -->
-        <div v-if="result.mailSites.length" class="mail-sites mt-1">
-          <span class="opacity-60">{{ t('mailSiteLabel') }}:</span>
-          <div v-for="site in result.mailSites" :key="site.site" class="mt-0.5">
-            <!-- Same weight as the address halves above: this is the other name
-                 the reader is here to look at, not a caption on the table -->
-            <div class="font-bold text-[1.3em] leading-tight break-all">
-              <SecureText :text="site.site" :force-highlight="true" :danger-only="true" />
-            </div>
-            <FamiliarityFacts :stats="site.stats" class="mt-0.5" />
+        <div v-if="result.mailSites.length" class="mail-sites grid gap-2">
+          <span class="vz-eyebrow">{{ t('mailSiteLabel') }}</span>
+          <div v-for="site in result.mailSites" :key="site.site" class="grid gap-2">
+            <SecureText :text="site.site" size="l" />
+            <FamiliarityFacts :stats="site.stats" />
             <!-- The address domain is a name on an envelope, this is a site
                  somebody actually opens – so it is the one worth looking up -->
             <ExternalLookups :hostname="site.site" />
@@ -609,23 +608,89 @@ function payloadTypeLabel(payloadKind: string) {
 
       <!-- tel: / WIFI: / sms: / geo: payloads -->
       <template v-else-if="result.type === 'raw'">
-        <div class="text-xs opacity-50 mb-1">
-          {{ t('qrPayloadType') }}: {{ payloadTypeLabel(result.payloadKind) }}
-        </div>
-        <div class="text-sm p-2 rounded bg-gray-100 dark:bg-gray-900 break-all">
-          <SecureText :text="result.payload" :force-highlight="true" :danger-only="true" :preserve-case="true" />
+        <span class="vz-eyebrow">{{ t('qrPayloadType') }}: {{ payloadTypeLabel(result.payloadKind) }}</span>
+        <div class="vz-well check-url">
+          <SecureText kind="raw" :text="result.payload" size="m" />
         </div>
       </template>
 
       <!-- Nothing recognized -->
-      <div v-else-if="result.type === 'invalid'" class="text-xs opacity-60">
+      <VzNotice v-else-if="result.type === 'invalid'" tone="neutral">
         {{ t('checkFieldInvalid') }}
-      </div>
+      </VzNotice>
 
-      <!-- QR decode failed -->
-      <div v-else-if="result.type === 'qr-error'" class="text-xs text-red-500 dark:text-red-400">
+      <!-- QR decode failed. Said as what it is, and not as a warning about any site -->
+      <VzNotice v-else-if="result.type === 'qr-error'" tone="neutral">
         {{ t('qrNotFound') }}
-      </div>
+      </VzNotice>
     </div>
-  </div>
+  </section>
 </template>
+
+<style scoped>
+.check-field {
+  display: grid;
+  /* An auto track is as wide as its widest child can get, and the row with the
+     field and its two buttons will not go narrower than the field's own default
+     width: at a large text size the card spilled out of the page */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.check-input {
+  /* Below about 14 characters the buttons move under the field rather than
+     leaving it too narrow to read an address in */
+  flex: 1 1 14em;
+  min-width: 0;
+  height: auto;
+  min-height: calc(var(--control-md) * var(--vz-scale, 1));
+  /* Scaled with everything else, so at 70% the field is as tall as the two
+     buttons beside it rather than hanging below them */
+  padding-top: calc(7px * var(--vz-scale, 1));
+  padding-bottom: calc(7px * var(--vz-scale, 1));
+  line-height: calc(20px * var(--vz-scale, 1));
+  resize: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* The hint stays on one line and is cut short with an ellipsis. Wrapped, its
+   second line hid under the foot of a field one line tall, at a larger text
+   size or in a narrow window. Typed text still wraps and grows the field. */
+.check-input:placeholder-shown {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.check-input::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.check-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.check-resolved {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.check-url {
+  overflow-wrap: anywhere;
+}
+
+.check-chain {
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  font-size: calc(13px * var(--vz-scale, 1));
+  color: var(--ink-2);
+}
+</style>

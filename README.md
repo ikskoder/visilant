@@ -77,7 +77,7 @@ The part after the @ is a domain like any other, so everything above applies to 
 
 ### Advanced Homograph Protection
 Visilant employs several techniques to help you spot spoofed domains:
-- **Domain Highlighting**: Marks the characters worth a second look – digits, separators, and anything outside the Latin alphabet. Latin letters are deliberately left unstyled: colouring them would read as a verdict on the ordinary part of an address and drown out the one character that matters.
+- **Address Marking**: Every part of an address sits in a frame of its own, digits are always bold in a colour of their own, and any character outside a to z, 0 to 9 and the hyphen is marked red. Latin letters are deliberately left unstyled: colouring them would read as a verdict on the ordinary part of an address and drown out the one character that matters.
 - **Punycode Display**: Toggle between Unicode and Punycode (ASCII) formats to reveal internationalized domain attacks where characters look identical to Latin ones.
 - **Secure Rendering**: Uses a specialized rendering component to prevent visual spoofing techniques.
 
@@ -86,7 +86,7 @@ Clicking the extension icon reveals a dashboard where you can:
 - View visit statistics for the current domain and its subdomains.
 - **Pick the Number**: The list of related hosts draws one figure per host, and you choose which – visits, active days, days known, or how many checks the host passes. The heading above it says whether the family adds its members up or takes its strongest single one, because only visits add up: a day spent on `mail` and on `accounts` is one day of knowing Google rather than two.
 - **Sort Sites**: Order the list by that number or by name, to understand your history with a domain family.
-- **Customize Display**: Toggle domain highlighting, change text case (uppercase/lowercase), switch Punycode modes, and adjust font size on the fly.
+- **Customize Display**: Turn the frames off, change text case (uppercase/lowercase), switch Punycode modes, and adjust font size on the fly.
 - **Per-Site Warnings Switch**: Turn the warnings for the current site off, or back on. It lives here and nowhere in the page: a page can print "press Don't show again to continue" beside its own login form, and it cannot reach the popup. The settings page lists every site you have silenced.
 - **Per-Site Anti-Tampering Toggle**: See whether tamper detection is active for the current site and quickly disable or re-enable it without leaving the popup.
 - **Check Anything by Hand**: A field opened from the popup takes a link, a bare domain, an email address or a QR code image – pasted, dropped or picked from disk – and reports the same facts as everything above. The same check is a right-click away on any selected text, and opens in the page you are already on.

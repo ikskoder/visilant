@@ -82,7 +82,13 @@ export interface Settings {
    * message in front of them.
    */
   accountNameCase: 'as-typed' | 'lower' | 'upper'
-  domainHighlighting: boolean
+  /**
+   * Every label of an address in a frame of its own, the owner's labels in
+   * heavier ones. Most readers do not know a dot is a boundary, and a frame is
+   * hard to miss. Off, the frames go and the owner's labels turn bold, and the
+   * marks on unexpected characters stay either way.
+   */
+  addressFrames: boolean
   punycodeListMode: 'unicode' | 'ascii'
 
   // Font size (percentage, 100 = default)
@@ -211,7 +217,7 @@ export const defaultSettings: Settings = {
   // Display settings
   domainCase: 'lower',
   accountNameCase: 'as-typed',
-  domainHighlighting: false,
+  addressFrames: true,
   punycodeListMode: 'unicode',
 
   // Font size (percentage, 100 = default)
