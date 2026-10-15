@@ -15,6 +15,7 @@ import VzSig from '~/components/VzSig.vue'
 import { useI18n } from '~/composables/useI18n'
 import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { useModalDialog } from '~/composables/useModalDialog'
+import { useTopLayer } from '~/composables/useTopLayer'
 import { ADDRESS_FRAMES_KEY } from '~/logic/address-shape'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { settings } from '~/logic/storage'
@@ -64,6 +65,13 @@ watch(() => props.visible, (visible) => {
  */
 const card = ref<HTMLElement | null>(null)
 const closeButton = ref<HTMLElement | null>(null)
+
+// Above anything the page can lay over it – see `useTopLayer`
+const layer = useTopLayer({
+  mode: 'modal',
+  visible: () => props.visible && Boolean(props.data),
+  onDismiss: () => emit('close'),
+})
 
 useModalDialog({
   visible: () => props.visible && Boolean(props.data),
@@ -147,17 +155,15 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
 </script>
 
 <template>
-  <Transition name="overlay-fade">
-    <div
+  <Transition name="overlay-fade" appear @enter="layer.enter">
+    <dialog
       v-if="visible && data"
-      class="fixed inset-0 z-[2147483647] pointer-events-auto flex items-center justify-center p-4 vz-scrim"
+      class="vz-layer fixed inset-0 z-[2147483647] pointer-events-auto flex items-center justify-center p-4 vz-scrim"
+      :aria-label="t('checkPanelTitle')"
       @click.self="emit('close')"
     >
       <div
         ref="card"
-        role="dialog"
-        aria-modal="true"
-        :aria-label="t('checkPanelTitle')"
         class="panel-container vz-overlay vz-dialog"
         :style="{ '--vz-scale': fontSize / 100 }"
       >
@@ -341,7 +347,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
           </p>
         </div>
       </div>
-    </div>
+    </dialog>
   </Transition>
 </template>
 

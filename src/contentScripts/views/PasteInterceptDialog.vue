@@ -13,6 +13,7 @@ import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { useModalDialog } from '~/composables/useModalDialog'
+import { useTopLayer } from '~/composables/useTopLayer'
 
 const props = defineProps<{
   visible: boolean
@@ -72,6 +73,14 @@ const message = computed(() => {
 const card = ref<HTMLElement | null>(null)
 const safeButton = ref<HTMLElement | null>(null)
 
+// Above anything the page can lay over it – see `useTopLayer`. A close that
+// was not ours keeps the paste out, never lets it in.
+const layer = useTopLayer({
+  mode: 'modal',
+  visible: () => props.visible && Boolean(props.data),
+  onDismiss: () => emit('cancel'),
+})
+
 useModalDialog({
   visible: () => props.visible && Boolean(props.data),
   container: () => card.value,
@@ -111,10 +120,11 @@ const payloadKind = computed(() => {
 </script>
 
 <template>
-  <Transition name="overlay-fade">
-    <div
+  <Transition name="overlay-fade" appear @enter="layer.enter">
+    <dialog
       v-if="visible && data"
-      class="fixed inset-0 z-[2147483647] flex items-center justify-center pointer-events-auto"
+      class="vz-layer fixed inset-0 z-[2147483647] flex items-center justify-center pointer-events-auto"
+      :aria-label="title"
       @click.self="emit('cancel')"
     >
       <!-- Backdrop. Transparent to clicks, or it would sit between the user and
@@ -123,9 +133,6 @@ const payloadKind = computed(() => {
 
       <div
         ref="card"
-        role="dialog"
-        aria-modal="true"
-        :aria-label="title"
         class="relative dialog-container vz-overlay vz-dialog"
         :data-status="status"
       >
@@ -262,7 +269,7 @@ const payloadKind = computed(() => {
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   </Transition>
 </template>
 

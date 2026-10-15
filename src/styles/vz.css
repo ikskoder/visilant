@@ -603,6 +603,18 @@
 
 /* ---------- Surfaces ---------- */
 
+/* In the browser's top layer (`useTopLayer`): the dialog and popover defaults
+   taken off, so the element draws the way it did as a plain fixed box. Before
+   `.vz-scrim` and the utilities, which may set a background or padding of
+   their own. */
+.vz-layer { margin: 0; padding: 0; border: 0; background: transparent; color: inherit; max-width: none; max-height: none; overflow: visible; }
+.vz-layer::backdrop { background: transparent; }
+dialog.vz-layer { width: 100%; height: 100%; }
+/* Drawn even while closed, as a plain fixed box: during its fade out, and
+   where the browser would not open it */
+.vz-layer[popover] { display: block; }
+
+
 .vz-card {
   background: var(--surface);
   border: 1px solid var(--line);

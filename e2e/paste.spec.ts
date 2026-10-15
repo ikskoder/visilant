@@ -218,3 +218,28 @@ test('the paste dialog can be answered with the keyboard alone', async ({ contex
   await expectOverlayGone(page)
   await expect(page.locator('#victim')).toHaveValue('')
 })
+
+test('a page that swallows Escape cannot turn it into a paste', async ({ context }) => {
+  // The dialog is a modal in the browser's top layer, which the browser closes
+  // on its own when the page keeps the key from us. Whoever closes it, the way
+  // out is the way back: the paste stays out.
+  await patchSettings(context, { blockPasteOnUnfamiliar: true })
+  const page = await openSite(context)
+  await page.evaluate(() => {
+    const swallow = (event: KeyboardEvent) => {
+      if (event.key === 'Escape')
+        event.stopImmediatePropagation()
+    }
+    window.addEventListener('keydown', swallow, true)
+    document.addEventListener('keydown', swallow, true)
+  })
+  await pasteInto(page, '#victim')
+  await expectOverlay(page)
+
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
+  await page.keyboard.press('Escape')
+  await expectOverlayGone(page)
+  await page.waitForTimeout(500)
+  await expect(page.locator('#victim')).toHaveValue('')
+})
