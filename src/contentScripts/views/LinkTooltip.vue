@@ -486,7 +486,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .tooltip-container {
   min-width: min(240px, 100vw - 32px);
-  max-width: min(var(--tooltip-max), 100vw - 32px);
+  max-width: min(var(--tooltip-max) * var(--vz-scale, 1), 100vw - 32px);
   /* A followed short link with its redirect chain, or a mismatch table, makes
      this far taller than the hover tooltip it started as – and on a phone it is
      opened by a tap and has buttons of its own. It gets the same cap and its
@@ -498,8 +498,8 @@ onBeforeUnmount(() => {
 }
 
 .tooltip-container.tooltip-wide {
-  width: min(var(--tooltip-wide), 100vw - 32px);
-  max-width: min(var(--tooltip-wide), 100vw - 32px);
+  width: min(var(--tooltip-wide) * var(--vz-scale, 1), 100vw - 32px);
+  max-width: min(var(--tooltip-wide) * var(--vz-scale, 1), 100vw - 32px);
 }
 
 .tooltip-head {
