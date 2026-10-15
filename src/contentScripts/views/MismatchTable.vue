@@ -152,6 +152,19 @@ const summaryRow = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  white-space: nowrap;
+}
+
+/* On a phone three columns have about 110px each. A badge or a value kept on
+   one line made the table wider than the dialog, and "Leads to", the column
+   that matters, went off the edge. Here they wrap instead. */
+.comparison-table :deep(.vz-badge) {
+  white-space: normal;
+}
+
+@media (max-width: 480px) {
+  .comparison-table :deep(th),
+  .comparison-table :deep(td) {
+    padding-inline: calc(6px * var(--vz-scale, 1));
+  }
 }
 </style>

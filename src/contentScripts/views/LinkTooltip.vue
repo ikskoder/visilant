@@ -80,7 +80,7 @@ function handleResolveOnce() {
 
 // --- Runtime positioning ---
 const tooltipEl = ref<HTMLElement | null>(null)
-const tooltipStyle = ref({ top: '-9999px', left: '-9999px' })
+const tooltipStyle = ref<Record<string, string>>({ top: '-9999px', left: '-9999px' })
 const placement = ref<'below' | 'above'>('below')
 const placementLocked = ref(false)
 
@@ -115,7 +115,12 @@ function reposition() {
   const anchor = props.data.anchorRect
   const tooltipHeight = content.offsetHeight
   const tooltipWidth = content.offsetWidth
-  const vw = window.innerWidth
+  // The page's own width, without its scrollbar. The window's included it,
+  // and a tooltip pushed against the right edge ended up underneath it. A page
+  // with no doctype measures its viewport on the body instead of the root.
+  const viewportBox = document.compatMode === 'BackCompat' ? document.body : document.documentElement
+  const vw = Math.min(viewportBox?.clientWidth || window.innerWidth, window.innerWidth)
+  const vh = window.innerHeight
 
   // Decide placement only once per tooltip show – lock after first decision
   if (!placementLocked.value) {
@@ -143,7 +148,10 @@ function reposition() {
   if (left < MARGIN)
     left = MARGIN
 
-  tooltipStyle.value = { top: `${top}px`, left: `${left}px` }
+  // What is left of the screen on its side of the link. A tall tooltip below a
+  // link halfway down ran off the bottom, since its cap was the whole screen.
+  const room = placement.value === 'below' ? vh - top - MARGIN : anchor.top - GAP - MARGIN
+  tooltipStyle.value = { 'top': `${top}px`, 'left': `${left}px`, '--tooltip-room': `${Math.max(120, room)}px` }
 }
 
 // Decide placement synchronously when a new tooltip is shown so the enter
@@ -388,8 +396,12 @@ onBeforeUnmount(() => {
             </SecureText>
 
             <!-- Full URL if enabled -->
-            <p v-if="showFullUrl && data.shortUrl.resolvedUrl" class="vz-small tooltip-url">
-              {{ data.shortUrl.resolvedUrl }}<CopyButton :text="data.shortUrl.resolvedUrl" inline />
+            <!-- Three lines at most, the rest in the title and in the copy. A
+                 tracking link can run to twenty lines and push everything else
+                 out of the tooltip. -->
+            <p v-if="showFullUrl && data.shortUrl.resolvedUrl" class="vz-small tooltip-full-url">
+              <span class="tooltip-url tooltip-url--clamp" :title="data.shortUrl.resolvedUrl">{{ data.shortUrl.resolvedUrl }}</span>
+              <CopyButton :text="data.shortUrl.resolvedUrl" inline />
             </p>
 
             <!-- The destination gets the same reading as the address the user
@@ -480,7 +492,7 @@ onBeforeUnmount(() => {
      opened by a tap and has buttons of its own. It gets the same cap and its
      own scroll as the panel does. `dvh` follows a soft keyboard, and the
      safe-area insets keep the bottom clear of the gesture bar. */
-  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: min(calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), var(--tooltip-room, 100dvh));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -525,6 +537,21 @@ onBeforeUnmount(() => {
 
 .tooltip-url {
   overflow-wrap: anywhere;
+}
+
+.tooltip-full-url {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.tooltip-url--clamp {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
 }
 
 .tooltip-chain {
