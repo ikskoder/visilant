@@ -832,7 +832,9 @@ onMounted(async () => {
           <div class="popup-address">
             <template v-if="isPunycode">
               <span class="vz-eyebrow">{{ translations.domainOriginal }}</span>
-              <SecureText :text="unicodeHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(unicodeHostname)" />
+              <SecureText :text="unicodeHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(unicodeHostname)">
+                <CopyButton :text="unicodeHostname" />
+              </SecureText>
               <div class="flex items-center gap-1 mt-2">
                 <span class="vz-eyebrow">{{ translations.domainPunycode }}</span>
                 <button
@@ -844,9 +846,13 @@ onMounted(async () => {
                   <VzIcon name="help" />
                 </button>
               </div>
-              <SecureText :text="asciiHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(asciiHostname)" />
+              <SecureText :text="asciiHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(asciiHostname)">
+                <CopyButton :text="asciiHostname" />
+              </SecureText>
             </template>
-            <SecureText v-else :text="currentHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(currentHostname)" />
+            <SecureText v-else :text="currentHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(currentHostname)">
+              <CopyButton :text="currentHostname" />
+            </SecureText>
           </div>
 
           <!-- Said before the numbers, because it explains why there are none -->
@@ -957,7 +963,9 @@ onMounted(async () => {
         <section v-if="showBaseDomainCard" data-base-domain class="vz-card popup-card">
           <template v-if="baseDomain !== currentKey">
             <span class="vz-eyebrow">{{ translations.baseDomain }}</span>
-            <SecureText :text="baseDomain" size="l" />
+            <SecureText :text="baseDomain" size="l">
+              <CopyButton :text="baseDomain" />
+            </SecureText>
             <ExternalLookups :hostname="baseDomain" />
             <!-- Where the figures would be. Only when this host is on record: with
                  nothing recorded at all, the notice further down says so -->

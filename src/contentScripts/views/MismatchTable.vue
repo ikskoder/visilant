@@ -83,8 +83,16 @@ const summaryRow = computed(() => {
         <th scope="row">
           {{ t('linkInterceptDomain') }}
         </th>
-        <td><SecureText :text="textDomain" size="m" /></td>
-        <td><SecureText :text="destDomain" size="m" :diff="destDiff" /></td>
+        <td>
+          <SecureText :text="textDomain" size="m">
+            <CopyButton :text="textDomain" />
+          </SecureText>
+        </td>
+        <td>
+          <SecureText :text="destDomain" size="m" :diff="destDiff">
+            <CopyButton :text="destDomain" />
+          </SecureText>
+        </td>
       </tr>
       <tr>
         <th scope="row">

@@ -15,6 +15,18 @@
     "message": "You're entering text on an unfamiliar site. Before you give it a password or card details, open Visilant from your browser's toolbar and make sure it's the site you think it is.",
     "description": "Warning message for input/paste actions"
   },
+  "copyAction": {
+    "message": "Copy",
+    "description": "Button beside an address or a QR code's text that puts it on the clipboard"
+  },
+  "copyDone": {
+    "message": "Copied",
+    "description": "The copy button right after it worked"
+  },
+  "copyFailed": {
+    "message": "Could not copy here",
+    "description": "The copy button failed, usually because the page or the browser does not allow it"
+  },
   "copyWarningMessage": {
     "message": "Something was just copied from an unfamiliar site. A site can swap what you copy for something else, or put its own text in your clipboard when you press a button, so check it before you paste it anywhere important.",
     "description": "Warning message for copy/cut actions, and for a site writing to the clipboard by itself"

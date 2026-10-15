@@ -473,6 +473,17 @@
 .vz-iconbtn .vz-icon { width: calc(20px * var(--vz-scale, 1)); height: calc(20px * var(--vz-scale, 1)); vertical-align: 0; }
 .vz-iconbtn--sm { width: calc(var(--control-sm) * var(--vz-scale, 1)); height: calc(var(--control-sm) * var(--vz-scale, 1)); }
 .vz-iconbtn--sm .vz-icon { width: calc(16px * var(--vz-scale, 1)); height: calc(16px * var(--vz-scale, 1)); }
+/* The smallest, for a button that sits inside a line of text, as the copy
+   button after an address in a sentence does */
+.vz-iconbtn--xs { width: calc(20px * var(--vz-scale, 1)); height: calc(20px * var(--vz-scale, 1)); vertical-align: middle; margin-left: calc(2px * var(--vz-scale, 1)); }
+.vz-iconbtn--xs .vz-icon { width: calc(14px * var(--vz-scale, 1)); height: calc(14px * var(--vz-scale, 1)); }
+
+.vz-copy { flex: none; user-select: none; }
+/* After an address, sized off the address's own text, so it sits on its line
+   at every address size and every text scale without taking a line's height */
+.vz-addr .vz-copy { width: 1.4em; height: 1.4em; margin-left: 0.2em; vertical-align: middle; letter-spacing: 0; }
+.vz-addr .vz-copy .vz-icon { width: 0.95em; height: 0.95em; }
+.vz-copy[data-copy-state="copied"] { color: var(--safe-text, var(--ink)); }
 /* Outlined, a plain icon button takes the height of the controls beside it.
    A small one stays small, so the sort button matches the chip next to it. */
 .vz-iconbtn--outline { border-color: var(--line-strong); background: var(--surface); }
@@ -774,6 +785,12 @@
   .vz-select { min-height: var(--touch-target); }
   .vz-iconbtn,
   .vz-toggle { min-width: var(--touch-target); min-height: var(--touch-target); }
+  /* A copy button inside a line of text keeps its size, so the line keeps its
+     height, and reaches out for the finger with an invisible margin instead */
+  .vz-addr .vz-copy,
+  .vz-iconbtn--xs { min-width: 0; min-height: 0; position: relative; }
+  .vz-addr .vz-copy::after,
+  .vz-iconbtn--xs::after { content: ''; position: absolute; inset: -10px; }
   .vz-switch,
   .vz-check { min-height: var(--touch-target); }
 }

@@ -1,10 +1,15 @@
-import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import MismatchTable from '../MismatchTable.vue'
 
 const DAY = 24 * 60 * 60 * 1000
 
 describe('mismatchTable component', () => {
+  afterEach(() => {
+    // Put back what jsdom had, so no later test finds a clipboard it did not ask for
+    Reflect.deleteProperty(navigator, 'clipboard')
+  })
+
   const defaultProps = {
     textDomain: 'paypal.com',
     textDomainIsSafe: true,
@@ -80,9 +85,35 @@ describe('mismatchTable component', () => {
     expect(wrapper.text()).toContain('0')
   })
 
+  it('copies each address as it is, not as drawn', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const wrapper = mount(MismatchTable, { props: defaultProps })
+    const copies = wrapper.findAll('[data-action="copy"]')
+    expect(copies).toHaveLength(2)
+    await copies[1].trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith('evil.com')
+    expect(copies[1].attributes('data-copy-state')).toBe('copied')
+    // Said to a screen reader, since a changed title is not read out
+    expect(wrapper.findAll('[role="status"]')[1].text()).not.toBe('')
+  })
+
+  it('says so when the clipboard refuses', async () => {
+    const writeText = vi.fn(async () => {
+      throw new Error('denied')
+    })
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const wrapper = mount(MismatchTable, { props: defaultProps })
+    const copy = wrapper.find('[data-action="copy"]')
+    await copy.trigger('click')
+    await flushPromises()
+    expect(copy.attributes('data-copy-state')).toBe('failed')
+  })
+
   it('emits details with domain when details button is clicked', async () => {
     const wrapper = mount(MismatchTable, { props: defaultProps })
-    const buttons = wrapper.findAll('button')
+    const buttons = wrapper.findAll('button:not([data-action="copy"])')
     // There should be 2 details buttons (one per column)
     expect(buttons.length).toBe(2)
 

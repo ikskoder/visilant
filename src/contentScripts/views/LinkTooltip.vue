@@ -225,8 +225,16 @@ onBeforeUnmount(() => {
             <p class="vz-body-strong">
               {{ t('emailTooltipMismatchWarning') }}
             </p>
-            <p>{{ t('emailTooltipShownAddress') }}: <SecureText kind="email" :text="data.email.mismatch.textAddress" size="s" preserve-case /></p>
-            <p>{{ t('emailTooltipActualAddress') }}: <SecureText kind="email" :text="data.email.analysis.raw" size="s" preserve-case /></p>
+            <p>
+              {{ t('emailTooltipShownAddress') }}: <SecureText kind="email" :text="data.email.mismatch.textAddress" size="s" preserve-case>
+                <CopyButton :text="data.email.mismatch.textAddress" />
+              </SecureText>
+            </p>
+            <p>
+              {{ t('emailTooltipActualAddress') }}: <SecureText kind="email" :text="data.email.analysis.raw" size="s" preserve-case>
+                <CopyButton :text="data.email.analysis.raw" />
+              </SecureText>
+            </p>
           </VzNotice>
 
           <EmailBreakdown :analysis="data.email.analysis" :params="data.email.params" :provider-kind="data.email.providerKind" compact />
@@ -241,7 +249,7 @@ onBeforeUnmount(() => {
           <!-- Visit facts for the address's domain (regular domains only).
                Named, because the address printed above is not what was visited. -->
           <div v-if="data.email.providerKind === 'regular' && shouldShowCount(data.isSafe)" class="grid gap-2">
-            <span class="vz-small">{{ t('emailSiteFactsLabel') }}: <SecureText :text="data.domain" size="s" :diff="linkDiff(data.domain)" /></span>
+            <span class="vz-small">{{ t('emailSiteFactsLabel') }}: <SecureText :text="data.domain" size="s" :diff="linkDiff(data.domain)"><CopyButton :text="data.domain" /></SecureText></span>
             <FamiliarityFacts :stats="data.stats" />
           </div>
 
@@ -266,7 +274,9 @@ onBeforeUnmount(() => {
             {{ t('qrPayloadType') }}: {{ t(`qrType${data.rawText.payloadKind.charAt(0).toUpperCase()}${data.rawText.payloadKind.slice(1)}`) }}
           </span>
           <div class="vz-well tooltip-payload">
-            <SecureText kind="raw" :text="data.rawText.payload" size="m" />
+            <SecureText kind="raw" :text="data.rawText.payload" size="m">
+              <CopyButton :text="data.rawText.payload" />
+            </SecureText>
           </div>
         </template>
 
@@ -293,7 +303,9 @@ onBeforeUnmount(() => {
           <!-- Punycode. Skipped when it would repeat the domain verbatim, which is
                what happens for links that already arrive in punycode form -->
           <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)" />
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)">
+              <CopyButton :text="data.punycode" />
+            </SecureText>
           </VzNotice>
 
           <DomainMarkers :hostname="data.domain" :url="data.href" :familiar="data.isSafe" bare />
@@ -325,7 +337,9 @@ onBeforeUnmount(() => {
 
           <div class="grid gap-1">
             <span class="vz-eyebrow">{{ t('linkTooltipDestination') }}</span>
-            <SecureText :text="data.domain" size="l" class="tooltip-domain" :diff="linkDiff(data.domain)" />
+            <SecureText :text="data.domain" size="l" class="tooltip-domain" :diff="linkDiff(data.domain)">
+              <CopyButton :text="data.domain" />
+            </SecureText>
           </div>
 
           <!-- Visit facts: never for a known shortener -->
@@ -358,11 +372,13 @@ onBeforeUnmount(() => {
                 {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).text }}
               </VzBadge>
             </div>
-            <SecureText :text="data.shortUrl.resolvedDomain" size="l" class="tooltip-domain" :diff="resolvedDiff(data.shortUrl.resolvedDomain)" />
+            <SecureText :text="data.shortUrl.resolvedDomain" size="l" class="tooltip-domain" :diff="resolvedDiff(data.shortUrl.resolvedDomain)">
+              <CopyButton :text="data.shortUrl.resolvedDomain" />
+            </SecureText>
 
             <!-- Full URL if enabled -->
             <p v-if="showFullUrl && data.shortUrl.resolvedUrl" class="vz-small tooltip-url">
-              {{ data.shortUrl.resolvedUrl }}
+              {{ data.shortUrl.resolvedUrl }}<CopyButton :text="data.shortUrl.resolvedUrl" inline />
             </p>
 
             <!-- The destination gets the same reading as the address the user
@@ -370,7 +386,9 @@ onBeforeUnmount(() => {
                  short link to a lookalike or to a punycode name came out as
                  "somewhere you have not been" and no more than that. -->
             <VzNotice v-if="data.shortUrl.resolvedPunycode" tone="danger" bare>
-              {{ t('linkTooltipPunycode') }}: <SecureText :text="data.shortUrl.resolvedPunycode" size="s" :diff="resolvedDiff(data.shortUrl.resolvedPunycode)" />
+              {{ t('linkTooltipPunycode') }}: <SecureText :text="data.shortUrl.resolvedPunycode" size="s" :diff="resolvedDiff(data.shortUrl.resolvedPunycode)">
+                <CopyButton :text="data.shortUrl.resolvedPunycode" />
+              </SecureText>
             </VzNotice>
             <DomainMarkers :hostname="data.shortUrl.resolvedDomain" :familiar="data.shortUrl.resolvedIsSafe" bare />
             <LookalikeNotice :hostname="data.shortUrl.resolvedDomain" bare />
@@ -412,7 +430,9 @@ onBeforeUnmount(() => {
           <!-- Punycode. Skipped when it would repeat the domain verbatim, which is
                what happens for links that already arrive in punycode form -->
           <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)" />
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)">
+              <CopyButton :text="data.punycode" />
+            </SecureText>
           </VzNotice>
 
           <DomainMarkers :hostname="data.domain" :url="data.href" :familiar="data.isSafe" bare />

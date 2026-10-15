@@ -42,7 +42,9 @@ const show = computed(() => props.recipients.length > 1 || (props.notChecked ?? 
         class="recipient-row flex items-start gap-2"
       >
         <span class="vz-badge vz-badge--neutral recipient-field">{{ t(fieldLabel[recipient.field]) }}</span>
-        <SecureText kind="email" :text="`${recipient.analysis.localPart}@${recipient.analysis.domain}`" size="m" class="min-w-0" />
+        <SecureText kind="email" :text="`${recipient.analysis.localPart}@${recipient.analysis.domain}`" size="m" class="min-w-0">
+          <CopyButton :text="`${recipient.analysis.localPart}@${recipient.analysis.domain}`" />
+        </SecureText>
       </li>
     </ul>
 
@@ -53,7 +55,9 @@ const show = computed(() => props.recipients.length > 1 || (props.notChecked ?? 
         <SecureText :text="recipient.analysis.domain" size="s" /> – {{ t('emailDisposableHint') }}
       </VzNotice>
       <VzNotice v-if="recipient.analysis.domainInfo.punycode" tone="danger" bare>
-        <SecureText :text="recipient.analysis.domain" size="s" /> – <SecureText :text="recipient.analysis.domainInfo.punycode" size="s" />
+        <SecureText :text="recipient.analysis.domain" size="s" /> – <SecureText :text="recipient.analysis.domainInfo.punycode" size="s">
+          <CopyButton :text="recipient.analysis.domainInfo.punycode" />
+        </SecureText>
       </VzNotice>
       <VzNotice v-if="recipient.analysis.suspiciousPattern" tone="danger" bare>
         <SecureText :text="recipient.analysis.domain" size="s" /> – {{ t('emailSuspiciousPattern') }} (.{{ recipient.analysis.suspiciousPattern.label }})

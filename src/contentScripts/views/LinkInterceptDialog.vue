@@ -218,7 +218,9 @@ function onContinue() {
 
           <!-- Punycode. Skipped when it would repeat the domain verbatim -->
           <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger">
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)" />
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)">
+              <CopyButton :text="data.punycode" />
+            </SecureText>
           </VzNotice>
 
           <DomainMarkers :hostname="data.domain" :url="data.url" :familiar="data.isSafe" />
@@ -228,7 +230,9 @@ function onContinue() {
         <!-- No mismatch: the address and the evidence about it -->
         <div v-else class="vz-well grid gap-3">
           <div class="dialog-address">
-            <SecureText :text="data.domain" size="l" :diff="linkDiff(data.domain)" />
+            <SecureText :text="data.domain" size="l" :diff="linkDiff(data.domain)">
+              <CopyButton :text="data.domain" />
+            </SecureText>
             <VzBadge v-if="data.shortUrl?.isKnownShortener" tone="danger" icon="link" data-verdict="shortener">
               {{ t('linkTooltipShortener') }}
             </VzBadge>
@@ -264,7 +268,9 @@ function onContinue() {
           <div v-if="data.shortUrl?.status === 'resolved'" class="dialog-section">
             <span class="vz-eyebrow inline-flex items-center gap-1"><VzIcon name="link" />{{ t('linkInterceptRealDestination') }}</span>
             <div class="dialog-address">
-              <SecureText :text="data.shortUrl.resolvedDomain" size="l" :diff="resolvedDiff(data.shortUrl.resolvedDomain)" />
+              <SecureText :text="data.shortUrl.resolvedDomain" size="l" :diff="resolvedDiff(data.shortUrl.resolvedDomain)">
+                <CopyButton :text="data.shortUrl.resolvedDomain" />
+              </SecureText>
               <VzBadge
                 :tone="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).tone"
                 :icon="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).icon"
@@ -275,14 +281,16 @@ function onContinue() {
             </div>
 
             <p v-if="showFullUrl && data.shortUrl.resolvedUrl" class="vz-small dialog-url">
-              {{ data.shortUrl.resolvedUrl }}
+              {{ data.shortUrl.resolvedUrl }}<CopyButton :text="data.shortUrl.resolvedUrl" inline />
             </p>
 
             <!-- The destination gets the same reading as an address written out
                  in full. Following a short link is the one case where the user
                  could not have looked at it themselves. -->
             <VzNotice v-if="data.shortUrl.resolvedPunycode" tone="danger" bare>
-              {{ t('linkTooltipPunycode') }}: <SecureText :text="data.shortUrl.resolvedPunycode" size="s" :diff="resolvedDiff(data.shortUrl.resolvedPunycode)" />
+              {{ t('linkTooltipPunycode') }}: <SecureText :text="data.shortUrl.resolvedPunycode" size="s" :diff="resolvedDiff(data.shortUrl.resolvedPunycode)">
+                <CopyButton :text="data.shortUrl.resolvedPunycode" />
+              </SecureText>
             </VzNotice>
             <DomainMarkers :hostname="data.shortUrl.resolvedDomain" :familiar="data.shortUrl.resolvedIsSafe" bare />
             <LookalikeNotice :hostname="data.shortUrl.resolvedDomain" bare />
@@ -322,7 +330,9 @@ function onContinue() {
 
           <!-- Punycode. Skipped when it would repeat the domain verbatim -->
           <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)" />
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)">
+              <CopyButton :text="data.punycode" />
+            </SecureText>
           </VzNotice>
 
           <DomainMarkers :hostname="data.domain" :url="data.url" :familiar="data.isSafe" bare />

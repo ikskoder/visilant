@@ -163,7 +163,9 @@ const payloadKind = computed(() => {
              before the check finished has nothing to report but the name. -->
         <div class="vz-well grid gap-3">
           <div class="dialog-address">
-            <SecureText :text="data.domain" size="l" :diff="linkDiff(data.domain)" />
+            <SecureText :text="data.domain" size="l" :diff="linkDiff(data.domain)">
+              <CopyButton :text="data.domain" />
+            </SecureText>
             <VzBadge v-if="status === 'safe'" tone="safe" icon="pass" data-verdict="familiar">
               {{ t('linkTooltipFamiliar') }}
             </VzBadge>
@@ -178,7 +180,9 @@ const payloadKind = computed(() => {
 
           <!-- Punycode. Skipped when it would repeat the domain verbatim -->
           <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)" />
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)">
+              <CopyButton :text="data.punycode" />
+            </SecureText>
           </VzNotice>
 
           <!-- Structural markers. These read the name itself, so they are worth

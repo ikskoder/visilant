@@ -260,26 +260,29 @@ const model = computed<Model>(() => {
     :class="[size ? `vz-addr--${size}` : '', { 'vz-addr--noframes': !framesOn }]"
     dir="ltr"
   >
+    <!-- The default slot is what goes after the address, a copy button. It is
+         drawn inside the last label's unbreakable unit, so it never falls to a
+         line of its own and never ends up far from where the address ends. -->
     <template v-if="model.flat">
-      <Runs :runs="model.flat" />
+      <Runs :runs="model.flat" /><slot />
     </template>
     <template v-else>
       <template v-if="model.account">
         <span class="vz-addr__acct"><Runs :runs="model.account" /></span><span class="vz-addr__at">@</span><wbr>
       </template>
-      <span v-if="model.ip" class="vz-lbl vz-lbl--ip"><Runs :runs="model.ip" /></span>
+      <span v-if="model.ip" class="vz-seg"><span class="vz-lbl vz-lbl--ip"><Runs :runs="model.ip" /></span><slot /></span>
       <template v-else>
         <!-- A label and the dot after it never part, so no line starts with a dot.
              The dot that leads into the owner's labels stays outside them. -->
         <template v-for="(segment, s) in model.before" :key="`b${s}`">
-          <span class="vz-seg"><span class="vz-lbl"><Runs :runs="segment.runs" /></span><span v-if="segment.sep" :class="segment.sep.cls" :title="segment.sep.title">{{ segment.sep.text }}</span></span><wbr>
+          <span class="vz-seg"><span class="vz-lbl"><Runs :runs="segment.runs" /></span><span v-if="segment.sep" :class="segment.sep.cls" :title="segment.sep.title">{{ segment.sep.text }}</span><slot v-if="!model.owner?.length && !model.trailing && s === model.before!.length - 1" /></span><wbr>
         </template>
         <span v-if="model.owner?.length" class="vz-own" data-owner>
           <template v-for="(segment, s) in model.owner" :key="`o${s}`">
-            <span class="vz-seg"><span class="vz-lbl" :class="{ 'vz-lbl--sfx': segment.suffix }"><Runs :runs="segment.runs" /></span><span v-if="segment.sep" :class="segment.sep.cls" :title="segment.sep.title">{{ segment.sep.text }}</span></span><wbr v-if="segment.sep">
+            <span class="vz-seg"><span class="vz-lbl" :class="{ 'vz-lbl--sfx': segment.suffix }"><Runs :runs="segment.runs" /></span><span v-if="segment.sep" :class="segment.sep.cls" :title="segment.sep.title">{{ segment.sep.text }}</span><slot v-if="!model.trailing && s === model.owner.length - 1" /></span><wbr v-if="segment.sep">
           </template>
         </span>
-        <span v-if="model.trailing" :class="model.trailing.cls" :title="model.trailing.title">{{ model.trailing.text }}</span>
+        <span v-if="model.trailing" class="vz-seg"><span :class="model.trailing.cls" :title="model.trailing.title">{{ model.trailing.text }}</span><slot /></span>
       </template>
     </template>
   </span>

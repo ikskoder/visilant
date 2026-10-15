@@ -147,8 +147,7 @@ describe('linkTooltip component', () => {
       props: { ...defaultProps, data: shortData },
     })
     // Should show resolve button
-    const buttons = wrapper.findAll('button')
-    expect(buttons.length).toBeGreaterThan(0)
+    expect(wrapper.find('[data-action="resolve"]').exists()).toBe(true)
   })
 
   it('shows loading spinner when shortUrl status is loading', () => {

@@ -81,7 +81,9 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
   <div class="email-breakdown grid gap-2">
     <!-- The whole address on one line, where a two-row breakdown would not fit:
          the link tooltip is one line wide -->
-    <SecureText v-if="compact" kind="email" :text="`${analysis.localPart}@${analysis.domain}`" size="l" :diff="domainDiff(`${analysis.localPart}@${analysis.domain}`)" />
+    <SecureText v-if="compact" kind="email" :text="`${analysis.localPart}@${analysis.domain}`" size="l" :diff="domainDiff(`${analysis.localPart}@${analysis.domain}`)">
+      <CopyButton :text="`${analysis.localPart}@${analysis.domain}`" />
+    </SecureText>
 
     <!--
       Named halves wherever there is room, the way the in-page check panel has
@@ -106,17 +108,23 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
             {{ accountCaseLabel }}
           </button>
         </div>
-        <SecureText :text="analysis.localPart" kind="account" size="l" />
+        <SecureText :text="analysis.localPart" kind="account" size="l">
+          <CopyButton :text="analysis.localPart" />
+        </SecureText>
       </div>
       <div v-if="!domainElsewhere" class="grid gap-1">
         <span class="vz-eyebrow">{{ t('emailDomainLabel') }}</span>
-        <SecureText :text="analysis.domain" size="l" :diff="domainDiff(analysis.domain)" />
+        <SecureText :text="analysis.domain" size="l" :diff="domainDiff(analysis.domain)">
+          <CopyButton :text="analysis.domain" />
+        </SecureText>
       </div>
     </template>
 
     <!-- The encoded spelling of an international domain -->
     <VzNotice v-if="analysis.domainInfo.punycode && !domainElsewhere" tone="danger" :bare="compact">
-      {{ t('linkTooltipPunycode') }}: <SecureText :text="analysis.domainInfo.punycode" size="s" :diff="domainDiff(analysis.domainInfo.punycode)" />
+      {{ t('linkTooltipPunycode') }}: <SecureText :text="analysis.domainInfo.punycode" size="s" :diff="domainDiff(analysis.domainInfo.punycode)">
+        <CopyButton :text="analysis.domainInfo.punycode" />
+      </SecureText>
     </VzNotice>
 
     <!-- Embedded-TLD warning (paypal.com.evil.ru) -->

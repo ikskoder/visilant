@@ -193,11 +193,15 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
           </div>
           <div class="grid gap-1">
             <span class="vz-eyebrow">{{ t('emailAccountName') }}</span>
-            <SecureText :text="data.email.analysis.localPart" kind="account" size="l" />
+            <SecureText :text="data.email.analysis.localPart" kind="account" size="l">
+              <CopyButton :text="data.email.analysis.localPart" />
+            </SecureText>
           </div>
           <div class="grid gap-1">
             <span class="vz-eyebrow">{{ t('emailDomainLabel') }}</span>
-            <SecureText :text="data.email.analysis.domain" :case-override="localCase" size="l" :diff="linkDiff(data.email.analysis.domain)" />
+            <SecureText :text="data.email.analysis.domain" :case-override="localCase" size="l" :diff="linkDiff(data.email.analysis.domain)">
+              <CopyButton :text="data.email.analysis.domain" />
+            </SecureText>
           </div>
           <VzNotice v-if="data.email.analysis.suspiciousPattern" tone="danger">
             {{ t('emailSuspiciousPattern') }} (.{{ data.email.analysis.suspiciousPattern.label }})
@@ -221,12 +225,16 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
           <VzBadge :tone="statusBadge(familyStats, data.hostname).tone" :icon="statusBadge(familyStats, data.hostname).icon" :data-verdict="statusBadge(familyStats, data.hostname).verdict" class="justify-self-start">
             {{ statusBadge(familyStats, data.hostname).text }}
           </VzBadge>
-          <SecureText :text="displayDomain(data.hostname)" :case-override="localCase" size="l" :diff="linkDiff(displayDomain(data.hostname))" />
+          <SecureText :text="displayDomain(data.hostname)" :case-override="localCase" size="l" :diff="linkDiff(displayDomain(data.hostname))">
+            <CopyButton :text="displayDomain(data.hostname)" />
+          </SecureText>
         </div>
 
         <!-- Punycode. Skipped when it would repeat the hostname verbatim -->
         <VzNotice v-if="data.punycode && data.punycode !== data.hostname" tone="danger">
-          {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)" />
+          {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)">
+            <CopyButton :text="data.punycode" />
+          </SecureText>
         </VzNotice>
 
         <!-- Why there are no numbers below, said before they are missed -->

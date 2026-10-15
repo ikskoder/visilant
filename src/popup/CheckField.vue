@@ -491,7 +491,9 @@ function payloadTypeLabel(payloadKind: string) {
         <template v-if="!panelCovers(result.hostname)">
           <div class="flex items-center flex-wrap gap-2">
             <span data-field-hostname class="min-w-0">
-              <SecureText :text="result.hostname" size="l" :diff="fieldDiff(result.hostname)" />
+              <SecureText :text="result.hostname" size="l" :diff="fieldDiff(result.hostname)">
+                <CopyButton :text="result.hostname" />
+              </SecureText>
             </span>
             <VzBadge v-if="result.isShortener" tone="danger" icon="link" data-verdict="shortener">
               {{ t('linkTooltipShortener') }}
@@ -517,7 +519,9 @@ function payloadTypeLabel(payloadKind: string) {
         <div v-if="result.mailSites.length" class="mail-sites grid gap-2">
           <span class="vz-eyebrow">{{ t('mailSiteLabel') }}</span>
           <div v-for="site in result.mailSites" :key="site.site" class="grid gap-2">
-            <SecureText :text="site.site" size="l" />
+            <SecureText :text="site.site" size="l">
+              <CopyButton :text="site.site" />
+            </SecureText>
             <FamiliarityFacts :stats="site.stats" />
             <!-- The address domain is a name on an envelope, this is a site
                  somebody actually opens – so it is the one worth looking up -->
@@ -547,7 +551,7 @@ function payloadTypeLabel(payloadKind: string) {
                name, its facts and its warnings, and printed here as well it
                was one more copy of each. -->
           <p class="vz-small check-url">
-            {{ result.resolve.finalUrl }}
+            {{ result.resolve.finalUrl }}<CopyButton :text="result.resolve.finalUrl" inline />
           </p>
           <div v-if="result.resolve.chain && result.resolve.chain.length > 2" class="grid gap-1">
             <span class="vz-eyebrow">{{ t('linkTooltipRedirectChain') }} ({{ result.resolve.chain.length }})</span>
@@ -596,7 +600,9 @@ function payloadTypeLabel(payloadKind: string) {
         <div v-if="result.mailSites.length" class="mail-sites grid gap-2">
           <span class="vz-eyebrow">{{ t('mailSiteLabel') }}</span>
           <div v-for="site in result.mailSites" :key="site.site" class="grid gap-2">
-            <SecureText :text="site.site" size="l" />
+            <SecureText :text="site.site" size="l">
+              <CopyButton :text="site.site" />
+            </SecureText>
             <FamiliarityFacts :stats="site.stats" />
             <!-- The address domain is a name on an envelope, this is a site
                  somebody actually opens – so it is the one worth looking up -->
@@ -617,7 +623,9 @@ function payloadTypeLabel(payloadKind: string) {
       <template v-else-if="result.type === 'raw'">
         <span class="vz-eyebrow">{{ t('qrPayloadType') }}: {{ payloadTypeLabel(result.payloadKind) }}</span>
         <div class="vz-well check-url">
-          <SecureText kind="raw" :text="result.payload" size="m" />
+          <SecureText kind="raw" :text="result.payload" size="m">
+            <CopyButton :text="result.payload" />
+          </SecureText>
         </div>
       </template>
 
