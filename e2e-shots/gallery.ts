@@ -267,6 +267,13 @@ ${body}
   fs.writeFileSync(path.join(SHOTS, 'index.html'), html)
 
   console.log(`[shots] ${cards.length} cases in .tmp/shots/index.html${failedCount ? `, ${failedCount} pictures could not be drawn (red dots there)` : ''}${missingViews.length ? `, ${missingViews.length} views no case shows` : ''}`)
+
+  // An empty catalogue is never a clean run. Most often a `-g` that matched
+  // nothing, which Playwright reports and then exits on with success.
+  if (!cards.length) {
+    console.error('[shots] no case was drawn. A -g filter matches case titles, not file or case names')
+    process.exitCode = 1
+  }
 }
 
 /**
