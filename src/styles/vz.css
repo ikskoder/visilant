@@ -319,6 +319,10 @@
 }
 
 .vz-fact__value--none { font-family: var(--font-sans); font-weight: 400; color: var(--ink-3); }
+/* The word after a number, in the text face: "3 days" in code type read as "3  days" */
+.vz-fact__unit { font-family: var(--font-sans); font-weight: 400; letter-spacing: normal; }
+/* Beside a value in full ink it steps back a shade, beside a bar already in grey it keeps the grey */
+.vz-fact__value .vz-fact__unit { color: var(--ink-2); }
 
 .vz-fact--pass .vz-icon { color: var(--safe); }
 .vz-fact--fail .vz-icon { color: var(--danger); }

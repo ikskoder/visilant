@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FamiliarityStats } from '~/logic/familiarity'
 import { computed } from 'vue'
+import FactText from '~/components/FactText.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
@@ -112,7 +113,7 @@ const summaryRow = computed(() => {
           <td v-for="side in [{ fact: row.left, shown: shouldShowCount(textDomainIsSafe), key: 'shown' }, { fact: row.right, shown: shouldShowCount(destIsSafe), key: 'dest' }]" :key="side.key">
             <span v-if="side.shown" class="comparison-fact">
               <VzIcon :name="side.fact.met ? 'pass' : 'fail'" :label="t(side.fact.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="side.fact.met ? 'tone-safe' : 'tone-danger'" :data-passed="row.id" :data-result="side.fact.met ? 'pass' : 'fail'" />
-              <span class="vz-fact__value" :class="{ 'vz-fact__value--none': !side.fact.known }">{{ cell(side.fact) }}</span>
+              <span class="vz-fact__value" :class="{ 'vz-fact__value--none': !side.fact.known }"><FactText :text="cell(side.fact)" /></span>
             </span>
             <span v-else class="text-ink-3">{{ t('mismatchVisitsHidden') }}</span>
           </td>

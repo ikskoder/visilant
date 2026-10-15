@@ -39,11 +39,6 @@ function foldLabel(metric: DomainMetric) {
   return `\u00A0·\u00A0${t.value(metricAggregation(metric) === 'total' ? 'foldTotal' : 'foldMax')}`
 }
 
-/** "10 days" never splits into "10" and "days" when a narrow cell wraps. */
-function keepUnits(text: string) {
-  return text.replace(/(\d) (?=\p{L})/gu, '$1\u00A0')
-}
-
 const facts = computed(() => factsFor(props.stats))
 const summary = computed(() => summaryFor(props.stats))
 
@@ -81,7 +76,7 @@ const ageTitle = computed(() => {
       </div>
       <div class="vz-grid__value">
         <VzIcon :name="fact.met ? 'pass' : 'fail'" :label="t(fact.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="fact.met ? 'tone-safe' : 'tone-danger'" :data-passed="fact.id" :data-result="fact.met ? 'pass' : 'fail'" />
-        <span :class="{ 'vz-fact__value--none': !fact.known }" :data-criterion="fact.id" :title="fact.id === 'age' ? ageTitle : fact.title">{{ keepUnits(withThresholds ? fact.combined : fact.value) }}</span>
+        <span :class="{ 'vz-fact__value--none': !fact.known }" :data-criterion="fact.id" :title="fact.id === 'age' ? ageTitle : fact.title"><FactText :text="withThresholds ? fact.combined : fact.value" /></span>
       </div>
     </div>
 

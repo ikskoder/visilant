@@ -54,10 +54,10 @@ const summary = computed(() => summaryFor(props.stats))
             {{ fact.label }}
           </th>
           <td class="vz-fact__value" :class="{ 'vz-fact__value--none': !fact.known }" :data-criterion="fact.id">
-            {{ fact.value }}
+            <FactText :text="fact.value" />
           </td>
           <td class="vz-fact__need" :data-required="fact.id">
-            {{ fact.required }}
+            <FactText :text="fact.required" />
           </td>
         </tr>
 
@@ -89,7 +89,7 @@ const summary = computed(() => summaryFor(props.stats))
       <li v-for="fact in facts" :key="fact.id" class="vz-fact" :title="fact.title">
         <VzIcon :name="fact.met ? 'pass' : 'fail'" :label="t(fact.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="fact.met ? 'tone-safe' : 'tone-danger'" :data-passed="fact.id" :data-result="fact.met ? 'pass' : 'fail'" />
         <span class="vz-fact__label">{{ fact.label }}</span>
-        <span class="vz-fact__value" :class="{ 'vz-fact__value--none': !fact.known }" :data-criterion="fact.id">{{ fact.value }}</span>
+        <span class="vz-fact__value" :class="{ 'vz-fact__value--none': !fact.known }" :data-criterion="fact.id"><FactText :text="fact.value" /></span>
       </li>
 
       <li v-if="summary" class="vz-fact font-bold" :title="summary.title">
