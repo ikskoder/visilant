@@ -10,7 +10,7 @@ describe('addressShape', () => {
 
   // A platform that hands out one name per customer: the tenant is the owner
   it('gives a hosting tenant the owner frames, not the platform', () => {
-    expect(addressShape('evil.github.io')).toEqual({ ownerLabels: 3, suffixLabels: 2 })
+    expect(addressShape('evil.github.io')).toEqual({ ownerLabels: 3, suffixLabels: 2, platform: 'github.io' })
   })
 
   // Counts rather than strings, so both spellings of one name get the same frames
@@ -27,6 +27,14 @@ describe('addressShape', () => {
   // owner frames counted from the parsed name would land on the decoy
   it('gives no owner when the parser would see more labels than are drawn', () => {
     expect(addressShape('login.paypal.evil\u2024com')).toEqual({ ownerLabels: 0, suffixLabels: 0 })
+  })
+
+  // Only a tenant names its platform. The platform itself has no owner, and a
+  // name registered on its own has no landlord.
+  it('names the platform of a tenant and nothing else', () => {
+    expect(addressShape('shop.vercel.app').platform).toBe('vercel.app')
+    expect(addressShape('github.io').platform).toBeUndefined()
+    expect(addressShape('github.com').platform).toBeUndefined()
   })
 
   it('ignores a dot at the very end', () => {
@@ -51,6 +59,19 @@ describe('askBackgroundShape', () => {
     const asked = send.mock.calls.filter(([message]: any[]) => message?.type === 'address-shapes')
     expect(asked).toHaveLength(1)
     expect((asked[0][0] as any).data.hosts).toEqual(['one.example.com', 'two.example.org'])
+  })
+
+  it('keeps the platform from an answer and nothing it does not know', async () => {
+    const send = vi.mocked(browser.runtime.sendMessage)
+    send.mockClear()
+    send.mockResolvedValueOnce({
+      'alice.github.io': { ownerLabels: 3, suffixLabels: 2, platform: 'github.io', extra: 'x' },
+      'bob.github.io': { ownerLabels: 3, suffixLabels: 2, platform: 42 },
+    })
+    askBackgroundShape('alice.github.io')
+    askBackgroundShape('bob.github.io')
+    await vi.waitFor(() => expect(askBackgroundShape('alice.github.io')).toEqual({ ownerLabels: 3, suffixLabels: 2, platform: 'github.io' }))
+    expect(askBackgroundShape('bob.github.io')).toEqual({ ownerLabels: 3, suffixLabels: 2 })
   })
 
   it('takes a missing background as nothing known, and asks again later', async () => {

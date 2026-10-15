@@ -49,6 +49,10 @@ async function ask(hosts: string[]) {
     for (const host of hosts) {
       const shape = answer[host]
       if (shape && Number.isInteger(shape.ownerLabels) && Number.isInteger(shape.suffixLabels)) {
+        // Taken field by field, so nothing else the answer carries rides along
+        const kept: AddressShape = { ownerLabels: shape.ownerLabels, suffixLabels: shape.suffixLabels }
+        if (typeof shape.platform === 'string' && shape.platform)
+          kept.platform = shape.platform
         if (shapes.size >= CACHE_LIMIT) {
           // Forgotten both ways, so the next draw of it asks again rather than
           // being left with thin frames for good
@@ -56,7 +60,7 @@ async function ask(hosts: string[]) {
           shapes.delete(oldest)
           asked.delete(oldest)
         }
-        shapes.set(host, shape)
+        shapes.set(host, kept)
       }
     }
   }

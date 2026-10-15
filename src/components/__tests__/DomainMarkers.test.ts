@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resetLookalikeCache } from '~/composables/useLookalikes'
+import { ADDRESS_SHAPE_KEY } from '~/logic/address-shape'
+import { addressShape } from '~/logic/domain-boundary'
 import DomainMarkers from '../DomainMarkers.vue'
 import LookalikeNotice from '../LookalikeNotice.vue'
 
@@ -27,6 +29,17 @@ describe('domainMarkers component', () => {
   it('renders nothing for an ordinary hostname', () => {
     const wrapper = mount(DomainMarkers, { props: { hostname: 'www.example.com' } })
     expect(wrapper.find('div').exists()).toBe(false)
+  })
+
+  it('says a platform tenant is not the platform, unless the site is familiar', () => {
+    const global = { provide: { [ADDRESS_SHAPE_KEY as symbol]: addressShape } }
+    const tenant = mount(DomainMarkers, { props: { hostname: 'someone.github.io' }, global })
+    expect(tenant.find('[data-marker="hosted-on"] [data-marker-platform]').text()).toBe('github.io')
+
+    expect(mount(DomainMarkers, { props: { hostname: 'someone.github.io', familiar: true }, global })
+      .find('[data-marker="hosted-on"]').exists()).toBe(false)
+    expect(mount(DomainMarkers, { props: { hostname: 'github.com' }, global })
+      .find('[data-marker="hosted-on"]').exists()).toBe(false)
   })
 
   it('renders nothing without a hostname', () => {

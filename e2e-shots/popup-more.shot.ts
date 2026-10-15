@@ -127,6 +127,7 @@ const CASES: Case[] = [
   // ==========================================
   // What the address gives away
   // ==========================================
+  { name: 'pp-hosted-on', title: 'Popup on a site on a shared hosting platform', note: 'shop.vercel.app, never visited. A red line says anyone can make a site on vercel.app and that vercel.app does not run this one.', url: 'https://shop.vercel.app/' },
   { name: 'pp-mark-deep', title: 'Popup: too many subdomain levels', note: 'a.b.c.d.e.example.test.', url: 'https://a.b.c.d.e.example.test/' },
   { name: 'pp-mark-embedded', title: 'Popup: a well-known name parked in front', note: 'paypal.com.secure-login.test, with paypal.com unknown to the user. A red notice names the real site.', url: 'https://paypal.com.secure-login.test/' },
   { name: 'pp-mark-embedded-known', title: 'Popup: the same, when paypal.com is familiar', note: 'Replaced by a red lookalike line.', seed: { 'paypal.com': FAMILIAR }, url: 'https://paypal.com.secure-login.test/' },

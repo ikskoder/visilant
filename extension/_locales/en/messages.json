@@ -871,6 +871,10 @@
     "message": "Numeric address, not a domain name",
     "description": "Marker: host is a raw IP address"
   },
+  "domainMarkerHostedOn": {
+    "message": "Anyone can make a site on {platform}. This one is not run by the platform itself.",
+    "description": "Marker on an unfamiliar site that is one of many on a shared hosting platform, as in alice.github.io. {platform} is the platform's address (github.io), drawn as an address. Its point is that the famous name in the address says nothing about who made this site"
+  },
   "domainMarkerEmbeddedSuffix": {
     "message": "Looks like {domain}, but the real site is {site}",
     "description": "Marker: a whole domain in the middle of the address, as in yourbank.com.pay-verify.top. {domain} is the domain the address reads as (yourbank.com), {site} is everything after it (pay-verify.top). Both are drawn as addresses"

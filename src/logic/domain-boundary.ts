@@ -122,6 +122,12 @@ export function visitKey(hostname: string): string {
 export interface AddressShape {
   ownerLabels: number
   suffixLabels: number
+  /**
+   * The platform the owner is a tenant of, `github.io` for `alice.github.io`.
+   * Absent for a name registered on its own. Carried with the shape because it
+   * is read off the same suffix list, which the content script does not have.
+   */
+  platform?: string
 }
 
 /** The dots the address painter splits on, which IDNA treats as label separators. */
@@ -151,8 +157,10 @@ export function addressShape(hostname: string): AddressShape {
   if (raw.split(PAINTED_DOTS).length !== host.split('.').length)
     return { ownerLabels: 0, suffixLabels: 0 }
   const suffix = getPublicSuffix(host, BOUNDARY)
+  const platform = hostingPlatform(host)
   return {
     ownerLabels: site.split('.').length,
     suffixLabels: suffix ? suffix.split('.').length : 0,
+    ...(platform ? { platform } : {}),
   }
 }

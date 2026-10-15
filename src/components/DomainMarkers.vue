@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { DomainMarkerId, EmbeddedDomain } from '~/logic/domain-markers'
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import { useLookalikes } from '~/composables/useLookalikes'
+import { ADDRESS_SHAPE_KEY, askBackgroundShape } from '~/logic/address-shape'
 import { dropExplainedMarkers, findDomainMarkers } from '~/logic/domain-markers'
 
 // Structural facts about an address – never a verdict, so this renders as a
@@ -24,6 +25,12 @@ const props = defineProps<{
   notes?: { id: string, text: string, icon?: 'link' }[]
   /** No box around each line, for the tooltip where space is tight. */
   bare?: boolean
+  /**
+   * The address is one the user knows. Leaves out the line about the hosting
+   * platform: it is there to stop a famous platform name from vouching for a
+   * stranger, and a site the user already knows needs no vouching.
+   */
+  familiar?: boolean
 }>()
 
 const { t } = useI18n()
@@ -35,6 +42,21 @@ const TRANSLATION_KEYS: Record<DomainMarkerId, string> = {
   'deep-subdomains': 'domainMarkerDeepSubdomains',
   'mixed-scripts': 'domainMarkerMixedScripts',
 }
+
+const lookupShape = inject(ADDRESS_SHAPE_KEY, askBackgroundShape)
+
+/**
+ * The platform this address is a tenant of, `github.io` for `alice.github.io`.
+ * Anybody can open a site there, and the platform's name in the address reads
+ * as the platform's word for the site, which it is not.
+ */
+const platform = computed(() => props.hostname && !props.familiar ? lookupShape(props.hostname)?.platform : undefined)
+
+const hostedSentence = computed(() => {
+  const [before = '', after = ''] = t.value('domainMarkerHostedOn').split('{platform}')
+  const glue = /^[^\s\p{L}\p{N}]*/u.exec(after)?.[0] ?? ''
+  return { before, glue, after: after.slice(glue.length) }
+})
 
 const found = computed(() => {
   if (!props.hostname)
@@ -105,7 +127,7 @@ function embeddedSentence(marker: EmbeddedDomain): SentencePart[] {
   <!-- Every line here is a warning, so every line is red with the one warning
        sign. There used to be an amber step below red, and a reader cannot tell
        three warm colours apart at a glance. -->
-  <div v-if="markers.length || notes?.length" class="domain-markers grid gap-2">
+  <div v-if="markers.length || notes?.length || platform" class="domain-markers grid gap-2">
     <VzNotice
       v-for="note in notes"
       :key="note.id"
@@ -115,6 +137,9 @@ function embeddedSentence(marker: EmbeddedDomain): SentencePart[] {
       :data-marker-note="note.id"
     >
       {{ note.text }}
+    </VzNotice>
+    <VzNotice v-if="platform" tone="danger" :bare="bare" data-marker="hosted-on">
+      {{ hostedSentence.before }}<span class="vz-nobr"><SecureText :text="platform" size="s" data-marker-platform />{{ hostedSentence.glue }}</span>{{ hostedSentence.after }}
     </VzNotice>
     <VzNotice
       v-for="marker in markers"
