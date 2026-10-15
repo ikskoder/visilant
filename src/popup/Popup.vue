@@ -4,6 +4,7 @@ import type { SiteVisitData } from '~/logic/storage'
 import punycode from 'punycode'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
+import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { useTheme } from '~/composables/useTheme'
 import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
 import { displayDomain } from '~/logic/domain-display'
@@ -154,6 +155,9 @@ const currentHostname = ref('')
  * which is the question the field asked before the card took the line over.
  */
 const currentContext = ref<'email' | undefined>()
+// The letters a lookalike changed, underlined in the address. Asked as the
+// lookalike notice under it asks, so both read one answer
+const hostDiff = useLookalikeDiff(() => currentHostname.value, () => currentContext.value)
 /**
  * The whole link, when the name came out of one on the check page. Only for
  * what the link says beyond its host – a name hidden before an @ – so the card
@@ -169,6 +173,8 @@ const currentUrl = ref<string | undefined>()
 const currentKey = computed(() => currentHostname.value ? visitKey(currentHostname.value) : '')
 const baseDomain = ref('')
 const visits = ref<Record<string, any>>({})
+/** The host `visits` were last read for. Until it is the current one, no verdict is known. */
+const visitsReadFor = ref('')
 /**
  * Every recorded host under the base domain, this one among them.
  *
@@ -587,6 +593,7 @@ async function loadDomainData(hostname: string, context?: 'email', url?: string)
   // the page had visits stored under `192.168.1.10` and showed nothing at all.
   baseDomain.value = siteDomainOrSelf(hostname)
   visits.value = {}
+  visitsReadFor.value = ''
   familyHosts.value = []
 
   if (!baseDomain.value)
@@ -614,6 +621,9 @@ async function loadDomainData(hostname: string, context?: 'email', url?: string)
       return 1
     return a.localeCompare(b)
   })
+  // A later load for another host may have finished first
+  if (currentHostname.value === hostname)
+    visitsReadFor.value = hostname
 }
 
 async function openCheckPage() {
@@ -822,7 +832,7 @@ onMounted(async () => {
           <div class="popup-address">
             <template v-if="isPunycode">
               <span class="vz-eyebrow">{{ translations.domainOriginal }}</span>
-              <SecureText :text="unicodeHostname" size="xl" :style="currentDomainFontSize" />
+              <SecureText :text="unicodeHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(unicodeHostname)" />
               <div class="flex items-center gap-1 mt-2">
                 <span class="vz-eyebrow">{{ translations.domainPunycode }}</span>
                 <button
@@ -834,9 +844,9 @@ onMounted(async () => {
                   <VzIcon name="help" />
                 </button>
               </div>
-              <SecureText :text="asciiHostname" size="xl" :style="currentDomainFontSize" />
+              <SecureText :text="asciiHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(asciiHostname)" />
             </template>
-            <SecureText v-else :text="currentHostname" size="xl" :style="currentDomainFontSize" />
+            <SecureText v-else :text="currentHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(currentHostname)" />
           </div>
 
           <!-- Said before the numbers, because it explains why there are none -->
@@ -851,7 +861,9 @@ onMounted(async () => {
                The only place they are drawn for this name: the check field above
                leaves them out while this card is about the name it checked.
                Both take the same context, because they read one shared answer. -->
-          <DomainMarkers :hostname="currentHostname" :url="currentUrl" :context="currentContext" :notes="hostNotes" />
+          <!-- The platform line waits for the visits, so it does not flash up
+               for a site that turns out to be familiar -->
+          <DomainMarkers :hostname="currentHostname" :url="currentUrl" :context="currentContext" :notes="hostNotes" :familiar="!warningsCanFire || visitsReadFor !== currentHostname" />
           <LookalikeNotice :hostname="currentHostname" :context="currentContext" />
           <!-- Not for an address that only means something inside one network:
                no site elsewhere has anything to say about the reader's router -->

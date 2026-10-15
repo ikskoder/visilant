@@ -82,6 +82,8 @@ interface Run {
   title?: string
   cp?: string
   invisible?: boolean
+  /** One of the characters a lookalike changed, for tests to find */
+  diff?: boolean
 }
 
 interface Segment {
@@ -105,7 +107,7 @@ interface Model {
 const Runs: FunctionalComponent<{ runs: Run[] }> = ({ runs }) => runs.map((run) => {
   if (!run.cls)
     return run.text
-  return h('span', { 'class': run.cls, 'title': run.title, 'data-cp': run.cp }, run.invisible ? [h('span', { class: 'vz-ch__raw' }, run.text)] : run.text)
+  return h('span', { 'class': run.cls, 'title': run.title, 'data-cp': run.cp, 'data-diff': run.diff ? '' : undefined }, run.invisible ? [h('span', { class: 'vz-ch__raw' }, run.text)] : run.text)
 })
 Runs.props = ['runs']
 
@@ -144,7 +146,10 @@ function runsOf(chars: string[], start: number, mode: 'host' | 'account' | 'raw'
       runs.push({ text: char, cls: 'vz-ch vz-ch--invisible', cp, title: translate('addressCharInvisible').replace('$1', cp), invisible: true })
       return
     }
-    if (diff.includes(start + offset))
+    // An invisible character never gets here, and needs no underline: it is
+    // already drawn by name
+    const changed = diff.includes(start + offset)
+    if (changed)
       classes.push('vz-ch--diff')
     // Judged on the character as written, before the case setting touches it
     const odd = mode === 'host' ? !PLAIN_HOST.test(char) : (char.codePointAt(0) ?? 0) > 0x7F
@@ -158,7 +163,7 @@ function runsOf(chars: string[], start: number, mode: 'host' | 'account' | 'raw'
 
     const shown = transform(char, mode === 'account')
     if (classes.length) {
-      runs.push({ text: shown, cls: `vz-ch ${classes.join(' ')}`, title })
+      runs.push({ text: shown, cls: `vz-ch ${classes.join(' ')}`, title, diff: changed || undefined })
       return
     }
     const last = runs.at(-1)

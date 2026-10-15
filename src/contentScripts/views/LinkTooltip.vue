@@ -13,6 +13,7 @@ import VzNotice from '~/components/VzNotice.vue'
 import VzSig from '~/components/VzSig.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
+import { useLookalikeDiff } from '~/composables/useLookalikes'
 import MismatchTable from './MismatchTable.vue'
 
 const props = defineProps<{
@@ -34,6 +35,15 @@ const emit = defineEmits<{
 }>()
 
 const fontScale = computed(() => props.fontSize / 100)
+
+// The letters a lookalike changed, underlined in the address. Asked exactly as
+// the lookalike notice under it asks, so both read one answer. A raw text
+// payload has no notice and no address to mark.
+const linkDiff = useLookalikeDiff(
+  () => props.data?.kind === 'text' ? '' : props.data?.domain ?? '',
+  () => props.data?.kind === 'email' && props.data.email ? 'email' : undefined,
+)
+const resolvedDiff = useLookalikeDiff(() => props.data?.shortUrl?.resolvedDomain ?? '')
 
 function shouldShowCount(isSafe: boolean) {
   switch (props.showVisitCount) {
@@ -231,12 +241,12 @@ onBeforeUnmount(() => {
           <!-- Visit facts for the address's domain (regular domains only).
                Named, because the address printed above is not what was visited. -->
           <div v-if="data.email.providerKind === 'regular' && shouldShowCount(data.isSafe)" class="grid gap-2">
-            <span class="vz-small">{{ t('emailSiteFactsLabel') }}: <SecureText :text="data.domain" size="s" /></span>
+            <span class="vz-small">{{ t('emailSiteFactsLabel') }}: <SecureText :text="data.domain" size="s" :diff="linkDiff(data.domain)" /></span>
             <FamiliarityFacts :stats="data.stats" />
           </div>
 
           <!-- Structural markers of the address's domain -->
-          <DomainMarkers :hostname="data.domain" context="email" bare />
+          <DomainMarkers :hostname="data.domain" context="email" :familiar="data.isSafe" bare />
           <LookalikeNotice :hostname="data.domain" context="email" bare />
 
           <div class="tooltip-actions">
@@ -275,6 +285,7 @@ onBeforeUnmount(() => {
             :dest-domain="data.domain"
             :dest-is-safe="data.isSafe"
             :dest-stats="data.stats"
+            :dest-diff="linkDiff(data.domain)"
             :show-visit-count="showVisitCount"
             @details="emit('details', $event)"
           />
@@ -282,10 +293,10 @@ onBeforeUnmount(() => {
           <!-- Punycode. Skipped when it would repeat the domain verbatim, which is
                what happens for links that already arrive in punycode form -->
           <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" />
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)" />
           </VzNotice>
 
-          <DomainMarkers :hostname="data.domain" :url="data.href" bare />
+          <DomainMarkers :hostname="data.domain" :url="data.href" :familiar="data.isSafe" bare />
           <LookalikeNotice :hostname="data.domain" bare />
 
           <button v-if="showGoButton" class="vz-btn vz-btn--sm vz-btn--block" data-action="go" @click="emit('go', data.href)">
@@ -314,7 +325,7 @@ onBeforeUnmount(() => {
 
           <div class="grid gap-1">
             <span class="vz-eyebrow">{{ t('linkTooltipDestination') }}</span>
-            <SecureText :text="data.domain" size="l" class="tooltip-domain" />
+            <SecureText :text="data.domain" size="l" class="tooltip-domain" :diff="linkDiff(data.domain)" />
           </div>
 
           <!-- Visit facts: never for a known shortener -->
@@ -347,7 +358,7 @@ onBeforeUnmount(() => {
                 {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).text }}
               </VzBadge>
             </div>
-            <SecureText :text="data.shortUrl.resolvedDomain" size="l" class="tooltip-domain" />
+            <SecureText :text="data.shortUrl.resolvedDomain" size="l" class="tooltip-domain" :diff="resolvedDiff(data.shortUrl.resolvedDomain)" />
 
             <!-- Full URL if enabled -->
             <p v-if="showFullUrl && data.shortUrl.resolvedUrl" class="vz-small tooltip-url">
@@ -359,9 +370,9 @@ onBeforeUnmount(() => {
                  short link to a lookalike or to a punycode name came out as
                  "somewhere you have not been" and no more than that. -->
             <VzNotice v-if="data.shortUrl.resolvedPunycode" tone="danger" bare>
-              {{ t('linkTooltipPunycode') }}: <SecureText :text="data.shortUrl.resolvedPunycode" size="s" />
+              {{ t('linkTooltipPunycode') }}: <SecureText :text="data.shortUrl.resolvedPunycode" size="s" :diff="resolvedDiff(data.shortUrl.resolvedPunycode)" />
             </VzNotice>
-            <DomainMarkers :hostname="data.shortUrl.resolvedDomain" bare />
+            <DomainMarkers :hostname="data.shortUrl.resolvedDomain" :familiar="data.shortUrl.resolvedIsSafe" bare />
             <LookalikeNotice :hostname="data.shortUrl.resolvedDomain" bare />
 
             <FamiliarityFacts v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)" :stats="data.shortUrl.resolvedStats" />
@@ -401,10 +412,10 @@ onBeforeUnmount(() => {
           <!-- Punycode. Skipped when it would repeat the domain verbatim, which is
                what happens for links that already arrive in punycode form -->
           <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" />
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)" />
           </VzNotice>
 
-          <DomainMarkers :hostname="data.domain" :url="data.href" bare />
+          <DomainMarkers :hostname="data.domain" :url="data.href" :familiar="data.isSafe" bare />
           <LookalikeNotice :hostname="data.domain" bare />
 
           <div class="tooltip-actions">

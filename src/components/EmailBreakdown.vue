@@ -4,6 +4,7 @@ import type { EmailAnalysis } from '~/logic/email-safety'
 import { computed } from 'vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
+import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { findEmbeddedPublicSuffix } from '~/logic/domain-markers'
 import { settings } from '~/logic/storage'
 
@@ -34,6 +35,9 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+// The letters a lookalike changed, underlined in the domain. Asked as the
+// lookalike notice beside this asks about an email domain
+const domainDiff = useLookalikeDiff(() => props.analysis.domain, () => 'email')
 
 /**
  * Three positions, not two: a domain reads the same in either case, while the
@@ -77,7 +81,7 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
   <div class="email-breakdown grid gap-2">
     <!-- The whole address on one line, where a two-row breakdown would not fit:
          the link tooltip is one line wide -->
-    <SecureText v-if="compact" kind="email" :text="`${analysis.localPart}@${analysis.domain}`" size="l" />
+    <SecureText v-if="compact" kind="email" :text="`${analysis.localPart}@${analysis.domain}`" size="l" :diff="domainDiff(`${analysis.localPart}@${analysis.domain}`)" />
 
     <!--
       Named halves wherever there is room, the way the in-page check panel has
@@ -106,13 +110,13 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
       </div>
       <div v-if="!domainElsewhere" class="grid gap-1">
         <span class="vz-eyebrow">{{ t('emailDomainLabel') }}</span>
-        <SecureText :text="analysis.domain" size="l" />
+        <SecureText :text="analysis.domain" size="l" :diff="domainDiff(analysis.domain)" />
       </div>
     </template>
 
     <!-- The encoded spelling of an international domain -->
     <VzNotice v-if="analysis.domainInfo.punycode && !domainElsewhere" tone="danger" :bare="compact">
-      {{ t('linkTooltipPunycode') }}: <SecureText :text="analysis.domainInfo.punycode" size="s" />
+      {{ t('linkTooltipPunycode') }}: <SecureText :text="analysis.domainInfo.punycode" size="s" :diff="domainDiff(analysis.domainInfo.punycode)" />
     </VzNotice>
 
     <!-- Embedded-TLD warning (paypal.com.evil.ru) -->

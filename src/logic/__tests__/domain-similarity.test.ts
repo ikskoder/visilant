@@ -1,4 +1,5 @@
 import type { FamiliarDomain } from '../domain-similarity'
+import punycode from 'punycode'
 import { describe, expect, it } from 'vitest'
 import { boundedEditDistance, buildFamiliarIndex, findLookalikes, skeleton } from '../domain-similarity'
 import { getProviderReferenceDomains } from '../email-providers'
@@ -431,5 +432,90 @@ describe('two short names against each other', () => {
     // `moz` is in `mozilla`, and that means nothing at all
     expect(shortCheck('mozilla.org')).toEqual([])
     expect(shortCheck('workspace.ua')).toEqual([])
+  })
+})
+
+describe('marks on the characters that make the difference', () => {
+  /** The marked characters, read off the decoded address. */
+  function marked(hostname: string, domain?: string) {
+    const match = domain ? check(hostname).find(m => m.domain === domain) : check(hostname)[0]
+    const chars = Array.from(punycode.toUnicode(hostname).toLowerCase())
+    return match?.marks?.map(at => `${at}:${chars[at]}`)
+  }
+
+  it('a digit standing in for a letter', () => {
+    expect(marked('paypa1.com')).toEqual(['5:1'])
+  })
+
+  it('a letter from another alphabet, as typed and in punycode', () => {
+    expect(marked('pаypal.com')).toEqual(['1:а'])
+    expect(marked(punycode.toASCII('pаypal.com'))).toEqual(['1:а'])
+  })
+
+  it('two letters read as one', () => {
+    expect(marked('rnicrosoft.com')).toEqual(['0:r', '1:n'])
+  })
+
+  it('a letter swapped with its neighbour', () => {
+    expect(marked('paypla.com')).toEqual(['4:l', '5:a'])
+  })
+
+  it('a letter typed twice marks the last of the run', () => {
+    expect(marked('paypall.com')).toEqual(['6:l'])
+    expect(marked('gooogle.com')).toEqual(['3:o'])
+  })
+
+  it('a disguised letter keeps its mark next to the letter it imitates', () => {
+    expect(marked('paypa1l.com')).toEqual(['5:1'])
+    expect(marked('paypa11.com')).toEqual(['6:1'])
+  })
+
+  it('counts a character outside the basic plane as one position', () => {
+    // U+1D429, mathematical bold p, folds to p under NFKC
+    expect(marked('\u{1D429}aypa1.com')).toEqual(['0:\u{1D429}', '5:1'])
+  })
+
+  it('a letter in the wrong place', () => {
+    expect(marked('paypbl.com')).toEqual(['4:b'])
+  })
+
+  it('nothing to mark when a letter is missing', () => {
+    expect(check('gogle.com')[0]).toMatchObject({ domain: 'google.com', reason: 'edit-distance' })
+    expect(marked('gogle.com')).toBeUndefined()
+  })
+
+  it('positions count from the start of the whole address', () => {
+    expect(marked('login.paypa1.com')).toEqual(['11:1'])
+    expect(marked('paypa1.evil.net')).toEqual(['5:1'])
+  })
+
+  it('a familiar name inside a longer label, misspelled', () => {
+    expect(marked('paypa1-secure.com')).toEqual(['5:1'])
+  })
+
+  it('a familiar name inside a longer label, spelled right, marks nothing', () => {
+    expect(check('paypal-secure.com')[0]?.reason).toBe('contains-familiar')
+    expect(marked('paypal-secure.com')).toBeUndefined()
+  })
+
+  it('the same name twice marks neither copy', () => {
+    expect(marked('paypal-paypa1.com', 'paypal.com')).toBeUndefined()
+  })
+
+  it('no marks on a match that is not sure of itself', () => {
+    for (const match of [...check('paypal.co'), ...check('gooqel.com')])
+      expect(match.marks).toBeUndefined()
+  })
+
+  it('no marks on a familiar domain parked in front', () => {
+    expect(check('paypal.com.evil.net')[0]?.marks).toBeUndefined()
+  })
+
+  it('a letter whose lower case is two code points gives up marking', () => {
+    expect(check('İpaypa1.com').every(match => !match.marks)).toBe(true)
+  })
+
+  it('an empty label still counts its dot', () => {
+    expect(marked('a..paypa1.com')).toEqual(['8:1'])
   })
 })

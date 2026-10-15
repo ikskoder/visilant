@@ -128,6 +128,7 @@ describe('marks', () => {
   it('underlines the characters a lookalike changed', () => {
     const wrapper = draw({ text: 'paypa1.com', diff: [5] })
     expect(wrapper.find('.vz-ch--diff').text()).toBe('1')
+    expect(wrapper.findAll('[data-diff]').map(mark => mark.text())).toEqual(['1'])
   })
 })
 

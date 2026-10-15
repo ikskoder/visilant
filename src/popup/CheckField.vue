@@ -17,6 +17,7 @@ import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import MailRecipients from '~/components/MailRecipients.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
+import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
@@ -76,6 +77,10 @@ type CheckResult
 
 const inputText = ref('')
 const result = ref<CheckResult | null>(null)
+// The letters a lookalike changed, underlined in the checked address. Asked as
+// the lookalike notice under it asks, so both read one answer. An email address
+// is marked by EmailBreakdown, which draws it.
+const fieldDiff = useLookalikeDiff(() => result.value?.type === 'url' ? result.value.hostname : '')
 const fileInput = ref<HTMLInputElement | null>(null)
 const checkInput = ref<HTMLTextAreaElement | null>(null)
 
@@ -486,7 +491,7 @@ function payloadTypeLabel(payloadKind: string) {
         <template v-if="!panelCovers(result.hostname)">
           <div class="flex items-center flex-wrap gap-2">
             <span data-field-hostname class="min-w-0">
-              <SecureText :text="result.hostname" size="l" />
+              <SecureText :text="result.hostname" size="l" :diff="fieldDiff(result.hostname)" />
             </span>
             <VzBadge v-if="result.isShortener" tone="danger" icon="link" data-verdict="shortener">
               {{ t('linkTooltipShortener') }}
@@ -501,7 +506,7 @@ function payloadTypeLabel(payloadKind: string) {
               {{ statusText(result.isSafe, result.stats.count, result.hostname).text }}
             </VzBadge>
           </div>
-          <DomainMarkers :hostname="result.hostname" :url="result.url" />
+          <DomainMarkers :hostname="result.hostname" :url="result.url" :familiar="result.isSafe" />
           <LookalikeNotice :hostname="result.hostname" />
         </template>
 
@@ -578,6 +583,8 @@ function payloadTypeLabel(payloadKind: string) {
              the email context, and carries its lookup links, so this block is
              only drawn when the card is about another name. -->
         <template v-if="!panelCovers(result.analysis.domain, 'email')">
+          <!-- No `familiar` here: nobody visits an address domain, so there is no
+               verdict that could vouch for it, and the platform line stays -->
           <DomainMarkers :hostname="result.analysis.domain" context="email" />
           <LookalikeNotice :hostname="result.analysis.domain" context="email" />
         </template>

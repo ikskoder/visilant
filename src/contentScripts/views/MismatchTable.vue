@@ -12,6 +12,8 @@ const props = defineProps<{
   destDomain: string
   destIsSafe: boolean
   destStats: FamiliarityStats
+  /** The letters a lookalike changed in the destination, underlined. */
+  destDiff?: number[]
   showVisitCount: 'always' | 'never' | 'unfamiliar' | 'familiar'
 }>()
 
@@ -82,7 +84,7 @@ const summaryRow = computed(() => {
           {{ t('linkInterceptDomain') }}
         </th>
         <td><SecureText :text="textDomain" size="m" /></td>
-        <td><SecureText :text="destDomain" size="m" /></td>
+        <td><SecureText :text="destDomain" size="m" :diff="destDiff" /></td>
       </tr>
       <tr>
         <th scope="row">

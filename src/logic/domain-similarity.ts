@@ -82,6 +82,14 @@ export interface LookalikeMatch {
    * the one name worth knowing unsaid, and the line it replaces named it.
    */
   site?: string
+  /**
+   * The characters that make the difference, as code point positions in the
+   * checked address – decoded to Unicode, lower case, without a trailing dot.
+   * Set only on a `high` match and only where the position is certain: a mark
+   * on the wrong letter sends the reader to look at the wrong place, and that
+   * is worse than no mark. A letter left out has nothing to mark.
+   */
+  marks?: number[]
 }
 
 /**
@@ -243,6 +251,8 @@ export function boundedEditDistance(a: string, b: string, max: number): number {
 
 interface IndexedDomain extends FamiliarDomain {
   labelSkeleton: string
+  /** Filled the first time a match against this name needs its letters. */
+  spelled?: Spelled | null
 }
 
 export interface FamiliarIndex {
@@ -336,7 +346,21 @@ export function findLookalikes(
   if (!address || !index.entries.length)
     return []
 
-  const labels = address.split('.').filter(Boolean)
+  // Lowering `İ` gives two code points, so positions counted after it would
+  // point one past the letter drawn. Rare enough to give up marking for.
+  const decoded = decodeHostname(hostname)
+  const markable = Array.from(decoded).length === Array.from(decoded.toLowerCase()).length
+
+  // Where each label starts, counted over the address as the reader sees it,
+  // empty labels included
+  const located: LabelAt[] = []
+  let offset = 0
+  for (const part of address.split('.')) {
+    if (part)
+      located.push({ label: part, start: offset, spelled: markable ? spell(part) : null })
+    offset += Array.from(part).length + 1
+  }
+  const labels = located.map(at => at.label)
   if (labels.length < 2)
     return []
 
@@ -365,11 +389,11 @@ export function findLookalikes(
 
   matchFamiliarAsSubdomain(labels, index, offer)
 
-  for (const label of labels) {
-    const labelSkeleton = skeleton(label)
-    matchSameSkeleton(label, labelSkeleton, label === registrableLabel, index, offer)
-    matchEditDistance(label, labelSkeleton, index, offer)
-    matchContainment(label, labelSkeleton, index, offer)
+  for (const at of located) {
+    const labelSkeleton = skeleton(at.label)
+    matchSameSkeleton(at, labelSkeleton, at.label === registrableLabel, index, offer)
+    matchEditDistance(at, labelSkeleton, index, offer)
+    matchContainment(at, labelSkeleton, index, offer)
   }
 
   return [...best.values()]
@@ -433,14 +457,16 @@ function matchFamiliarAsSubdomain(
  *   never allowed to interrupt.
  */
 function matchSameSkeleton(
-  label: string,
+  at: LabelAt,
   labelSkeleton: string,
   isRegistrableLabel: boolean,
   index: FamiliarIndex,
   offer: (match: LookalikeMatch) => void,
 ) {
+  const label = at.label
   for (const entry of index.bySkeleton.get(labelSkeleton) ?? []) {
     const isSameSpelling = entry.label === label
+    const marks = () => isSameSpelling ? undefined : placeMarks(at, spellingMarks(at.spelled, spelledOf(entry), 0))
 
     if (!isRegistrableLabel) {
       offer({
@@ -450,6 +476,7 @@ function matchSameSkeleton(
         reason: 'familiar-as-subdomain',
         evidence: label,
         severity: 'high',
+        marks: marks(),
       })
       continue
     }
@@ -459,13 +486,13 @@ function matchSameSkeleton(
     // zero, which reads as a contradiction and hides where the name came from.
     offer(isSameSpelling
       ? { domain: entry.domain, visits: entry.visits, source: entry.source, reason: 'same-name', evidence: label, severity: 'medium' }
-      : { domain: entry.domain, visits: entry.visits, source: entry.source, reason: 'confusable', evidence: label, severity: 'high' })
+      : { domain: entry.domain, visits: entry.visits, source: entry.source, reason: 'confusable', evidence: label, severity: 'high', marks: marks() })
   }
 }
 
 /** `payapl`, `gogle`, `paypall` – a typo's distance from a name already known. */
 function matchEditDistance(
-  label: string,
+  at: LabelAt,
   labelSkeleton: string,
   index: FamiliarIndex,
   offer: (match: LookalikeMatch) => void,
@@ -500,13 +527,15 @@ function matchEditDistance(
       // One edit off a name you already use is hard to arrive at by accident.
       // Two edits happen between unrelated words often enough to stay quiet.
       // Between two short names even one edit is only ever worth mentioning.
+      const severity = distance === 1 && !bothShort ? 'high' : 'medium'
       offer({
         domain: entry.domain,
         visits: entry.visits,
         source: entry.source,
         reason: 'edit-distance',
-        evidence: label,
-        severity: distance === 1 && !bothShort ? 'high' : 'medium',
+        evidence: at.label,
+        severity,
+        marks: severity === 'high' ? placeMarks(at, editMarks(at.spelled, spelledOf(entry))) : undefined,
       })
     }
   }
@@ -542,11 +571,12 @@ function isTypoShape(a: string, b: string): boolean {
 }
 
 function matchContainment(
-  label: string,
+  at: LabelAt,
   labelSkeleton: string,
   index: FamiliarIndex,
   offer: (match: LookalikeMatch) => void,
 ) {
+  const label = at.label
   const tokens = new Set(labelSkeleton.split(/[-_]+/).filter(Boolean))
 
   // A short familiar name is too small to go hunting for inside a longer word,
@@ -563,6 +593,7 @@ function matchContainment(
         reason: 'contains-familiar',
         evidence: label,
         severity: 'high',
+        marks: placeMarks(at, containedMarks(at.spelled, spelledOf(entry))),
       })
     }
   }
@@ -587,7 +618,209 @@ function matchContainment(
         reason: 'contains-familiar',
         evidence: label,
         severity: isWholeToken ? 'high' : 'medium',
+        marks: isWholeToken ? placeMarks(at, containedMarks(at.spelled, spelledOf(entry))) : undefined,
       })
     }
   }
+}
+
+/**
+ * A label read the way `skeleton` reads it, keeping track of which of its own
+ * code points each character of the skeleton came from.
+ */
+interface Spelled {
+  /** The skeleton, one entry per character the eye sees */
+  chars: string[]
+  /** For each of them, the label's code points it was read from, [first, end) */
+  from: [number, number][]
+  /** The label's own code points */
+  source: string[]
+}
+
+/** One label of the checked address, where it starts, and how it reads. */
+interface LabelAt {
+  label: string
+  /** Code point offset of its first character in the decoded address */
+  start: number
+  /** Null when positions in it cannot be trusted to line up with the drawing */
+  spelled: Spelled | null
+}
+
+/**
+ * The longest run of alignments a single-edit match is followed through. A
+ * name one edit away has a handful. Past this something odd is going on, and
+ * the marks are left out rather than guessed.
+ */
+const MAX_ALIGNMENTS = 32
+
+function mergeDigraph(spelled: Spelled, first: string, second: string, into: string) {
+  const chars: string[] = []
+  const from: [number, number][] = []
+  for (let i = 0; i < spelled.chars.length; i++) {
+    if (spelled.chars[i] === first && spelled.chars[i + 1] === second) {
+      chars.push(into)
+      from.push([spelled.from[i][0], spelled.from[i + 1][1]])
+      i++
+      continue
+    }
+    chars.push(spelled.chars[i])
+    from.push(spelled.from[i])
+  }
+  spelled.chars = chars
+  spelled.from = from
+}
+
+/**
+ * `skeleton`, one character at a time. Null when the result disagrees with
+ * `skeleton` – normalising a character on its own can differ from normalising
+ * the whole label, when a combining mark follows it – since every position
+ * after that point would be off.
+ */
+function spell(label: string): Spelled | null {
+  const source = Array.from(label)
+  const spelled: Spelled = { chars: [], from: [], source }
+  source.forEach((char, at) => {
+    for (const piece of char.normalize('NFKC').toLowerCase()) {
+      spelled.chars.push(CONFUSABLE_FOLD[piece] ?? piece)
+      spelled.from.push([at, at + 1])
+    }
+  })
+  // The same two passes, in the same order, as the replacements in `skeleton`
+  mergeDigraph(spelled, 'r', 'n', 'm')
+  mergeDigraph(spelled, 'v', 'v', 'w')
+  return spelled.chars.join('') === skeleton(label) ? spelled : null
+}
+
+/**
+ * A familiar name's letters. Familiar labels come from stored visit keys, so
+ * one with letters from another alphabet is in its `xn--` form here. Both
+ * sides are compared as they are, and such a name simply never lines up.
+ */
+function spelledOf(entry: IndexedDomain): Spelled | null {
+  if (entry.spelled === undefined)
+    entry.spelled = spell(entry.label)
+  return entry.spelled
+}
+
+/** What the reader sees at one character of the skeleton. */
+function written(spelled: Spelled, at: number): string {
+  const [first, end] = spelled.from[at]
+  return spelled.source.slice(first, end).join('')
+}
+
+/**
+ * The characters of `label` that read as `familiar` but are written
+ * differently, with the familiar name starting at skeleton position `start`.
+ * `pаypal` (Cyrillic а), `paypa1`, `rnicrosoft`.
+ */
+function spellingMarks(label: Spelled | null, familiar: Spelled | null, start: number): Set<number> | null {
+  if (!label || !familiar || start + familiar.chars.length > label.chars.length)
+    return null
+  const marks = new Set<number>()
+  familiar.chars.forEach((_, offset) => {
+    if (written(label, start + offset) !== written(familiar, offset))
+      marks.add(start + offset)
+  })
+  return marks
+}
+
+/**
+ * A familiar name kept inside a longer label. Marked only when it is there
+ * exactly once: with two copies, which one the reader is meant to stop at is
+ * a guess.
+ */
+function containedMarks(label: Spelled | null, familiar: Spelled | null): Set<number> | null {
+  if (!label || !familiar || !familiar.chars.length)
+    return null
+  const found: number[] = []
+  for (let start = 0; start + familiar.chars.length <= label.chars.length; start++) {
+    if (familiar.chars.every((char, offset) => label.chars[start + offset] === char))
+      found.push(start)
+  }
+  return found.length === 1 ? spellingMarks(label, familiar, found[0]) : null
+}
+
+/**
+ * The characters that one edit and any swapped-in letters account for, between
+ * a label and a familiar name one edit apart.
+ *
+ * Every cheapest way of turning one into the other is followed, and only what
+ * all of them agree on is marked. `gogle` against `google` marks nothing: the
+ * letter is missing, and there is nothing to underline. A letter typed twice
+ * can be either copy, so the mark goes to the last one in the run, which is
+ * the same letter whichever was meant.
+ */
+function editMarks(label: Spelled | null, familiar: Spelled | null): Set<number> | null {
+  if (!label || !familiar)
+    return null
+  const a = label.chars
+  const b = familiar.chars
+
+  // Restricted Damerau–Levenshtein over code points, the full table this time,
+  // since the path through it is the answer
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)))
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1)
+    }
+  }
+  // Counted in UTF-16 units, the detector may have seen a different distance
+  if (d[a.length][b.length] !== 1)
+    return null
+
+  const lastOfRun = (at: number) => {
+    // The same letter written the same way. `1` and `l` read alike, but in
+    // `paypa1l` the 1 is the disguise and must not hand its mark to the l.
+    while (at + 1 < a.length && a[at + 1] === a[at] && written(label, at + 1) === written(label, at))
+      at++
+    return at
+  }
+
+  const paths: Set<number>[] = []
+  const walk = (i: number, j: number, marks: number[]): boolean => {
+    if (i === 0 && j === 0) {
+      paths.push(new Set(marks))
+      return paths.length <= MAX_ALIGNMENTS
+    }
+    const here = d[i][j]
+    if (i > 0 && j > 0) {
+      const same = a[i - 1] === b[j - 1]
+      if (d[i - 1][j - 1] + (same ? 0 : 1) === here) {
+        const differs = !same || written(label, i - 1) !== written(familiar, j - 1)
+        if (!walk(i - 1, j - 1, differs ? [...marks, i - 1] : marks))
+          return false
+      }
+    }
+    // A character the label has and the familiar name does not
+    if (i > 0 && d[i - 1][j] + 1 === here && !walk(i - 1, j, [...marks, lastOfRun(i - 1)]))
+      return false
+    // A character the label is missing: nothing in it to mark
+    if (j > 0 && d[i][j - 1] + 1 === here && !walk(i, j - 1, marks))
+      return false
+    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1] && d[i - 2][j - 2] + 1 === here
+      && !walk(i - 2, j - 2, [...marks, i - 2, i - 1])) {
+      return false
+    }
+    return true
+  }
+
+  if (!walk(a.length, b.length, []) || !paths.length)
+    return null
+  return new Set([...paths[0]].filter(at => paths.every(path => path.has(at))))
+}
+
+/** Skeleton positions in one label, turned into code points of the address. */
+function placeMarks(at: LabelAt, marks: Set<number> | null): number[] | undefined {
+  if (!marks?.size || !at.spelled)
+    return undefined
+  const placed = new Set<number>()
+  for (const mark of marks) {
+    const [first, end] = at.spelled.from[mark]
+    for (let point = first; point < end; point++)
+      placed.add(at.start + point)
+  }
+  return [...placed].sort((x, y) => x - y)
 }

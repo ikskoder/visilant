@@ -323,6 +323,52 @@ test('a unicode lookalike is reported under its real ascii name', async ({ conte
   await expect(page.locator('text=Punycode (ASCII)')).toBeVisible()
 })
 
+test('the letter a lookalike changed is underlined in the address', async ({ context, extensionId }) => {
+  await seedVisits(context, 'apple.com', 40, { activeDays: 20 })
+  const page = await openCheckPage(context, extensionId)
+  await page.evaluate(async () => chrome.runtime.sendMessage({ type: 'rebuild-familiar-index', data: {} }))
+
+  // Cyrillic "а" in front
+  await check(page, 'https://аpple.com')
+  await expect(panel(page).locator('[data-lookalike-reason="confusable"]')).toBeVisible({ timeout: 5000 })
+  // On the Unicode spelling, where the letter is. The xn-- spelling has no
+  // such letter to point at, and gets no underline.
+  await expect(page.locator('[data-diff]')).toHaveCount(1)
+  await expect(page.locator('[data-diff]')).toHaveText('а')
+
+  // A letter typed twice: the last of the run
+  await check(page, 'https://applee.com')
+  await expect(panel(page).locator('[data-lookalike-reason="edit-distance"]')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('[data-diff]')).toHaveCount(1)
+
+  // A letter left out has nothing to underline
+  await check(page, 'https://aple.com')
+  await expect(panel(page).locator('[data-lookalike]')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('[data-diff]')).toHaveCount(0)
+})
+
+test('a site on a shared platform says the platform does not run it, until it is familiar', async ({ context, extensionId }) => {
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'https://someone.github.io/login')
+  const line = panel(page).locator('[data-marker="hosted-on"]')
+  await expect(line).toBeVisible({ timeout: 5000 })
+  await expect(line.locator('[data-marker-platform]')).toHaveText('github.io')
+  await expect(page.locator('[data-marker="hosted-on"]')).toHaveCount(1)
+
+  // A name of its own has no platform to speak of
+  await check(page, 'https://some-shop.com')
+  await expect(page.locator('text=Checked domain')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('[data-marker="hosted-on"]')).toHaveCount(0)
+
+  await seedVisits(context, 'myblog.github.io', 40, { activeDays: 20 })
+  await page.reload()
+  await page.waitForTimeout(1500)
+  await check(page, 'https://myblog.github.io/')
+  await expect(panel(page).locator('[data-criterion="visits"]')).toContainText('40', { timeout: 5000 })
+  await expect(page.locator('[data-marker="hosted-on"]')).toHaveCount(0)
+})
+
 test('nothing checkable says so rather than reporting on nothing', async ({ context, extensionId }) => {
   const page = await openCheckPage(context, extensionId)
 

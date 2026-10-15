@@ -13,6 +13,7 @@ import VzIcon from '~/components/VzIcon.vue'
 import VzNotice from '~/components/VzNotice.vue'
 import VzSig from '~/components/VzSig.vue'
 import { useI18n } from '~/composables/useI18n'
+import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { useModalDialog } from '~/composables/useModalDialog'
 import { ADDRESS_FRAMES_KEY } from '~/logic/address-shape'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
@@ -31,6 +32,13 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+// The letters a lookalike changed, underlined in the address. Asked as the
+// lookalike notice under it asks, so both read one answer
+const linkDiff = useLookalikeDiff(
+  () => props.data?.hostname ?? '',
+  () => props.data?.kind === 'email' ? 'email' : undefined,
+)
 
 // Local display toggles – start from the global settings but only affect this panel
 const localCase = ref<'lower' | 'upper'>(settings.value.domainCase)
@@ -189,7 +197,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
           </div>
           <div class="grid gap-1">
             <span class="vz-eyebrow">{{ t('emailDomainLabel') }}</span>
-            <SecureText :text="data.email.analysis.domain" :case-override="localCase" size="l" />
+            <SecureText :text="data.email.analysis.domain" :case-override="localCase" size="l" :diff="linkDiff(data.email.analysis.domain)" />
           </div>
           <VzNotice v-if="data.email.analysis.suspiciousPattern" tone="danger">
             {{ t('emailSuspiciousPattern') }} (.{{ data.email.analysis.suspiciousPattern.label }})
@@ -213,12 +221,12 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
           <VzBadge :tone="statusBadge(familyStats, data.hostname).tone" :icon="statusBadge(familyStats, data.hostname).icon" :data-verdict="statusBadge(familyStats, data.hostname).verdict" class="justify-self-start">
             {{ statusBadge(familyStats, data.hostname).text }}
           </VzBadge>
-          <SecureText :text="displayDomain(data.hostname)" :case-override="localCase" size="l" />
+          <SecureText :text="displayDomain(data.hostname)" :case-override="localCase" size="l" :diff="linkDiff(displayDomain(data.hostname))" />
         </div>
 
         <!-- Punycode. Skipped when it would repeat the hostname verbatim -->
         <VzNotice v-if="data.punycode && data.punycode !== data.hostname" tone="danger">
-          {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" />
+          {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)" />
         </VzNotice>
 
         <!-- Why there are no numbers below, said before they are missed -->
@@ -229,7 +237,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
           <p>{{ t(untrackedReason(data.hostname) === 'ip' ? 'untrackedIpText' : 'untrackedHostText') }}</p>
         </VzNotice>
 
-        <DomainMarkers :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" />
+        <DomainMarkers :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" :familiar="passes(familyStats)" />
         <LookalikeNotice :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" />
 
         <!-- Display toggles for this panel only. Each shows its state by being

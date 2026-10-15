@@ -11,6 +11,7 @@ import VzNotice from '~/components/VzNotice.vue'
 import VzSig from '~/components/VzSig.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
+import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { useModalDialog } from '~/composables/useModalDialog'
 import MismatchTable from './MismatchTable.vue'
 
@@ -31,6 +32,11 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+// The letters a lookalike changed, underlined in the address. Asked as the
+// lookalike notice under it asks, so both read one answer
+const linkDiff = useLookalikeDiff(() => props.data?.domain ?? '')
+const resolvedDiff = useLookalikeDiff(() => props.data?.shortUrl?.resolvedDomain ?? '')
 
 /**
  * The dialog, and where focus lands when it opens.
@@ -205,23 +211,24 @@ function onContinue() {
             :dest-domain="data.domain"
             :dest-is-safe="data.isSafe"
             :dest-stats="data.stats"
+            :dest-diff="linkDiff(data.domain)"
             :show-visit-count="showVisitCount"
             @details="emit('details', $event)"
           />
 
           <!-- Punycode. Skipped when it would repeat the domain verbatim -->
           <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger">
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" />
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)" />
           </VzNotice>
 
-          <DomainMarkers :hostname="data.domain" :url="data.url" />
+          <DomainMarkers :hostname="data.domain" :url="data.url" :familiar="data.isSafe" />
           <LookalikeNotice :hostname="data.domain" />
         </div>
 
         <!-- No mismatch: the address and the evidence about it -->
         <div v-else class="vz-well grid gap-3">
           <div class="dialog-address">
-            <SecureText :text="data.domain" size="l" />
+            <SecureText :text="data.domain" size="l" :diff="linkDiff(data.domain)" />
             <VzBadge v-if="data.shortUrl?.isKnownShortener" tone="danger" icon="link" data-verdict="shortener">
               {{ t('linkTooltipShortener') }}
             </VzBadge>
@@ -257,7 +264,7 @@ function onContinue() {
           <div v-if="data.shortUrl?.status === 'resolved'" class="dialog-section">
             <span class="vz-eyebrow inline-flex items-center gap-1"><VzIcon name="link" />{{ t('linkInterceptRealDestination') }}</span>
             <div class="dialog-address">
-              <SecureText :text="data.shortUrl.resolvedDomain" size="l" />
+              <SecureText :text="data.shortUrl.resolvedDomain" size="l" :diff="resolvedDiff(data.shortUrl.resolvedDomain)" />
               <VzBadge
                 :tone="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).tone"
                 :icon="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).icon"
@@ -275,9 +282,9 @@ function onContinue() {
                  in full. Following a short link is the one case where the user
                  could not have looked at it themselves. -->
             <VzNotice v-if="data.shortUrl.resolvedPunycode" tone="danger" bare>
-              {{ t('linkTooltipPunycode') }}: <SecureText :text="data.shortUrl.resolvedPunycode" size="s" />
+              {{ t('linkTooltipPunycode') }}: <SecureText :text="data.shortUrl.resolvedPunycode" size="s" :diff="resolvedDiff(data.shortUrl.resolvedPunycode)" />
             </VzNotice>
-            <DomainMarkers :hostname="data.shortUrl.resolvedDomain" bare />
+            <DomainMarkers :hostname="data.shortUrl.resolvedDomain" :familiar="data.shortUrl.resolvedIsSafe" bare />
             <LookalikeNotice :hostname="data.shortUrl.resolvedDomain" bare />
 
             <FamiliarityFacts v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)" :stats="data.shortUrl.resolvedStats" />
@@ -315,10 +322,10 @@ function onContinue() {
 
           <!-- Punycode. Skipped when it would repeat the domain verbatim -->
           <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" />
+            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)" />
           </VzNotice>
 
-          <DomainMarkers :hostname="data.domain" :url="data.url" bare />
+          <DomainMarkers :hostname="data.domain" :url="data.url" :familiar="data.isSafe" bare />
           <LookalikeNotice :hostname="data.domain" bare />
 
           <!-- Follow once: when the domain is not a known shortener and short

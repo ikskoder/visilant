@@ -1,5 +1,6 @@
 import type { ComputedRef } from 'vue'
 import type { LookalikeMatch } from '~/logic/domain-similarity'
+import punycode from 'punycode'
 import { computed, shallowReactive, watch } from 'vue'
 
 /**
@@ -118,4 +119,46 @@ export function resetLookalikeCache() {
   generation++
   entries.clear()
   inFlight.clear()
+}
+
+/** An address the way the detector counts positions in it. */
+function asCounted(hostname: string): string {
+  let decoded = hostname
+  try {
+    decoded = punycode.toUnicode(hostname)
+  }
+  catch {}
+  return decoded.toLowerCase().replace(/\.$/, '')
+}
+
+/**
+ * Which characters of `text` to underline, from the answer about `hostname`.
+ *
+ * Only the top match is used: the first line of the notice names one familiar
+ * site, and underlines worked out against another would point at letters that
+ * line is not about. `text` may be the host or a whole email address. Marks go
+ * on it only when it is the same characters the detector counted – the
+ * `xn--` form of a name is not, so it carries no marks, and the Unicode line
+ * beside it does.
+ */
+export function lookalikeDiff(answer: LookalikeAnswer | null, hostname: string, text: string): number[] | undefined {
+  const marks = answer?.status === 'answered' ? answer.matches[0]?.marks : undefined
+  if (!marks?.length || !text)
+    return undefined
+  const at = text.lastIndexOf('@')
+  const host = at < 0 ? text : text.slice(at + 1)
+  if (host.toLowerCase().replace(/\.$/, '') !== asCounted(hostname))
+    return undefined
+  const offset = at < 0 ? 0 : Array.from(text.slice(0, at)).length + 1
+  return marks.map(mark => mark + offset)
+}
+
+/**
+ * `lookalikeDiff` for a view, bound to the same question the lookalike notice
+ * under the address asks. Pass the same hostname and context as the notice,
+ * so the two share one answer and nothing more is sent.
+ */
+export function useLookalikeDiff(hostname: () => string, context: () => Context = () => undefined) {
+  const answer = useLookalikes(hostname, context)
+  return computed(() => (text: string | null | undefined) => lookalikeDiff(answer.value, hostname(), text ?? ''))
 }
