@@ -18,6 +18,7 @@ import { useModalDialog } from '~/composables/useModalDialog'
 import { useTopLayer } from '~/composables/useTopLayer'
 import { ADDRESS_FRAMES_KEY } from '~/logic/address-shape'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
+import { alternateSpelling } from '~/logic/link-safety'
 import { settings } from '~/logic/storage'
 import { isTrackableHostname, untrackedReason } from '~/logic/visit-stats'
 
@@ -89,6 +90,8 @@ const caseTitle = computed(() => localCase.value === 'upper'
 const framesTitle = computed(() => localFrames.value
   ? t.value('framesTurnOff')
   : t.value('framesTurnOn'))
+
+const otherSpelling = computed(() => props.data ? alternateSpelling(displayDomain(props.data.hostname)) : null)
 
 const punycodeTitle = computed(() => localPunycodeMode.value === 'unicode'
   ? t.value('punycodeShowAscii')
@@ -236,10 +239,13 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
           </SecureText>
         </div>
 
-        <!-- Punycode. Skipped when it would repeat the hostname verbatim -->
-        <VzNotice v-if="data.punycode && data.punycode !== data.hostname" tone="danger">
-          {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)">
-            <CopyButton :text="data.punycode" />
+        <!-- The other spelling of the name drawn above. The other one of the two
+             as drawn, not of the hostname as it came: the panel draws the
+             Unicode or the xn-- spelling as its toggle says, and this line
+             repeated the one already on screen. -->
+        <VzNotice v-if="otherSpelling" tone="danger">
+          {{ t('linkTooltipPunycode') }}: <SecureText :text="otherSpelling" size="s" :diff="linkDiff(otherSpelling)">
+            <CopyButton :text="otherSpelling" />
           </SecureText>
         </VzNotice>
 
