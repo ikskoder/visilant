@@ -1,26 +1,28 @@
 # Justfile
 
 # === ALIASES ===
-cl: clear
-dc: dev-chrome
-df: dev-firefox
-dfr: dev-firefox-run
-bc: build-chrome
-bf: build-firefox
-ad: android-devices
-ar: android-run
-ae: android-e2e
-fe: firefox-e2e
-ss: shots
-sw: shots-watch
-nf: nix-firefox
-nc: nix-chrome
-nk: nix-check
-cb: container-build
-cu: container-up
-cs: container-shell
-ck: container-check
-au: audit
+# Real aliases rather than recipes that call the long one, so arguments reach
+# it: `just ss -g popup` is `just shots -g popup`.
+alias cl := clear
+alias dc := dev-chrome
+alias df := dev-firefox
+alias dfr := dev-firefox-run
+alias bc := build-chrome
+alias bf := build-firefox
+alias ad := android-devices
+alias ar := android-run
+alias ae := android-e2e
+alias fe := firefox-e2e
+alias ss := shots
+alias sw := shots-watch
+alias nf := nix-firefox
+alias nc := nix-chrome
+alias nk := nix-check
+alias cb := container-build
+alias cu := container-up
+alias cs := container-shell
+alias ck := container-check
+alias au := audit
 
 # Clear dist and manifest
 clear:
@@ -97,15 +99,16 @@ android-devices:
 # `just ar --firefox-apk org.mozilla.firefox` to test on release instead.
 
 # Build for Firefox and install on a USB phone as a temporary add-on
+[positional-arguments]
 android-run *ARGS:
   #!/usr/bin/env bash
   set -euo pipefail
   pnpm build-firefox
-  extra="{{ ARGS }}"
+  extra=("$@")
   args=()
   adb_target=()
 
-  if [[ "$extra" != *--android-device* ]]; then
+  if [[ " ${extra[*]} " != *" --android-device"* ]]; then
     device=$(adb devices | awk '$2 == "device" { print $1 }' | head -n1)
     if [[ -z "$device" ]]; then
       echo "adb sees no ready device. Check the cable, USB debugging, and the authorisation prompt on the phone." >&2
@@ -116,7 +119,7 @@ android-run *ARGS:
     adb_target=(-s "$device")
   fi
 
-  if [[ "$extra" != *--firefox-apk* ]]; then
+  if [[ " ${extra[*]} " != *" --firefox-apk"* ]]; then
     packages=$(adb "${adb_target[@]}" shell pm list packages | tr -d '\r')
     # Nightly first: temporary add-ons are the most reliable there
     for apk in org.mozilla.fenix org.mozilla.firefox_beta org.mozilla.firefox; do
@@ -128,14 +131,15 @@ android-run *ARGS:
     done
   fi
 
-  pnpm start:firefox-android "${args[@]}" $extra
+  pnpm start:firefox-android "${args[@]}" "${extra[@]}"
 
 # Build for Firefox, install on the phone, then run the Android e2e tests.
 # `just ar` has to be running in another shell for the install to stay put – it
 # is a temporary add-on, and it goes when web-ext lets go.
+[positional-arguments]
 android-e2e *ARGS:
   pnpm build-firefox
-  pnpm test:android {{ ARGS }}
+  pnpm test:android "$@"
 
 # === TESTING ===
 
@@ -145,11 +149,12 @@ android-e2e *ARGS:
 # SHOTS=<dir> to keep a screenshot of every warning.
 
 # Build for Firefox, then run the desktop Firefox e2e tests
+[positional-arguments]
 firefox-e2e *ARGS:
   @test -x "${FIREFOX:-}" || { echo 'Set FIREFOX to a Firefox binary, 140 or later, e.g. FIREFOX=$(command -v firefox) just fe' >&2; exit 1; }
   pnpm build-firefox
-  pnpm test:firefox {{ ARGS }}
-  if [ -n "${FIREFOX_MIN:-}" ]; then FIREFOX="$FIREFOX_MIN" pnpm test:firefox {{ ARGS }}; fi
+  pnpm test:firefox "$@"
+  if [ -n "${FIREFOX_MIN:-}" ]; then FIREFOX="$FIREFOX_MIN" pnpm test:firefox "$@"; fi
 
 # === SCREENSHOTS ===
 # Every case the extension can draw, made up on purpose, for a person to look
@@ -157,15 +162,20 @@ firefox-e2e *ARGS:
 # light, dark and at phone width into .tmp/shots/index.html, a catalogue with a
 # note per case. Nothing is compared or asserted. Built from a copy of the tree
 # under .tmp, so extension/ and a running `pnpm dev` are left alone. Extra args
-# go to Playwright, e.g. `just shots -g popup`. See e2e-shots/README.md.
+# go to Playwright, e.g. `just shots -g popup` or `just shots -g 'long|idn'`.
+# They reach it as typed: `[positional-arguments]` hands them over as "$@"
+# rather than pasting them into the shell line, where a `|` became a pipe and
+# a space split a pattern in two. See e2e-shots/README.md.
 
 # Build, draw every case, write the catalogue
+[positional-arguments]
 shots *ARGS:
-  pnpm exec esno e2e-shots/run.ts {{ ARGS }}
+  pnpm exec esno e2e-shots/run.ts "$@"
 
 # Draw them again after every change to the sources
+[positional-arguments]
 shots-watch *ARGS:
-  pnpm exec esno e2e-shots/watch.ts {{ ARGS }}
+  pnpm exec esno e2e-shots/watch.ts "$@"
 
 # Run unit tests
 test:
@@ -225,13 +235,13 @@ container-shell:
 container-check:
   cd .devcontainer && docker compose exec workspace bash .devcontainer/scripts/check-workspace.sh
 
-# Run a plain command inside the container, e.g. `just c pnpm test run`
+# Run a command inside the container, e.g. `just c pnpm test run`
 #
-# Plain means plain: `just` substitutes {{ ARGS }} into a shell line, so quotes,
-# pipes, redirects, `&&` and apostrophes are all read by the shell on the HOST
-# before docker ever sees them, and there is no way to escape that from inside a
-# recipe. Anything with punctuation in it goes through `just container-shell`
-# instead. compose.yaml already sets working_dir, so no `cd` is needed, and PATH
-# comes from the image so pnpm, just and gitleaks are all found.
+# The words reach docker as typed, one argument each, and no shell reads them
+# on the host. So a pipe or a redirect is not one either: write
+# `just c bash -c 'pnpm lint | tail'`, or use `just container-shell`.
+# compose.yaml already sets working_dir, so no `cd` is needed, and PATH comes
+# from the image so pnpm, just and gitleaks are all found.
+[positional-arguments]
 c +ARGS:
-  cd .devcontainer && docker compose exec workspace {{ ARGS }}
+  cd .devcontainer && docker compose exec workspace "$@"
