@@ -5,6 +5,7 @@ import type { TamperWatch } from '~/logic/tamper-watch'
 import type { CheckPanelData, DomainFamilyInfo, EmailRecipientInfo, LinkTooltipData, RawPayloadInfo, ShortUrlInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { createApp, watch, watchEffect } from 'vue'
+import { raiseTopLayer } from '~/composables/useTopLayer'
 import { listenForScriptedClipboardWrites } from '~/logic/clipboard-signal'
 import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
@@ -1845,6 +1846,7 @@ function startTamperWatch() {
     onTamper: (reason) => {
       sendMessageSafe('tampering-detected', { reason, url: window.location.href })
     },
+    raise: raiseTopLayer,
   })
 }
 

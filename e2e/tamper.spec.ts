@@ -143,29 +143,49 @@ test('a page that keeps replacing its body raises the alarm', async ({ context }
   await expect.poll(() => alarmRaised(context), { timeout: 8000 }).toBe('!!!')
 })
 
-test('covering the panel with an overlay raises the alarm', async ({ context }) => {
-  const page = await openHostilePage(context)
-
+/** Bring the typing warning up the way a user would, and wait until it is drawn. */
+async function raiseWarning(page: any, context: any) {
   // Typing is only answered once the background has said how familiar the site
   // is, and the badge is the visible end of that same round trip
   await expect.poll(() => badgeSettled(context), { timeout: 15000 }).toBe(true)
-
-  // The cover only matters while something of ours is on screen, so bring the
-  // warning up first the way a user would, by typing on an unfamiliar site
   await page.click('#victim')
   await page.keyboard.type('hunter2')
-
   // Waited for rather than assumed: on a loaded machine the panel can take
   // seconds, and covering nothing proves nothing
   await expect.poll(() => panelShowing(page), { timeout: 15000 }).toBe(true)
+}
 
-  // Our z-index is already the maximum, so a later sibling holding the same
-  // value paints above us
+test('an overlay at our z-index no longer covers the panel', async ({ context }) => {
+  const page = await openHostilePage(context)
+  await raiseWarning(page, context)
+
+  // A later sibling holding the maximum z-index used to paint above us. The
+  // warning is in the browser's top layer now, which no z-index reaches.
   await attack(page, `
     const cover = document.createElement('div')
     cover.setAttribute('style', 'position: fixed; inset: 0; z-index: 2147483647; background: #fff')
     document.body.appendChild(cover)
   `, 0)
 
-  await expect.poll(() => alarmRaised(context), { timeout: 8000 }).toBe('!!!')
+  await page.waitForTimeout(3000)
+  expect(await panelShowing(page)).toBe(true)
+  expect(await alarmRaised(context)).not.toBe('!!!')
+})
+
+test('a page that keeps its own popover over the panel raises the alarm', async ({ context }) => {
+  const page = await openHostilePage(context)
+  await raiseWarning(page, context)
+
+  // The one thing that still lands above the top layer is a later entry in it.
+  // Ours is raised back once, and a page that answers by raising its own again
+  // is reported.
+  await attack(page, `
+    const cover = document.createElement('div')
+    cover.popover = 'manual'
+    cover.setAttribute('style', 'inset: 0; width: 100vw; height: 100vh; margin: 0; border: 0; background: #fff')
+    document.body.appendChild(cover)
+    setInterval(() => { cover.hidePopover(); cover.showPopover() }, 200)
+  `, 0)
+
+  await expect.poll(() => alarmRaised(context), { timeout: 15000 }).toBe('!!!')
 })

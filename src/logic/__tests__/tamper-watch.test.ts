@@ -5,7 +5,7 @@
  */
 import type { TamperReason, TamperWatch, TamperWatchOptions } from '../tamper-watch'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { applyHostStyles, createTamperWatch, HOST_STYLES, isHiddenByAncestor, isHostStyleIntact, isVisuallyHidden } from '../tamper-watch'
+import { applyHostStyles, createTamperWatch, filterHides, HOST_STYLES, isHiddenByAncestor, isHostStyleIntact, isVisuallyHidden } from '../tamper-watch'
 
 function settle() {
   return new Promise(resolve => setTimeout(resolve, 0))
@@ -574,5 +574,62 @@ describe('what an ordinary page does on its way in', () => {
 
     container.removeAttribute('style')
     expect(isHostStyleIntact(container)).toBe(false)
+  })
+})
+
+describe('a panel in the browser top layer', () => {
+  function mount(body: string, rootStyle = '') {
+    document.documentElement.innerHTML = `<head></head><body ${body}></body>`
+    document.documentElement.setAttribute('style', rootStyle)
+    const container = document.createElement('div')
+    applyHostStyles(container)
+    document.body.appendChild(container)
+    return container
+  }
+
+  // The top layer is drawn free of an ancestor's opacity, measured in both
+  // engines, so a fading body hides nothing and raises nothing
+  it('is not hidden by an ancestor that is only transparent', () => {
+    const container = mount('style="opacity: 0"')
+    expect(isHiddenByAncestor(container, true)).toBe(false)
+    expect(isHiddenByAncestor(container, false)).toBe(true)
+  })
+
+  it('is still hidden by an ancestor taken out of the layout', () => {
+    expect(isHiddenByAncestor(mount('style="display: none"'), true)).toBe(true)
+  })
+
+  // Firefox applies a filter on the root element to the top layer too
+  it('is hidden by the root fading out through a filter, and not by any other filter', () => {
+    expect(isHiddenByAncestor(mount('', 'filter: opacity(0)'), true)).toBe(true)
+    expect(isHiddenByAncestor(mount('', 'filter: invert(1) hue-rotate(180deg)'), true)).toBe(false)
+    document.documentElement.removeAttribute('style')
+  })
+
+  it('reads the filters that leave nothing readable, and not a dark-mode inversion', () => {
+    expect(filterHides('opacity(0)')).toBe(true)
+    expect(filterHides('opacity(0%)')).toBe(true)
+    expect(filterHides('brightness(0)')).toBe(true)
+    expect(filterHides('contrast(0)')).toBe(true)
+    expect(filterHides('blur(20px)')).toBe(true)
+    expect(filterHides('invert(1) hue-rotate(180deg)')).toBe(false)
+    expect(filterHides('opacity(0.9) blur(1px)')).toBe(false)
+    expect(filterHides('none')).toBe(false)
+  })
+
+  // A page's modal library makes everything beside its dialog inert, our
+  // container included. Lifted while our panel shows, and never an alarm.
+  it('lifts inert off the container while a panel shows, without an alarm', async () => {
+    const container = mount('')
+    const shadow = container.attachShadow({ mode: 'open' })
+    const onTamper = vi.fn()
+    const watch = createTamperWatch({ container, shadow, guardedNodes: [], onTamper, isSelfRemoving: () => false })
+    watch.setUiVisible(true)
+
+    container.setAttribute('inert', '')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(container.hasAttribute('inert')).toBe(false)
+    expect(onTamper).not.toHaveBeenCalled()
+    watch.stop()
   })
 })

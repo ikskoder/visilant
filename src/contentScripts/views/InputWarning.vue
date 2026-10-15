@@ -2,8 +2,9 @@
 import VzIcon from '~/components/VzIcon.vue'
 import VzSig from '~/components/VzSig.vue'
 import { useI18n } from '~/composables/useI18n'
+import { useTopLayer } from '~/composables/useTopLayer'
 
-defineProps<{
+const props = defineProps<{
   safetyLevel: boolean | null
   show: boolean
   warningType: 'input' | 'copy'
@@ -14,13 +15,22 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+// Above anything the page can lay over it, without blocking the page – see
+// `useTopLayer`
+const layer = useTopLayer({
+  mode: 'popover',
+  visible: () => props.show && props.safetyLevel === false,
+})
 </script>
 
 <template>
-  <Transition name="slide-fade">
+  <Transition name="slide-fade" appear @enter="layer.enter">
+    <!-- `left-auto bottom-auto`: a popover is pinned to all four edges until told otherwise -->
     <div
       v-if="show && safetyLevel === false"
-      class="fixed top-4 right-4 z-[2147483647] pointer-events-auto popup-container vz-overlay vz-toast vz-toast--danger"
+      popover="manual"
+      class="vz-layer fixed top-4 right-4 left-auto bottom-auto z-[2147483647] pointer-events-auto popup-container vz-overlay vz-toast vz-toast--danger"
       role="alert"
       data-verdict="unfamiliar"
     >

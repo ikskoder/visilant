@@ -164,18 +164,66 @@ export function isVisuallyHidden(container: HTMLElement): boolean {
  * What tells those apart from a page hiding the panel is that they stop. So this
  * is only believed when it is still true on the next check, a second later.
  */
-export function isHiddenByAncestor(container: HTMLElement): boolean {
+export function isHiddenByAncestor(container: HTMLElement, inTopLayer = false): boolean {
   const view = container.ownerDocument.defaultView
   if (!view)
     return false
 
   for (let node = container.parentElement; node; node = node.parentElement) {
     const style = view.getComputedStyle(node)
-    if (style.display === 'none' || style.visibility === 'hidden' || isTransparent(style.opacity))
+    if (style.display === 'none' || style.contentVisibility === 'hidden')
+      return true
+    // What the browser's top layer is drawn free of: an ancestor's opacity, and
+    // its visibility, which the host's own `visibility: visible` overrides
+    // anyway. Counted against a panel drawn the ordinary way only.
+    if (!inTopLayer && (style.visibility === 'hidden' || isTransparent(style.opacity)))
       return true
   }
 
+  // The one ancestor effect Firefox applies to the top layer as well, measured:
+  // a filter that fades the root element out. Only the fade, since a filter on
+  // the root is how a dark-mode extension inverts the page.
+  if (inTopLayer && filterHides(view.getComputedStyle(container.ownerDocument.documentElement).filter))
+    return true
+
   return false
+}
+
+/**
+ * Does this filter leave nothing readable?
+ *
+ * A fade, a black-out, a grey-out or a heavy blur. `invert` and `hue-rotate`
+ * are left alone, since that is how a dark-mode extension turns a page.
+ */
+export function filterHides(filter: string): boolean {
+  for (const [, name, raw] of filter.matchAll(/([a-z-]+)\(([^)]*)\)/g)) {
+    const text = raw.trim()
+    const amount = text.endsWith('%') ? Number.parseFloat(text) / 100 : Number.parseFloat(text)
+    if (!Number.isFinite(amount))
+      continue
+    if ((name === 'opacity' || name === 'brightness') && amount <= 0.05)
+      return true
+    if (name === 'contrast' && amount <= 0.05)
+      return true
+    if (name === 'blur' && amount >= 8)
+      return true
+  }
+  return false
+}
+
+/**
+ * Is one of our surfaces up in the browser's top layer right now?
+ *
+ * Asked by selector, so an engine that knows neither pseudo-class answers no
+ * and keeps every ordinary check.
+ */
+export function isInTopLayer(shadow: ShadowRoot | HTMLElement): boolean {
+  try {
+    return shadow.querySelector(':modal, :popover-open') !== null
+  }
+  catch {
+    return false
+  }
 }
 
 /**
@@ -295,6 +343,14 @@ export interface TamperWatchOptions {
   visibleCheckInterval?: number
   /** How long a repair is given to prove it held – see `confirmRepair`. */
   repairConfirmMs?: number
+  /**
+   * Put our top-layer surfaces back on top, over a modal or popover the page
+   * opened after them. True when there was something to raise. Tried once
+   * per showing, before the panel is reported covered: the next cover while
+   * the same surface is up is reported, so a page that raises its own again,
+   * however slowly, is caught rather than fought over for ever.
+   */
+  raise?: () => boolean
 }
 
 export interface TamperWatch {
@@ -346,6 +402,8 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
   let lastReportAt = 0
   /** An ancestor was found hiding us last time round – see `isHiddenByAncestor`. */
   let ancestorHidPreviously = false
+  /** Raised once already while this surface is up, so the next cover is reported. */
+  let raisedThisShowing = false
   /** The confirmation window that is open, if one is – see `confirmRepair`. */
   let confirmTimer: ReturnType<typeof setTimeout> | null = null
   /** Structural losses seen since the open window began. */
@@ -382,6 +440,12 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
 
   function checkStructure(): TamperReason | null {
     return isAttached() ? null : 'removed'
+  }
+
+  /** Our container made inert leaves the panel drawn and nothing in it clickable. */
+  function liftInert() {
+    if (container.hasAttribute('inert'))
+      container.removeAttribute('inert')
   }
 
   function checkAppearance(): TamperReason | null {
@@ -431,6 +495,13 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
     // Only the inline guard is repairable from here. Restoring it when the panel
     // is hidden by something else – a rule further up the tree – would put the
     // same styles back on every mutation the restore itself produces, forever.
+    // `inert` on our container is not read as tampering. A page's own modal
+    // library makes everything beside its dialog inert while it is open, our
+    // container included, and an alarm there would sound on ordinary sites.
+    // It is taken off again while something of ours is showing, quietly.
+    if (timer !== null)
+      liftInert()
+
     if (!isHostStyleIntact(container) || container.hasAttribute('hidden')) {
       // Put the panel back before saying anything: the warning is worth more
       // when the thing it is warning about is visible again.
@@ -622,7 +693,7 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
     bodyObserver.observe(doc.body, { childList: true })
   if (doc.documentElement)
     documentObserver.observe(doc.documentElement, { childList: true })
-  attributeObserver.observe(container, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] })
+  attributeObserver.observe(container, { attributes: true, attributeFilter: ['style', 'class', 'hidden', 'inert'] })
   shadowObserver.observe(shadow, { childList: true, subtree: true })
 
   return {
@@ -630,6 +701,7 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
       if (stopped)
         return
       if (!visible) {
+        raisedThisShowing = false
         if (timer !== null) {
           clearInterval(timer)
           timer = null
@@ -672,14 +744,26 @@ export function createTamperWatch(options: TamperWatchOptions): TamperWatch {
         // Believed only on the second sighting: a page fading its body in, or
         // holding it hidden until a web font loads, looks exactly like this for
         // a moment and is not tampering with anything
-        const ancestorHides = isHiddenByAncestor(container)
+        liftInert()
+        const topLayer = isInTopLayer(shadow)
+        const ancestorHides = isHiddenByAncestor(container, topLayer)
         const ancestorConfirmed = ancestorHides && ancestorHidPreviously
         ancestorHidPreviously = ancestorHides
 
-        const problem = checkAppearance()
+        let problem = checkAppearance()
           ?? (ancestorConfirmed ? 'hidden' : null)
           ?? (isPanelOffScreen(container, shadow) ? 'hidden' : null)
           ?? (findCoveringElement(container, shadow) ? 'covered' : null)
+
+        // Covered while in the top layer means the page opened a modal or a
+        // popover after ours. Raised once, and reported if it is covered again.
+        if (!topLayer)
+          raisedThisShowing = false
+        if (problem === 'covered' && topLayer && options.raise && !raisedThisShowing) {
+          raisedThisShowing = true
+          if (options.raise())
+            problem = null
+        }
         if (problem)
           report(problem)
       }

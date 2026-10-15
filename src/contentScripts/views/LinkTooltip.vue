@@ -14,6 +14,7 @@ import VzSig from '~/components/VzSig.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useLookalikeDiff } from '~/composables/useLookalikes'
+import { useTopLayer } from '~/composables/useTopLayer'
 import MismatchTable from './MismatchTable.vue'
 
 const props = defineProps<{
@@ -35,6 +36,13 @@ const emit = defineEmits<{
 }>()
 
 const fontScale = computed(() => props.fontSize / 100)
+
+// Above anything the page can lay over it, without blocking the page – see
+// `useTopLayer`
+const layer = useTopLayer({
+  mode: 'popover',
+  visible: () => props.visible && Boolean(props.data),
+})
 
 // The letters a lookalike changed, underlined in the address. Asked exactly as
 // the lookalike notice under it asks, so both read one answer. A raw text
@@ -186,11 +194,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Transition name="tooltip-fade">
+  <Transition name="tooltip-fade" appear @enter="layer.enter">
+    <!-- `right-auto bottom-auto`: a popover is pinned to all four edges until
+         told otherwise, and this one is placed by its top and left -->
     <div
       v-if="visible && data"
       ref="tooltipEl"
-      class="fixed z-[2147483647] pointer-events-auto"
+      popover="manual"
+      class="vz-layer fixed right-auto bottom-auto z-[2147483647] pointer-events-auto"
       :class="`tooltip-placement-${placement}`"
       :style="tooltipStyle"
       @mouseenter="emit('hoverEnter')"
