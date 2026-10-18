@@ -9,6 +9,10 @@
  * A case that could not be drawn keeps its card and says why, rather than
  * leaving a gap nobody notices, and a view in the source that no case shows is
  * listed at the top.
+ *
+ * A run of part of the cases is merged into what the catalogue had: the cases
+ * it ran get their new pictures and outcomes, the rest keep theirs. What it has
+ * is kept in state.json next to the pictures.
  */
 /* eslint-disable no-console -- a command-line step, and its output is the report */
 import fs from 'node:fs'
@@ -19,6 +23,8 @@ const ROOT = path.resolve(__dirname, '..')
 const SHOTS = path.join(ROOT, '.tmp/shots')
 const RUN = path.join(SHOTS, 'run')
 const REPORT = path.join(SHOTS, 'report.json')
+const STATE = path.join(SHOTS, 'state.json')
+const CASES = path.join(SHOTS, 'cases.json')
 
 // The views a case has to show. A new file here that no case lists is flagged.
 const VIEW_DIRS = ['src/contentScripts/views', 'src/popup', 'src/options', 'src/welcome']
@@ -37,6 +43,7 @@ interface Meta {
   order: number
   project: string
   test: string
+  scale?: number
 }
 
 type Outcome = { status: 'passed' } | { status: 'skipped', reason: string } | { status: 'failed', error: string }
@@ -55,38 +62,128 @@ function readMetas(): Meta[] {
       .map(f => JSON.parse(fs.readFileSync(path.join(RUN, entry.name, f), 'utf8')) as Meta))
 }
 
-interface Scenario { file: string, title: string, line: number, outcomes: Map<string, Outcome> }
+interface Scenario { file: string, title: string, line: number, outcomes: Record<string, Outcome> }
 
-/** Every scenario the run had, with what became of it in each project. */
-function readScenarios(): { scenarios: Scenario[], runErrors: string[] } {
-  if (!fs.existsSync(REPORT))
-    return { scenarios: [], runErrors: ['The run left no report, so it probably never started. The terminal says why.'] }
-  const report = JSON.parse(fs.readFileSync(REPORT, 'utf8'))
-  const byId = new Map<string, Scenario>()
+/** What the catalogue holds, across runs of part of the cases. */
+interface State {
+  /** Whether a run of every case went into it, so a view no case shows can be told */
+  complete: boolean
+  fullAt?: string
+  updatedAt: string
+  scenarios: Record<string, Scenario>
+}
+
+/** Every scenario in a Playwright JSON report, run or only listed. */
+function walkReport(report: any, visit: (spec: any, test: any) => void) {
   const walk = (suite: any) => {
     for (const spec of suite.specs ?? []) {
-      const id = `${spec.file}|${spec.title}`
-      const scenario = byId.get(id) ?? { file: spec.file, title: spec.title, line: spec.line, outcomes: new Map() }
-      byId.set(id, scenario)
-      for (const t of spec.tests ?? []) {
-        const result = t.results?.at(-1)
-        if (!result)
-          continue
-        if (result.status === 'passed')
-          scenario.outcomes.set(t.projectName, { status: 'passed' })
-        else if (result.status === 'skipped')
-          scenario.outcomes.set(t.projectName, { status: 'skipped', reason: t.annotations?.find((a: any) => a.type === 'skip')?.description ?? 'skipped' })
-        else
-          scenario.outcomes.set(t.projectName, { status: 'failed', error: String(result.error?.message ?? result.status).replace(ANSI, '').split('\n')[0].replace(/^Error: /, '') })
-      }
+      for (const t of spec.tests ?? [])
+        visit(spec, t)
     }
     for (const child of suite.suites ?? [])
       walk(child)
   }
   for (const suite of report.suites ?? [])
     walk(suite)
+}
+
+/** Every scenario the run had, with what became of it in each project. */
+function readScenarios(): { scenarios: Scenario[], runErrors: string[], unfinished: number } {
+  if (!fs.existsSync(REPORT))
+    return { scenarios: [], runErrors: ['The run left no report, so it probably never started. The terminal says why.'], unfinished: 0 }
+  const report = JSON.parse(fs.readFileSync(REPORT, 'utf8'))
+  const byId = new Map<string, Scenario>()
+  let unfinished = 0
+  walkReport(report, (spec, t) => {
+    const id = `${spec.file}|${spec.title}`
+    const scenario: Scenario = byId.get(id) ?? { file: spec.file, title: spec.title, line: spec.line, outcomes: {} }
+    byId.set(id, scenario)
+    const result = t.results?.at(-1)
+    if (!result) {
+      // Stopped with Ctrl+C, or never reached
+      unfinished++
+      return
+    }
+    if (result.status === 'passed')
+      scenario.outcomes[t.projectName] = { status: 'passed' }
+    else if (result.status === 'skipped')
+      scenario.outcomes[t.projectName] = { status: 'skipped', reason: t.annotations?.find((a: any) => a.type === 'skip')?.description ?? 'skipped' }
+    else
+      scenario.outcomes[t.projectName] = { status: 'failed', error: String(result.error?.message ?? result.status).replace(ANSI, '').split('\n')[0].replace(/^Error: /, '') }
+  })
   const runErrors = (report.errors ?? []).map((e: any) => String(e.message ?? e).replace(ANSI, '').slice(0, 400))
-  return { scenarios: [...byId.values()], runErrors }
+  // A case that never got to run in any column did not run at all
+  return { scenarios: [...byId.values()].filter(s => Object.keys(s.outcomes).length), runErrors, unfinished }
+}
+
+function readState(): State | undefined {
+  try {
+    return JSON.parse(fs.readFileSync(STATE, 'utf8'))
+  }
+  catch {
+    return undefined
+  }
+}
+
+const pictureOf = (meta: Meta) => path.join(RUN, meta.project, `${meta.name}.json`)
+
+function dropPicture(meta: Meta) {
+  fs.rmSync(pictureOf(meta), { force: true })
+  fs.rmSync(pictureOf(meta).replace(/\.json$/, '.png'), { force: true })
+}
+
+/**
+ * Fold a run of part of the cases into what the catalogue had. Each case and
+ * column the run went through is replaced whole, pictures included: a picture
+ * it did not take again is one the case no longer takes, or one from before
+ * it failed. A case gone from the files since loses its card.
+ */
+function mergeRun(fresh: Scenario[], now: string, whole: boolean): { state: State, before?: State, redrawn: Set<string> } {
+  const filtered = process.env.SHOTS_FILTERED === '1'
+  const before = filtered ? readState() : undefined
+  // A run of everything that broke off is not one, or every view the missing
+  // cases show would be reported as having no case until the next full run
+  const complete = !filtered && whole
+  const state: State = before
+    ? { ...before, updatedAt: fresh.length ? now : before.updatedAt }
+    : { complete, fullAt: complete ? now : undefined, updatedAt: now, scenarios: {} }
+  const ran = new Set<string>()
+  for (const scenario of fresh) {
+    const id = `${scenario.file}|${scenario.title}`
+    const kept = state.scenarios[id] ?? { ...scenario, outcomes: {} }
+    state.scenarios[id] = { ...kept, line: scenario.line, outcomes: { ...kept.outcomes, ...scenario.outcomes } }
+    for (const project of Object.keys(scenario.outcomes))
+      ran.add(`${id}|${project}`)
+  }
+
+  const started = Number(process.env.SHOTS_STARTED ?? 0)
+  const existing = filtered && fs.existsSync(CASES) ? listedCases() : undefined
+  for (const meta of readMetas()) {
+    const key = `${meta.file}|${meta.test}|${meta.project}`
+    if (ran.has(key) && fs.statSync(pictureOf(meta)).mtimeMs < started)
+      dropPicture(meta)
+    else if (existing && !existing.has(key))
+      dropPicture(meta)
+  }
+  if (existing) {
+    for (const [id, scenario] of Object.entries(state.scenarios)) {
+      for (const project of Object.keys(scenario.outcomes)) {
+        if (!existing.has(`${id}|${project}`))
+          delete scenario.outcomes[project]
+      }
+      if (!Object.keys(scenario.outcomes).length)
+        delete state.scenarios[id]
+    }
+  }
+  fs.writeFileSync(STATE, JSON.stringify(state, null, 2))
+  return { state, before, redrawn: new Set(fresh.map(s => `${s.file}|${s.title}`)) }
+}
+
+/** Every case and column in the files right now, as `file|title|project`. */
+function listedCases() {
+  const cases = new Set<string>()
+  walkReport(JSON.parse(fs.readFileSync(CASES, 'utf8')), (spec, t) => cases.add(`${spec.file}|${spec.title}|${t.projectName}`))
+  return cases
 }
 
 function uncovered(metas: Meta[]): string[] {
@@ -156,11 +253,14 @@ function placeOf(name: string): [string, string] {
   return hit ? [hit[0], hit[1]] : ['Other', 'Not placed in the contents yet']
 }
 
-interface Card { surface: string, topic: string, rank: number, name: string, title: string, note?: string, cells: Map<string, string>, failed: boolean }
+interface Card { surface: string, topic: string, rank: number, name: string, title: string, note?: string, cells: Map<string, string>, failed: boolean, redrawn: boolean }
 
 function main() {
+  const now = new Date()
+  const { scenarios: fresh, runErrors, unfinished } = readScenarios()
+  const { state, before, redrawn } = mergeRun(fresh, now.toISOString(), fresh.length > 0 && !runErrors.length && !unfinished)
+  const scenarios = Object.values(state.scenarios)
   const metas = readMetas()
-  const { scenarios, runErrors } = readScenarios()
   const metasByTest = new Map<string, Meta[]>()
   for (const m of metas)
     metasByTest.set(`${m.file}|${m.test}`, [...(metasByTest.get(`${m.file}|${m.test}`) ?? []), m])
@@ -175,20 +275,24 @@ function main() {
   let failedCount = 0
   for (const scenario of scenarios) {
     const own = metasByTest.get(`${scenario.file}|${scenario.title}`) ?? []
-    const failed = [...scenario.outcomes.values()].some(o => o.status === 'failed')
-    failedCount += [...scenario.outcomes.values()].filter(o => o.status === 'failed').length
+    const outcomes = Object.values(scenario.outcomes)
+    const failed = outcomes.some(o => o.status === 'failed')
+    failedCount += outcomes.filter(o => o.status === 'failed').length
+    const isRedrawn = redrawn.has(`${scenario.file}|${scenario.title}`)
     const missing = (project: string) => {
-      const outcome = scenario.outcomes.get(project)
+      const outcome = scenario.outcomes[project]
       if (outcome?.status === 'failed')
         return cell(project, note(outcome.error, true))
       if (outcome?.status === 'skipped')
         return cell(project, note(`Not shown here: ${outcome.reason}.`, false))
-      return cell(project, note('Not part of this run.', false))
+      if (outcome?.status === 'passed')
+        return cell(project, note('This case draws nothing in this column.', false))
+      return cell(project, note('Not drawn yet. Run the whole set, or this case, to see it.', false))
     }
     const names = [...new Set(own.map(m => m.name))]
     if (names.length === 0) {
       const name = slug(scenario.title)
-      cards.push({ ...place(name), rank: fileRank(scenario.file) + scenario.line * 100, name, title: scenario.title, cells: new Map(PROJECTS.map(p => [p, missing(p)])), failed })
+      cards.push({ ...place(name), rank: fileRank(scenario.file) + scenario.line * 100, name, title: scenario.title, cells: new Map(PROJECTS.map(p => [p, missing(p)])), failed, redrawn: isRedrawn })
       continue
     }
     for (const name of names) {
@@ -199,7 +303,9 @@ function main() {
         const src = `run/${project}/${name}.png`
         cells.set(project, meta ? cell(project, `<a class="shot" href="${src}" data-project="${project}"><img loading="lazy" src="${src}"${pngSize(path.join(SHOTS, src))} alt=""></a>`) : missing(project))
       }
-      cards.push({ ...place(name), rank: fileRank(first.file) + first.order, name, title: first.title, note: first.note, cells, failed })
+      const scale = own.find(m => m.name === name && m.scale)?.scale
+      const scaleNote = scale ? `Drawn at text size ${scale} (SHOTS_SCALE).` : undefined
+      cards.push({ ...place(name), rank: fileRank(first.file) + first.order, name, title: first.title, note: [first.note, scaleNote].filter(Boolean).join(' ') || undefined, cells, failed, redrawn: isRedrawn })
     }
   }
 
@@ -217,11 +323,15 @@ function main() {
   const counter = (list: Card[]) => `<span class="count">${badCount(list) ? `<span class="dot">● ${badCount(list)}</span> ` : ''}${list.length}</span>`
 
   const filtered = process.env.SHOTS_FILTERED === '1'
-  const missingViews = filtered ? [] : uncovered(metas)
+  const missingViews = state.complete ? uncovered(metas) : []
+  const fresher = cards.filter(c => c.redrawn)
+  const when = (iso: string) => new Date(iso).toLocaleString('en-GB')
   const notices = [
     ...runErrors.map(e => `<li><b>The run itself went wrong:</b> ${escapeHtml(e)}</li>`),
     ...(failedCount ? [`<li><b>${failedCount} ${failedCount === 1 ? 'picture' : 'pictures'} could not be drawn.</b> The screen the case waits for never appeared, so there was nothing to take a picture of. Usually that is a bug in the extension rather than in the case. Each red card says what was missing.</li>`] : []),
-    ...(filtered ? ['<li>Only part of the cases were drawn this time, so whether every view has a case was not checked.</li>'] : []),
+    ...(filtered && fresher.length ? [`<li><b>Only ${fresher.length} ${fresher.length === 1 ? 'case was' : 'cases were'} drawn again just now:</b> ${fresher.map(c => `<a href="#${c.name}">${escapeHtml(c.title)}</a>`).join(', ')}. The rest are as they were${before ? ` on ${when(before.updatedAt)}` : ''}.</li>`] : []),
+    ...(unfinished ? [`<li><b>The run stopped before ${unfinished} ${unfinished === 1 ? 'picture' : 'pictures'}.</b> Their cards keep what they had before, or say they were not drawn yet.</li>`] : []),
+    ...(state.complete ? [] : ['<li>The whole set has not been drawn yet, only parts of it, so whether every view has a case was not checked. <code>just shots</code> draws everything.</li>']),
     ...cards.filter(c => c.surface === 'Other' && !c.failed).map(c => `<li><b>No topic for</b> <code>${c.name}</code>, so it is under Other at the bottom. Add a line to <code>SECTIONS</code> in e2e-shots/gallery.ts.</li>`),
     ...missingViews.map(v => `<li><b>No case shows</b> <code>${v}</code>. Add one to e2e-shots/ that lists it in <code>covers</code>.</li>`),
   ]
@@ -241,9 +351,11 @@ function main() {
 <nav>
   <header>
     <h1>Visilant – every screen</h1>
-    <div class="meta">${cards.length} cases, drawn ${new Date().toLocaleString('en-GB')}${failedCount ? `<br><span class="missing" title="Show only these">● ${failedCount} ${failedCount === 1 ? 'picture is' : 'pictures are'} missing</span>` : ''}</div>
+    <div class="meta">${cards.length} cases${state.fullAt ? `, all drawn ${when(state.fullAt)}` : ''}${state.updatedAt !== state.fullAt ? `, some again ${when(state.updatedAt)}` : ''}${failedCount ? `<br><span class="missing" title="Show only these">● ${failedCount} ${failedCount === 1 ? 'picture is' : 'pictures are'} missing</span>` : ''}</div>
     <input type="search" autocomplete="off" placeholder="Find a case  ( / )">
     <div class="tools">${PROJECTS.map(p => `<label><input type="checkbox" data-column="${p}" checked> ${p}</label>`).join('')}${failedCount ? '<label><input type="checkbox" data-only-bad autocomplete="off"> only missing</label>' : ''}</div>
+    <div class="review"><button class="review-btn" type="button" title="Go through every picture from the first, and come back to where you stopped">Full review</button>
+      <div class="review-offer" hidden><p></p><button type="button" data-review="continue">Continue there</button><button type="button" data-review="restart">Start from the first</button></div></div>
   </header>
   <div class="toc">${toc}</div>
 </nav>
@@ -255,7 +367,7 @@ ${body}
   <div class="stage"><img alt=""></div>
   <div class="caption">
     <h4></h4><p class="note"></p>
-    <div class="meta"><span class="where"></span><code></code><span class="proj"></span><span class="pos"></span><button class="copy" type="button">Copy name</button>
+    <div class="meta"><span class="review-tag">Review</span><span class="where"></span><code></code><span class="proj"></span><span class="pos"></span><button class="copy" type="button">Copy name</button>
       <span class="keys"><kbd>←</kbd> <kbd>→</kbd> picture &nbsp; <kbd>↑</kbd> <kbd>↓</kbd> case &nbsp; <kbd>c</kbd> copy &nbsp; <kbd>z</kbd> full size &nbsp; <kbd>Esc</kbd> close</span></div>
   </div>
   <button class="nav-btn prev" type="button" title="Previous picture">‹</button>
@@ -266,12 +378,12 @@ ${body}
 </body></html>`
   fs.writeFileSync(path.join(SHOTS, 'index.html'), html)
 
-  console.log(`[shots] ${cards.length} cases in .tmp/shots/index.html${failedCount ? `, ${failedCount} pictures could not be drawn (red dots there)` : ''}${missingViews.length ? `, ${missingViews.length} views no case shows` : ''}`)
+  console.log(`[shots] ${filtered ? `${fresher.length} drawn again, ` : ''}${cards.length} cases in .tmp/shots/index.html${failedCount ? `, ${failedCount} pictures could not be drawn (red dots there)` : ''}${missingViews.length ? `, ${missingViews.length} views no case shows` : ''}`)
 
   // An empty catalogue is never a clean run. Most often a `-g` that matched
   // nothing, which Playwright reports and then exits on with success.
-  if (!cards.length) {
-    console.error('[shots] no case was drawn. A -g filter matches case titles, not file or case names')
+  if (!fresh.length) {
+    console.error('[shots] no case was drawn. A -g filter matches the name a case has in its file, test(\'copy warning\', …), and the file name, not the title or picture name on its card')
     process.exitCode = 1
   }
 }

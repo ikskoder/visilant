@@ -162,7 +162,8 @@ firefox-e2e *ARGS:
 # light, dark and at phone width into .tmp/shots/index.html, a catalogue with a
 # note per case. Nothing is compared or asserted. Built from a copy of the tree
 # under .tmp, so extension/ and a running `pnpm dev` are left alone. Extra args
-# go to Playwright, e.g. `just shots -g popup` or `just shots -g 'long|idn'`.
+# go to Playwright, e.g. `just shots -g popup` or `just shots -g 'long|idn'`,
+# and redraw only the matching cards, keeping the rest of the catalogue.
 # They reach it as typed: `[positional-arguments]` hands them over as "$@"
 # rather than pasting them into the shell line, where a `|` became a pipe and
 # a space split a pattern in two. See e2e-shots/README.md.

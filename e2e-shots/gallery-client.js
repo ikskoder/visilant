@@ -1,5 +1,6 @@
 // Runs inside the catalogue page that gallery.ts writes: the contents that
-// follow the scroll, the search box, the copy buttons and the full screen view.
+// follow the scroll, the search box, the copy buttons, the full screen view and
+// the full review, which remembers where it stopped.
 (function () {
   const nav = document.querySelector('.toc')
   const cards = Array.from(document.querySelectorAll('main .card'))
@@ -192,12 +193,17 @@
   const lbImg = lightbox.querySelector('.stage img')
   const lbStage = lightbox.querySelector('.stage')
   let current = null
+  // Set while the full review below is going through the pictures
+  let reviewing = false
 
   /** Every picture that can be seen right now, in page order. */
   const pictures = () => Array.from(document.querySelectorAll('main figure a.shot')).filter(a => a.offsetParent !== null)
 
   function show(link) {
     current = link
+    if (reviewing)
+      saveReviewPlace(link)
+    lightbox.classList.toggle('reviewing', reviewing)
     const card = link.closest('.card')
     const project = link.dataset.project
     lightbox.dataset.mode = 'fit'
@@ -226,6 +232,7 @@
   }
 
   function close() {
+    reviewing = false
     lightbox.hidden = true
     document.body.style.overflow = ''
     const card = current?.closest('.card')
@@ -323,6 +330,90 @@
     }
   })
 
+  // ---------- Full review ----------
+  // Every picture from the first to the last, in the full screen view. Where it
+  // stopped is kept in this browser by case name and column, so it survives a
+  // reload and a new run of the screenshots, which keeps the names.
+  const reviewButton = document.querySelector('nav .review-btn')
+  const offer = document.querySelector('nav .review-offer')
+
+  function saveReviewPlace(link) {
+    const all = pictures()
+    store.set('review-at', JSON.stringify({ id: link.closest('.card').id, project: link.dataset.project, at: Date.now(), last: all.indexOf(link) === all.length - 1 }))
+  }
+
+  function readReviewPlace() {
+    try {
+      return JSON.parse(store.get('review-at') ?? 'null')
+    }
+    catch {
+      return null
+    }
+  }
+
+  /** The picture the review stopped at, or the nearest one left of its case. */
+  function reviewPicture(place) {
+    const card = place && document.getElementById(place.id)
+    if (!card)
+      return null
+    const visible = Array.from(card.querySelectorAll('a.shot')).filter(a => a.offsetParent !== null)
+    return visible.find(a => a.dataset.project === place.project) ?? visible[0] ?? null
+  }
+
+  function startReview(link) {
+    offer.hidden = true
+    if (!link)
+      return
+    reviewing = true
+    // So that closing the view leaves the page at the same case
+    link.closest('.card').scrollIntoView({ block: 'start' })
+    open(link)
+  }
+
+  /** A review goes through everything, so a search or "only missing" is lifted first. */
+  function showEverything() {
+    if (!searching())
+      return
+    search.value = ''
+    if (onlyBad)
+      onlyBad.checked = false
+    applyFilter()
+  }
+
+  reviewButton.addEventListener('click', () => {
+    if (!offer.hidden) {
+      offer.hidden = true
+      return
+    }
+    showEverything()
+    const place = readReviewPlace()
+    const link = reviewPicture(place)
+    if (!place) {
+      startReview(pictures()[0])
+      return
+    }
+    const text = offer.querySelector('p')
+    const when = new Date(place.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    const continueButton = offer.querySelector('[data-review=continue]')
+    if (!link) {
+      text.textContent = `You stopped at ${place.id} on ${when}, but that case is not in the catalogue any more.`
+      continueButton.hidden = true
+    }
+    else if (place.last && link === pictures().at(-1)) {
+      text.textContent = `You went through all ${pictures().length} pictures on ${when}.`
+      continueButton.hidden = true
+    }
+    else {
+      const all = pictures()
+      text.textContent = ''
+      text.append('You stopped at ', Object.assign(document.createElement('b'), { textContent: link.closest('.card').dataset.title }), ` · ${link.dataset.project}, picture ${all.indexOf(link) + 1} of ${all.length}, on ${when}.`)
+      continueButton.hidden = false
+    }
+    offer.hidden = false
+  })
+  offer.querySelector('[data-review=continue]').addEventListener('click', () => startReview(reviewPicture(readReviewPlace())))
+  offer.querySelector('[data-review=restart]').addEventListener('click', () => startReview(pictures()[0]))
+
   // A link to one picture opens it again, so a reload keeps the place
   let hash = ''
   try {
@@ -337,8 +428,12 @@
   if (card) {
     card.scrollIntoView({ block: 'start' })
     const link = project && Array.from(card.querySelectorAll('a.shot')).find(a => a.dataset.project === project && a.offsetParent !== null)
-    if (link)
+    if (link) {
+      // A reload in the middle of a review carries on with it
+      const place = readReviewPlace()
+      reviewing = place?.id === id && place?.project === project
       open(link)
+    }
   }
   onScroll()
 })()

@@ -194,6 +194,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         project: testInfo.project.name,
         test: testInfo.title,
         theme,
+        // A part redrawn at another size sits among pictures at the usual one
+        scale: Number(process.env.SHOTS_SCALE) || undefined,
       }, null, 2))
       shotCounter.set(testInfo.testId, (shotCounter.get(testInfo.testId) ?? 0) + 1)
     })

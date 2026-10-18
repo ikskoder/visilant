@@ -9,11 +9,11 @@ Nothing is compared or asserted. It is not a test suite, the tests in `e2e/` are
 | What | Command |
 |---|---|
 | Draw every case and write the catalogue | `just shots` (`just ss`) |
-| Only some of them | `just shots -g popup`, `just shots --project=dark tooltip` (arguments go to Playwright, a bare word picks scenario files) |
+| Only some of them | `just shots -g popup`, `just shots --project=dark tooltip` (arguments go to Playwright, a bare word picks scenario files). `-g` matches the name a case has in its file, `test('copy warning', …)`, and the file name, not the title or picture name on its card. Only the matching cards are redrawn, the rest of the catalogue stays as it was |
 | Everything at another text size (the popup's A- / A+, 80 to 150) | `SHOTS_SCALE=150 just shots popup check` |
 | Draw them again after every change to `src/` | `just shots-watch` (`just sw`) |
 
-Then open `.tmp/shots/index.html` in a browser. A full run draws about 340 cases three times each and takes a while, with three browsers at once. A filtered run is much quicker.
+Then open `.tmp/shots/index.html` in a browser. A full run draws about 340 cases three times each and takes a while, with three browsers at once. A filtered run is much quicker, and the top of the catalogue lists the cases it drew again. A full run starts the catalogue from scratch, which is also how a picture drawn under `SHOTS_SCALE` leaves it.
 
 The terminal only counts. Anything that went wrong with a case is on its card.
 
@@ -22,6 +22,7 @@ The terminal only counts. Anything that went wrong with a case is on its card.
 - Contents on the left, by what you are looking at (on a web page, toolbar popup, check page, settings, welcome page, toolbar button) and then by topic (lookalikes, short links, email links…), with a count per topic. They follow the scroll: the topic you are in opens and the case you are on is marked. A search box (`/`) narrows everything to the cases whose name, title or note has the words. Tick boxes hide a column.
 - One card per case: what it is, a note on how it comes about and what to look for, and the screen in `light` and `dark` on a 1280×800 desktop and on `phone`, a 400 px wide window with no mouse, which is how the extension sees a touchscreen. Pictures are never drawn larger than they were taken.
 - A click on a picture opens it over the whole window with its title and note. `←` `→` go through the pictures, `↑` `↓` jump to the case before or after in the same column, `z` switches a shrunk picture to full size, `Esc` closes. The address bar remembers the picture, so a reload opens it again.
+- `Full review` at the top goes through every picture from the first in the full screen view, with a `Review` mark on it. The browser remembers the last picture seen in a review, by case name and column, so the button next time offers to continue there or start again, also after a reload or a new run. A picture opened by a click outside the review does not move that place. A review lifts the search and "only missing" first, hidden columns stay hidden.
 - `Copy name` on a card or in the full screen view (`c`) copies a line like `[shot tt-look-two-edits · dark] Lookalike: two letters different`, to paste into a message about that picture.
 - A case that could not be drawn keeps its card, marked red with the reason, and gets a red dot in the contents. The screen the case waits for never appeared, which is usually a bug in the extension. A case skipped on purpose on one column says why (on a phone there is nothing to hover with).
 - At the top: any view under `src/contentScripts/views`, `src/popup`, `src/options` or `src/welcome` that no case shows.
@@ -37,7 +38,7 @@ The scenario files are tables. Add a row to the one for its surface, and if the 
 - `helpers.ts` holds the gestures: resting on a link, the context-menu items, a QR result, opening the popup as the toolbar would, and `workerFetch`, which decides what the service worker's network answers while it follows a short link, since nothing real is ever contacted.
 - The in-page UI sits in a closed shadow root, which no locator can reach. Cases wait for its text through the DevTools protocol (`waitForUi`), press its buttons the same way (`clickUi`), and then take the picture. Each picture is retaken until two in a row agree, so a screen still settling is not caught halfway.
 - The toolbar button cannot be photographed, so `toolbar.shot.ts` records the icon and badge the background actually set for each kind of site and lays them out on a page of their own.
-- `gallery.ts` writes `index.html` from the pictures and Playwright's report, with `gallery.css` and `gallery-client.js` inlined into it. Its `SECTIONS` table puts each case under a topic by its picture name, and a name it does not know lands under Other. `progress-reporter.ts` is the count in the terminal.
+- `gallery.ts` writes `index.html` from the pictures and Playwright's report, folded into `state.json`, which holds what every case looked like the last time it ran. A filtered run replaces only the cases and columns it ran, pictures included, and drops the cards of cases no longer in the files, which `run.ts` lists first (`cases.json`). `gallery.css` and `gallery-client.js` are inlined into the page. Its `SECTIONS` table puts each case under a topic by its picture name, and a name it does not know lands under Other. `progress-reporter.ts` is the count in the terminal.
 
 ## Limits
 

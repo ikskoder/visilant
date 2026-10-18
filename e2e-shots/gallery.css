@@ -11,6 +11,14 @@ nav .missing { color: #c00; cursor: pointer; text-decoration: underline dotted }
 nav .tools { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; font-size: 13px }
 nav .tools label { user-select: none; white-space: nowrap }
 nav input[type=search] { width: 100%; margin-top: 8px; padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit }
+nav .review { margin-top: 10px }
+nav .review button { font: 13px system-ui, sans-serif; padding: 4px 10px; border: 1px solid #9bb7e0; border-radius: 6px; background: #eef3fb; color: #1a5fb4; cursor: pointer }
+nav .review button:hover { background: #dfe9f8 }
+nav .review-btn { width: 100% }
+nav .review-offer { margin-top: 8px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; font-size: 12.5px }
+nav .review-offer p { margin: 0 0 8px }
+nav .review-offer button { margin: 0 6px 4px 0 }
+nav .review-offer button[data-review=restart] { border-color: #ccc; background: #fff; color: #444 }
 .toc { overflow-y: auto; padding: 6px 8px 40px; flex: 1 }
 .surface { margin-top: 10px }
 .surface > .s-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #777; padding: 4px 8px; font-weight: 600 }
@@ -65,6 +73,8 @@ body.hide-light figure.light, body.hide-dark figure.dark, body.hide-phone figure
 #lb .caption .note { color: #bbb; margin: 3px 0 0; max-width: 110ch }
 #lb .caption .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 6px; color: #999; font-size: 12px }
 #lb .caption code { color: #ccc }
+#lb .review-tag { display: none; padding: 0 6px; border-radius: 4px; background: #1a5fb4; color: #fff }
+#lb.reviewing .review-tag { display: inline }
 #lb .caption .proj { padding: 0 6px; border-radius: 4px; background: #333; color: #ddd }
 #lb button.copy { background: #2a2a2e; border-color: #555; color: #ddd }
 #lb button.copy.done { background: #1f4a2a; border-color: #3d8a52; color: #cfe9d5 }
