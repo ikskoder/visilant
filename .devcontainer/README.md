@@ -13,7 +13,7 @@ It is deliberately *not* about reproducible builds. Those are already handled, a
 | `pnpm install`, `dev`, `build`, `lint`, `typecheck`, `test`, `test:e2e` | container |
 | `just nf` / `nc` / `nk` / `verify` – the Nix release build | **host** |
 | `just ar` / `ae` – the phone | **host** |
-| Loading the built extension into a browser | **host**, from `extension/` |
+| Loading the built extension into a browser | **host**, from `extension/` (Chrome) or `extension-firefox/` (Firefox) |
 
 Two of those cannot move, and it is worth knowing why rather than trying again later.
 
@@ -21,7 +21,7 @@ Two of those cannot move, and it is worth knowing why rather than trying again l
 
 **The phone needs its USB device.** `just ar` drives adb against a device node under `/dev/bus/usb`, and passing a device through is a privilege grant.
 
-**Loading the extension into a browser** happens on the host because `extension/` is on the bind mount: a build made in the container is visible to a browser on the host straight away, with nothing to copy.
+**Loading the extension into a browser** happens on the host because `extension/` and `extension-firefox/` are on the bind mount: a build made in the container is visible to a browser on the host straight away, with nothing to copy.
 
 ## Using it
 
@@ -46,7 +46,7 @@ Opening the folder in VS Code does the install for you: `postCreateCommand` runs
 
 The container has its own `node_modules` on a named volume, and the host keeps the one in the working copy.
 
-pnpm records the absolute path of its store in `node_modules/.modules.yaml` and rebuilds the whole directory when that path changes. The same folder sits under your projects directory on the host and at `/workspaces/visilant` in here, so one shared `node_modules` would belong to whichever side installed last and every switch would cost a full reinstall. The first attempt did not even get that far: pnpm refused to continue and asked to remove the host's copy.
+pnpm records the absolute path of its store in `node_modules/.modules.yaml` and rebuilds the whole directory when that path changes. The checkout sits at the same path on both sides (see below), but the store does not: it is under your home directory on the host and in `/root/.local/share/pnpm` in here. So one shared `node_modules` would belong to whichever side installed last and every switch would cost a full reinstall. The first attempt did not even get that far: pnpm refused to continue and asked to remove the host's copy.
 
 Both sides genuinely need one, because `just ar` runs web-ext from the host's `node_modules` and cannot move in here. So they get one each, from one shared `pnpm-lock.yaml`. `extension/`, `src/` and the lockfile itself are all on the bind mount, which is what actually matters.
 
@@ -66,6 +66,14 @@ Every line here was checked in a running container rather than trusted from the 
 - No `ports:`. `pnpm dev` is six `vite build --watch` processes writing files, not a server, so there is nothing to publish. If one is ever needed, write it as `"127.0.0.1:3303:3303"` – the short form binds `0.0.0.0` and inserts its own firewall rules, so a host firewall does not save you.
 - `user: root` under **rootless** docker, which maps container uid 0 to your host account: files written into the bind are yours, and an escape lands as your account rather than as host root. On a rootful daemon this inverts and the service has to run as `node` instead. `check-workspace.sh` reads `/proc/self/uid_map` and says which daemon it found.
 
+## The checkout sits at the same path as on the host
+
+Inside the container the project is mounted at the path it has on the host, not at a fixed `/workspaces/<name>`. Everything that keys state by absolute path then agrees across the two sides: the ESLint cache, which used to go cold on every switch, paths in error messages and stack traces, and per-project tool state kept outside the repository.
+
+`scripts/workspace-env.sh` makes that work. It runs on the host before Compose reads anything (VS Code calls it as `initializeCommand`, every `just container-*` recipe calls it first) and writes the path to `.devcontainer/.env`, which is gitignored. `compose.yaml` takes the mount point, `working_dir` and the `node_modules` volume from that one variable, and `devcontainer.json` opens `${localWorkspaceFolder}`, which is the same path. The script refuses a checkout opened through a symlink, since it would then be mounted under one name and report itself under another, and a checkout under a directory the container already uses, such as `/root` or `/opt`. `check-workspace.sh` confirms on every start that the container is where the host thinks.
+
+A `node_modules` volume installed while the checkout was mounted elsewhere keeps the old path in every launcher in `.bin`, and `pnpm install` calls that tree up to date. `check-workspace.sh` warns about it, and the fix is to empty the volume and install again.
+
 ## No path from anybody's machine goes in here
 
 `compose.yaml` names no directory that exists on one computer only, not even through `${HOME}`. Anything of that shape goes in `compose.override.yaml`, which is gitignored, and `compose.override.yaml.example` shows the pattern. `scripts/check-no-host-paths.sh` enforces this on every commit and in CI, and it derives the machine-specific patterns at run time from the hostname, the git e-mail and where the checkout sits, so the check itself spells nothing out.
@@ -74,7 +82,7 @@ Every line here was checked in a running container rather than trusted from the 
 
 Two places exist for anything that belongs to your setup rather than to the project, and both are gitignored:
 
-- `compose.override.yaml` – extra mounts, environment, an `env_file`. `docker compose` run from this directory picks it up automatically, which is what every `just container-*` recipe does. `compose.override.yaml.example` shows the shape.
+- `compose.override.yaml` – extra mounts, environment, an `env_file`. `docker compose` run from this directory picks it up automatically, which is what every `just container-*` recipe does, and `devcontainer.json` lists it for VS Code. When there is none, `scripts/workspace-env.sh` creates it from `compose.override.yaml.example`, which adds nothing, because Compose refuses a listed file that does not exist.
 - `local/` – anything else: scripts, notes, a tool you install for yourself.
 
 Tools installed with `npm install -g` inside the container land in `/root/.local`, which is on the `home` volume, so they survive a restart and an image rebuild and go when the volume does. That is deliberate: it is where something unpinned and personal belongs, rather than in the image, where it would be a pin the whole project has to carry.
@@ -107,8 +115,6 @@ This is inherent to a bind-mounted dev container rather than a mistake in this o
 **The container has outbound network access.** It needs the npm registry and the advisory feed, and nothing here filters what else it could reach. A compromised dependency inside cannot read your home directory, but it can still talk to the internet.
 
 **gitleaks is a different build in different places** – 8.30.1 in the image, and whatever `flake.lock` pins in the devshell and therefore in CI. Both are recent. Keeping them identical would mean a rule nobody enforces, so they are allowed to differ.
-
-**`.eslintcache` is shared and keyed by absolute path.** It lives on the bind mount, and ESLint keys its entries by absolute file path - which differs between the host and `/workspaces/visilant`. Alternating sides means `pnpm lint` is always a cold cache and each run rewrites the file. Harmless, but it explains why the cache never seems to help.
 
 **Disk.** The image is 1.4 GB. The volumes start at roughly 1.6 GB and grow with whatever gets installed into them - the editor server alone is about 0.6 GB once VS Code has connected once, and anything installed globally inside the container lands on the `home` volume as well. The two Firefox builds add about 0.6 GB to the image. Measured here after a while in use, before Firefox was added: 1.4 GB image, 1.3 GB `home`, 0.8 GB `node_modules`, 0.6 GB `vscode-server`, so about 4 GB, on top of the host's own 2.1 GB of `node_modules` that this design deliberately keeps. `just container-down` keeps the volumes, `docker compose -f .devcontainer/compose.yaml down -v` removes them.
 

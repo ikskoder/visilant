@@ -24,9 +24,10 @@ alias cs := container-shell
 alias ck := container-check
 alias au := audit
 
-# Clear dist and manifest
+# Clear both builds: extension/ (Chrome) and extension-firefox/ (Firefox)
 clear:
   pnpm clear
+  pnpm clear-firefox
 
 # === DEVELOPMENT ===
 
@@ -148,13 +149,15 @@ android-e2e *ARGS:
 # release and ESR 140. Pass part of a test name to run only that, and
 # SHOTS=<dir> to keep a screenshot of every warning.
 
-# Build for Firefox, then run the desktop Firefox e2e tests
+# extension/ is left alone: it is what your own browser loads, and rebuilding it
+# under a running browser breaks the extension there.
+# Build a Firefox copy under .tmp/e2e-firefox, then run the Firefox e2e tests on it
 [positional-arguments]
 firefox-e2e *ARGS:
   @test -x "${FIREFOX:-}" || { echo 'Set FIREFOX to a Firefox binary, 140 or later, e.g. FIREFOX=$(command -v firefox) just fe' >&2; exit 1; }
-  pnpm build-firefox
-  pnpm test:firefox "$@"
-  if [ -n "${FIREFOX_MIN:-}" ]; then FIREFOX="$FIREFOX_MIN" pnpm test:firefox "$@"; fi
+  pnpm exec esno scripts/build-copy.ts .tmp/e2e-firefox firefox
+  VISILANT_EXTENSION=.tmp/e2e-firefox/extension-firefox pnpm test:firefox "$@"
+  if [ -n "${FIREFOX_MIN:-}" ]; then FIREFOX="$FIREFOX_MIN" VISILANT_EXTENSION=.tmp/e2e-firefox/extension-firefox pnpm test:firefox "$@"; fi
 
 # === SCREENSHOTS ===
 # Every case the extension can draw, made up on purpose, for a person to look
@@ -186,9 +189,16 @@ test:
 test-watch:
   pnpm test
 
-# Run e2e tests (requires nix develop for Playwright libs)
+# Run e2e tests on whatever is in extension/ (requires nix develop for Playwright libs)
 test-e2e:
   pnpm test:e2e
+
+# Leaves extension/ alone. Extra args go to Playwright, e.g. `just e2e --workers=3`
+# Build a Chrome copy under .tmp/e2e-chrome, then run the Chromium e2e tests on it
+[positional-arguments]
+e2e *ARGS:
+  pnpm exec esno scripts/build-copy.ts .tmp/e2e-chrome chrome
+  VISILANT_EXTENSION=.tmp/e2e-chrome/extension pnpm exec playwright test "$@"
 
 # Run e2e tests with visible browser
 test-e2e-headed:
@@ -216,24 +226,29 @@ audit-staged:
 # your home directory. See .devcontainer/README.md for what deliberately stays
 # on the host - the Nix release build and anything involving the phone.
 
+# Compose needs the checkout's path in .devcontainer/.env, the same file VS
+# Code writes through initializeCommand. See the script for why.
+_container-env:
+  @bash .devcontainer/scripts/workspace-env.sh
+
 # Build the container image
-container-build:
+container-build: _container-env
   cd .devcontainer && docker compose build workspace
 
 # Start the container in the background
-container-up:
+container-up: _container-env
   cd .devcontainer && docker compose up -d workspace
 
 # Stop it, keeping the volumes
-container-down:
+container-down: _container-env
   cd .devcontainer && docker compose down
 
 # A shell inside it
-container-shell:
+container-shell: _container-env
   cd .devcontainer && docker compose exec workspace bash -l
 
 # Re-run the start-up checks and print what the hardening actually did
-container-check:
+container-check: _container-env
   cd .devcontainer && docker compose exec workspace bash .devcontainer/scripts/check-workspace.sh
 
 # Run a command inside the container, e.g. `just c pnpm test run`
@@ -244,5 +259,5 @@ container-check:
 # compose.yaml already sets working_dir, so no `cd` is needed, and PATH comes
 # from the image so pnpm, just and gitleaks are all found.
 [positional-arguments]
-c +ARGS:
+c +ARGS: _container-env
   cd .devcontainer && docker compose exec workspace "$@"

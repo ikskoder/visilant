@@ -182,6 +182,27 @@ for shell_bin in bash sh; do
   [[ -n "$probe" ]] || warn "an interactive $shell_bin does not find pnpm on PATH"
 done
 
+# ── 6b. The checkout is where the host says it is ────────────────────────────
+# compose.yaml mounts it at the host's own path, so absolute paths agree on both
+# sides. A mount under another name, or a start that skipped workspace-env.sh,
+# would quietly bring back two sets of path-keyed state.
+if [[ -z "${VISILANT_WORKSPACE:-}" ]]; then
+  fail "VISILANT_WORKSPACE is not set - the container was not started through compose.yaml."
+elif [[ "$(pwd -P)" != "$VISILANT_WORKSPACE" ]]; then
+  warn "running in $(pwd -P), but the checkout is mounted at $VISILANT_WORKSPACE."
+else
+  ok "checkout at the host's own path"
+fi
+# pnpm bakes the absolute node_modules path into every launcher in .bin, and a
+# volume installed when the checkout was mounted elsewhere keeps the old one.
+# `pnpm install` reports such a tree as up to date and leaves it as it is.
+launcher=$(grep -l -m1 'NODE_PATH=' node_modules/.bin/* 2>/dev/null | head -1)
+if [[ -n "$launcher" && -n "${VISILANT_WORKSPACE:-}" ]] \
+  && ! grep -qF "$VISILANT_WORKSPACE/node_modules" "$launcher"; then
+  warn "node_modules was installed with the checkout at another path."
+  warn "  Reinstall it: rm -rf node_modules/* node_modules/.[!.]* && pnpm install --frozen-lockfile"
+fi
+
 # ── 7. Is there anything to run ──────────────────────────────────────────────
 # The container's node_modules is its own volume and starts empty, so a fresh
 # container prints a clean bill of health over a tree where `pnpm lint` answers

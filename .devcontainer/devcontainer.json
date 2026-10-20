@@ -1,15 +1,19 @@
 {
   "name": "Visilant",
-  // Only the committed file. A machine-specific compose.override.yaml is
-  // picked up automatically by `docker compose` run from this directory,
-  // which is how the justfile recipes drive it - but the Dev Containers
-  // extension passes -f explicitly, and that turns the automatic pickup off.
-  // Listing a file here that is gitignored would break the build for anyone
-  // who has not created it, so add the second entry locally if you need one
-  // and take care not to commit that edit.
-  "dockerComposeFile": ["compose.yaml"],
+  // The Dev Containers extension passes -f explicitly, which turns off
+  // Compose's automatic pickup of compose.override.yaml, so it is listed here.
+  // The file is gitignored and machine-specific, and initializeCommand creates
+  // it from the example when it is missing, because Compose refuses a -f file
+  // that does not exist.
+  "dockerComposeFile": ["compose.yaml", "compose.override.yaml"],
   "service": "workspace",
-  "workspaceFolder": "/workspaces/visilant",
+
+  // Runs on the host before Compose reads anything. It writes .env with the
+  // checkout's path, so the project sits at the same absolute path in the
+  // container as on the host, and creates the override above if needed. The
+  // array form keeps a path with a space in it one argument.
+  "initializeCommand": ["bash", "${localWorkspaceFolder}/.devcontainer/scripts/workspace-env.sh", "${localWorkspaceFolder}"],
+  "workspaceFolder": "${localWorkspaceFolder}",
   "remoteUser": "root",
 
   // Deliberately empty, and it has to stay that way. A Dev Container Feature

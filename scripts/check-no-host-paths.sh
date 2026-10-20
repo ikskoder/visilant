@@ -58,23 +58,21 @@ add_derived() {
   # single line it reads.
   patterns+=("$(printf '%s' "$value" | sed 's/[][\.*^$(){}?+|\\]/\\&/g')")
 }
-# Inside the dev container two of these describe the container rather than the
-# developer: the hostname is a throwaway hex id, and the checkout sits at
-# /workspaces/visilant, which is the deliberately machine-independent path that
-# every file under .devcontainer/ is supposed to contain. Deriving from them in
-# here flagged the container's own compose.yaml and Dockerfile as leaks.
+# Inside the dev container the hostname describes the container rather than the
+# developer: it is a throwaway hex id, and deriving from it would flag nothing
+# real. The checkout path is fine in both places, because the container mounts
+# the checkout at the host's own path (.devcontainer/scripts/workspace-env.sh).
 #
-# The e-mail is the same in both places, so it stays. The authoritative runs are
-# the pre-commit hook and CI, both of which are outside the container and get
-# the full set - but a reduced set must say so rather than look identical to a
-# complete one.
+# The authoritative runs are the pre-commit hook and CI, both of which are
+# outside the container and get the full set - but a reduced set must say so
+# rather than look identical to a complete one.
 derived_note=""
 if [[ -e /.dockerenv || -e /run/.containerenv ]]; then
-  derived_note="  (in a container: hostname and checkout-path patterns are off, they would describe the container)"
+  derived_note="  (in a container: the hostname pattern is off, it would describe the container)"
 else
   add_derived "$(hostname 2>/dev/null || true)"
-  add_derived "$(git rev-parse --show-toplevel 2>/dev/null || true)"
 fi
+add_derived "$(git rev-parse --show-toplevel 2>/dev/null || true)"
 # The committer's e-mail: from the configuration where there is one, and from the
 # tip commit where there is not. A CI runner is the second case - `actions/
 # checkout` configures no identity and the image carries no global one - so this
@@ -214,11 +212,11 @@ case "$mode" in
     else
       echo "  (e-mail case skipped: neither the configuration nor the tip commit named one)"
     fi
+    must_hit "$(git rev-parse --show-toplevel)"
     if [[ -z "$derived_note" ]]; then
       must_hit "$(hostname)"
-      must_hit "$(git rev-parse --show-toplevel)"
     else
-      echo "  (hostname and checkout-path cases skipped: not applicable in a container)"
+      echo "  (hostname case skipped: not applicable in a container)"
     fi
     must_miss "see https://www.virustotal.com/gui$h/url for more"
     must_miss "the home directory inside the container is /root"

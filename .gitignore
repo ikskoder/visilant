@@ -11,6 +11,7 @@
 dist
 dist-ssr
 extension/manifest.json
+extension-firefox/
 node_modules
 src/auto-imports.d.ts
 src/components.d.ts
@@ -35,3 +36,6 @@ result-*
 # Local-only dev container additions: anything installed or mounted for this
 # machine alone. Nothing under here is part of the project.
 .devcontainer/local/
+
+# Written by .devcontainer/scripts/workspace-env.sh, names where this checkout sits.
+.devcontainer/.env

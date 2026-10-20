@@ -35,7 +35,10 @@ services:
     # check-workspace.sh prints the answer on every start.
     user: root
     command: sleep infinity
-    working_dir: /workspaces/visilant
+    # The checkout's own path on the host, so absolute paths agree on both
+    # sides. scripts/workspace-env.sh writes it to .env, and VS Code and every
+    # `just container-*` recipe run that script first.
+    working_dir: ${VISILANT_WORKSPACE:?run .devcontainer/scripts/workspace-env.sh first, or use the just recipes}
 
     # No `ports:` on purpose. `pnpm dev` is five `vite build --watch` processes
     # writing files, not a server - the only dev server in package.json is
@@ -53,25 +56,25 @@ services:
       - egress
 
     volumes:
-      - ../:/workspaces/visilant:rw
+      - ../:${VISILANT_WORKSPACE:?}:rw
       # node_modules is the container's own, and deliberately NOT shared with
       # the host through the bind above.
       #
       # pnpm records the absolute path of its store in node_modules/.modules.yaml
       # and rebuilds the whole directory when that path changes. The same folder
-      # is under your projects directory on the host and /workspaces/visilant in
-      # here, so one shared node_modules would belong to whichever side installed
-      # last and every switch would cost a full reinstall - measured, the first
-      # container install refused to continue at all and asked to remove the
-      # host's copy.
+      # sits at the same path on both sides, but the store does not (your home
+      # directory on the host, /root/.local/share/pnpm in here), so one shared
+      # node_modules would belong to whichever side installed last and every
+      # switch would cost a full reinstall - measured, the first container
+      # install refused to continue at all and asked to remove the host's copy.
       #
       # Both sides genuinely need one: the phone workflow (`just ar`) runs
       # web-ext from the host's node_modules and cannot move in here, because it
       # needs the USB device. So they get one each, off one shared lockfile.
-      # `extension/` stays on the bind above, which is what matters - a build
+      # `extension/` and `extension-firefox/` stay on the bind above, which is what matters - a build
       # made in here is loadable as an unpacked extension by a browser on the
       # host.
-      - node-modules:/workspaces/visilant/node_modules
+      - node-modules:${VISILANT_WORKSPACE:?}/node_modules
       # The root filesystem is read-only, so the whole home directory is a
       # volume. It carries the pnpm content-addressed store, the npm cache, the
       # shell history and git's per-user config, and it survives a rebuild.
@@ -114,6 +117,8 @@ services:
     mem_limit: 8g
 
     environment:
+      # So check-workspace.sh can confirm the mount is where the host thinks.
+      VISILANT_WORKSPACE: ${VISILANT_WORKSPACE:?}
       # The e2e suite drives Chromium from /opt, which is read-only at run time.
       # It is baked into the image on purpose - see the Dockerfile.
       PLAYWRIGHT_BROWSERS_PATH: /opt/ms-playwright
