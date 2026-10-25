@@ -17,14 +17,36 @@ export type DomainMarkerId
     | 'embedded-public-suffix'
     | 'deep-subdomains'
     | 'mixed-scripts'
+    | 'non-latin-name'
 
 export type DomainMarker
   = | {
-    id: Exclude<DomainMarkerId, 'embedded-public-suffix'>
+    id: Exclude<DomainMarkerId, 'embedded-public-suffix' | 'non-latin-name'>
     /** The concrete evidence, shown to the user next to the marker text */
     detail: string
   }
   | ({ id: 'embedded-public-suffix' } & EmbeddedDomain)
+  | ({
+    id: 'non-latin-name'
+    detail: string
+    /** The other parts that qualify, in case a lookalike explains this one. */
+    more: NonLatinName[]
+  } & Omit<NonLatinName, 'label'>)
+
+export type LookalikeScript = 'cyrillic' | 'greek' | 'armenian'
+
+/**
+ * The letters of each script that look like Latin ones, as Chromium's IDN spoof
+ * checker lists them (`idn_spoof_checker.cc`, the whole-script confusable
+ * data, read 2026-10-20). A name made only of these reads as a Latin name it is
+ * not: `аррӏе` in Cyrillic is drawn as "apple". A name with a single letter
+ * outside the set, `пример` with its `и`, reads as what it is.
+ */
+const LATIN_LOOKALIKES: { script: LookalikeScript, all: RegExp, alike: RegExp }[] = [
+  { script: 'cyrillic', all: /\p{Script=Cyrillic}/u, alike: /^[аысԁеԍһіюкјӏморԗԛѕтԝхуъьҽпгѵѡ]$/u },
+  { script: 'greek', all: /\p{Script=Greek}/u, alike: /^[αικνρυωηοτ]$/u },
+  { script: 'armenian', all: /\p{Script=Armenian}/u, alike: /^[ագզէլհյոսւօՙ]$/u },
+]
 
 /**
  * A whole domain in the middle of an address, and where the address really goes.
@@ -65,12 +87,20 @@ const IPV4_PATTERN = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
 
 /** Unicode rendering of a hostname; returns the input unchanged if it is not IDN. */
 export function decodeHostname(hostname: string): string {
-  try {
-    return punycode.toUnicode(hostname)
-  }
-  catch {
-    return hostname
-  }
+  // Label by label, so one that does not decode leaves the rest readable
+  return hostname.split('.').map((label) => {
+    // The decoder only knows a lower-case `xn--`, and an address typed into a
+    // mail or a page may be in capitals, which left `XN--80AK6AA92E.COM`
+    // looking like plain Latin to every check that reads the decoded name
+    if (!/^xn--/i.test(label))
+      return label
+    try {
+      return punycode.toUnicode(label.toLowerCase())
+    }
+    catch {
+      return label
+    }
+  }).join('.')
 }
 
 function safeDecode(value: string): string {
@@ -216,6 +246,11 @@ export function findEmbeddedPublicSuffix(hostname: string): EmbeddedDomain | nul
  * `null` means the lookalike check gave no answer, which is not the same as it
  * finding nothing – the markers stay as they are either way.
  */
+/** The markers `dropExplainedMarkers` can take out, which a view waits for the lookalike answer on. */
+export function isExplainableMarker(marker: DomainMarker): boolean {
+  return marker.id === 'embedded-public-suffix' || marker.id === 'non-latin-name'
+}
+
 export function dropExplainedMarkers(
   markers: DomainMarker[],
   lookalikes: readonly LookalikeMatch[] | null,
@@ -223,9 +258,33 @@ export function dropExplainedMarkers(
   if (!lookalikes?.length)
     return markers
 
-  return markers.filter(marker => marker.id !== 'embedded-public-suffix'
-    || !lookalikes.some(match => match.reason === 'familiar-as-subdomain'
-      && match.evidence.toLowerCase() === marker.imitated))
+  const explained = (label: string) => lookalikes.some(match =>
+    (match.reason === 'confusable' || match.reason === 'familiar-as-subdomain' || match.severity === 'high')
+    && decodeHostname(match.evidence).toLowerCase() === label)
+
+  return markers.flatMap((marker): DomainMarker[] => {
+    if (marker.id === 'embedded-public-suffix') {
+      return lookalikes.some(match => match.reason === 'familiar-as-subdomain'
+        && match.evidence.toLowerCase() === marker.imitated)
+        ? []
+        : [marker]
+    }
+    // A name in another alphabet is the mechanism of a match on the same name, which
+    // says which familiar site it copies: `confusable` for the site's own name,
+    // `familiar-as-subdomain` for one put in front of another site. One trick,
+    // one flag.
+    // A name of twins one letter off a familiar one, or holding one, is the
+    // same single trick, so any match that counts as a red flag explains it.
+    // Another part in another alphabet is a finding of its own, and takes the
+    // place of the one explained.
+    if (marker.id === 'non-latin-name') {
+      if (!explained(marker.detail))
+        return [marker]
+      const left = marker.more.filter(name => !explained(name.label))
+      return left.length ? [nonLatinMarker(left)] : []
+    }
+    return [marker]
+  })
 }
 
 /** How many labels sit above the registrable domain. */
@@ -250,6 +309,94 @@ export function findMixedScriptLabel(hostname: string): string | null {
   }
 
   return null
+}
+
+/**
+ * Real words made only of Latin twins, which Chromium lets through
+ * (`kAllowedWholeScriptConfusableWords`, read 2026-10-20). Still flagged here,
+ * but not said to imitate a Latin name.
+ */
+const ALLOWED_WORDS = new Set(['секс', 'как', 'коса', 'курс', 'парк', 'такий', 'укроп', 'сахарок', 'покраска', 'театр', 'астро', 'пхукет'])
+
+export interface NonLatinName {
+  label: string
+  /** The alphabet it is written in, a `SCRIPT_GROUPS` name, or `other`. */
+  script: string
+  /** Every letter has a Latin twin, so the name reads as a Latin one: `аррӏе`. */
+  twins: boolean
+  tld: string
+  /** The ending's alphabet, `latin` for an ending in ASCII. */
+  tldScript: string
+}
+
+/**
+ * Alphabets with an ending of their own that `SCRIPT_GROUPS` does not name.
+ * Told apart only so that a name in one under an ending in another is not
+ * taken for the same alphabet. Shown to the user as just another alphabet.
+ */
+const OTHER_SCRIPTS = ['Tamil', 'Sinhala', 'Telugu', 'Kannada', 'Malayalam', 'Gujarati', 'Gurmukhi', 'Oriya', 'Lao', 'Khmer', 'Myanmar', 'Ethiopic', 'Tibetan', 'Mongolian', 'Thaana']
+  .map(name => ({ name: `other-${name.toLowerCase()}`, pattern: new RegExp(`\\p{Script=${name}}`, 'u') }))
+
+function scriptOf(letters: string[]): string {
+  return [...SCRIPT_GROUPS, ...OTHER_SCRIPTS].find(group => letters.some(char => group.pattern.test(char)))?.name ?? 'other'
+}
+
+/**
+ * A part of the address written in another alphabet, under a Latin ending:
+ * `аррӏе.com`, `пример.ru`, `пример.io`.
+ *
+ * An address ending in Latin letters is read as a Latin address, so every part
+ * of it is expected in Latin letters too. A name in another alphabet belongs
+ * under an ending in that alphabet, `.рф`, `.укр` and the other national
+ * endings, and under those nothing is flagged. Two-letter Latin country codes
+ * get no pass: `аррӏе.io` and `пример.ru` are flagged like `.com`. Decided by
+ * the user, 2026-10-25, against Chromium's narrower rule, which flags only names
+ * made wholly of Latin twins and lets each script through under its own
+ * country codes.
+ *
+ * An ending in an alphabet of its own lets through only names in that
+ * alphabet: `аррӏе.中国` and a Greek name under `.рф` are flagged. A Latin
+ * name is never flagged here.
+ *
+ * Mixing alphabets in one part is `mixed-scripts` and is not counted again.
+ * Latin letters with accents (`münchen`) are Latin. Where several parts
+ * qualify, one of Latin twins is the one named, since it gets the sharper line.
+ */
+export function findNonLatinName(hostname: string): NonLatinName | null {
+  return findNonLatinNames(hostname)[0] ?? null
+}
+
+/** Every part `findNonLatinName` would flag, the one it names first. */
+export function findNonLatinNames(hostname: string): NonLatinName[] {
+  const labels = decodeHostname(hostname).toLowerCase().replace(/\.$/, '').split('.')
+  const tld = labels[labels.length - 1] ?? ''
+  if (labels.length < 2 || !tld)
+    return []
+  const tldLetters = [...tld].filter(char => /\p{L}/u.test(char))
+  const tldScript = /^[a-z0-9-]+$/.test(tld) ? 'latin' : scriptOf(tldLetters)
+  const found: NonLatinName[] = []
+  for (const label of labels.slice(0, -1)) {
+    const letters = [...label].filter(char => /\p{L}/u.test(char))
+    if (!letters.length || letters.some(char => /\p{Script=Latin}/u.test(char)))
+      continue
+    // Two alphabets in one part is `mixed-scripts`
+    if (SCRIPT_GROUPS.filter(group => letters.some(char => group.pattern.test(char))).length > 1)
+      continue
+    const script = scriptOf(letters)
+    if (script === tldScript)
+      continue
+    const lookalikes = LATIN_LOOKALIKES.find(entry => entry.script === script)
+    const twins = Boolean(lookalikes) && !ALLOWED_WORDS.has(label)
+      && letters.every(char => lookalikes!.all.test(char) && lookalikes!.alike.test(char))
+    found.push({ label, script, twins, tld, tldScript })
+  }
+  // Stable, so the parts keep their order otherwise
+  return found.sort((a, b) => Number(b.twins) - Number(a.twins))
+}
+
+function nonLatinMarker(names: NonLatinName[]): DomainMarker {
+  const [{ label, ...first }, ...more] = names
+  return { id: 'non-latin-name', detail: label, ...first, more }
 }
 
 /** Markers that can only be read off a full URL rather than a hostname. */
@@ -278,6 +425,10 @@ export function findHostnameMarkers(hostname: string): DomainMarker[] {
   const mixed = findMixedScriptLabel(hostname)
   if (mixed)
     markers.push({ id: 'mixed-scripts', detail: mixed })
+
+  const nonLatin = findNonLatinNames(hostname)
+  if (nonLatin.length)
+    markers.push(nonLatinMarker(nonLatin))
 
   return markers
 }

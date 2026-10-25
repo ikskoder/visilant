@@ -58,7 +58,7 @@ if [ -d "$built/unpacked" ]; then
 elif [ -f "$built/manifest.json" ]; then
   reference="$built"
 else
-  echo "--built should point at a Nix result or at an extension/ directory." >&2
+  echo "--built should point at a Nix result or at a built extension directory (extension/ for Chrome, extension-firefox/ for Firefox)." >&2
   exit 2
 fi
 

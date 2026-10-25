@@ -55,7 +55,9 @@ const CHECKS: [string, string[], number][] = [
   ['neutral-text', ['neutral-tint', 'surface'], 4.5],
   ['safe', ['surface', 'surface-sunken', 'safe-tint'], 3],
   ['danger', ['surface', 'surface-sunken', 'danger-tint'], 3],
-  ['neutral', ['surface', 'surface-sunken'], 3],
+  // On its tint too: the shield of an unchecked verdict sits in a neutral badge,
+  // and its cut-out mark is the badge's tint showing through
+  ['neutral', ['surface', 'surface-sunken', 'neutral-tint'], 3],
   ['line-strong', ['surface', 'surface-sunken'], 3],
   ['label-line', ['surface', 'surface-sunken'], 3],
   ['owner-line', ['owner-tint', 'surface', 'surface-sunken'], 3],

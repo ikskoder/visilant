@@ -37,7 +37,7 @@ interface Case {
 }
 
 async function expand(page: Page, expectText?: string) {
-  await page.locator('button', { hasText: t('checkFieldExpand') }).first().click()
+  await page.locator('[data-action="expand"]').first().click()
   if (expectText)
     await expect(page.locator('main')).toContainText(expectText, { timeout: 10000 })
   await page.waitForTimeout(800)
@@ -82,7 +82,7 @@ const CASES: Case[] = [
   // ==========================================
   // Following a link
   // ==========================================
-  { name: 'ck-expand-loading', title: 'Check page: following a short link, still waiting', note: '"Expand link" pressed, no answer yet. A disabled button with the pending sign.', fetch: { 'https://bit.ly/': { hang: true } }, input: 'https://bit.ly/ck-load', card: 'bit.ly', then: async page => expand(page, t('linkTooltipResolvingUrl')) },
+  { name: 'ck-expand-loading', title: 'Check page: following a short link, still waiting', note: '"Show where it leads" pressed, no answer yet. A disabled button with the pending sign.', fetch: { 'https://bit.ly/': { hang: true } }, input: 'https://bit.ly/ck-load', card: 'bit.ly', then: async page => expand(page, t('linkTooltipResolvingUrl')) },
   { name: 'ck-expand-error', title: 'Check page: a short link that could not be followed', note: 'The button stays, with "Couldn\'t find out where this link leads".', fetch: { 'https://bit.ly/': { fail: true } }, input: 'https://bit.ly/ck-err', card: 'bit.ly', then: async page => expand(page, t('linkTooltipResolveError')) },
   { name: 'ck-expand-chain', title: 'Check page: a short link followed through three hops', note: 'The field keeps bit.ly with its red "Short link" badge, then the final address and the numbered chain. The card below switches to the destination.', settings: { linkSafety: { shortUrlTraceChain: true, shortUrlShowFullUrl: true } }, fetch: { 'https://bit.ly/': { to: 'https://tinyurl.com/4kq7zv', body: '<meta http-equiv="refresh" content="0; url=https://prize-winner.test/claim?id=8812">' }, 'https://prize-winner.test/': {} }, input: 'https://bit.ly/ck-chain', card: 'bit.ly', then: async page => expand(page, 'prize-winner.test') },
   { name: 'ck-expand-familiar', title: 'Check page: an ordinary link followed to a familiar site', note: 'out.paypal.test redirects to checkout.paypal.test. The badge in the field reads "Familiar site" in green.', seed: FAMILY, fetch: { 'https://out.paypal.test/': { to: 'https://checkout.paypal.test/' } }, input: 'https://out.paypal.test/r', card: 'out.paypal.test', then: async page => expand(page) },

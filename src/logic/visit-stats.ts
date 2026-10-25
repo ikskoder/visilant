@@ -140,3 +140,54 @@ export function applyVisit(existing: SiteVisitData | undefined, now: number): Si
     ...(existing.ignored && existing.silencedWhileFamiliar && { silencedWhileFamiliar: true }),
   }
 }
+
+/**
+ * Fold one report of somebody using a page into the record.
+ *
+ * A reload is a visit only when it is the first thing this site saw today.
+ * Somebody who keeps a mail tab open for a week and presses F5 every morning is
+ * there every day, and the active days have to say so. Twenty reloads in one
+ * afternoon are not twenty visits, and counting them would let a page that a
+ * person touches now and then climb to familiar on its own refresh button.
+ *
+ * Returns the record unchanged, the same object, when the report does not count.
+ */
+export function applyReport(existing: SiteVisitData | undefined, now: number, reload: boolean): SiteVisitData | undefined {
+  if (reload && existing?.lastSeen && dayKey(existing.lastSeen) === dayKey(now))
+    return existing
+  return applyVisit(existing, now)
+}
+
+/** One entry out of the browser's history, as much of it as the count needs. */
+export interface HistoryVisit {
+  time: number
+  reload: boolean
+}
+
+/**
+ * A hostname's history as the live counter would have counted it.
+ *
+ * The browser keeps every load, reloads and visits a second apart included, so
+ * adding them up made a page that reloaded itself in a background tab look like
+ * a site visited hundreds of times. Folded through the same rule a live report
+ * goes through, in order of time: one visit per minute, a reload only as the
+ * first visit of its day.
+ */
+export function summarizeVisits(visits: HistoryVisit[]): { count: number, firstSeen: number, lastSeen: number, activeDays: number } | undefined {
+  const valid = visits
+    .filter(visit => typeof visit.time === 'number' && Number.isFinite(visit.time) && visit.time > 0)
+    .sort((a, b) => a.time - b.time)
+  if (!valid.length)
+    return undefined
+
+  let record: SiteVisitData | undefined
+  for (const visit of valid)
+    record = applyReport(record, visit.time, visit.reload)
+
+  return {
+    count: record!.count,
+    firstSeen: valid[0].time,
+    lastSeen: valid[valid.length - 1].time,
+    activeDays: record!.activeDays ?? 1,
+  }
+}

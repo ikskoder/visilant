@@ -5,6 +5,7 @@ import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import { useLookalikes } from '~/composables/useLookalikes'
 import { getRegistrableDomain } from '~/logic/domain-markers'
+import { isRedFlagLookalike } from '~/logic/red-flags'
 
 // Does this address resemble one the user already knows? The question and its
 // memoised answer live in useLookalikes, which the structural markers read too.
@@ -59,12 +60,16 @@ const matches = computed<LookalikeMatch[]>(() => answer.value?.status === 'answe
 
 <template>
   <!-- Red whatever the severity: a near miss and a sure one ask the same thing
-       of the reader, to look again before going on. The words say how close. -->
+       of the reader, to look again before going on. The words say how close,
+       and the sign says whether it is a red flag: a sure one is, a near miss
+       keeps the triangle (see logic/red-flags.ts). -->
   <div v-if="matches.length" class="lookalike-notice grid gap-2">
     <VzNotice
       v-for="match in matches"
       :key="match.domain"
       tone="danger"
+      :icon="isRedFlagLookalike(match) ? 'flag' : undefined"
+      :data-red-flag="isRedFlagLookalike(match) ? '' : undefined"
       :bare="bare"
       data-lookalike
       :data-lookalike-reason="match.reason"

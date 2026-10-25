@@ -155,7 +155,7 @@ describe('linkInterceptDialog component', () => {
   it('emits cancel when backdrop is clicked', async () => {
     const wrapper = mount(LinkInterceptDialog, { props: defaultProps })
     // The root overlay div has @click.self="emit('cancel')"
-    const overlay = wrapper.find('.fixed.inset-0')
+    const overlay = wrapper.find('dialog.vz-layer')
     await overlay.trigger('click')
     expect(wrapper.emitted('cancel')).toBeTruthy()
   })

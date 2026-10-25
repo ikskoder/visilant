@@ -5,10 +5,12 @@ import {
   getCachedResolvedUrl,
   getCustomShorteners,
   getShortenerCount,
+  isOwnServiceShortLink,
   isShortenedUrl,
   loadCustomShorteners,
   parseDomainList,
   setCachedResolvedUrl,
+  SHORTENER_HOMES,
   updateShortenerList,
 } from '../url-shorteners'
 
@@ -182,5 +184,28 @@ describe('remote shortener list', () => {
 
     expect(isShortenedUrl('first.test')).toBe(false)
     expect(isShortenedUrl('second.test')).toBe(true)
+  })
+})
+
+describe('short links of a service on its own site', () => {
+  it('knows t.co on X and youtu.be on YouTube, subdomains included', () => {
+    expect(isOwnServiceShortLink('t.co', 'x.com')).toBe(true)
+    expect(isOwnServiceShortLink('t.co', 'mobile.twitter.com')).toBe(true)
+    expect(isOwnServiceShortLink('youtu.be', 'www.youtube.com')).toBe(true)
+  })
+
+  it('is not exempt anywhere else', () => {
+    expect(isOwnServiceShortLink('t.co', 'youtube.com')).toBe(false)
+    expect(isOwnServiceShortLink('t.co', 'notx.com')).toBe(false)
+    expect(isOwnServiceShortLink('bit.ly', 'x.com')).toBe(false)
+    // A trailing dot matches nothing, so the link is stopped as before
+    expect(isOwnServiceShortLink('t.co', 'x.com.')).toBe(false)
+  })
+
+  // A key the shortener list does not know would never be stopped as a short
+  // link in the first place, so the exemption would be about nothing
+  it('names only services the built-in list knows', () => {
+    for (const service of Object.keys(SHORTENER_HOMES))
+      expect(isShortenedUrl(service), service).toBe(true)
   })
 })

@@ -125,6 +125,18 @@ describe('marks', () => {
     expect(draw({ text: 'pass123', kind: 'raw' }).find('.vz-ch--digit').exists()).toBe(false)
   })
 
+  // The digits of an `xn--` label are the encoding, not digits anybody wrote
+  it('leaves the digits of an encoded label alone', () => {
+    expect(draw({ text: 'xn--pple-43d.test1.com' }).findAll('.vz-ch--digit')).toHaveLength(1)
+  })
+
+  // Red and the digit colour on one character read as two warnings
+  it('gives a changed digit only the mark for the change', () => {
+    const one = draw({ text: 'paypa1.com', diff: [5] }).find('.vz-ch--diff')
+    expect(one.exists()).toBe(true)
+    expect(one.classes()).not.toContain('vz-ch--digit')
+  })
+
   it('underlines the characters a lookalike changed', () => {
     const wrapper = draw({ text: 'paypa1.com', diff: [5] })
     expect(wrapper.find('.vz-ch--diff').text()).toBe('1')

@@ -1,6 +1,5 @@
-import type { ImportedDomainStats } from '../history-import'
 import { describe, expect, it } from 'vitest'
-import { addVisitTimes, describeImportHealth, hasVisitRecords, hostnameFromHistoryUrl, isHeldByAnother, mapWithConcurrency, mergeImportedStats, newImportRunId, shouldAutoImport } from '../history-import'
+import { describeImportHealth, hasVisitRecords, hostnameFromHistoryUrl, importedCount, isHeldByAnother, mapWithConcurrency, mergeImportedStats, newImportRunId, shouldAutoImport } from '../history-import'
 
 function at(year: number, month: number, day: number, hour = 12) {
   return new Date(year, month - 1, day, hour).getTime()
@@ -41,37 +40,31 @@ describe('hostnameFromHistoryUrl', () => {
   })
 })
 
-describe('addVisitTimes', () => {
-  it('builds stats from the first batch of visits', () => {
-    const days = new Set<string>()
-    const result = addVisitTimes(undefined, [at(2026, 3, 7), at(2026, 3, 5)], days)
-
-    expect(result).toEqual({ count: 2, firstSeen: at(2026, 3, 5), lastSeen: at(2026, 3, 7) })
-    expect(days.size).toBe(2)
+describe('importedCount', () => {
+  it('takes the larger figure when no quick pass left a note', () => {
+    expect(importedCount(12, 5)).toBe(12)
+    expect(importedCount(3, 9)).toBe(9)
   })
 
-  it('folds later batches into the running stats', () => {
-    const days = new Set<string>()
-    const first = addVisitTimes(undefined, [at(2026, 3, 7)], days)
-    const second = addVisitTimes(first, [at(2022, 1, 1), at(2026, 3, 9)], days)
-
-    expect(second).toEqual({ count: 3, firstSeen: at(2022, 1, 1), lastSeen: at(2026, 3, 9) })
-    expect(days.size).toBe(3)
+  // The quick pass counted every reload. The full pass replaces its figure with
+  // the honest one and keeps what the live counter added in between.
+  it('puts the honest figure in place of the quick one', () => {
+    // 0 before, 300 from the quick pass, 2 visits counted live since, which
+    // the browser's history holds too and the honest 4 already includes
+    expect(importedCount(302, 4, [0, 300])).toBe(4)
   })
 
-  it('counts repeat visits on one day as one active day', () => {
-    const days = new Set<string>()
-    addVisitTimes(undefined, [at(2026, 3, 7, 9), at(2026, 3, 7, 14), at(2026, 3, 7, 21)], days)
-    expect(days.size).toBe(1)
+  it('never goes below what was there before, plus what was counted live', () => {
+    expect(importedCount(300, 4, [20, 300])).toBe(20)
+    expect(importedCount(303, 4, [20, 300])).toBe(23)
   })
 
-  it('ignores invalid timestamps and returns the input untouched when nothing is left', () => {
-    const days = new Set<string>()
-    const existing: ImportedDomainStats = { count: 1, firstSeen: 10, lastSeen: 10 }
-
-    expect(addVisitTimes(existing, [0, Number.NaN, -5], days)).toBe(existing)
-    expect(addVisitTimes(undefined, [], days)).toBeUndefined()
-    expect(days.size).toBe(0)
+  // Run twice with the same note, it must not take part of the honest figure
+  // for live visits and add it again
+  it('gives the same answer when it runs again', () => {
+    const once = importedCount(50, 60, [50, 10])
+    expect(once).toBe(60)
+    expect(importedCount(once, 60, [50, 10])).toBe(60)
   })
 })
 

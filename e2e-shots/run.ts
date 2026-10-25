@@ -63,6 +63,37 @@ else {
 }
 fs.rmSync(path.join(SHOTS, 'report.json'), { force: true })
 
+/**
+ * A sans-serif with a bold face for the pages the cases are drawn on.
+ *
+ * In the dev container `system-ui`, which every page and the warnings' own
+ * stack name first, resolved to WenQuanYi Zen Hei, which has no bold. Nothing
+ * drawn bold looked bold, so no picture could show whether a total or a verdict
+ * stood out. The browser takes its fonts from fontconfig, and this config keeps
+ * the system one and only puts Liberation Sans in front for sans-serif, which is
+ * where `system-ui` ends up. A system without Liberation Sans keeps its own.
+ */
+function boldCapableFonts(): string {
+  const file = path.join(SHOTS, 'fonts.conf')
+  // Never itself, which a nested run would inherit and lose every font with
+  const inherited = process.env.FONTCONFIG_FILE
+  const system = inherited && path.resolve(inherited) !== file ? inherited : '/etc/fonts/fonts.conf'
+  const prefer = (family: string) => `  <alias binding="strong"><family>${family}</family><prefer><family>Liberation Sans</family></prefer></alias>`
+  fs.mkdirSync(SHOTS, { recursive: true })
+  fs.writeFileSync(file, [
+    '<?xml version="1.0"?>',
+    '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">',
+    '<fontconfig>',
+    `  <include ignore_missing="yes">${system}</include>`,
+    prefer('sans-serif'),
+    prefer('sans'),
+    '</fontconfig>',
+    '',
+  ].join('\n'))
+  return file
+}
+process.env.FONTCONFIG_FILE = boldCapableFonts()
+
 // Pictures older than this, of a case that ran again, are left over from
 // before: a picture the case no longer takes, or one from before it failed
 process.env.SHOTS_STARTED = String(Date.now())

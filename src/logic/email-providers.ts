@@ -199,10 +199,22 @@ let customDisposable: string[] = []
 let remotePublic: string[] = []
 let remoteDisposable: string[] = []
 let publicSet = new Set<string>(parseEmailDomainList(BUILTIN_PUBLIC_PROVIDERS))
+/**
+ * The downloaded list of public providers, kept out of `publicSet`.
+ *
+ * A public provider is judged by the name before @ rather than by visits, so
+ * landing in that set lifts the red verdict off an address. Whoever maintains a
+ * list somewhere else could lift it off any domain they liked, from the next
+ * press of Update on. A downloaded list may add caution, never take it away: a
+ * domain only this list names stays an ordinary site, judged by visits, and
+ * gets the line saying anyone may register an address there on top.
+ */
+let remotePublicSet = new Set<string>()
 let disposableSet = new Set<string>(parseEmailDomainList(BUILTIN_DISPOSABLE_DOMAINS))
 
 function rebuildSets() {
-  publicSet = new Set<string>([...parseEmailDomainList(BUILTIN_PUBLIC_PROVIDERS), ...customPublic, ...remotePublic])
+  publicSet = new Set<string>([...parseEmailDomainList(BUILTIN_PUBLIC_PROVIDERS), ...customPublic])
+  remotePublicSet = new Set<string>(remotePublic)
   disposableSet = new Set<string>([...parseEmailDomainList(BUILTIN_DISPOSABLE_DOMAINS), ...customDisposable, ...remoteDisposable])
 }
 
@@ -255,7 +267,16 @@ export function getDisposableCount(): number {
 }
 
 export function getPublicCount(): number {
-  return publicSet.size
+  return new Set([...publicSet, ...remotePublicSet]).size
+}
+
+/**
+ * Named only by the downloaded list of public providers. Such a domain is still
+ * classified `regular`, see `remotePublicSet`.
+ */
+export function isListedPublicOnlyRemotely(domain: string): boolean {
+  const lower = domain.trim().toLowerCase()
+  return classifyEmailDomain(lower) === 'regular' && matchesDomainSet(lower, remotePublicSet)
 }
 
 /**

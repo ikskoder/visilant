@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
+import RedFlagCount from '~/components/RedFlagCount.vue'
 import SecureText from '~/components/SecureText.vue'
 import VzBadge from '~/components/VzBadge.vue'
 import VzIcon from '~/components/VzIcon.vue'
@@ -14,6 +15,7 @@ import { useI18n } from '~/composables/useI18n'
 import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { useModalDialog } from '~/composables/useModalDialog'
 import { useTopLayer } from '~/composables/useTopLayer'
+import { useVisualViewport } from '~/composables/useVisualViewport'
 
 const props = defineProps<{
   visible: boolean
@@ -81,6 +83,9 @@ const layer = useTopLayer({
   onDismiss: () => emit('cancel'),
 })
 
+// Over what is on the screen, not the layout viewport, see `viewportCoverStyle`
+const cover = useVisualViewport(() => props.visible && Boolean(props.data))
+
 useModalDialog({
   visible: () => props.visible && Boolean(props.data),
   container: () => card.value,
@@ -123,7 +128,8 @@ const payloadKind = computed(() => {
   <Transition name="overlay-fade" appear @enter="layer.enter">
     <dialog
       v-if="visible && data"
-      class="vz-layer fixed inset-0 z-[2147483647] flex items-center justify-center pointer-events-auto"
+      :style="cover"
+      class="vz-layer z-[2147483647] flex items-center justify-center pointer-events-auto"
       :aria-label="title"
       @click.self="emit('cancel')"
     >
@@ -173,7 +179,7 @@ const payloadKind = computed(() => {
             <SecureText :text="data.domain" size="l" :diff="linkDiff(data.domain)">
               <CopyButton :text="data.domain" />
             </SecureText>
-            <VzBadge v-if="status === 'safe'" tone="safe" icon="pass" data-verdict="familiar">
+            <VzBadge v-if="status === 'safe'" tone="safe" icon="shield-pass" data-verdict="familiar">
               {{ t('linkTooltipFamiliar') }}
             </VzBadge>
             <VzBadge v-else-if="status === 'checking'" tone="neutral" icon="pending" data-verdict="checking">
@@ -182,6 +188,8 @@ const payloadKind = computed(() => {
             <VzBadge v-else-if="status === 'unfamiliar'" :tone="statusLabel(false, data.stats.count).tone" :icon="statusLabel(false, data.stats.count).icon" :data-verdict="statusLabel(false, data.stats.count).verdict">
               {{ statusLabel(false, data.stats.count).text }}
             </VzBadge>
+            <!-- Asked as the lines below ask, once they are drawn -->
+            <RedFlagCount v-if="status !== 'checking'" :hostname="data.domain" />
           </div>
           <FamiliarityFacts v-if="status === 'unfamiliar'" :stats="data.stats" />
 
@@ -275,14 +283,14 @@ const payloadKind = computed(() => {
 
 <style scoped>
 .dialog-container {
-  width: min(440px, 100vw - 32px);
+  width: min(440px, var(--vz-vw, 100vw) - 32px);
   max-width: none;
   /* The actions are at the bottom, and this dialog is raised by a paste –
      which on a phone means the keyboard is up and the viewport is already half
      of what it was. Without a cap of its own it grew past the visible area and
      took its buttons with it. `dvh` is the measurement that follows the
      keyboard, and the safe-area insets keep it clear of the gesture bar. */
-  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: calc(var(--vz-vh, 100dvh) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
   overscroll-behavior: contain;
 }

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { FamiliarityStats } from '~/logic/familiarity'
 import { computed } from 'vue'
-import FactText from '~/components/FactText.vue'
 import SecureText from '~/components/SecureText.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
@@ -13,6 +12,9 @@ const props = defineProps<{
   destDomain: string
   destIsSafe: boolean
   destStats: FamiliarityStats
+  /** See `VisitFacts.unchecked`: no facts for that side, and no verdict either. */
+  textDomainUnchecked?: boolean
+  destUnchecked?: boolean
   /** The letters a lookalike changed in the destination, underlined. */
   destDiff?: number[]
   showVisitCount: 'always' | 'never' | 'unfamiliar' | 'familiar'
@@ -99,9 +101,9 @@ const summaryRow = computed(() => {
         <th scope="row">
           {{ t('linkInterceptStatus') }}
         </th>
-        <td v-for="side in [{ safe: textDomainIsSafe, stats: textDomainStats, key: 'shown' }, { safe: destIsSafe, stats: destStats, key: 'dest' }]" :key="side.key">
-          <VzBadge :tone="statusLabel(side.safe, side.stats.count).tone" :icon="statusLabel(side.safe, side.stats.count).icon" :data-verdict="statusLabel(side.safe, side.stats.count).verdict">
-            {{ statusLabel(side.safe, side.stats.count).text }}
+        <td v-for="side in [{ safe: textDomainIsSafe, stats: textDomainStats, unchecked: textDomainUnchecked, key: 'shown' }, { safe: destIsSafe, stats: destStats, unchecked: destUnchecked, key: 'dest' }]" :key="side.key">
+          <VzBadge :tone="statusLabel(side.safe, side.stats.count, side.unchecked).tone" :icon="statusLabel(side.safe, side.stats.count, side.unchecked).icon" :data-verdict="statusLabel(side.safe, side.stats.count, side.unchecked).verdict">
+            {{ statusLabel(side.safe, side.stats.count, side.unchecked).text }}
           </VzBadge>
         </td>
       </tr>
@@ -110,20 +112,22 @@ const summaryRow = computed(() => {
           <th scope="row">
             {{ row.label }}
           </th>
-          <td v-for="side in [{ fact: row.left, shown: shouldShowCount(textDomainIsSafe), key: 'shown' }, { fact: row.right, shown: shouldShowCount(destIsSafe), key: 'dest' }]" :key="side.key">
-            <span v-if="side.shown" class="comparison-fact">
+          <td v-for="side in [{ fact: row.left, shown: shouldShowCount(textDomainIsSafe), unchecked: textDomainUnchecked, key: 'shown' }, { fact: row.right, shown: shouldShowCount(destIsSafe), unchecked: destUnchecked, key: 'dest' }]" :key="side.key">
+            <span v-if="side.unchecked" class="text-ink-3">–</span>
+            <span v-else-if="side.shown" class="comparison-fact">
               <VzIcon :name="side.fact.met ? 'pass' : 'fail'" :label="t(side.fact.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="side.fact.met ? 'tone-safe' : 'tone-danger'" :data-passed="row.id" :data-result="side.fact.met ? 'pass' : 'fail'" />
-              <span class="vz-fact__value" :class="{ 'vz-fact__value--none': !side.fact.known }"><FactText :text="cell(side.fact)" /></span>
+              <span class="vz-fact__value" :class="{ 'vz-fact__value--none': !side.fact.known }">{{ cell(side.fact) }}</span>
             </span>
             <span v-else class="text-ink-3">{{ t('mismatchVisitsHidden') }}</span>
           </td>
         </tr>
-        <tr v-if="summaryRow">
+        <tr v-if="summaryRow" class="vz-fact--total">
           <th scope="row">
             {{ t('badgeContentChecks') }}
           </th>
-          <td v-for="side in [{ fact: summaryRow.left, shown: shouldShowCount(textDomainIsSafe), key: 'shown' }, { fact: summaryRow.right, shown: shouldShowCount(destIsSafe), key: 'dest' }]" :key="side.key">
-            <span v-if="side.shown" class="comparison-fact font-bold">
+          <td v-for="side in [{ fact: summaryRow.left, shown: shouldShowCount(textDomainIsSafe), unchecked: textDomainUnchecked, key: 'shown' }, { fact: summaryRow.right, shown: shouldShowCount(destIsSafe), unchecked: destUnchecked, key: 'dest' }]" :key="side.key">
+            <span v-if="side.unchecked" class="text-ink-3">–</span>
+            <span v-else-if="side.shown" class="comparison-fact">
               <VzIcon :name="side.fact.met ? 'pass' : 'fail'" :label="t(side.fact.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="side.fact.met ? 'tone-safe' : 'tone-danger'" data-passed="checks" :data-result="side.fact.met ? 'pass' : 'fail'" />
               <span class="vz-fact__value">{{ side.fact.combined }}</span>
             </span>

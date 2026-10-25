@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { classifyEmailDomain, loadCustomEmailLists, parseEmailDomainList, parseListUrls, updateDisposableList, updatePublicList } from '../email-providers'
+import { classifyEmailDomain, isListedPublicOnlyRemotely, loadCustomEmailLists, parseEmailDomainList, parseListUrls, updateDisposableList, updatePublicList } from '../email-providers'
 
 afterEach(() => {
   // Reset runtime sets to built-ins only
@@ -57,34 +57,41 @@ describe('classifyEmailDomain', () => {
   })
 })
 
+// A downloaded list may add caution, never take it away: "public" lifts the red
+// verdict off an address, so whoever maintains the list could lift it off any
+// domain they liked
 describe('remote public provider list', () => {
-  it('classifies remotely fetched domains as public', () => {
-    expect(classifyEmailDomain('remote-provider.example')).toBe('regular')
+  it('never makes a domain public, only marks it as listed', () => {
     updatePublicList(['remote-provider.example'])
-    expect(classifyEmailDomain('remote-provider.example')).toBe('public')
+    expect(classifyEmailDomain('remote-provider.example')).toBe('regular')
+    expect(isListedPublicOnlyRemotely('remote-provider.example')).toBe(true)
+    expect(isListedPublicOnlyRemotely('unlisted.example')).toBe(false)
   })
 
-  it('survives custom lists being loaded afterwards', () => {
-    updatePublicList(['remote-provider.example'])
+  it('is not needed for what the built-in and the user lists already name', () => {
+    updatePublicList(['remote-provider.example', 'gmail.com', 'mine.example'])
     loadCustomEmailLists(['mine.example'], [])
 
-    expect(classifyEmailDomain('remote-provider.example')).toBe('public')
     expect(classifyEmailDomain('mine.example')).toBe('public')
     expect(classifyEmailDomain('gmail.com')).toBe('public')
+    expect(isListedPublicOnlyRemotely('gmail.com')).toBe(false)
+    expect(isListedPublicOnlyRemotely('mine.example')).toBe(false)
+    expect(isListedPublicOnlyRemotely('remote-provider.example')).toBe(true)
   })
 
   it('replaces the previous remote list rather than accumulating', () => {
     updatePublicList(['first.example'])
     updatePublicList(['second.example'])
 
-    expect(classifyEmailDomain('first.example')).toBe('regular')
-    expect(classifyEmailDomain('second.example')).toBe('public')
+    expect(isListedPublicOnlyRemotely('first.example')).toBe(false)
+    expect(isListedPublicOnlyRemotely('second.example')).toBe(true)
   })
 
   it('still lets disposable win over a remotely listed provider', () => {
     updatePublicList(['both.example'])
     updateDisposableList(['both.example'])
     expect(classifyEmailDomain('both.example')).toBe('disposable')
+    expect(isListedPublicOnlyRemotely('both.example')).toBe(false)
   })
 })
 

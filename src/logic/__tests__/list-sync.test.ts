@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { classifyEmailDomain, loadCustomEmailLists, updatePublicList } from '../email-providers'
+import { classifyEmailDomain, isListedPublicOnlyRemotely, loadCustomEmailLists, updatePublicList } from '../email-providers'
 import { applyListChanges } from '../list-sync'
 import { loadCustomMailSites, resolveMailSites, updateRemoteMailSites } from '../mail-sites'
 import { STORAGE_KEY_REMOTE_SHORTENERS } from '../shortener-lists'
@@ -45,8 +45,10 @@ describe('applyListChanges', () => {
     applyListChanges({ customDisposableEmailDomains: { newValue: ['temp.test'] } })
     expect(classifyEmailDomain('temp.test')).toBe('disposable')
 
+    // Reaches the runtime, where it marks the domain without making it public
     applyListChanges({ remotePublicEmailProviders: { newValue: { domains: ['post.test'] } } })
-    expect(classifyEmailDomain('post.test')).toBe('public')
+    expect(classifyEmailDomain('post.test')).toBe('regular')
+    expect(isListedPublicOnlyRemotely('post.test')).toBe(true)
   })
 
   it('applies the mail-site mapping', () => {

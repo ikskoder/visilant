@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite'
-import { isDev, r } from './scripts/utils'
+import { isDev, out, r } from './scripts/utils'
 import { BUILD_TARGET } from './vite.config.mjs'
 
 /**
@@ -23,7 +23,7 @@ export default defineConfig({
     watch: isDev
       ? {}
       : undefined,
-    outDir: r('extension/dist/contentScripts'),
+    outDir: out('dist/contentScripts'),
     emptyOutDir: false,
     sourcemap: false,
     lib: {

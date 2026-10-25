@@ -254,6 +254,104 @@ describe('saving through somebody else', () => {
     expect(sent.map(value => value.threshold)).toEqual([40, 41])
   })
 
+  // The change event of the first save used to land in the ref whole, taking
+  // with it an edit made to another setting while that save was on its way
+  it('keeps an edit made while an earlier one was being saved', async () => {
+    store.prefs = JSON.stringify({ threshold: 25, label: 'stored' })
+    const handle = createWebExtensionStorage<Prefs>('prefs', defaults, { mergeDefaults: true })
+    await handle.ready
+    const listener = vi.mocked(browser.storage.onChanged.addListener).mock.calls.at(-1)![0] as any
+
+    const sent: Partial<Prefs>[] = []
+    let land = () => {}
+    handle.setCommit(async (next, stored) => {
+      sent.push(Object.fromEntries(Object.entries(next).filter(([key, value]) => stored?.[key as keyof Prefs] !== value)))
+      await new Promise<void>((resolve) => {
+        land = resolve
+      })
+    })
+
+    handle.data.value.threshold = 40
+    await settle()
+    handle.data.value.label = 'typed'
+    await settle()
+    // The first save lands, and its change event carries the old label
+    await listener({ prefs: { newValue: JSON.stringify({ threshold: 40, label: 'stored' }) } })
+    land()
+    await settle()
+
+    expect(handle.data.value).toEqual({ threshold: 40, label: 'typed' })
+    expect(sent.at(-1)).toEqual({ label: 'typed' })
+  })
+
+  it('keeps a setting put back while its first save was on its way', async () => {
+    store.prefs = JSON.stringify({ threshold: 25, label: 'stored' })
+    const handle = createWebExtensionStorage<Prefs>('prefs', defaults, { mergeDefaults: true })
+    await handle.ready
+    const listener = vi.mocked(browser.storage.onChanged.addListener).mock.calls.at(-1)![0] as any
+
+    const sent: Partial<Prefs>[] = []
+    let land = () => {}
+    handle.setCommit(async (next, stored) => {
+      sent.push(Object.fromEntries(Object.entries(next).filter(([key, value]) => stored?.[key as keyof Prefs] !== value)))
+      await new Promise<void>((resolve) => {
+        land = resolve
+      })
+    })
+
+    handle.data.value.threshold = 40
+    await settle()
+    handle.data.value.threshold = 25
+    await settle()
+    await listener({ prefs: { newValue: JSON.stringify({ threshold: 40, label: 'stored' }) } })
+    land()
+    await settle()
+
+    expect(handle.data.value.threshold).toBe(25)
+    expect(sent).toEqual([{ threshold: 40 }, { threshold: 25 }])
+  })
+
+  // A failed save leaves storage as it was, so the next one is still a patch
+  it('sends only the changed key again after a failed save', async () => {
+    store.prefs = JSON.stringify({ threshold: 25, label: 'stored' })
+    const handle = createWebExtensionStorage<Prefs>('prefs', defaults, { mergeDefaults: true })
+    await handle.ready
+
+    const sent: Partial<Prefs>[] = []
+    let fail = true
+    handle.setCommit(async (next, stored) => {
+      sent.push(Object.fromEntries(Object.entries(next).filter(([key, value]) => stored?.[key as keyof Prefs] !== value)))
+      if (fail) {
+        fail = false
+        throw new Error('Receiving end does not exist.')
+      }
+    })
+
+    handle.data.value.threshold = 40
+    await settle()
+    expect(handle.writeError.value).toBeTruthy()
+    handle.data.value.threshold = 41
+    await settle()
+
+    expect(sent).toEqual([{ threshold: 40 }, { threshold: 41 }])
+    expect(handle.writeError.value).toBeNull()
+  })
+
+  // Somebody else's edit to another setting still arrives
+  it('takes another context\'s edit next to one of its own that is unsaved', async () => {
+    store.prefs = JSON.stringify({ threshold: 25, label: 'stored' })
+    const handle = createWebExtensionStorage<Prefs>('prefs', defaults, { mergeDefaults: true })
+    await handle.ready
+    const listener = vi.mocked(browser.storage.onChanged.addListener).mock.calls.at(-1)![0] as any
+    handle.setCommit(() => new Promise(() => {}))
+
+    handle.data.value.label = 'typed'
+    await settle()
+    await listener({ prefs: { newValue: JSON.stringify({ threshold: 30, label: 'stored' }) } })
+
+    expect(handle.data.value).toEqual({ threshold: 30, label: 'typed' })
+  })
+
   it('does not seed the defaults on a profile where nothing is stored', async () => {
     const handle = createWebExtensionStorage<Prefs>('prefs', defaults, { mergeDefaults: true })
     handle.setCommit(async () => {})

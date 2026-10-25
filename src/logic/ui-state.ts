@@ -1,6 +1,7 @@
 import type { EmailProviderKind } from './email-providers'
 import type { EmailAnalysis, MailtoField } from './email-safety'
 import type { FamiliarityStats } from './familiarity'
+import type { InterceptReason } from './intercept'
 import type { MailSiteFamily } from './mail-sites'
 import type { PastePayloadInfo } from './paste-guard'
 import { ref } from 'vue'
@@ -20,6 +21,15 @@ export const isIgnored = ref(false)
 export const notifiedOnThisPage = ref({ input: false, copy: false })
 
 // Shortened URL resolution info
+/** What a link's own text named, when it named somewhere else, and what is known about it. */
+export interface LinkMismatch {
+  textDomain: string
+  textDomainStats: FamiliarityStats
+  textDomainIsSafe: boolean
+  /** See `VisitFacts.unchecked`. */
+  textDomainUnchecked?: boolean
+}
+
 export interface ShortUrlInfo {
   originalUrl: string
   resolvedUrl: string
@@ -27,6 +37,8 @@ export interface ShortUrlInfo {
   /** The destination's own facts, for the same evidence line the link gets */
   resolvedStats: FamiliarityStats
   resolvedIsSafe: boolean
+  /** See `VisitFacts.unchecked`. */
+  resolvedUnchecked?: boolean
   /**
    * The destination's other spelling, when it has one.
    *
@@ -58,6 +70,8 @@ export interface EmailRecipientInfo {
   providerKind: EmailProviderKind
   stats: FamiliarityStats
   isSafe: boolean
+  /** See `VisitFacts.unchecked`. */
+  unchecked?: boolean
 }
 
 export interface EmailTooltipInfo {
@@ -79,10 +93,18 @@ export interface RawPayloadInfo {
 // Link safety tooltip state
 export interface LinkTooltipData {
   kind?: TooltipKind
+  /**
+   * Opened by a click on a mail link that was held, so the tooltip carries the
+   * button that sends it on. A tooltip shown on hover never does: nothing is
+   * waiting on it.
+   */
+  heldClick?: boolean
   domain: string // email mode: the address's domain; text mode: ''
   stats: FamiliarityStats
   isSafe: boolean
-  mismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null
+  /** See `VisitFacts.unchecked`. */
+  unchecked?: boolean
+  mismatch: LinkMismatch | null
   punycode: string | null
   shortUrl?: ShortUrlInfo | null
   anchorRect: { top: number, bottom: number, left: number, right: number }
@@ -126,12 +148,25 @@ export const checkPanelData = ref<CheckPanelData | null>(null)
 export interface LinkInterceptData {
   /** See the note on `linkInterceptVisible`. Absent means yes. */
   ownNavigation?: boolean
+  /**
+   * Why the click was held, see `InterceptReason`. Absent when the dialog was
+   * asked for (the context menu) rather than put in the way of a click.
+   */
+  reasons?: InterceptReason[]
+  /**
+   * The link is in a frame that Visilant cannot follow it from once the dialog
+   * has taken the press: the dialog says to click it again, and that click goes
+   * through untouched.
+   */
+  clickAgain?: boolean
   domain: string
   url: string
   target: string
   stats: FamiliarityStats
   isSafe: boolean
-  mismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null
+  /** See `VisitFacts.unchecked`. */
+  unchecked?: boolean
+  mismatch: LinkMismatch | null
   punycode: string | null
   shortUrl?: ShortUrlInfo | null
 }

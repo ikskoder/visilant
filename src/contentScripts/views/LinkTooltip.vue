@@ -6,6 +6,7 @@ import EmailBreakdown from '~/components/EmailBreakdown.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import MailRecipients from '~/components/MailRecipients.vue'
+import RedFlagCount from '~/components/RedFlagCount.vue'
 import SecureText from '~/components/SecureText.vue'
 import VzBadge from '~/components/VzBadge.vue'
 import VzIcon from '~/components/VzIcon.vue'
@@ -154,6 +155,40 @@ function reposition() {
   tooltipStyle.value = { 'top': `${top}px`, 'left': `${left}px`, '--tooltip-room': `${Math.max(120, room)}px` }
 }
 
+/**
+ * Writing to an address that is not known to be all right is going ahead past a
+ * warning, so the button is drawn as the dialogs draw one: red, no arrow
+ * beckoning, and deaf for the first half second. A tooltip opens under the
+ * pointer, and the second half of a double click would otherwise press it.
+ */
+const mailIsRisky = computed(() => {
+  const email = props.data?.kind === 'email' ? props.data.email : undefined
+  if (!email)
+    return false
+  if (email.mismatch || email.providerKind === 'disposable' || props.data?.unchecked)
+    return true
+  return email.providerKind === 'regular' && !props.data?.isSafe
+})
+
+const RISK_DELAY_MS = 500
+const goArmed = ref(false)
+let armTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(() => props.visible && props.data?.href, (open) => {
+  clearTimeout(armTimer)
+  goArmed.value = false
+  if (open)
+    armTimer = setTimeout(() => goArmed.value = true, RISK_DELAY_MS)
+}, { immediate: true })
+
+onBeforeUnmount(() => clearTimeout(armTimer))
+
+function goToMail(href: string) {
+  if (mailIsRisky.value && !goArmed.value)
+    return
+  emit('go', href)
+}
+
 // Decide placement synchronously when a new tooltip is shown so the enter
 // animation slides in from the correct side. Reposition will refine later
 // once the actual tooltip height is known.
@@ -222,8 +257,11 @@ onBeforeUnmount(() => {
       >
         <!-- Email address (mailto link, selection or QR payload) -->
         <template v-if="data.kind === 'email' && data.email">
-          <div class="tooltip-head">
-            <VzSig />
+          <VzSig />
+          <!-- The verdict sits beside the name of what it is about, not beside the
+               signature, where it read as a verdict on nothing in particular -->
+          <div class="tooltip-label">
+            <span class="vz-eyebrow">{{ t('emailTooltipTitle') }}</span>
             <!-- Public and throwaway providers: a visit count says nothing about them -->
             <VzBadge v-if="data.email.providerKind === 'disposable'" tone="danger" icon="alert" data-verdict="disposable">
               {{ t('emailDisposableDomain') }}
@@ -233,14 +271,18 @@ onBeforeUnmount(() => {
             </VzBadge>
             <!-- Never "never visited" here: nobody visits an address, and beside
                  "Email address" it read as though they could -->
-            <VzBadge v-else :tone="data.isSafe ? 'safe' : 'danger'" :icon="data.isSafe ? 'pass' : 'alert'" :data-verdict="data.isSafe ? 'familiar' : 'unfamiliar'">
-              {{ t(data.isSafe ? 'linkTooltipFamiliar' : 'linkTooltipUnfamiliar') }}
+            <VzBadge v-else-if="data.unchecked" tone="neutral" icon="shield-unknown" data-verdict="unchecked">
+              {{ t('verdictUnchecked') }}
             </VzBadge>
+            <VzBadge v-else :tone="statusLabel(data.isSafe, data.stats.count, false, { email: true }).tone" :icon="statusLabel(data.isSafe, data.stats.count, false, { email: true }).icon" :data-verdict="statusLabel(data.isSafe, data.stats.count, false, { email: true }).verdict">
+              {{ statusLabel(data.isSafe, data.stats.count, false, { email: true }).text }}
+            </VzBadge>
+            <!-- The address's lines below, and the link that shows another one -->
+            <RedFlagCount :hostname="data.domain" context="email" :extra="data.email.mismatch ? 1 : 0" />
           </div>
-          <span class="vz-eyebrow">{{ t('emailTooltipTitle') }}</span>
 
           <!-- Visible text shows a different address than the actual mailto target -->
-          <VzNotice v-if="data.email.mismatch" tone="danger">
+          <VzNotice v-if="data.email.mismatch" tone="danger" icon="flag" data-red-flag>
             <p class="vz-body-strong">
               {{ t('emailTooltipMismatchWarning') }}
             </p>
@@ -267,7 +309,10 @@ onBeforeUnmount(() => {
 
           <!-- Visit facts for the address's domain (regular domains only).
                Named, because the address printed above is not what was visited. -->
-          <div v-if="data.email.providerKind === 'regular' && shouldShowCount(data.isSafe)" class="grid gap-2">
+          <VzNotice v-if="data.email.providerKind === 'regular' && data.unchecked" tone="neutral" icon="unknown" bare data-status="unchecked">
+            {{ t('linkUncheckedNotice') }}
+          </VzNotice>
+          <div v-else-if="data.email.providerKind === 'regular' && shouldShowCount(data.isSafe)" class="grid gap-2">
             <span class="vz-small">{{ t('emailSiteFactsLabel') }}: <SecureText :text="data.domain" size="s" :diff="linkDiff(data.domain)"><CopyButton :text="data.domain" /></SecureText></span>
             <FamiliarityFacts :stats="data.stats" />
           </div>
@@ -277,8 +322,8 @@ onBeforeUnmount(() => {
           <LookalikeNotice :hostname="data.domain" context="email" bare />
 
           <div class="tooltip-actions">
-            <button v-if="showGoButton" class="vz-btn vz-btn--sm" data-action="go" @click="emit('go', data.href)">
-              {{ t('emailOpenMailApp') }}<VzIcon name="arrow-right" />
+            <button v-if="showGoButton" class="vz-btn vz-btn--sm" :class="{ 'vz-btn--risk': mailIsRisky }" data-action="go" @click="goToMail(data.href)">
+              {{ t('emailOpenMailApp') }}<VzIcon v-if="!mailIsRisky" name="arrow-right" />
             </button>
             <button class="vz-btn vz-btn--sm" data-action="details" @click="emit('details', data.domain)">
               {{ t('linkTooltipDetails') }}
@@ -302,8 +347,13 @@ onBeforeUnmount(() => {
         <!-- Mismatch: warning + comparison table -->
         <template v-else-if="data.mismatch">
           <VzSig />
-          <div class="tooltip-title">
-            <VzIcon name="alert" large class="tone-danger" />
+          <!-- Link text naming another site is a red flag, and the title says it.
+               No count beside it: the box names two sites, each with its own
+               verdict in the table, and one number for both would leave the
+               reader to guess whose it is. The flags under the destination
+               carry their own sign. -->
+          <div class="tooltip-title" data-red-flag>
+            <VzIcon name="flag" large class="tone-danger" />
             <span class="vz-body-strong">{{ t('linkTooltipMismatchWarning') }}</span>
           </div>
 
@@ -311,9 +361,11 @@ onBeforeUnmount(() => {
             :text-domain="data.mismatch.textDomain"
             :text-domain-is-safe="data.mismatch.textDomainIsSafe"
             :text-domain-stats="data.mismatch.textDomainStats"
+            :text-domain-unchecked="data.mismatch.textDomainUnchecked"
             :dest-domain="data.domain"
             :dest-is-safe="data.isSafe"
             :dest-stats="data.stats"
+            :dest-unchecked="data.unchecked"
             :dest-diff="linkDiff(data.domain)"
             :show-visit-count="showVisitCount"
             @details="emit('details', $event)"
@@ -337,40 +389,45 @@ onBeforeUnmount(() => {
 
         <!-- No mismatch: standard view -->
         <template v-else>
-          <div class="tooltip-head">
-            <VzSig />
-            <!-- A known shortener says nothing about where it leads, so it gets
-                 its own badge and never a verdict on the shortener itself -->
-            <VzBadge v-if="data.shortUrl?.isKnownShortener" tone="danger" icon="link" data-verdict="shortener">
-              {{ t('linkTooltipShortener') }}
-            </VzBadge>
-            <VzBadge
-              v-else-if="!data.shortUrl || data.shortUrl.status !== 'resolved'"
-              :tone="statusLabel(data.isSafe, data.stats.count).tone"
-              :icon="statusLabel(data.isSafe, data.stats.count).icon"
-              :data-verdict="statusLabel(data.isSafe, data.stats.count).verdict"
-            >
-              {{ statusLabel(data.isSafe, data.stats.count).text }}
-            </VzBadge>
-          </div>
+          <VzSig />
 
           <div class="grid gap-1">
-            <span class="vz-eyebrow">{{ t('linkTooltipDestination') }}</span>
+            <div class="tooltip-label">
+              <span class="vz-eyebrow">{{ t('linkTooltipDestination') }}</span>
+              <!-- A known shortener says nothing about where it leads, so it gets
+                   its own badge and never a verdict on the shortener itself -->
+              <VzBadge v-if="data.shortUrl?.isKnownShortener" tone="danger" icon="alert" data-verdict="shortener">
+                {{ t('linkTooltipShortener') }}
+              </VzBadge>
+              <VzBadge
+                v-else-if="!data.shortUrl || data.shortUrl.status !== 'resolved'"
+                :tone="statusLabel(data.isSafe, data.stats.count, data.unchecked).tone"
+                :icon="statusLabel(data.isSafe, data.stats.count, data.unchecked).icon"
+                :data-verdict="statusLabel(data.isSafe, data.stats.count, data.unchecked).verdict"
+              >
+                {{ statusLabel(data.isSafe, data.stats.count, data.unchecked).text }}
+              </VzBadge>
+              <RedFlagCount :hostname="data.domain" :url="data.href" />
+            </div>
             <SecureText :text="data.domain" size="l" class="tooltip-domain" :diff="linkDiff(data.domain)">
               <CopyButton :text="data.domain" />
             </SecureText>
           </div>
 
-          <!-- Visit facts: never for a known shortener -->
-          <FamiliarityFacts v-if="!data.shortUrl?.isKnownShortener && shouldShowCount(data.isSafe)" :stats="data.stats" />
+          <!-- Visit facts: never for a known shortener, and none to show when the
+               background could not be asked -->
+          <VzNotice v-if="data.unchecked" tone="neutral" icon="unknown" bare data-status="unchecked">
+            {{ t('linkUncheckedNotice') }}
+          </VzNotice>
+          <FamiliarityFacts v-else-if="!data.shortUrl?.isKnownShortener && shouldShowCount(data.isSafe)" :stats="data.stats" />
 
           <!-- Short link: idle, with the button that follows it -->
           <template v-if="data.shortUrl?.status === 'idle'">
-            <VzNotice v-if="data.shortUrl.isKnownShortener" tone="danger" icon="link" bare>
+            <VzNotice v-if="data.shortUrl.isKnownShortener" tone="danger" bare>
               {{ t('linkTooltipShortUrlWarning') }}
             </VzNotice>
             <button class="vz-btn vz-btn--sm vz-btn--block" data-action="resolve" @click.stop="handleResolveClick()">
-              <VzIcon name="link" />{{ t('linkTooltipResolveButton') }}
+              <VzIcon name="link" />{{ t(data.shortUrl.isKnownShortener ? 'linkResolveKnown' : 'linkResolveTry') }}
             </button>
           </template>
 
@@ -381,15 +438,16 @@ onBeforeUnmount(() => {
 
           <!-- Short link: followed to its end -->
           <div v-if="data.shortUrl?.status === 'resolved'" class="tooltip-section">
-            <div class="tooltip-head">
+            <div class="tooltip-label">
               <span class="vz-eyebrow inline-flex items-center gap-1"><VzIcon name="link" />{{ t('linkTooltipShortenedUrl') }}</span>
               <VzBadge
-                :tone="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).tone"
-                :icon="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).icon"
-                :data-verdict="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).verdict"
+                :tone="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).tone"
+                :icon="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).icon"
+                :data-verdict="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).verdict"
               >
-                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count).text }}
+                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).text }}
               </VzBadge>
+              <RedFlagCount :hostname="data.shortUrl.resolvedDomain" />
             </div>
             <SecureText :text="data.shortUrl.resolvedDomain" size="l" class="tooltip-domain" :diff="resolvedDiff(data.shortUrl.resolvedDomain)">
               <CopyButton :text="data.shortUrl.resolvedDomain" />
@@ -416,7 +474,7 @@ onBeforeUnmount(() => {
             <DomainMarkers :hostname="data.shortUrl.resolvedDomain" :familiar="data.shortUrl.resolvedIsSafe" bare />
             <LookalikeNotice :hostname="data.shortUrl.resolvedDomain" bare />
 
-            <FamiliarityFacts v-if="shouldShowCount(data.shortUrl.resolvedIsSafe)" :stats="data.shortUrl.resolvedStats" />
+            <FamiliarityFacts v-if="!data.shortUrl.resolvedUnchecked && shouldShowCount(data.shortUrl.resolvedIsSafe)" :stats="data.shortUrl.resolvedStats" />
 
             <!-- Redirect chain trace -->
             <div v-if="traceChain && data.shortUrl.chain.length > 2" class="grid gap-1">
@@ -474,7 +532,7 @@ onBeforeUnmount(() => {
                  every link from it. It appears once following has shown the link
                  really leads somewhere else, in the block above. -->
             <button v-if="!data.shortUrl && shortUrlMode !== 'off'" class="vz-btn vz-btn--sm vz-btn--quiet" data-action="resolve-once" @click.stop="handleResolveOnce()">
-              <VzIcon name="link" />{{ t('linkTooltipResolveOnce') }}
+              <VzIcon name="link" />{{ t('linkResolveTry') }}
             </button>
           </div>
         </template>
@@ -502,10 +560,10 @@ onBeforeUnmount(() => {
   max-width: min(var(--tooltip-wide) * var(--vz-scale, 1), 100vw - 32px);
 }
 
-.tooltip-head {
+/* A heading and the verdict on what it names, side by side */
+.tooltip-label {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
   flex-wrap: wrap;
 }

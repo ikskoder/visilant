@@ -2,7 +2,7 @@ import type { Settings, SiteVisitData } from '../storage'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { reactive } from 'vue'
 import browser from 'webextension-polyfill'
-import { DEFAULT_SHORTENER_LIST_URL, defaultSettings, parseStoredSettings, runSettingsMigrations, settingsPatch } from '../storage'
+import { DEFAULT_SHORTENER_LIST_URL, defaultInterceptSettings, defaultSettings, normalizeLinkSafety, parseStoredSettings, runSettingsMigrations, settingsPatch } from '../storage'
 
 describe('defaultSettings', () => {
   it('ships all three checks on, visits at ten', () => {
@@ -196,6 +196,27 @@ describe('runSettingsMigrations', () => {
 
   const stored = () => JSON.parse(sync.settings as string) as Settings
 
+  // Stopping every click on an unfamiliar link was a trigger once, and is a
+  // box now. Whoever had it keeps it.
+  it('turns a stored click-left into the right-click check with "unfamiliar" ticked', async () => {
+    sync.settings = JSON.stringify({ linkSafety: { enabled: true, tooltipTrigger: 'click-left', shortUrlListUpdateUrl: 'x' } })
+
+    await runSettingsMigrations()
+
+    expect(stored().linkSafety.tooltipTrigger).toBe('click-right')
+    expect(stored().linkSafety.intercept).toEqual({ ...defaultInterceptSettings, unfamiliar: true })
+    expect(local.interceptMigrated).toBe(true)
+  })
+
+  it('gives a profile without the boxes the shipped ones', async () => {
+    sync.settings = JSON.stringify({ linkSafety: { enabled: true, tooltipTrigger: 'hover', shortUrlListUpdateUrl: 'x' } })
+
+    await runSettingsMigrations()
+
+    expect(stored().linkSafety.tooltipTrigger).toBe('hover')
+    expect(stored().linkSafety.intercept).toEqual(defaultInterceptSettings)
+  })
+
   it('carries a hand-set threshold over and leaves the two newer checks off', async () => {
     sync.settings = JSON.stringify({ safety: 25, linkSafety: { enabled: true, shortUrlListUpdateUrl: 'x' }, lookupServices: 'a', disposableEmailListUrl: 'b', publicEmailListUrl: 'c' })
 
@@ -236,6 +257,7 @@ describe('runSettingsMigrations', () => {
     local.textDefaultsSeeded = true
     local.shortenerSourceSeeded = true
     local.familiarityMigrated = true
+    local.interceptMigrated = true
     sync.settings = JSON.stringify({ linkSafety: { shortUrlListUpdateUrl: '' }, lookupServices: '' })
 
     await runSettingsMigrations()
@@ -246,6 +268,7 @@ describe('runSettingsMigrations', () => {
   it('leaves a source the user has already set', async () => {
     local.textDefaultsSeeded = true
     local.familiarityMigrated = true
+    local.interceptMigrated = true
     sync.settings = JSON.stringify({ linkSafety: { shortUrlListUpdateUrl: 'https://example.com/mine.txt' } })
 
     await runSettingsMigrations()
@@ -329,5 +352,39 @@ describe('settingsPatch', () => {
 
     const patch = settingsPatch(next, { ...defaultSettings })
     expect(() => structuredClone(patch)).not.toThrow()
+  })
+})
+
+describe('normalizeLinkSafety', () => {
+  it('fills the boxes on a profile stored before they existed', () => {
+    const read = normalizeLinkSafety({ enabled: true, tooltipTrigger: 'click-right' })
+    expect(read.intercept).toEqual(defaultInterceptSettings)
+    expect(read.tooltipTrigger).toBe('click-right')
+  })
+
+  // Read so before the migration has written it, by a content script that
+  // got there first
+  it('reads a click-left as the right-click check with "unfamiliar" ticked', () => {
+    const read = normalizeLinkSafety({ enabled: true, tooltipTrigger: 'click-left' })
+    expect(read.tooltipTrigger).toBe('click-right')
+    expect(read.intercept.unfamiliar).toBe(true)
+  })
+
+  // The boxes, once there, are the user's: an old trigger left beside them
+  // must not tick one they cleared
+  it('lets stored boxes win over a leftover click-left', () => {
+    const read = normalizeLinkSafety({ tooltipTrigger: 'click-left', intercept: { ...defaultInterceptSettings, unfamiliar: false } })
+    expect(read.intercept.unfamiliar).toBe(false)
+  })
+
+  it('keeps the red-flag count within its range', () => {
+    expect(normalizeLinkSafety({ intercept: { minRedFlags: 0 } }).intercept.minRedFlags).toBe(1)
+    expect(normalizeLinkSafety({ intercept: { minRedFlags: 99 } }).intercept.minRedFlags).toBe(5)
+    expect(normalizeLinkSafety({ intercept: { minRedFlags: 'x' } }).intercept.minRedFlags).toBe(1)
+    expect(normalizeLinkSafety({ intercept: { minRedFlags: 3 } }).intercept.minRedFlags).toBe(3)
+  })
+
+  it('reads nothing at all as the shipped settings', () => {
+    expect(normalizeLinkSafety(undefined)).toEqual(defaultSettings.linkSafety)
   })
 })

@@ -58,6 +58,23 @@ test('the check field is on the standalone page and not in the popup', async ({ 
   await expect(popup.locator('text=Check a link, email address or QR code')).toHaveCount(0)
 })
 
+// The check answers the way the extension then acts. A link to a new subdomain
+// of a familiar site shows red and a form on it warns, so the check field used
+// to say "Familiar site" for an address the rest of Visilant would stop.
+test('a new subdomain of a familiar site is judged by its own visits', async ({ context, extensionId }) => {
+  await seedVisits(context, 'familiar-family.test', 50, { activeDays: 30 })
+  const page = await openCheckPage(context, extensionId)
+
+  await check(page, 'https://login.familiar-family.test/')
+
+  await expect(panel(page).locator('[data-popup-verdict]')).toHaveAttribute('data-verdict', 'never', { timeout: 5000 })
+  // The site's own figures are still there, under its name
+  await expect(page.locator('[data-base-domain]')).toContainText('familiar-family.test')
+
+  await check(page, 'https://familiar-family.test/')
+  await expect(panel(page).locator('[data-popup-verdict]')).toHaveAttribute('data-verdict', 'familiar', { timeout: 5000 })
+})
+
 test('checking a URL reports its base domain and visit count', async ({ context, extensionId }) => {
   await seedVisits(context, 'shop.example.org', 4)
   const page = await openCheckPage(context, extensionId)
@@ -74,7 +91,7 @@ test('checking a URL reports its base domain and visit count', async ({ context,
   await expect(page.locator('[data-family-stats]')).toHaveCount(0)
   // In their place the card says why, so it does not read as figures forgotten
   await expect(page.locator('[data-base-domain] [data-family-only-host]'))
-    .toHaveText('Other than the checked domain, nothing is recorded under this domain.')
+    .toHaveText('Nothing else is recorded on this site.')
   // With no family list under it, the base domain card still keeps its distance
   // from the card above – the gap used to be kept only for the family list
   const panel = await page.locator('[data-domain-panel]').boundingBox()
@@ -144,15 +161,15 @@ test('the bar rides along inside the cell once it is asked for', async ({ contex
 })
 
 // The check page is the one surface with no site behind it: the reader is on the
-// extension's own page and the name on screen is one they typed. "Anti-tampering:
-// active" there is a claim about nothing.
+// extension's own page and the name on screen is one they typed. A line saying
+// whether this site hides the warnings is there a claim about nothing.
 test('the checked domain carries no anti-tampering claim', async ({ context, extensionId }) => {
   const page = await openCheckPage(context, extensionId)
 
   await check(page, 'https://tamper-claim.example.org/')
 
-  await expect(page.locator('text=Checked domain')).toBeVisible({ timeout: 5000 })
-  await expect(page.locator('text=Anti-tampering')).toHaveCount(0)
+  await expect(page.locator('text=Checked address')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('text=hides Visilant')).toHaveCount(0)
 })
 
 test('a bare domain is understood without a scheme', async ({ context, extensionId }) => {
@@ -174,7 +191,7 @@ test('a known shortener is flagged and offers to be expanded', async ({ context,
   // Said once, in the card, in words. The field only offers the way through it.
   await expect(panel(page).locator('[data-marker-note="shortener"]')).toBeVisible({ timeout: 5000 })
   await expect(field(page).locator('text=shortener')).toHaveCount(0)
-  await expect(field(page).locator('button', { hasText: 'Expand' })).toBeVisible()
+  await expect(field(page).locator('button', { hasText: 'Show where it leads' })).toBeVisible()
 })
 
 test('an email address one letter off a familiar provider is flagged', async ({ context, extensionId }) => {
@@ -193,7 +210,7 @@ test('an email address one letter off a familiar provider is flagged', async ({ 
   // One sentence, naming the site it is about. The reason used to sit on a line
   // of its own and say "that name", which told a first-time reader nothing.
   const notice = panel(page).locator('[data-lookalike-source="history"]')
-  await expect(notice).toHaveText(/Looks like the familiar\s*gmail\.com, but with a letter or two changed/, { timeout: 5000 })
+  await expect(notice).toHaveText(/May be imitating the familiar\s*gmail\.com, with a letter or two changed/, { timeout: 5000 })
   await expect(notice.locator('[data-lookalike-site]')).toHaveText('gmail.com')
 })
 
@@ -213,7 +230,7 @@ test('a familiar domain parked in front of an ending is explained once, by the l
   // for word.
   await expect(page.locator('[data-lookalike-reason="familiar-as-subdomain"]')).toHaveCount(1)
   // The marker it replaces named the real site, so this line has to as well
-  await expect(notice).toHaveText(/Looks like the familiar\s*yourbank\.com, but here it is only a subdomain of\s*pay-verify\.top/)
+  await expect(notice).toHaveText(/May be imitating the familiar\s*yourbank\.com, but the real site is\s*pay-verify\.top/)
   await expect(notice.locator('[data-lookalike-real]')).toHaveText('pay-verify.top')
 
   // Nothing familiar is imitated here, so the marker is the only line, and it
@@ -304,7 +321,7 @@ test('an email address is read as an email, not as a link', async ({ context, ex
 
   await expect(field(page).locator('text="Email address"')).toBeVisible({ timeout: 5000 })
   // Read as an address rather than as a link to its domain
-  await expect(field(page).locator('text=Base domain')).toHaveCount(0)
+  await expect(field(page).locator('text="Site"')).toHaveCount(0)
 })
 
 test('a unicode lookalike is reported under its real ascii name', async ({ context, extensionId }) => {
@@ -319,8 +336,8 @@ test('a unicode lookalike is reported under its real ascii name', async ({ conte
   await expect(panel(page)).toContainText('xn--pple-43d.com', { timeout: 5000 })
   await expect(field(page).locator('[data-field-hostname]')).toHaveCount(0)
   await expect(field(page).locator('text=Also written')).toHaveCount(0)
-  await expect(page.locator('text=Original (Unicode)')).toBeVisible({ timeout: 5000 })
-  await expect(page.locator('text=Punycode (ASCII)')).toBeVisible()
+  await expect(page.locator('text=Readable form')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('text=Coded form (punycode)')).toBeVisible()
 })
 
 test('the letter a lookalike changed is underlined in the address', async ({ context, extensionId }) => {
@@ -358,7 +375,7 @@ test('a site on a shared platform says the platform does not run it, until it is
 
   // A name of its own has no platform to speak of
   await check(page, 'https://some-shop.com')
-  await expect(page.locator('text=Checked domain')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('text=Checked address')).toBeVisible({ timeout: 5000 })
   await expect(page.locator('[data-marker="hosted-on"]')).toHaveCount(0)
 
   await seedVisits(context, 'myblog.github.io', 40, { activeDays: 20 })
@@ -383,7 +400,7 @@ test('checking a domain switches the dashboard below to it', async ({ context, e
 
   await check(page, 'https://dashboard-target.com/page')
 
-  await expect(page.locator('text=Checked domain')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('text=Checked address')).toBeVisible({ timeout: 5000 })
   await expect(page.locator('.secure-domain-display').first()).toContainText('dashboard-target.com')
 })
 
@@ -443,8 +460,8 @@ test('two addresses can be held against each other, character by character', asy
   await field.fill('anna@example.org')
   await expect(page.locator('text=Not the same address')).toBeVisible({ timeout: 3000 })
 
-  // "rn" against "m" – three columns out of the alignment, and nothing else
-  await expect(page.locator('text=3 characters don\'t line up')).toBeVisible()
+  // "rn" against "m": one letter swapped and one added, and nothing else
+  await expect(page.locator('text=2 characters differ')).toBeVisible()
 
   // The same address, and the answer flips
   await field.fill('anna@exarnple.org')

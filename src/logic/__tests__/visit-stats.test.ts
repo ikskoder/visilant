@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyVisit, classifyHost, dayKey, isTrackableHostname, untrackedReason, VISIT_DEBOUNCE_MS } from '../visit-stats'
+import { applyReport, applyVisit, classifyHost, dayKey, isTrackableHostname, summarizeVisits, untrackedReason, VISIT_DEBOUNCE_MS } from '../visit-stats'
 
 // Local noon, so the day key cannot slip into a neighbouring day in any timezone
 function at(year: number, month: number, day: number, hour = 12, minute = 0) {
@@ -147,5 +147,55 @@ describe('untrackedReason', () => {
   it('calls everything else that is not counted a local name', () => {
     expect(untrackedReason('localhost')).toBe('local')
     expect(untrackedReason('printer.lan')).toBe('local')
+  })
+})
+
+describe('applyReport', () => {
+  const seen = { count: 4, firstSeen: at(2026, 3, 1), lastSeen: at(2026, 3, 7, 9), activeDays: 3, ignored: false }
+
+  // A tab left open for days and refreshed each morning is a site used each day
+  it('counts a reload that is the first visit of its day', () => {
+    const next = applyReport(seen, at(2026, 3, 8, 9), true)!
+    expect(next.count).toBe(5)
+    expect(next.activeDays).toBe(4)
+  })
+
+  it('leaves the record alone for a reload on a day already seen', () => {
+    expect(applyReport(seen, at(2026, 3, 7, 15), true)).toBe(seen)
+  })
+
+  it('counts an ordinary visit later the same day as before', () => {
+    expect(applyReport(seen, at(2026, 3, 7, 15), false)!.count).toBe(5)
+  })
+})
+
+describe('summarizeVisits', () => {
+  // A page reloading itself every minute and a half all afternoon: the browser
+  // keeps every load, and adding them up made it look like a site used daily
+  it('counts a day of self-reloads as one visit', () => {
+    const reloads = Array.from({ length: 200 }, (_, i) => ({ time: at(2026, 3, 7, 12) + i * 90_000, reload: true }))
+    const summary = summarizeVisits([{ time: at(2026, 3, 7, 11), reload: false }, ...reloads])!
+
+    expect(summary.count).toBe(1)
+    expect(summary.activeDays).toBe(1)
+  })
+
+  it('folds visits within a minute into one, in order of time, whatever order they come in', () => {
+    const summary = summarizeVisits([
+      { time: at(2026, 3, 7, 12, 30), reload: false },
+      { time: at(2026, 3, 7, 12, 0) + 20_000, reload: false },
+      { time: at(2026, 3, 7, 12, 0), reload: false },
+      { time: at(2026, 3, 9), reload: true },
+    ])!
+
+    expect(summary.count).toBe(3)
+    expect(summary.activeDays).toBe(2)
+    expect(summary.firstSeen).toBe(at(2026, 3, 7, 12, 0))
+    expect(summary.lastSeen).toBe(at(2026, 3, 9))
+  })
+
+  it('has nothing to say about nothing', () => {
+    expect(summarizeVisits([])).toBeUndefined()
+    expect(summarizeVisits([{ time: 0, reload: false }, { time: Number.NaN, reload: false }])).toBeUndefined()
   })
 })

@@ -10,6 +10,7 @@ import IconCircleDash from '~icons/carbon/circle-dash'
 import IconClose from '~icons/carbon/close'
 import IconCopy from '~icons/carbon/copy'
 import IconEmail from '~icons/carbon/email'
+import IconFlagFilled from '~icons/carbon/flag-filled'
 import IconHelp from '~icons/carbon/help'
 import IconInformationFilled from '~icons/carbon/information-filled'
 import IconLabel from '~icons/carbon/label'
@@ -28,6 +29,7 @@ import IconTime from '~icons/carbon/time'
 import IconTranslate from '~icons/carbon/translate'
 import IconView from '~icons/carbon/view'
 import IconWarningAltFilled from '~icons/carbon/warning-alt-filled'
+import { ShieldFail, ShieldPass, ShieldUnknown } from './shield-icons'
 
 const props = defineProps<{
   name: IconName
@@ -74,6 +76,13 @@ const ICONS = {
   'check-mark': IconCheckmark,
   'pending': IconPending,
   'help': IconHelp,
+  'shield-pass': ShieldPass,
+  'shield-fail': ShieldFail,
+  'shield-unknown': ShieldUnknown,
+  // A red flag, and only that: one of the few findings that are a reason to
+  // stop on their own (see logic/red-flags.ts). Every other warning keeps the
+  // triangle.
+  'flag': IconFlagFilled,
 } satisfies Record<string, Component>
 
 export type IconName = keyof typeof ICONS

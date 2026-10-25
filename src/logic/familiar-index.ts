@@ -109,9 +109,9 @@ export function collectFamiliarDomains(
  * persisting. A count that drifts low until the next rebuild affects nothing but
  * the order of two equally strong matches.
  *
- * `counted` says whether this navigation was a visit at all. Two page loads
- * inside the debounce window are one visit everywhere else, and adding one here
- * regardless made a family's ranking climb on reloads alone – enough, on a page
+ * `counted` says whether this report was a visit at all. Two visits inside the
+ * debounce window are one visit everywhere else, and adding one here regardless
+ * made a family's ranking climb on reloads alone – enough, on a page
  * that reloads itself, to reorder the lookalike matches out of any relation to
  * how often the user actually goes there, and the inflated number then got
  * written out with the next new member.

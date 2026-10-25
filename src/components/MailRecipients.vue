@@ -62,7 +62,7 @@ const show = computed(() => props.recipients.length > 1 || (props.notChecked ?? 
       <VzNotice v-if="recipient.analysis.suspiciousPattern" tone="danger" bare>
         <SecureText :text="recipient.analysis.domain" size="s" /> – {{ t('emailSuspiciousPattern') }} (.{{ recipient.analysis.suspiciousPattern.label }})
       </VzNotice>
-      <VzNotice v-if="recipient.providerKind === 'regular' && !recipient.isSafe" tone="danger" bare>
+      <VzNotice v-if="recipient.providerKind === 'regular' && !recipient.isSafe && !recipient.unchecked" tone="danger" bare>
         <SecureText :text="recipient.analysis.domain" size="s" /> – {{ t('emailRecipientUnfamiliar') }}
       </VzNotice>
     </template>

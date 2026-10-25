@@ -2658,6 +2658,62 @@ export function isShortenedUrl(hostname: string): boolean {
   return matchesDomainSet(hostname.toLowerCase(), shortenerDomains)
 }
 
+/**
+ * Short-link services that belong to a site, and the sites they belong to.
+ *
+ * On its own site such a link is the site's own way of writing links: every
+ * outside link on X goes through t.co, YouTube shares as youtu.be. Whether
+ * those are stopped there is the user's choice (`shortLinksOnOwnSite`). Kept
+ * short and exact rather than guessed: a service missing here is simply
+ * stopped as any short link is. A site's subdomains count as the site, so a
+ * service is listed only where every subdomain is the company's own: not
+ * WordPress (`wp.me`) or Tumblr (`tmblr.co`), where anybody's blog is a
+ * subdomain and `wp.me` also shortens sites hosted anywhere. Amazon's
+ * `amzn.to` is left out, since it would need every Amazon country site listed.
+ */
+export const SHORTENER_HOMES: Readonly<Record<string, readonly string[]>> = {
+  't.co': ['x.com', 'twitter.com'],
+  'youtu.be': ['youtube.com'],
+  'lnkd.in': ['linkedin.com'],
+  'redd.it': ['reddit.com'],
+  'fb.me': ['facebook.com'],
+  'pin.it': ['pinterest.com'],
+  'flic.kr': ['flickr.com'],
+  'spoti.fi': ['spotify.com'],
+  'bbc.in': ['bbc.com', 'bbc.co.uk'],
+  'nyti.ms': ['nytimes.com'],
+  'g.co': ['google.com'],
+  'aka.ms': ['microsoft.com'],
+  'discord.gg': ['discord.com'],
+}
+
+/** The table's key for a host, walking its parents, so `www.t.co` is `t.co`. */
+function homeKey(hostname: string): string | null {
+  let rest = hostname.toLowerCase()
+  while (rest) {
+    if (Object.prototype.hasOwnProperty.call(SHORTENER_HOMES, rest))
+      return rest
+    const dot = rest.indexOf('.')
+    if (dot === -1)
+      return null
+    rest = rest.slice(dot + 1)
+  }
+  return null
+}
+
+/**
+ * Whether a link through this short-link host is the page's own service's.
+ * Both names are walked up their parents, so `mobile.x.com` is X. A name with
+ * a trailing dot (`x.com.`) matches nothing, which stops the link as before.
+ */
+export function isOwnServiceShortLink(linkHostname: string, pageHostname: string): boolean {
+  const key = homeKey(linkHostname)
+  if (!key)
+    return false
+  const page = pageHostname.toLowerCase()
+  return SHORTENER_HOMES[key].some(home => page === home || page.endsWith(`.${home}`))
+}
+
 export interface ResolvedUrlResult {
   finalUrl: string
   finalHostname: string
@@ -2710,6 +2766,12 @@ export async function resolveUrlChain(url: string): Promise<ResolvedUrlResult> {
         method: 'GET',
         redirect: 'follow',
         signal: controller.signal,
+        // Nothing that says who is asking. With cookies the shortener, and every
+        // site the link passes through, would see the user's logged-in session
+        // for a link they have not opened. From the background the referrer is
+        // the extension's own page, which names the extension.
+        credentials: 'omit',
+        referrerPolicy: 'no-referrer',
         headers: {
           // Some shorteners check User-Agent and serve different content to bots
           Accept: 'text/html,application/xhtml+xml,*/*',

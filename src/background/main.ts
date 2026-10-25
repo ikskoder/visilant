@@ -6,7 +6,7 @@ import { onMessage } from 'webext-bridge/background'
 import { applySilence, canAutoLift, familiarSilencedHosts, liftSilence, recordStats } from '~/logic/auto-unsilence'
 import { ACTION_ICONS, BADGE_COLORS, badgeText, toolbarLook } from '~/logic/badge'
 import { fetchBlobBounded } from '~/logic/bounded-fetch'
-import { addressShape, belongsToSite, siteDomain, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
+import { addressShape, belongsToSite, hasKnownSuffix, siteDomain, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
 import { buildFamiliarIndex, findLookalikes } from '~/logic/domain-similarity'
 import { getProviderReferenceDomains } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, parseMailtoUrl } from '~/logic/email-safety'
@@ -17,11 +17,11 @@ import { watchListStorage } from '~/logic/list-sync'
 import { collectMailSiteFamilies, loadMailSitesFromRecords } from '~/logic/mail-sites'
 import { hasContextMenus } from '~/logic/platform'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
-import { settings as appSettings, parseStoredSettings, settingsReady } from '~/logic/storage'
+import { settings as appSettings, normalizeLinkSafety, parseStoredSettings, settingsReady } from '~/logic/storage'
 import { clearAllTamperAlarms, clearTamperAlarm, hasTamperAlarm, raiseTamperAlarm } from '~/logic/tamper-alarms'
 import { addCustomShortener, clearCachedResolvedUrl, getCachedResolvedUrl, loadShortenersFromStorage, resolveUrlChain, setCachedResolvedUrl } from '~/logic/url-shorteners'
 import { visitKeysToRemove } from '~/logic/visit-reset'
-import { applyVisit, isTrackableHostname } from '~/logic/visit-stats'
+import { applyReport, isTrackableHostname } from '~/logic/visit-stats'
 import { removeVisitRecords, runVisitStep, updateVisitRecord, updateVisitRecords, visitGeneration } from '~/logic/visit-store'
 import { foldWwwRecords } from '~/logic/www-fold'
 
@@ -182,7 +182,7 @@ function isInternalPage(hostname: string): boolean {
 }
 
 // Function to increment visit count for a URL (storage only – does NOT touch badge)
-async function incrementVisitCount(url: string) {
+async function incrementVisitCount(url: string, reload = false): Promise<boolean> {
   // The key the record lives under, not the name in the address bar – see visitKey
   const hostname = visitKey(getHostname(url))
 
@@ -191,17 +191,22 @@ async function incrementVisitCount(url: string) {
   // back to whatever the winner had read a moment earlier.
   let counted = false
   let lifted = false
+  let changed = false
   const updated = await updateVisitRecord(hostname, (existing) => {
     const now = Date.now()
-    const next = applyVisit(existing, now)
+    const next = applyReport(existing, now, reload)
+    // A reload on a day this site was already seen leaves the record as it was
+    if (!next || next === existing)
+      return undefined
+    changed = true
     counted = next.count !== (existing?.count ?? 0)
     // Lifted here, on a visit, rather than when the site qualifies – see
     // auto-unsilence.ts for why no other moment will do
     lifted = appSettings.value.autoUnsilenceFamiliar && canAutoLift(next, currentFamiliarityRules(), now)
     return lifted ? liftSilence(next) : next
   })
-  if (!updated)
-    return
+  if (!updated || !changed)
+    return false
 
   // The page may already have asked about itself and been told it is silenced.
   // Nothing shows while it is familiar, but it would stay silenced past a
@@ -213,6 +218,7 @@ async function incrementVisitCount(url: string) {
   // question the counter above just answered, and the index has to give the
   // same answer or the two drift apart
   await noteVisitForFamiliarIndex(hostname, updated, counted)
+  return true
 }
 
 /**
@@ -681,7 +687,19 @@ browser.runtime.onInstalled.addListener(async (details): Promise<void> => {
   await runAutoHistoryImport()
 })
 
-// Update visit count when tab is updated
+/**
+ * Tabs whose current page has already been reported, cleared when a tab starts
+ * loading something new.
+ *
+ * One report per page load. The top document sends one at most, but every
+ * frame on the page used to send its own, and a page with an embedded video and two
+ * adverts gave a visit to each of them a minute apart. Lost with the worker,
+ * which costs at most one extra report, and the one-minute debounce is still
+ * there behind it.
+ */
+const reportedTabs = new Set<number>()
+
+// A tab starting or finishing a load: the badge, the tamper alarm and the per-load visit report
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!tab.url)
     return
@@ -701,13 +719,16 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // A fresh document gets a clean slate: whatever the previous page did, this
   // one has not done anything yet. Cleared on 'loading' so an alarm raised by
   // the new page, which arrives afterwards, is the one that survives.
-  if (status === 'loading')
+  if (status === 'loading') {
+    reportedTabs.delete(tabId)
     await clearTamperAlarm(tabId)
+  }
 
-  // Only increment the visit count once per navigation, on complete.
-  // Always count the visit, even if the tab is in the background.
-  if (status === 'complete' && !isInternalPage(hostname))
-    await incrementVisitCount(tab.url)
+  // Not a visit yet. A page that has finished loading has not been used by
+  // anybody, and counting it here let a site make itself familiar: one that
+  // reloads itself every minute in a background tab collected a visit each time.
+  // The content script reports the first thing a person does on the page, see
+  // `record-visit`.
 
   // Only touch action badge/icon for the tab the user is actually looking at.
   // In Chrome, ctrl+click opens a background tab whose onUpdated fires while
@@ -729,6 +750,7 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 // A closed tab's id can be handed out again, so let go of it
 browser.tabs.onRemoved.addListener(async (tabId) => {
+  reportedTabs.delete(tabId)
   await clearTamperAlarm(tabId)
 })
 
@@ -749,6 +771,46 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
   }
 })
 
+/**
+ * A visit, reported by the top document once a person has used the page.
+ *
+ * Counted from the tab's own address rather than the one in the message. Only
+ * the extension's content script can send this, but the two have to agree:
+ * a report that arrives after the tab has moved on belongs to a page that is no
+ * longer there, and is dropped rather than credited to whatever replaced it.
+ */
+async function handleRecordVisit(data: any, ctx?: MessageContext) {
+  if (!ctx?.tabUrl)
+    return { counted: false }
+  // Only a frame is turned away. The top document reports once per page by
+  // itself, and again when it comes back from the back-forward cache, which
+  // the tab may not announce as a new load
+  if (data?.fromFrame && ctx.tabId != null && reportedTabs.has(ctx.tabId))
+    return { counted: false }
+  const hostname = getHostname(ctx.tabUrl)
+  if (isInternalPage(hostname))
+    return { counted: false }
+  // A frame cannot know the address of the page around it, and does not need
+  // to: using the frame is using the page, which is the tab's own address
+  if (!data?.fromFrame && (typeof data?.url !== 'string' || getHostname(data.url) !== hostname))
+    return { counted: false }
+
+  // Taken before the write, so a frame reporting a moment later does not slip in
+  if (ctx.tabId != null)
+    reportedTabs.add(ctx.tabId)
+  const counted = await incrementVisitCount(ctx.tabUrl, data?.reload === true)
+  if (!counted)
+    return { counted: false }
+
+  // The badge was drawn when the page loaded, before this visit existed
+  if (ctx.tabId != null) {
+    const tab = await browser.tabs.get(ctx.tabId).catch(() => null)
+    if (tab?.active && !(await hasTamperAlarm(ctx.tabId)))
+      await updateBadge(hostname, ctx.tabId)
+  }
+  return { counted: true }
+}
+
 // Collect visit data for a whole domain family (the base domain and every host
 // recorded under it, at any depth),
 // the same aggregation the popup dashboard shows
@@ -768,8 +830,9 @@ async function getDomainFamilyLogic(hostname: string) {
     }
   }
   entries.sort((a, b) => b.count - a.count)
-  // The family's own facts travel with it, so the panel can reach the same
-  // verdict the badge did instead of re-deriving one from the total alone
+  // The family's own facts travel with it, so the panel can show them under the
+  // site's name instead of re-deriving them from the total alone. The verdict
+  // beside the checked name is taken on that name's own entry, as the badge is.
   const stats = aggregateFamiliarityStats(records)
   // An address domain is not a site anyone opens, so its family is empty by
   // nature. Where the mail is read is, and that is what the panel shows instead.
@@ -799,6 +862,9 @@ async function getVisitCountLogic(url: string) {
     ignored: record?.ignored || false,
     activeDays: record?.activeDays,
     firstSeen: record?.firstSeen,
+    // Whether this can be anybody's address at all, which a link text that
+    // names it has to be before it counts as naming another site
+    listed: hasKnownSuffix(hostname),
   }
 }
 
@@ -1143,7 +1209,7 @@ async function handleShowNotification(warningType: 'input' | 'copy', tabUrl?: st
 }
 
 // Handle tampering detection
-async function handleTampering(tabId?: number, url?: string, tabUrl?: string) {
+async function handleTampering(tabId?: number, tabUrl?: string) {
   // The page watcher keeps going after its first report now, so a page that
   // strikes repeatedly reports repeatedly. The alarm and the badge are worth
   // re-asserting every time – the notification is worth showing once.
@@ -1152,7 +1218,7 @@ async function handleTampering(tabId?: number, url?: string, tabUrl?: string) {
   // Marked before anything else is awaited: a page that strikes mid-load would
   // otherwise have its alarm painted over by the load's own badge refresh
   if (tabId != null)
-    await raiseTamperAlarm(tabId, url ?? '')
+    await raiseTamperAlarm(tabId)
 
   if (!alreadyAlarmed) {
     const title = await notificationTitle(tabUrl)
@@ -1196,6 +1262,48 @@ async function handleOpenPopupTab(domain: string) {
   const popupUrl = browser.runtime.getURL(`dist/popup/index.html?domain=${encodeURIComponent(domain)}`)
   await browser.tabs.create({ url: popupUrl })
   return 'Popup tab opened'
+}
+
+/**
+ * Open a link the user went ahead with, in a tab beside theirs.
+ *
+ * For a middle, ctrl or shift click that the content script held and puts back.
+ * A page can open a tab only in front of itself, and the browser opens a middle
+ * click behind, so the tab is opened here where `active` can say which. Web
+ * addresses only: anything else would let a content script reach a page no link
+ * could.
+ */
+async function handleOpenLinkTab(data: any, ctx?: MessageContext) {
+  let url: URL
+  try {
+    url = new URL(String(data?.url ?? ''))
+  }
+  catch {
+    throw new Error('not an address')
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:')
+    throw new Error('not a web address')
+  const active = data?.active === true
+
+  // Never opened anywhere but beside the tab that asked. Left to the browser, a
+  // link from a private window could open in an ordinary one. Its window keeps
+  // a private tab private.
+  const opener = ctx?.tabId === undefined ? null : await browser.tabs.get(ctx.tabId)
+  if (!opener)
+    throw new Error('no tab to open beside')
+  // A Firefox container is a cookie store of its own, which a middle click
+  // keeps, and naming it here needs the `cookies` permission. Left to the page,
+  // which opens the tab itself and keeps the container, in front of the page.
+  if (opener.cookieStoreId && opener.cookieStoreId !== 'firefox-default' && opener.cookieStoreId !== 'firefox-private')
+    return { opened: false }
+  try {
+    await browser.tabs.create({ url: url.href, active, openerTabId: opener.id, index: opener.index + 1, windowId: opener.windowId })
+  }
+  catch {
+    // Firefox for Android takes no opener and no position
+    await browser.tabs.create({ url: url.href, active, windowId: opener.windowId })
+  }
+  return { opened: true }
 }
 
 /**
@@ -1344,6 +1452,8 @@ async function sendToTopFrame<T>(tabId: number | undefined, type: string, data: 
 /** What a handler is told about where the message came from. */
 interface MessageContext {
   tabId?: number
+  /** Which document of the tab sent it, 0 for the top one. */
+  frameId?: number
   /** The tab's top-level URL, which a frame with no address of its own needs. */
   tabUrl?: string
 }
@@ -1396,6 +1506,25 @@ const messageHandlers = {
   'frame-verdict': (_data: any, ctx?: MessageContext) => handleFrameVerdict(ctx),
   'frame-warning': (data: any, ctx?: MessageContext) =>
     sendToTopFrame(ctx?.tabId, 'frame-warning', data),
+  // A link in a frame goes to the top document to be judged, with the frame's
+  // id so the answer can come back to it, and the top's answer goes to that
+  // frame only. Only the top document may answer: a frame deciding for itself,
+  // or for another, is not a decision.
+  // Not reached is "unknown", which the frame never remembers
+  'frame-link-prefetch': async (data: any, ctx?: MessageContext) =>
+    (await sendToTopFrame(ctx?.tabId, 'frame-link-prefetch', { ...data, frameId: ctx?.frameId })) ?? { unknown: true },
+  'frame-link-click': async (data: any, ctx?: MessageContext) =>
+    (await sendToTopFrame(ctx?.tabId, 'frame-link-click', { ...data, frameId: ctx?.frameId })) ?? { unknown: true },
+  'frame-link-withdraw': async (data: any, ctx?: MessageContext) => {
+    await sendToTopFrame(ctx?.tabId, 'frame-link-withdraw', { ...data, frameId: ctx?.frameId })
+    return { delivered: true }
+  },
+  'frame-link-decision': async (data: any, ctx?: MessageContext) => {
+    if (ctx?.frameId !== 0 || ctx.tabId == null || typeof data?.frameId !== 'number' || data.frameId === 0)
+      return { delivered: false }
+    await browser.tabs.sendMessage(ctx.tabId, { type: 'frame-link-decision', data }, { frameId: data.frameId }).catch(() => {})
+    return { delivered: true }
+  },
   'frame-paste-intercept': async (data: any, ctx?: MessageContext) =>
     (await sendToTopFrame<{ allowed: boolean }>(ctx?.tabId, 'frame-paste-intercept', data)) ?? { allowed: false },
   // The settings page asks for this rather than emptying storage itself – see
@@ -1406,8 +1535,10 @@ const messageHandlers = {
   // context that can answer this is the one that would create the menu
   'get-platform': async () => ({ contextMenus: hasContextMenus() }),
   'show-notification': (data: any, ctx?: MessageContext) => handleShowNotification(data.warningType, ctx?.tabUrl),
-  'tampering-detected': (data: any, ctx?: MessageContext) => handleTampering(ctx?.tabId, data?.url, ctx?.tabUrl),
+  'record-visit': (data: any, ctx?: MessageContext) => handleRecordVisit(data, ctx),
+  'tampering-detected': (_data: any, ctx?: MessageContext) => handleTampering(ctx?.tabId, ctx?.tabUrl),
   'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain),
+  'open-link-tab': (data: any, ctx?: MessageContext) => handleOpenLinkTab(data, ctx),
   'resolve-short-url': async (data: any) => {
     // A retry is the user saying the answer they were given is not good enough.
     // Answering it from the same cache is the one thing this must not do.
@@ -1444,6 +1575,7 @@ Object.entries(messageHandlers).forEach(([type, handler]) => {
     await backgroundReady()
     return (handler as (data: any, ctx?: MessageContext) => Promise<any>)(data, {
       tabId: sender?.tabId,
+      frameId: sender?.frameId,
       // A frame with no address of its own is judged as the page around it, and
       // that page's URL is the only place to get it from
       tabUrl: sender?.tabId != null ? (await browser.tabs.get(sender.tabId).catch(() => null))?.url : undefined,
@@ -1474,7 +1606,10 @@ browser.runtime.onMessage.addListener(((message: any, sender, sendResponse) => {
         message.data,
         {
           tabId: sender.tab?.id,
-          tabUrl: sender.tab?.url,
+          frameId: sender.frameId,
+          // The top document's own address, in case a browser sends no tab
+          // with the message
+          tabUrl: sender.tab?.url ?? (sender.frameId === 0 ? sender.url : undefined),
         },
       ))
       .then(sendResponse, (error) => {
@@ -1515,7 +1650,8 @@ async function setupContextMenu() {
   })
 
   // Show link safety check only when right-click trigger is selected
-  if (appSettings.value.linkSafety?.enabled && appSettings.value.linkSafety?.tooltipTrigger === 'click-right') {
+  // (a profile still storing `click-left` reads as right-click, see normalizeLinkSafety)
+  if (appSettings.value.linkSafety?.enabled && normalizeLinkSafety(appSettings.value.linkSafety).tooltipTrigger === 'click-right') {
     const linkTitle = await loadTranslation('linkContextMenuCheckLink')
     browser.contextMenus.create({
       id: CONTEXT_MENU_LINK_ID,
@@ -1591,6 +1727,7 @@ async function handleQrImageCheck(srcUrl: string, tabId?: number) {
       // at all, was refused here. The decoder below is the real check: it is
       // handed the bytes and fails on anything that is not an image.
       accept: type => !type || type.startsWith('image/') || type === 'application/octet-stream' || type === 'binary/octet-stream',
+      browserCookies: true,
     })
     payload = await decodeQrFromImageBitmapSource(blob)
   }

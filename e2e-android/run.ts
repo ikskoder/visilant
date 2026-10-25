@@ -13,7 +13,7 @@
 /* eslint-disable no-console -- this file is the test runner, and its report is
    what it exists to print */
 import process from 'node:process'
-import { forwardDebugger, openUrl, Session, sleep, withBackground, withExtensionPage, withOptionsPage } from './phone'
+import { adb, forwardDebugger, openUrl, Session, sleep, withBackground, withExtensionPage, withOptionsPage } from './phone'
 
 interface Case { name: string, run: (port: number) => Promise<void> }
 
@@ -300,6 +300,103 @@ test('the familiarity facts of a check stay inside the screen, bars shown or not
     await withBackground(port, (session, background) =>
       session.evaluate(background, `browser.storage.sync.set({settings: ${JSON.stringify(settingsBefore)}}).then(() => "ok")`))
     await restoreStorage(port, snapshot)
+  }
+})
+
+// ==========================================
+// Typing
+// ==========================================
+
+/** The phone's own UI, as accessibility sees it. Web inputs are in there, the in-page warning is not. */
+async function dumpUi(): Promise<string> {
+  // uiautomator can give up on a busy screen and still exit 0, and the file from
+  // the last run would then be read as this one
+  await adb(['shell', 'rm', '-f', '/sdcard/visilant-ui.xml'])
+  await adb(['shell', 'uiautomator', 'dump', '/sdcard/visilant-ui.xml'])
+  return adb(['shell', 'cat', '/sdcard/visilant-ui.xml'])
+}
+
+/** Centre of the first web text field on screen, waiting for the page to draw one. */
+async function findTextField(): Promise<[number, number] | null> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    // uiautomator refuses a page that is still animating, which is a reason to look again
+    const ui = await dumpUi().catch(() => '')
+    const bounds = /class="android\.widget\.EditText"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui)
+    if (bounds) {
+      const [x1, y1, x2, y2] = bounds.slice(1).map(Number)
+      return [Math.round((x1 + x2) / 2), Math.round((y1 + y2) / 2)]
+    }
+    await sleep(1500)
+  }
+  return null
+}
+
+// Every keyboard path on a phone used to be a guess checked on the desktop.
+// `adb input text` is injected keys rather than the keyboard's own commit, but
+// on Firefox 157 both were measured raising the same trusted `keydown`,
+// `beforeinput` and `input`, so this stands in for a person typing.
+//
+// The warning sits in a closed shadow root that accessibility does not see, so
+// the test listens on the other half instead: with the style set to `both`, the
+// content script asks the background for a system notification at the same
+// moment it raises the one in the page. It does not say the warning is in view,
+// and on a page with no mobile viewport it is not: the browser zooms into the
+// field and the panel stays in the corner of the unzoomed page.
+test('typing with the phone\'s keyboard on an unfamiliar site raises the warning', async (port) => {
+  const snapshot = await withBackground(port, readStorage)
+  const settingsBefore = await withBackground(port, (session, background) =>
+    session.evaluate(background, 'browser.storage.sync.get("settings").then(r => r.settings)'))
+  try {
+    await withBackground(port, async (session, background) => {
+      await session.evaluate(background, `
+        browser.storage.sync.get("settings").then(r => {
+          const s = JSON.parse(r.settings);
+          s.showWarningNotification = true;
+          s.showInputWarning = true;
+          s.notificationStyle = "both";
+          return browser.storage.sync.set({settings: JSON.stringify(s)});
+        }).then(() => browser.storage.local.remove("httpbin.org")).then(() => "ok")`)
+    })
+    await sleep(1500)
+
+    // One session from here to the answer: the listener lives in the background
+    // page, and a page that went to sleep in between would take it along
+    await withBackground(port, async (session, background) => {
+      await session.evaluate(background, `(() => {
+        globalThis.__visilantTyped = [];
+        browser.runtime.onMessage.addListener(m => {
+          if (m && m.type === "show-notification") globalThis.__visilantTyped.push(m.data.warningType);
+        });
+        return "ok";
+      })()`)
+
+      // A public form, never visited here. A query nobody else sends keeps the
+      // page out of the cache and its once-per-page warning unspent.
+      await openUrl(`https://httpbin.org/forms/post?visilant-typing=${Date.now()}`)
+      await sleep(4000)
+      const field = await findTextField()
+      assert(field, 'no text field appeared on httpbin.org/forms/post – the site or the network is down, this says nothing about the extension')
+
+      await adb(['shell', 'input', 'tap', String(field[0]), String(field[1])])
+      await sleep(1500)
+      await adb(['shell', 'input', 'text', 'abc'])
+      await sleep(3000)
+
+      const raised = await session.json<string[]>(background, 'JSON.stringify(globalThis.__visilantTyped || null)')
+      assert(raised, 'the background page was replaced while the test ran, so it cannot tell – run it again')
+      assertEqual(raised, ['input'], 'typing on the phone did not raise the warning')
+    })
+  }
+  finally {
+    await adb(['shell', 'input', 'keyevent', 'KEYCODE_ESCAPE']).catch(() => {})
+    await adb(['shell', 'rm', '-f', '/sdcard/visilant-ui.xml']).catch(() => {})
+    try {
+      await withBackground(port, (session, background) =>
+        session.evaluate(background, `browser.storage.sync.set({settings: ${JSON.stringify(settingsBefore)}}).then(() => "ok")`))
+    }
+    finally {
+      await restoreStorage(port, snapshot)
+    }
   }
 })
 

@@ -1,7 +1,7 @@
 // End-to-end tests against Visilant in desktop Firefox.
 //
-//   just fe              – build for Firefox, then run these
-//   pnpm test:firefox    – run these against whatever is in extension/ now
+//   just fe              – build a Firefox copy under .tmp/, then run these on it
+//   pnpm test:firefox    – run these against whatever is in extension-firefox/ now
 //
 // FIREFOX names the browser binary. Pass a test's name, or part of it, to run
 // only the tests that match.
@@ -31,7 +31,9 @@ const EXTENSION_UUID = '6f0c5c4e-3c1b-4a8e-9d2a-7b1f0e5a9c31'
 const UNFAMILIAR = 'clickfix-api.test'
 const FAMILIAR = 'clickfix-known.test'
 const SILENCED = 'clickfix-quiet.test'
-const HOSTS = [UNFAMILIAR, FAMILIAR, SILENCED]
+/** Where the links in the link tests lead. Never visited, so never familiar. */
+const DESTINATION = 'link-dest.test'
+const HOSTS = [UNFAMILIAR, FAMILIAR, SILENCED, DESTINATION]
 const DAY = 24 * 60 * 60 * 1000
 
 const SHOTS = process.env.SHOTS
@@ -81,8 +83,8 @@ class Harness {
     return this.firefox.evaluate<T>(this.page, expression)
   }
 
-  /** Click an element, in the page or in one of its same-origin frames. */
-  async click(selector: string, frame?: string) {
+  /** Click an element, in the page or in one of its same-origin frames. 1 is the middle button. */
+  async click(selector: string, frame?: string, button = 0) {
     const point = await this.evaluate<{ x: number, y: number } | null>(`(() => {
       let offsetX = 0, offsetY = 0, doc = document
       ${frame
@@ -98,7 +100,43 @@ class Harness {
       return { x: offsetX + box.left + box.width / 2, y: offsetY + box.top + box.height / 2 }
     })()`)
     assert(point, `nothing on the page matches ${selector}${frame ? ` in ${frame}` : ''}`)
-    await this.firefox.clickAt(this.page, point.x, point.y)
+    await this.firefox.clickAt(this.page, point.x, point.y, button)
+  }
+
+  /** Put links on the open page, each pinned where a click can reach it. */
+  async links(markup: string) {
+    await this.evaluate(`(() => {
+      const box = document.createElement('div')
+      box.style.cssText = 'position:fixed;top:40px;left:40px;display:grid;gap:24px;font-size:20px;z-index:9999'
+      box.innerHTML = ${JSON.stringify(markup)}
+      document.body.append(box)
+    })()`)
+  }
+
+  /**
+   * Whether the link dialog is up. It is a modal in the top layer inside a closed
+   * shadow root, so a hit test at the centre of the screen lands on the host,
+   * which nothing else of the extension's puts there.
+   */
+  dialogShowing() {
+    return this.evaluate<boolean>(`(() => {
+      const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
+      return Boolean(el && el.style && el.style.getPropertyValue('z-index') === '2147483647')
+    })()`)
+  }
+
+  async pageUrl() {
+    return (await this.firefox.contexts()).find(c => c.context === this.page)!.url
+  }
+
+  /** How many tabs at the destination are in front, by the extension's own view of them. */
+  async activeTabsAtDestination() {
+    return await this.storage(`browser.tabs.query({}).then(tabs => tabs.filter(tab => (tab.url || '').includes(${JSON.stringify(DESTINATION)}) && tab.active).length)`) as number
+  }
+
+  /** The tabs open at the destination, by the browser's own list, on one path when given. */
+  async tabsAtDestination(path = '') {
+    return (await this.firefox.contexts()).filter(c => c.url.includes(`${DESTINATION}:${this.port}/${path}`)).length
   }
 
   /** Same hit test as the Playwright suite: the warning holds the top right corner. */
@@ -394,15 +432,123 @@ test('with the copy warning switched off, a write raises nothing', async (t) => 
 })
 
 // ==========================================
+// What the page can see
+// ==========================================
+
+// The content script fetches its style sheet, and the page must not find that
+// among its own resources, where it could see or time it
+test('the page\'s resource list shows nothing Visilant loaded', async (t) => {
+  await t.open(UNFAMILIAR)
+  const foreign = await t.evaluate<string[]>(`performance.getEntriesByType('resource').map(entry => entry.name).filter(name => !name.startsWith(location.origin))`)
+  assert(foreign.length === 0, `the page lists ${foreign.join(', ')}`)
+})
+
+// ==========================================
+// Clicks on links
+// ==========================================
+
+const FLAGGED = (port: number) => `http://paypal.com@${DESTINATION}:${port}/flagged`
+const PLAIN = (port: number) => `http://${DESTINATION}:${port}/plain`
+
+test('a click on a flagged link is held for the dialog', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.links(`<a id="l" href="${FLAGGED(t.port)}">Log in</a>`)
+  await t.click('#l')
+  await poll(() => t.dialogShowing(), true, 5000, 'the link dialog')
+  assert(!(await t.pageUrl()).includes(DESTINATION), 'the link was followed')
+})
+
+test('a click on a link with no red flag goes through untouched', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.links(`<a id="l" href="${PLAIN(t.port)}">A new site</a>`)
+  await t.click('#l')
+  await poll(async () => (await t.pageUrl()).includes(DESTINATION), true, 5000, 'the page after the click')
+})
+
+// The click is put back after the dialog, and a new tab must still open as one
+test('a held link to a new tab opens one after "Continue anyway"', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.links(`<a id="l" href="${FLAGGED(t.port)}" target="_blank">Log in</a>`)
+  await t.click('#l')
+  await poll(() => t.dialogShowing(), true, 5000, 'the link dialog')
+  // Focus starts on the way back, and Continue ignores a press for half a second
+  await sleep(1000)
+  await t.firefox.press(t.page, ['\uE004', '\uE004', '\uE007'])
+  await poll(() => t.tabsAtDestination(), 1, 5000, 'tabs at the destination')
+  assert(!(await t.pageUrl()).includes(DESTINATION), 'the page itself left')
+})
+
+// Measured: only cancelling `auxclick` keeps a middle click from opening its tab
+test('a middle click on a flagged link is held, and one with no flag opens its tab', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.links(`<a id="flagged" href="${FLAGGED(t.port)}">Log in</a><a id="plain" href="${PLAIN(t.port)}">A new site</a>`)
+  await t.click('#flagged', undefined, 1)
+  await poll(() => t.dialogShowing(), true, 5000, 'the link dialog')
+  // Given time, since a tab the browser opened anyway would come a moment later
+  await sleep(1500)
+  assert(await t.tabsAtDestination() === 0, 'a tab opened behind the dialog')
+  // Continue, which opens it from the background, behind the page
+  await t.firefox.press(t.page, ['\uE004', '\uE004', '\uE007'])
+  await poll(() => t.tabsAtDestination('flagged'), 1, 5000, 'tabs at the flagged link')
+  assert(await t.activeTabsAtDestination() === 0, 'the tab opened in front of the page')
+  await t.click('#plain', undefined, 1)
+  await poll(() => t.tabsAtDestination('plain'), 1, 5000, 'tabs at the plain link')
+  await sleep(1500)
+  assert(await t.tabsAtDestination() === 2, 'a link opened more than one tab')
+  assert(await t.activeTabsAtDestination() === 0, 'the tab opened in front of the page')
+})
+
+test('a flagged link on an image map region and on an SVG link is held', async (t) => {
+  for (const markup of [
+    `<map name="m"><area shape="rect" coords="0,0,200,40" href="${FLAGGED(t.port)}" alt="Log in"></map><img id="l" usemap="#m" width="200" height="40" style="background:blue">`,
+    `<svg width="200" height="40"><a href="${FLAGGED(t.port)}"><rect id="l" width="200" height="40" fill="red"/></a></svg>`,
+  ]) {
+    await t.open(UNFAMILIAR)
+    await t.links(markup)
+    await t.click('#l')
+    await poll(() => t.dialogShowing(), true, 5000, 'the link dialog')
+    assert(!(await t.pageUrl()).includes(DESTINATION), 'the link was followed')
+  }
+})
+
+// A mail body as webmail draws it: a sandboxed frame on the page's own origin
+function mailBody(link: string) {
+  return `<iframe id="mail" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" style="width:500px;height:120px" srcdoc="${link.replace(/"/g, '&quot;')}"></iframe>`
+}
+
+test('a flagged link in a mail body frame is held, and opens its tab after "Continue anyway"', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.links(mailBody(`<a id="l" href="${FLAGGED(t.port)}" target="_blank" style="display:block;font-size:20px;padding:10px">Log in</a>`))
+  await sleep(1500)
+  await t.click('#l', '#mail')
+  await poll(() => t.dialogShowing(), true, 8000, 'the link dialog')
+  await sleep(1500)
+  assert(await t.tabsAtDestination() === 0, 'a tab opened behind the dialog')
+  await t.firefox.press(t.page, ['\uE004', '\uE004', '\uE007'])
+  await poll(() => t.tabsAtDestination('flagged'), 1, 5000, 'tabs at the flagged link')
+})
+
+test('a link with no red flag in a mail body frame opens untouched', async (t) => {
+  await t.open(UNFAMILIAR)
+  await t.links(mailBody(`<a id="l" href="${PLAIN(t.port)}" target="_blank" style="display:block;font-size:20px;padding:10px">A new site</a>`))
+  await sleep(1500)
+  await t.click('#l', '#mail')
+  await poll(() => t.tabsAtDestination('plain'), 1, 5000, 'tabs at the plain link')
+})
+
+// ==========================================
 // Runner
 // ==========================================
 
-/** A copy of the build, so a rebuild for Chrome halfway through cannot change it. */
+/**
+ * A copy of the build, so a rebuild for Chrome halfway through cannot change it.
+ * `extension-firefox/` unless `VISILANT_EXTENSION` names another, which `just fe` does.
+ */
 function snapshotExtension(): string {
-  const source = path.resolve(__dirname, '../extension')
+  const source = path.resolve(process.env.VISILANT_EXTENSION || path.join(__dirname, '../extension-firefox'))
   const manifest = JSON.parse(fs.readFileSync(path.join(source, 'manifest.json'), 'utf8'))
   if (!manifest.background?.scripts)
-    throw new Error('extension/ holds a Chrome build. Run `pnpm build-firefox` first, or use `just fe`.')
+    throw new Error(`${source} holds a Chrome build. Run 'just fe', which builds a Firefox copy under .tmp/.`)
   const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'visilant-extension-'))
   fs.cpSync(source, copy, { recursive: true })
   return copy

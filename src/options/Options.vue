@@ -3,7 +3,7 @@ import type { Ref } from 'vue'
 import type { BadgeContent } from '~/logic/badge'
 import type { FamiliarityCriterionId, FamiliaritySettings } from '~/logic/familiarity'
 import type { HistoryImportState, ImportHealth } from '~/logic/history-import'
-import type { Settings, SiteVisitData } from '~/logic/storage'
+import type { InterceptSettings, Settings, SiteVisitData } from '~/logic/storage'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
@@ -16,7 +16,8 @@ import { fetchRemoteMailSiteLists, STORAGE_KEY_CUSTOM_MAIL_SITES, STORAGE_KEY_RE
 import { isolatePageZoom } from '~/logic/page-zoom'
 import { hasContextMenus, hasHistoryApi, isAndroidBrowser, supportsHover } from '~/logic/platform'
 import { fetchRemoteShortenerLists, STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
-import { defaultSettings, editSettingsThroughBackground, settings, settingsReady, settingsWriteError } from '~/logic/storage'
+import { defaultInterceptSettings, defaultSettings, editSettingsThroughBackground, MAX_RED_FLAG_THRESHOLD, normalizeLinkSafety, settings, settingsReady, settingsWriteError } from '~/logic/storage'
+import { storageErrorKind, storageErrorText } from '~/logic/storage-error'
 import { planSilenceChanges, silencedHosts } from '~/logic/visit-reset'
 import SectionNav from './SectionNav.vue'
 import SectionReset from './SectionReset.vue'
@@ -93,6 +94,12 @@ function updateTranslations() {
     'familiarityNeedsImportText',
     'familiarityNeedsImportLink',
     'settingsNotSaved',
+    'linkInterceptShortLinksOwnSite',
+    'linkInterceptShortLinksOwnSiteDesc',
+    'settingsNotSavedFull',
+    'settingsNotSavedTooOften',
+    'settingsNotSavedNoAnswer',
+    'settingsNotSavedUnexplained',
     'displaySettings',
     'displaySettingsPinNote',
     'displaySettingsPinNoteAndroid',
@@ -164,7 +171,6 @@ function updateTranslations() {
     'cannotBeUndone',
     'cancel',
     'reset',
-    'notificationPermissionRequired',
     'warningTriggerEventsTitle',
     'bothWarningTriggers',
     'blockPasteOnUnfamiliar',
@@ -179,10 +185,16 @@ function updateTranslations() {
     'linkHoverDelayDesc',
     'linkHoverDelaySeconds',
     'linkHoverDelayInstant',
-    'linkTooltipTriggerClickLeft',
     'linkTooltipTriggerClickRight',
-    'linkTooltipTriggerClickLeftDesc',
     'linkTooltipTriggerClickRightDesc',
+    'linkInterceptHeading',
+    'linkInterceptHeadingDesc',
+    'linkInterceptRedFlags',
+    'linkInterceptRedFlagsDesc',
+    'linkInterceptShortLinks',
+    'linkInterceptShortLinksDesc',
+    'linkInterceptUnfamiliar',
+    'linkInterceptUnfamiliarDesc',
     'linkTooltipTriggerTouchNote',
     'linkTooltipTriggerNoMenusNote',
     'linkTooltipTriggerHoverUnavailable',
@@ -254,34 +266,10 @@ watch([currentLanguage, isLoaded], () => {
   updateTranslations()
 }, { immediate: true })
 
-// Watch notification settings changes
-watch(() => settings.value.showWarningNotification, async (newVal) => {
-  if (newVal && ['browser', 'both'].includes(settings.value.notificationStyle)) {
-    const granted = await browser.permissions.request({
-      permissions: ['notifications'],
-    })
-    if (!granted) {
-      // If permission denied, fallback to in-page notifications
-      settings.value.notificationStyle = 'in-page'
-      // eslint-disable-next-line no-alert
-      alert(t.value('notificationPermissionRequired'))
-    }
-  }
-})
-
-watch(() => settings.value.notificationStyle, async (newVal) => {
-  if (settings.value.showWarningNotification && ['browser', 'both'].includes(newVal)) {
-    const granted = await browser.permissions.request({
-      permissions: ['notifications'],
-    })
-    if (!granted) {
-      // If permission denied, fallback to in-page notifications
-      settings.value.notificationStyle = 'in-page'
-      // eslint-disable-next-line no-alert
-      alert(t.value('notificationPermissionRequired'))
-    }
-  }
-})
+// Browser notifications need no request here: `notifications` is a required
+// permission, granted at install. Asking again for it, as this page once did,
+// could fail in Firefox, which only grants at runtime what the manifest lists as
+// optional, and the failure then overwrote the user's choice of style.
 
 // Custom shorteners (stored in browser.storage.local as string[])
 const customShortenersText = ref('')
@@ -364,11 +352,24 @@ const SECTION_REMOTE: Record<string, { key: string, info: Ref<RemoteListInfo | n
   ],
 }
 
+/**
+ * A setting as it is read, for comparing with its default. The link settings
+ * are read through `normalizeLinkSafety`, so a profile stored before a field
+ * existed, which is missing that field, stands at its default all the same.
+ * Keys are sorted, since the order an object was written in means nothing.
+ */
+function comparable(key: keyof Settings, value: unknown): string {
+  const read = key === 'linkSafety' ? normalizeLinkSafety(value) : value
+  return JSON.stringify(read, (_name, inner) => inner && typeof inner === 'object' && !Array.isArray(inner)
+    ? Object.fromEntries(Object.entries(inner).sort(([a], [b]) => a.localeCompare(b)))
+    : inner)
+}
+
 /** Whether a section already stands at its defaults, in which case its reset does nothing. */
 function sectionIsDefault(id: string): boolean {
   const keys = SECTION_SETTINGS[id] || []
   const stored = settings.value
-  return keys.every(key => JSON.stringify(stored[key]) === JSON.stringify(defaultSettings[key]))
+  return keys.every(key => comparable(key, stored[key]) === comparable(key, defaultSettings[key]))
     && (SECTION_TEXTS[id] || []).every(text => text.value.trim() === '')
     && (SECTION_REMOTE[id] || []).every(cache => cache.info.value === null)
 }
@@ -654,6 +655,23 @@ const canRightClick = pointerCanHover && hasContextMenus()
 const importHealth = computed<ImportHealth>(() => canImportHistory
   ? describeImportHealth(lastImport.value, now.value, isImporting.value)
   : 'unsupported')
+/** Why the last change was not saved, in the words that say what to do about it. */
+const saveErrorText = computed(() => {
+  const error = settingsWriteError.value
+  switch (storageErrorKind(error)) {
+    case 'full':
+      return translations.value.settingsNotSavedFull
+    case 'too-often':
+      return translations.value.settingsNotSavedTooOften
+    case 'no-answer':
+      return translations.value.settingsNotSavedNoAnswer
+    case 'unexplained':
+      return translations.value.settingsNotSavedUnexplained
+    default:
+      return (translations.value.settingsNotSaved || '').replace('{reason}', storageErrorText(error) || '?')
+  }
+})
+
 const importStatusText = computed(() => translations.value[`importStatus${
   importHealth.value.charAt(0).toUpperCase()}${importHealth.value.slice(1)}`])
 // Nothing has ever been imported here, so there is nothing to re-do – the same
@@ -703,6 +721,39 @@ async function changeLanguage(langCode: string) {
 const hoverDelayLabel = computed(() => {
   const ms = settings.value.linkSafety?.hoverDelay ?? defaultSettings.linkSafety.hoverDelay
   return ms === 0 ? translations.value.linkHoverDelayInstant : `${(ms / 1000).toFixed(2)} ${translations.value.linkHoverDelaySeconds}`
+})
+
+/** The link settings as they are read, a profile from before `intercept` included. */
+const intercept = computed(() => normalizeLinkSafety(settings.value.linkSafety).intercept)
+
+/**
+ * The way the check shows, as read. A profile that still stores the old
+ * `click-left` reads as right-click, and the radios say so rather than showing
+ * nothing selected until the background has written the migration.
+ */
+const tooltipTrigger = computed(() => normalizeLinkSafety(settings.value.linkSafety).tooltipTrigger)
+
+function setTooltipTrigger(value: 'hover' | 'click-right') {
+  settings.value = { ...settings.value, linkSafety: { ...normalizeLinkSafety(settings.value.linkSafety), tooltipTrigger: value } }
+}
+
+function updateIntercept(patch: Partial<InterceptSettings>) {
+  const linkSafety = normalizeLinkSafety(settings.value.linkSafety)
+  settings.value = {
+    ...settings.value,
+    linkSafety: { ...linkSafety, intercept: { ...linkSafety.intercept, ...patch } },
+  }
+}
+
+function updateMinRedFlags(value: string) {
+  const count = Math.floor(Number(value))
+  updateIntercept({ minRedFlags: Number.isFinite(count) ? Math.min(Math.max(count, 1), MAX_RED_FLAG_THRESHOLD) : defaultInterceptSettings.minRedFlags })
+}
+
+/** The red-flags line around its number box, so a translation can move the number. */
+const redFlagsLabel = computed(() => {
+  const [before = '', after = ''] = (translations.value.linkInterceptRedFlags || '').split('{n}')
+  return { before, after }
 })
 
 function updateHoverDelay(value: string) {
@@ -1261,8 +1312,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
     <div v-else>
       <!-- A setting that looks changed but was never stored is the one failure
            this page must not keep to the console -->
-      <VzNotice v-if="settingsWriteError" tone="danger" class="max-w-md mx-auto mb-6">
-        {{ translations.settingsNotSaved }}
+      <VzNotice v-if="settingsWriteError" tone="danger" class="max-w-md mx-auto mb-6" data-save-error>
+        {{ saveErrorText }}
       </VzNotice>
 
       <Logo style="max-width: 300px;" class="mx-auto" />
@@ -1907,9 +1958,10 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                      the browser does not have. -->
                 <label class="flex items-start">
                   <input
-                    v-model="settings.linkSafety.tooltipTrigger" type="radio" value="hover"
+                    :checked="tooltipTrigger === 'hover'" type="radio" value="hover" name="tooltip-trigger"
                     :disabled="!pointerCanHover"
-                    class="vz-check-box flex-shrink-0" :class="{ 'opacity-45': !pointerCanHover }"
+                    class="vz-check-box flex-shrink-0"
+                    :class="{ 'opacity-45': !pointerCanHover }" @change="setTooltipTrigger('hover')"
                   >
                   <span class="ml-2 text-sm">
                     <span :class="{ 'opacity-45': !pointerCanHover }">{{ translations.linkTooltipTriggerHover }}</span>
@@ -1924,19 +1976,10 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 </label>
                 <label class="flex items-start">
                   <input
-                    v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-left"
-                    class="vz-check-box flex-shrink-0"
-                  >
-                  <span class="ml-2 text-sm">
-                    <span>{{ translations.linkTooltipTriggerClickLeft }}</span>
-                    <p class="hint vz-small">{{ translations.linkTooltipTriggerClickLeftDesc }}</p>
-                  </span>
-                </label>
-                <label class="flex items-start">
-                  <input
-                    v-model="settings.linkSafety.tooltipTrigger" type="radio" value="click-right"
+                    :checked="tooltipTrigger === 'click-right'" type="radio" value="click-right" name="tooltip-trigger"
                     :disabled="!canRightClick"
-                    class="vz-check-box flex-shrink-0" :class="{ 'opacity-45': !canRightClick }"
+                    class="vz-check-box flex-shrink-0"
+                    :class="{ 'opacity-45': !canRightClick }" @change="setTooltipTrigger('click-right')"
                   >
                   <span class="ml-2 text-sm">
                     <span :class="{ 'opacity-45': !canRightClick }">{{ translations.linkTooltipTriggerClickRight }}</span>
@@ -1953,7 +1996,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                    outweighed the choice it belongs to read as the more important
                    of the two. Only the hover trigger has a delay to set, and only
                    where hovering happens at all. -->
-              <div v-if="settings.linkSafety.tooltipTrigger === 'hover' && pointerCanHover" class="mt-4">
+              <div v-if="tooltipTrigger === 'hover' && pointerCanHover" class="mt-4">
                 <div class="flex items-center justify-between gap-3 mb-1">
                   <label class="vz-heading">{{ translations.linkHoverDelay }}</label>
                   <span class="text-sm font-mono flex-shrink-0">{{ hoverDelayLabel }}</span>
@@ -1968,6 +2011,71 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <p class="hint vz-small mt-1">
                   {{ translations.linkHoverDelayDesc }}
                 </p>
+              </div>
+            </div>
+
+            <!-- Which clicks on a link are held. Its own block rather than a third
+                 way to show the check: showing what a link is and stopping a click
+                 on it are two decisions, and the second one is the one that costs
+                 the reader a step on every link it applies to. -->
+            <div class="mt-4 border-t border-line pt-4" data-intercept-settings>
+              <h3 class="vz-heading mb-1">
+                {{ translations.linkInterceptHeading }}:
+              </h3>
+              <p class="hint vz-small mb-3">
+                {{ translations.linkInterceptHeadingDesc }}
+              </p>
+              <div class="space-y-3">
+                <label class="flex items-start">
+                  <input
+                    :checked="intercept.redFlags" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="redFlags"
+                    @change="updateIntercept({ redFlags: ($event.target as HTMLInputElement).checked })"
+                  >
+                  <span class="ml-2 text-sm">
+                    <span class="inline-flex items-center gap-1 flex-wrap">
+                      {{ redFlagsLabel.before }}<input
+                        :value="intercept.minRedFlags"
+                        type="number" min="1" :max="MAX_RED_FLAG_THRESHOLD" step="1" inputmode="numeric"
+                        class="vz-input intercept-count" data-intercept="minRedFlags"
+                        :aria-label="translations.linkInterceptRedFlags.replace('{n}', '').trim()"
+                        @change="updateMinRedFlags(($event.target as HTMLInputElement).value)"
+                        @click.prevent.stop
+                      >{{ redFlagsLabel.after }}
+                    </span>
+                    <p class="hint vz-small">{{ translations.linkInterceptRedFlagsDesc }}</p>
+                  </span>
+                </label>
+                <label class="flex items-start">
+                  <input
+                    :checked="intercept.shortLinks" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="shortLinks"
+                    @change="updateIntercept({ shortLinks: ($event.target as HTMLInputElement).checked })"
+                  >
+                  <span class="ml-2 text-sm">
+                    <span>{{ translations.linkInterceptShortLinks }}</span>
+                    <p class="hint vz-small">{{ translations.linkInterceptShortLinksDesc }}</p>
+                  </span>
+                </label>
+                <!-- Under short links, and nothing to decide while those are not stopped -->
+                <label class="flex items-start ml-6" :class="{ 'opacity-50': !intercept.shortLinks }">
+                  <input
+                    :checked="intercept.shortLinksOnOwnSite" :disabled="!intercept.shortLinks" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="shortLinksOnOwnSite"
+                    @change="updateIntercept({ shortLinksOnOwnSite: ($event.target as HTMLInputElement).checked })"
+                  >
+                  <span class="ml-2 text-sm">
+                    <span>{{ translations.linkInterceptShortLinksOwnSite }}</span>
+                    <p class="hint vz-small">{{ translations.linkInterceptShortLinksOwnSiteDesc }}</p>
+                  </span>
+                </label>
+                <label class="flex items-start">
+                  <input
+                    :checked="intercept.unfamiliar" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="unfamiliar"
+                    @change="updateIntercept({ unfamiliar: ($event.target as HTMLInputElement).checked })"
+                  >
+                  <span class="ml-2 text-sm">
+                    <span>{{ translations.linkInterceptUnfamiliar }}</span>
+                    <p class="hint vz-small">{{ translations.linkInterceptUnfamiliarDesc }}</p>
+                  </span>
+                </label>
               </div>
             </div>
 
@@ -2496,6 +2604,12 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 </template>
 
 <style>
+.intercept-count {
+  width: 4em;
+  padding-block: 0;
+  text-align: center;
+}
+
 .settings-card {
   position: relative;
   padding: var(--space-6);

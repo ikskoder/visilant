@@ -165,16 +165,21 @@
   /* A right-to-left letter must not reorder its neighbours */
   unicode-bidi: isolate;
   color: var(--char-foreign);
-  background: var(--danger-tint);
+  /* Short of the full glyph box, which is taller than the label's line and
+     painted over its frame, so the frame looked torn */
+  background: linear-gradient(var(--danger-tint), var(--danger-tint)) center / 100% 78% no-repeat;
   font-weight: 800;
-  text-decoration: underline 2px;
-  text-underline-offset: 2px;
+  /* In em, like the line box: a fixed 2px below a fixed offset reached the
+     label's bottom border at the small sizes and was painted over it */
+  text-decoration: underline max(1.5px, 0.1em);
+  text-underline-offset: 0.1em;
   border-radius: 2px;
 }
 
 .vz-ch--diff {
-  text-decoration: underline 2px var(--danger);
-  text-underline-offset: 3px;
+  /* See `.vz-ch--foreign` for the sizes */
+  text-decoration: underline max(1.5px, 0.1em) var(--danger);
+  text-underline-offset: 0.1em;
 }
 
 .vz-ch--invisible { unicode-bidi: isolate; }
@@ -273,6 +278,11 @@
 }
 
 .vz-badge .vz-icon { width: calc(14px * var(--vz-scale, 1)); height: calc(14px * var(--vz-scale, 1)); vertical-align: 0; }
+/* The shield's mark is cut out of it, and at 14px the cross and the check were
+   too small to tell apart, which is the one thing that must not depend on colour */
+.vz-badge .vz-icon--shield-pass,
+.vz-badge .vz-icon--shield-fail,
+.vz-badge .vz-icon--shield-unknown { width: calc(17px * var(--vz-scale, 1)); height: calc(17px * var(--vz-scale, 1)); margin-block: calc(-2px * var(--vz-scale, 1)); }
 
 .vz-badge--safe { background: var(--safe-tint); border-color: var(--safe-line); color: var(--safe-text); }
 .vz-badge--safe .vz-icon { color: var(--safe); }
@@ -318,11 +328,15 @@
   color: var(--ink-3);
 }
 
+/* The tally of passed checks: the conclusion, so it outweighs the facts it sums up.
+   A class here rather than a utility, since the content build does not reliably
+   carry UnoCSS weights into the page */
+.vz-fact--total,
+.vz-fact--total .vz-fact__label,
+.vz-table .vz-fact--total th { color: var(--ink); font-weight: 700; }
+.vz-fact--total .vz-fact__value { font-weight: 800; }
+
 .vz-fact__value--none { font-family: var(--font-sans); font-weight: 400; color: var(--ink-3); }
-/* The word after a number, in the text face: "3 days" in code type read as "3  days" */
-.vz-fact__unit { font-family: var(--font-sans); font-weight: 400; letter-spacing: normal; }
-/* Beside a value in full ink it steps back a shade, beside a bar already in grey it keeps the grey */
-.vz-fact__value .vz-fact__unit { color: var(--ink-2); }
 
 .vz-fact--pass .vz-icon { color: var(--safe); }
 .vz-fact--fail .vz-icon { color: var(--danger); }
@@ -668,7 +682,8 @@ dialog.vz-layer { width: 100%; height: 100%; }
 .vz-sig {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* The shield is the V, so it sits against the letters like one */
+  gap: 1px;
   font-size: calc(12px * var(--vz-scale, 1));
   line-height: calc(16px * var(--vz-scale, 1));
   font-weight: 700;
@@ -682,7 +697,7 @@ dialog.vz-layer { width: 100%; height: 100%; }
 
 .vz-tooltip {
   width: max-content;
-  /* Wider with the text size, or at 150% the badge no longer fits beside the signature */
+  /* Wider with the text size, or at 150% the badge no longer fits beside its heading */
   max-width: min(var(--tooltip-max) * var(--vz-scale, 1), 100vw - 32px);
   padding: var(--space-3);
   display: grid;

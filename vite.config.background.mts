@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 import packageJson from './package.json'
-import { isDev, r } from './scripts/utils'
+import { isDev, out, r } from './scripts/utils'
 import { BUILD_TARGET, sharedConfig } from './vite.config.mjs'
 
 // bundling the content script using Vite
@@ -20,7 +20,7 @@ export default defineConfig({
     watch: isDev
       ? {}
       : undefined,
-    outDir: r('extension/dist/background'),
+    outDir: out('dist/background'),
     cssCodeSplit: false,
     emptyOutDir: false,
     sourcemap: isDev ? 'hidden' : false,

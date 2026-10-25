@@ -6,7 +6,7 @@
  * silence on the next visit once the site qualifies.
  */
 import { expect, test } from './fixtures'
-import { inWorker, patchSettings, serveSite, waitForAutoImport } from './helpers'
+import { inWorker, patchSettings, serveSite, usePage, waitForAutoImport } from './helpers'
 
 // Evaluated inside the extension's service worker, where the MV3 API lives
 declare const chrome: any
@@ -120,6 +120,7 @@ test('with the setting on, the visit that makes a site familiar lifts its silenc
   await seed(context, { 'almost-known.test': almost() })
 
   await serveSite(page, 'https://almost-known.test/')
+  await usePage(page)
 
   await expect.poll(async () => (await record(context, 'almost-known.test')).count, { timeout: 5000 }).toBe(10)
   const after = await record(context, 'almost-known.test')
@@ -132,6 +133,7 @@ test('with the setting off, a visit leaves the silence alone', async ({ page, co
   await seed(context, { 'almost-known.test': almost() })
 
   await serveSite(page, 'https://almost-known.test/')
+  await usePage(page)
 
   await expect.poll(async () => (await record(context, 'almost-known.test')).count, { timeout: 5000 }).toBe(10)
   expect((await record(context, 'almost-known.test')).ignored).toBe(true)
@@ -151,6 +153,7 @@ test('a site silenced while familiar stays silenced through its visits', async (
   expect((await record(context, 'known-a.test')).silencedWhileFamiliar).toBe(true)
 
   await serveSite(page, 'https://known-a.test/')
+  await usePage(page)
 
   await expect.poll(async () => (await record(context, 'known-a.test')).count, { timeout: 5000 }).toBe(21)
   expect((await record(context, 'known-a.test')).ignored).toBe(true)

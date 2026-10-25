@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import JSZip from 'jszip'
-import { log, r } from './utils'
+import { log, OUT_DIRS, r } from './utils'
 
 // jszip writes DOS timestamps in local time. Without this the same tree packed
 // in two time zones gives two different archives.
@@ -46,8 +46,8 @@ export type Target = 'chrome' | 'firefox'
 /**
  * Refuse to pack a tree that was built for the other browser.
  *
- * The two builds write to the same `extension/` directory and differ in exactly
- * one visible place – Chrome gets `background.service_worker`, Firefox gets
+ * The two builds have directories of their own (`OUT_DIRS` in scripts/utils.ts)
+ * and differ in exactly one visible place – Chrome gets `background.service_worker`, Firefox gets
  * `background.scripts`, because a module background never runs on Firefox for
  * Android. Nothing about the packer notices which one is on disk, so packing
  * twice in a row without rebuilding used to hand out two archives of the same
@@ -66,7 +66,7 @@ export function assertManifestTarget(manifest: unknown, target: Target): void {
 
   if (built !== target) {
     throw new Error(
-      `extension/ was built for ${built ?? 'neither browser'}, not for ${target}. `
+      `${OUT_DIRS[target]}/ was built for ${built ?? 'neither browser'}, not for ${target}. `
       + `Run \`pnpm run ${target === 'firefox' ? 'build-firefox' : 'build'}\` first.`,
     )
   }
@@ -116,7 +116,7 @@ async function main() {
   const ext = target === 'firefox' ? 'xpi' : 'zip'
   const out = `artifacts/visilant-${pkg.version}-${target}.${ext}`
 
-  await pack(r('extension'), r(out), target)
+  await pack(r(OUT_DIRS[target]), r(out), target)
   const digest = createHash('sha256').update(fs.readFileSync(r(out))).digest('hex')
   log('PACK', `${out}  sha256:${digest}`)
 }

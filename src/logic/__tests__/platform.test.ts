@@ -67,31 +67,28 @@ describe('resolveTooltipTrigger', () => {
     stubHover(true)
     expect(resolveTooltipTrigger('hover', true)).toBe('hover')
     expect(resolveTooltipTrigger('click-right', true)).toBe('click-right')
-    expect(resolveTooltipTrigger('click-left', true)).toBe('click-left')
   })
 
-  it('falls back to the tap on a touchscreen, where neither of the others can fire', () => {
+  // Stopping a tap is `linkSafety.intercept`, a decision of its own
+  it('has no way to show the check on a touchscreen', () => {
     stubHover(false)
-    expect(resolveTooltipTrigger('hover', true)).toBe('click-left')
-    expect(resolveTooltipTrigger('click-right', true)).toBe('click-left')
-    expect(resolveTooltipTrigger('click-left', true)).toBe('click-left')
+    expect(resolveTooltipTrigger('hover', true)).toBe('none')
+    expect(resolveTooltipTrigger('click-right', true)).toBe('none')
   })
 
   // A phone with a Bluetooth mouse: the pointer can hover, and Firefox for
   // Android still has nowhere to put a menu item. Answered as one question,
   // this device kept a right-click trigger that could never fire again.
-  it('falls back to the tap for a right click the browser has no menu for', () => {
+  it('falls back to hovering for a right click the browser has no menu for', () => {
     stubHover(true)
-    expect(resolveTooltipTrigger('click-right', false)).toBe('click-left')
-    // The other two do not depend on the menus API and are left alone
+    expect(resolveTooltipTrigger('click-right', false)).toBe('hover')
     expect(resolveTooltipTrigger('hover', false)).toBe('hover')
-    expect(resolveTooltipTrigger('click-left', false)).toBe('click-left')
   })
 
   // The content script is never handed the menus namespace, so it starts from
   // no and asks the background. Silence is the one failure this must not have.
   it('assumes there is no menu until told otherwise', () => {
     stubHover(true)
-    expect(resolveTooltipTrigger('click-right')).toBe('click-left')
+    expect(resolveTooltipTrigger('click-right')).toBe('hover')
   })
 })

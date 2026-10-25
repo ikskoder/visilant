@@ -15,10 +15,12 @@ import ExternalLookups from '~/components/ExternalLookups.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import MailRecipients from '~/components/MailRecipients.vue'
+import RedFlagCount from '~/components/RedFlagCount.vue'
 import SecureText from '~/components/SecureText.vue'
+import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useLookalikeDiff } from '~/composables/useLookalikes'
-import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
+import { visitKey } from '~/logic/domain-boundary'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
@@ -29,7 +31,6 @@ import { classifyQrPayload } from '~/logic/payload-classify'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings } from '~/logic/storage'
 import { isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
-import { isTrackableHostname, untrackedReason } from '~/logic/visit-stats'
 
 const props = defineProps<{
   /** Something to check straight away, when the page was opened about it. */
@@ -182,19 +183,21 @@ function nextCheck(): number {
   return checkGeneration
 }
 
-// Visits are stored per record key (see visitKey), but "have I been here" should
-// count the whole domain family (gmail.com visits may live under mail.gmail.com)
+/**
+ * The checked address's own record, judged the way the link tooltip, the
+ * warnings and the toolbar judge it.
+ *
+ * It used to fold the whole domain family, so `checkout.paypal.test` read
+ * "Familiar site" here because of visits to `paypal.test`, while a link to it
+ * showed red and a form on it raised the typing warning. A check that answers
+ * differently from what the extension then does misleads exactly the person who
+ * asked. The family's own figures are still on the screen, under the site's
+ * name in the dashboard below, where they are named as the family's.
+ */
 async function getVisitData(hostname: string): Promise<{ stats: FamiliarityStats, isSafe: boolean, mailSites: MailSiteFamily[] }> {
-  const base = siteDomainOrSelf(hostname)
   const allData = await browser.storage.local.get(null)
-  const records: SiteVisitData[] = []
-  for (const key of Object.keys(allData)) {
-    if (key === 'settings' || key === 'customShorteners')
-      continue
-    if (belongsToSite(key, base))
-      records.push(allData[key] as SiteVisitData)
-  }
-  const stats = aggregateFamiliarityStats(records)
+  const own = allData[visitKey(hostname)] as SiteVisitData | undefined
+  const stats = aggregateFamiliarityStats([own])
   const rules = normalizeFamiliarity(settings.value.familiarity)
   // A mail domain is never opened as a site, so a zero here says nothing. The
   // same read already holds the mapping and the visits it points at.
@@ -403,17 +406,12 @@ function onFileSelected(event: Event) {
   input.value = ''
 }
 
-// Hostnames without a dot (localhost and the like) are never counted, so their
-// zero says "there is no question here", not "you have never been". A red
-// "never visited" would be a verdict on the user's own machine.
+const { statusLabel } = useFamiliarityFacts()
+
+// The same badge as on every other surface, see `statusLabel` for the
+// hostnames that are never counted
 function statusText(isSafe: boolean, count: number, hostname: string) {
-  if (!isTrackableHostname(hostname))
-    return { text: t.value(untrackedReason(hostname) === 'ip' ? 'untrackedIpBadge' : 'untrackedHostBadge'), tone: 'neutral', icon: 'unknown', verdict: 'untracked' } as const
-  if (isSafe)
-    return { text: t.value('linkTooltipFamiliar'), tone: 'safe', icon: 'pass', verdict: 'familiar' } as const
-  if (count === 0)
-    return { text: t.value('linkTooltipNeverVisited'), tone: 'danger', icon: 'alert', verdict: 'never' } as const
-  return { text: t.value('linkTooltipUnfamiliar'), tone: 'danger', icon: 'alert', verdict: 'unfamiliar' } as const
+  return statusLabel(isSafe, count, false, { hostname })
 }
 
 function payloadTypeLabel(payloadKind: string) {
@@ -495,7 +493,7 @@ function payloadTypeLabel(payloadKind: string) {
                 <CopyButton :text="result.hostname" />
               </SecureText>
             </span>
-            <VzBadge v-if="result.isShortener" tone="danger" icon="link" data-verdict="shortener">
+            <VzBadge v-if="result.isShortener" tone="danger" icon="alert" data-verdict="shortener">
               {{ t('linkTooltipShortener') }}
             </VzBadge>
             <VzBadge
@@ -507,6 +505,7 @@ function payloadTypeLabel(payloadKind: string) {
             >
               {{ statusText(result.isSafe, result.stats.count, result.hostname).text }}
             </VzBadge>
+            <RedFlagCount :hostname="result.hostname" :url="result.url" />
           </div>
           <DomainMarkers :hostname="result.hostname" :url="result.url" :familiar="result.isSafe" />
           <LookalikeNotice :hostname="result.hostname" />
@@ -536,7 +535,7 @@ function payloadTypeLabel(payloadKind: string) {
           data-action="expand"
           @click="expandUrl"
         >
-          <VzIcon name="link" />{{ t('checkFieldExpand') }}
+          <VzIcon name="link" />{{ t(result.isShortener ? 'linkResolveKnown' : 'linkResolveTry') }}
         </button>
         <VzNotice v-if="result.resolve.status === 'error'" tone="neutral" bare>
           {{ t('linkTooltipResolveError') }}
@@ -569,7 +568,11 @@ function payloadTypeLabel(payloadKind: string) {
         <!-- What the text was read as, and nothing more. The verdict on the
              domain is the card's, and whether it is a public or a throwaway
              provider is said in words by the breakdown below. -->
-        <span class="vz-eyebrow">{{ t('emailTooltipTitle') }}</span>
+        <div class="flex items-center flex-wrap gap-2">
+          <span class="vz-eyebrow">{{ t('emailTooltipTitle') }}</span>
+          <!-- Only where the lines it counts are drawn here, see below -->
+          <RedFlagCount v-if="!panelCovers(result.analysis.domain, 'email')" :hostname="result.analysis.domain" context="email" />
+        </div>
         <EmailBreakdown
           :analysis="result.analysis"
           :params="result.params"

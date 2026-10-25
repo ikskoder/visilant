@@ -1,13 +1,21 @@
 import type { BrowserContext } from '@playwright/test'
 import type { Manifest } from 'webextension-polyfill'
 import path from 'node:path'
+import process from 'node:process'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { test as base, chromium } from '@playwright/test'
 import fs from 'fs-extra'
 
 export { name } from '../package.json'
 
-export const extensionPath = path.join(__dirname, '../extension')
+/**
+ * The build under test: `extension/` unless `VISILANT_EXTENSION` names another.
+ * `just e2e` builds a copy under .tmp/ and points this at it, so a run never
+ * rewrites the build a developer has loaded in their own browser.
+ */
+export const extensionPath = process.env.VISILANT_EXTENSION
+  ? path.resolve(process.env.VISILANT_EXTENSION)
+  : path.join(__dirname, '../extension')
 
 /**
  * Wait for the tab the extension opens when it installs.
@@ -50,11 +58,13 @@ export const test = base.extend<{
     await use(page)
   },
 
-  context: async ({ headless }, use) => {
+  // `hasTouch` comes from `test.use`, for a test that taps rather than clicks
+  context: async ({ headless, hasTouch }, use) => {
     // workaround for the Vite server has started but contentScript is not yet.
     await sleep(1000)
     const context = await chromium.launchPersistentContext('', {
       headless: false,
+      hasTouch,
       slowMo: headless ? 0 : 1000,
       args: [
         ...(headless ? ['--headless=new'] : []),

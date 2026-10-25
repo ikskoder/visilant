@@ -1,6 +1,6 @@
 import { ACTION_ICONS, BADGE_COLORS } from '../src/logic/badge'
 import { expect, test } from './fixtures'
-import { blankPage, inWorker, patchSettings, seedVisits, serveSite, waitForAutoImport } from './helpers'
+import { allText, blankPage, inWorker, patchSettings, seedVisits, serveSite, usePage, waitForAutoImport } from './helpers'
 
 // Evaluated inside the extension's own worker, where the namespace exists
 declare const chrome: any
@@ -40,6 +40,46 @@ test('popup shows domain in standalone mode', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=google.com`)
   await page.waitForTimeout(1000)
   await expect(page.locator('text=google.com').first()).toBeVisible({ timeout: 5000 })
+})
+
+/**
+ * A visit is a person using the page, not the page finishing its load.
+ *
+ * Counting loads let a site make itself familiar by reloading itself in a tab
+ * nobody was looking at. The record starts with its last visit long enough ago
+ * that the one-minute debounce has nothing to say, so only the rule under test
+ * decides each step.
+ */
+test('a page counts as visited once it is used, and a reload the same day does not', async ({ page, context }) => {
+  const host = 'used-not-loaded.test'
+  const url = `https://${host}/`
+  const longAgo = () => inWorker(context, async (key: string) => {
+    const record = (await chrome.storage.local.get(key))[key]
+    // Earlier today: a reload is a visit only as the first of its day
+    await chrome.storage.local.set({ [key]: { ...record, lastSeen: Math.max(Date.now() - 10 * 60 * 1000, new Date().setHours(0, 0, 0, 0)) } })
+  }, host)
+  const visits = () => inWorker<number>(context, async (key: string) => (await chrome.storage.local.get(key))[key]?.count ?? 0, host)
+
+  // The install-time import reads the history this test is writing, and would
+  // put its own dates on the record half way through
+  await waitForAutoImport(context)
+  await seedVisits(context, host, 1)
+  await longAgo()
+
+  await serveSite(page, url, blankPage('used'))
+  await page.waitForTimeout(2000)
+  expect(await visits()).toBe(1)
+
+  await page.mouse.click(200, 200)
+  await expect.poll(visits, { timeout: 5000 }).toBe(2)
+
+  // Ten minutes on, as far as the record knows, and the page is reloaded and used
+  await longAgo()
+  await page.reload()
+  await page.waitForTimeout(1000)
+  await page.mouse.click(200, 200)
+  await page.waitForTimeout(2000)
+  expect(await visits()).toBe(2)
 })
 
 test('popup shows visit count for domain', async ({ page, extensionId, context }) => {
@@ -202,18 +242,21 @@ test('link safety section has master toggle', async ({ page, extensionId }) => {
   expect(await linkSafetyCheckboxes.count()).toBeGreaterThanOrEqual(1)
 })
 
-test('link safety tooltip trigger radio buttons', async ({ page, extensionId }) => {
+test('link safety tooltip trigger radio buttons and the stop settings', async ({ page, extensionId }) => {
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
   await page.waitForTimeout(1000)
 
-  // Hover and click-left radio buttons for tooltip trigger
-  const hoverRadio = page.locator('input[type="radio"][value="hover"]')
-  const clickRadio = page.locator('input[type="radio"][value="click-left"]')
+  // Two ways to show the check, and stopping a click is a block of its own
+  await expect(page.locator('input[type="radio"][value="hover"]')).toBeAttached()
+  await expect(page.locator('input[type="radio"][value="click-right"]')).toBeAttached()
+  await expect(page.locator('input[type="radio"][value="click-left"]')).toHaveCount(0)
 
-  if (await hoverRadio.isVisible()) {
-    await expect(hoverRadio).toBeAttached()
-    await expect(clickRadio).toBeAttached()
-  }
+  // The shipped defaults: red flags and short links stop a click, a merely
+  // unfamiliar site does not
+  await expect(page.locator('[data-intercept="redFlags"]')).toBeChecked()
+  await expect(page.locator('[data-intercept="shortLinks"]')).toBeChecked()
+  await expect(page.locator('[data-intercept="unfamiliar"]')).not.toBeChecked()
+  await expect(page.locator('[data-intercept="minRedFlags"]')).toHaveValue('1')
 })
 
 test('link safety scope mode radio buttons', async ({ page, extensionId }) => {
@@ -325,9 +368,13 @@ test('extension registers service worker', async ({ context }) => {
 // ==========================================
 
 test('visiting a page tracks the domain', async ({ page, extensionId, context }) => {
-  // A real navigation, because the navigation is what is under test here
+  // A real navigation and a real click, because a visit is a page somebody
+  // used. The install-time import reads the same history and is let finish first.
+  await waitForAutoImport(context)
   await serveSite(page, SITE_URL)
-  await page.waitForTimeout(2000)
+  await page.waitForTimeout(1000)
+  await usePage(page)
+  await page.waitForTimeout(1000)
 
   const popupPage = await context.newPage()
   await popupPage.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
@@ -339,12 +386,16 @@ test('visiting a page tracks the domain', async ({ page, extensionId, context })
 })
 
 test('visiting multiple subdomains shows domain family', async ({ page, extensionId, context }) => {
+  // A visit is a page somebody used, so each one gets a click
   await serveSite(page, SITE_URL)
   await page.waitForTimeout(2000)
+  await page.mouse.click(200, 200)
   // The subdomain is served too, so it is a visit rather than a hope that the
   // real www host resolves – which is what the old `.catch(() => {})` was for
   await serveSite(page, SUBDOMAIN_URL)
   await page.waitForTimeout(2000)
+  await page.mouse.click(200, 200)
+  await page.waitForTimeout(500)
 
   const popupPage = await context.newPage()
   await popupPage.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
@@ -876,7 +927,7 @@ test('a silenced site keeps its verdict and loses the alarm colour', async ({ pa
   await expectColor(BADGE_COLORS.silenced)
 
   // And the badge still says how unfamiliar the site is. Read from the record
-  // rather than from the seed – the navigation counted a visit of its own
+  // rather than from the seed, which a use of the page may have moved on
   const counted = await inWorker<number>(context, async (host: string) => {
     const stored = await chrome.storage.local.get(host)
     return stored[host].count
@@ -1103,6 +1154,9 @@ test('turning the link check off reaches a tab that is already open', async ({ p
   // Every one of these used to be read once at document start and kept for the
   // life of the tab, so switching the trigger off left it intercepting clicks
   // until the page was reloaded.
+  //
+  // Stored as the old `click-left` trigger on purpose, the one test of a profile
+  // from before the stop settings: it is read as "unfamiliar site" ticked.
   await patchSettings(context, {
     linkSafety: { enabled: true, tooltipTrigger: 'click-left', hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
   })
@@ -1123,7 +1177,7 @@ test('turning the link check off reaches a tab that is already open', async ({ p
   // Escape the dialog, then turn the whole feature off from elsewhere
   await page.keyboard.press('Escape')
   await patchSettings(context, {
-    linkSafety: { enabled: false, tooltipTrigger: 'click-left', hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
+    linkSafety: { enabled: false, tooltipTrigger: 'click-right', intercept: { unfamiliar: true, shortLinks: true, redFlags: true, minRedFlags: 1 }, hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
   })
   await page.waitForTimeout(1500)
 
@@ -1131,6 +1185,39 @@ test('turning the link check off reaches a tab that is already open', async ({ p
   await page.locator('#external').click()
   await page.waitForTimeout(1500)
   expect(page.url()).toContain('elsewhere-entirely.test')
+})
+
+test('a link the background could not be asked about is stopped, not waved through', async ({ page, context }) => {
+  // No answer used to read as a familiar site: a content script left over from
+  // an extension update let every link through unchecked. A listener answering
+  // first with an error stands in for the background being out of reach.
+  await patchSettings(context, {
+    linkSafety: { enabled: true, tooltipTrigger: 'click-right', intercept: { unfamiliar: true, shortLinks: true, redFlags: true, minRedFlags: 1 }, hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
+  })
+  await inWorker(context, () => {
+    chrome.runtime.onMessage.addListener((message: any, _sender: unknown, reply: (answer: unknown) => void) => {
+      if (message?.type === 'get-visit-count')
+        reply({ error: 'unavailable' })
+    })
+  })
+
+  await serveSite(page, SITE_URL, blankPage('links', `
+    <a id="external" href="https://unreachable-check.test/landed"
+       style="position:fixed;top:50px;left:50px;font-size:20px;z-index:9999">External Link</a>
+  `))
+  await page.route('https://unreachable-check.test/**', (route: any) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: blankPage('landed') }))
+  await page.waitForTimeout(2500)
+
+  await page.locator('#external').click()
+  // Read through the DevTools protocol, the one way into a closed shadow root
+  await expect.poll(() => allText(page), { timeout: 5000, intervals: [300] }).toContain('Not checked')
+  const text = await allText(page)
+  expect(text).toContain('could not look this site up')
+  // Nothing was found out, so nothing is said about impersonation either
+  expect(text).toContain('Link not checked')
+  expect(text).not.toContain('Unfamiliar site ahead')
+  expect(page.url()).toBe(SITE_URL)
 })
 
 // ==========================================
@@ -1152,6 +1239,23 @@ async function serveFramedForm(page: any) {
   `))
   await page.waitForTimeout(2500)
 }
+
+/**
+ * Using a page through a frame is using the page.
+ *
+ * Events stay inside a frame, so the top document's report never saw a site
+ * somebody used only through one, and it never became familiar.
+ */
+test('a click inside a frame counts a visit to the page around it', async ({ page, context }) => {
+  await waitForAutoImport(context)
+  const visits = () => inWorker<number>(context, async (key: string) => (await chrome.storage.local.get(key))[key]?.count ?? 0, SITE_HOST)
+  await serveFramedForm(page)
+  expect(await visits()).toBe(0)
+
+  // Inside the frame only: the top document has seen nothing at all
+  await page.frameLocator('#frame').locator('#inner').click()
+  await expect.poll(visits, { timeout: 5000 }).toBe(1)
+})
 
 test('typing into a form inside an iframe is warned about', async ({ page }) => {
   // Events do not cross a frame boundary, so the top document's listeners never

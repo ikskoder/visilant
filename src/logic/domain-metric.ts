@@ -22,7 +22,7 @@ export const DOMAIN_METRICS: readonly DomainMetric[] = ['visits', 'activeDays', 
 export interface MetricReading {
   /** The number, or undefined for a fact this record never carried. */
   value?: number
-  /** What it is out of, which only the passed-checks ratio has. */
+  /** What it is out of, which only the passed-checks ratio has: how many must pass. */
   outOf?: number
   /**
    * Whether it clears the bar, or undefined when the user has this check off.
@@ -45,7 +45,7 @@ export function metricReading(
   const verdict = evaluateFamiliarity(stats, rules, now)
 
   if (metric === 'checks')
-    return { value: verdict.met, outOf: verdict.criteria.length, met: verdict.familiar }
+    return { value: verdict.met, outOf: verdict.required, met: verdict.familiar }
 
   return {
     value: criterionValue(metric, stats, now),

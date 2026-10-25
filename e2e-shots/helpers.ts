@@ -7,7 +7,7 @@
  * short link.
  */
 import type { BrowserContext, Page } from '@playwright/test'
-import { expect, fromMenu, inWorker, openSite, patchSettings, patchWorker, rebuildLookalikeIndex, sitePage, test, waitForUi } from './fixtures'
+import { expect, fromMenu, inWorker, openSite, patchSettings, patchWorker, rebuildLookalikeIndex, shadowText, sitePage, test, waitForUi } from './fixtures'
 
 // Evaluated inside the extension's service worker
 declare const chrome: any
@@ -51,23 +51,38 @@ export async function canHover(page: Page) {
 }
 
 /**
+ * A tap on a mail link, on a touchscreen, where there is no other way to the
+ * tooltip. A tap is held only when there is a reason to stop it, so the
+ * "unfamiliar site" box is ticked for the run, and an address that still gives
+ * no reason (a familiar company, a public or a throwaway service) opens the
+ * mail app and has nothing to draw: skipped, the desktop columns draw it.
+ */
+export async function tapMailLink(page: Page, needles: string[]) {
+  await page.locator('#l').click()
+  for (let waited = 0; waited < 3000 && !(await shadowText(page)).trim(); waited += 250)
+    await page.waitForTimeout(250)
+  test.skip(!(await shadowText(page)).trim(), 'a tap on this address is not held, so the mail app opens and there is nothing to draw')
+  await waitForUi(page, ...needles)
+}
+
+/**
  * The tooltip, raised by resting the pointer on the link. The shipped trigger is
  * the browser's own menu, which no automation can open, and the tooltip it leads
  * to is the same one. A touchscreen gets the tooltip only for an address, by
- * tapping it: a tap on any other link opens the dialog, which has cases of its
- * own, so those are skipped there.
+ * tapping it, see `tapMailLink`: a tap on any other link that is held opens the
+ * dialog, which has cases of its own, so those are skipped there.
  */
 export async function tooltipFor(page: Page, link: string, needles: string[], url = SITE) {
-  await patchSettings(page.context(), { linkSafety: { tooltipTrigger: 'hover', hoverDelay: 200 } })
+  const hover = await canHover(page)
+  await patchSettings(page.context(), { linkSafety: { tooltipTrigger: 'hover', hoverDelay: 200, ...(hover ? {} : { intercept: { unfamiliar: true } }) } })
   await openSite(page, url, linkPage(link))
-  if (await canHover(page)) {
+  if (hover) {
     await page.locator('#l').hover()
+    await waitForUi(page, ...needles)
+    return
   }
-  else {
-    test.skip(!link.includes('href="mailto:'), 'no hover on a touchscreen, a tap opens the link dialog instead')
-    await page.locator('#l').click()
-  }
-  await waitForUi(page, ...needles)
+  test.skip(!link.includes('href="mailto:'), 'no hover on a touchscreen, a tap opens the link dialog instead')
+  await tapMailLink(page, needles)
 }
 
 /** A right-click the page sees, with the browser's own menu put away again. */
@@ -201,4 +216,23 @@ export async function check(page: Page, text: string, card?: string) {
   if (card)
     await expect(page.locator('[data-domain-panel]')).toContainText(card, { timeout: 10000 })
   await page.waitForTimeout(1000)
+}
+
+/**
+ * A background that answers the visit lookup with an error, for this scenario.
+ *
+ * Stands in for the case that matters in real use: a tab left open across an
+ * extension update, whose content script can no longer be answered. The extra
+ * listener replies first, so the real handler's answer never arrives.
+ */
+export async function workerRefusesVisits(context: BrowserContext) {
+  await patchWorker(context, () => {
+    const runtime = (globalThis as any).chrome.runtime
+    const refuse = (message: any, _sender: unknown, reply: (answer: unknown) => void) => {
+      if (message?.type === 'get-visit-count')
+        reply({ error: 'unavailable' })
+    }
+    runtime.onMessage.addListener(refuse)
+    return () => runtime.onMessage.removeListener(refuse)
+  })
 }

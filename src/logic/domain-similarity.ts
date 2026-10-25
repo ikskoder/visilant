@@ -1,5 +1,4 @@
-import punycode from 'punycode'
-import { getRegistrableDomain } from './domain-markers'
+import { decodeHostname, getRegistrableDomain } from './domain-markers'
 
 /**
  * Does this address look like one the user already knows?
@@ -404,16 +403,6 @@ export function findLookalikes(
     })
     .slice(0, MAX_MATCHES)
     .map(match => match.reason === 'familiar-as-subdomain' ? { ...match, site: registrable } : match)
-}
-
-/** Unicode rendering of a hostname; returns the input unchanged if it is not IDN. */
-function decodeHostname(hostname: string): string {
-  try {
-    return punycode.toUnicode(hostname)
-  }
-  catch {
-    return hostname
-  }
 }
 
 /**

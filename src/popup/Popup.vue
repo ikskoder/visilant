@@ -3,6 +3,8 @@ import type { DomainMetric, MetricReading } from '~/logic/domain-metric'
 import type { SiteVisitData } from '~/logic/storage'
 import punycode from 'punycode'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import RedFlagCount from '~/components/RedFlagCount.vue'
+import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { useTheme } from '~/composables/useTheme'
@@ -89,7 +91,6 @@ function updateTranslations() {
     'untrackedIpTitle',
     'untrackedIpText',
     'familiarityRequiredAtLeast',
-    'familiarityDaysUnit',
     // The metric chips are named after the checks themselves – these are the
     // same four facts the badge can draw, not a second vocabulary for them
     'familiarityVisits',
@@ -653,6 +654,29 @@ const isShortenerHost = computed(() => {
   return Boolean(currentHostname.value) && isShortenedUrl(currentHostname.value)
 })
 
+const { statusLabel } = useFamiliarityFacts()
+
+/**
+ * The verdict on the address at the top of the card, the one thing the popup
+ * used to leave the reader to add up from three marks.
+ *
+ * Taken on this host's own record, as the toolbar badge, the link tooltip and
+ * the warnings take it, so the popup never says green where the page warns.
+ * Nothing until the visits for this very host are in, or "Never visited" would
+ * flash up first. Nothing for an address that is never counted, which the
+ * notice below explains, and none for a short link, whose own visits say
+ * nothing about where its links go (the line under it says so). A silenced
+ * site keeps its verdict: silencing the warnings did not make it any better
+ * known, and the row further down says they are off.
+ */
+const addressVerdict = computed(() => {
+  const host = currentHostname.value
+  if (!host || visitsReadFor.value !== host || isUntrackedHost.value || isShortenerHost.value)
+    return null
+  const own = visits.value[currentKey.value] ?? { count: 0 }
+  return statusLabel(isFamiliar(own, familiarityRules.value), Number(own.count) || 0, false, { hostname: host, email: currentContext.value === 'email' })
+})
+
 /**
  * What the lists say about this host, drawn with the structural markers.
  *
@@ -661,7 +685,7 @@ const isShortenerHost = computed(() => {
  * though, and a count drawn over one without a word reads as if they did.
  */
 const hostNotes = computed(() => isShortenerHost.value
-  ? [{ id: 'shortener', text: translations.value.shortenerHostNotice, icon: 'link' as const }]
+  ? [{ id: 'shortener', text: translations.value.shortenerHostNotice }]
   : [])
 
 const SHORTENER_KEYS = new Set(['customShorteners', STORAGE_KEY_REMOTE_SHORTENERS])
@@ -855,6 +879,17 @@ onMounted(async () => {
             </SecureText>
           </div>
 
+          <!-- The verdict, as Visilant's shield, and the red flags under the
+               address counted beside it -->
+          <div v-if="addressVerdict" class="popup-verdict" data-popup-verdict :data-verdict="addressVerdict.verdict">
+            <VzIcon :name="addressVerdict.icon" large :class="`tone-${addressVerdict.tone}`" />
+            <span class="vz-body-strong">{{ addressVerdict.text }}</span>
+            <RedFlagCount :hostname="currentHostname" :url="currentUrl" :context="currentContext" />
+          </div>
+          <!-- No verdict for an address that is never counted or for a short link,
+               but a red flag under one is still counted -->
+          <RedFlagCount v-else-if="visitsReadFor === currentHostname" class="justify-self-start" :hostname="currentHostname" :url="currentUrl" :context="currentContext" />
+
           <!-- Said before the numbers, because it explains why there are none -->
           <VzNotice v-if="isUntrackedHost" tone="neutral" icon="unknown">
             <p class="vz-body-strong">
@@ -948,9 +983,10 @@ onMounted(async () => {
 
         <!-- The base domain, and the family's own figures under it.
 
-             This is the name those figures are about: "have I been here" folds
-             `example.com` and `mail.example.com` into one question, and it is the
-             fold the check field's verdict is taken on. Drawn under the
+             This is the name those figures are about: they fold `example.com`
+             and `mail.example.com` into one answer, which no verdict is taken
+             on, since a link, a warning and the check field all judge the
+             address by its own record. Drawn under the
              subdomain's name it read as that host's own count and disagreed with
              the card above it by however much the rest of the family came to.
              The same card and the same grid as the checked domain, deliberately,
@@ -1122,6 +1158,18 @@ onMounted(async () => {
 </template>
 
 <style>
+.popup-verdict {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.popup-verdict > .vz-icon {
+  width: calc(28px * var(--vz-scale, 1));
+  height: calc(28px * var(--vz-scale, 1));
+}
+
 /* Prevent popup-level scrollbar – but not on the standalone page, which is a
    normal tab and scrolls like one (see the class toggle in the script) */
 html:not(.standalone-page),

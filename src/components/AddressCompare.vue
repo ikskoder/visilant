@@ -45,7 +45,9 @@ const verdict = computed(() => {
   if (result.sameIgnoringCase)
     return { text: t.value('addressCompareCaseOnly'), good: true }
   return {
-    text: (t.value('addressCompareDiffers') || '').replace('{n}', String(result.differences)),
+    text: result.differences === 1
+      ? t.value('addressCompareDiffersOne')
+      : (t.value('addressCompareDiffers') || '').replace('{n}', String(result.differences)),
     good: false,
   }
 })

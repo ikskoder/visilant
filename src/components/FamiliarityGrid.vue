@@ -76,7 +76,7 @@ const ageTitle = computed(() => {
       </div>
       <div class="vz-grid__value">
         <VzIcon :name="fact.met ? 'pass' : 'fail'" :label="t(fact.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="fact.met ? 'tone-safe' : 'tone-danger'" :data-passed="fact.id" :data-result="fact.met ? 'pass' : 'fail'" />
-        <span :class="{ 'vz-fact__value--none': !fact.known }" :data-criterion="fact.id" :title="fact.id === 'age' ? ageTitle : fact.title"><FactText :text="withThresholds ? fact.combined : fact.value" /></span>
+        <span :class="{ 'vz-fact__value--none': !fact.known }" :data-criterion="fact.id" :title="fact.id === 'age' ? ageTitle : fact.title">{{ withThresholds ? fact.combined : fact.value }}</span>
       </div>
     </div>
 

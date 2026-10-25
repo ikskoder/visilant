@@ -15,9 +15,12 @@ import {
   getPunycodeInfo,
   isDomainInScope,
   isExternalLink,
+  isFileLikeName,
+  namesASite,
   setCachedVisitCount,
   snapshotContextLink,
 } from '../link-safety'
+import { defaultInterceptSettings } from '../storage'
 
 describe('isExternalLink', () => {
   // One site under two spellings – the background keeps them as one record
@@ -150,6 +153,7 @@ describe('isDomainInScope', () => {
   const baseLinkSafety: LinkSafetySettings = {
     enabled: true,
     tooltipTrigger: 'hover',
+    intercept: { ...defaultInterceptSettings },
     hoverDelay: 300,
     showVisitCount: 'always',
     shortUrlMode: 'off',
@@ -550,5 +554,35 @@ describe('the context-menu snapshot', () => {
 
   it('says nothing without a snapshot', () => {
     expect(contextLinkTextDomain(null, snapshot.href, 0)).toBeNull()
+  })
+})
+
+describe('namesASite', () => {
+  // A repository page is full of links reading like this, and they name files
+  it('takes a project file name for a file, not a site', () => {
+    expect(isFileLikeName('README.md')).toBe(true)
+    expect(isFileLikeName('setup.py')).toBe(true)
+    expect(namesASite('readme.md', { listed: true, isSafe: false })).toBe(false)
+  })
+
+  // Real country domains, and a phisher's text could be any of them
+  it('still compares a site that shares a file ending', () => {
+    expect(isFileLikeName('allegro.pl')).toBe(false)
+    expect(namesASite('allegro.pl', { listed: true, isSafe: false })).toBe(true)
+  })
+
+  it('needs a known suffix or a familiar site', () => {
+    expect(namesASite('config.yaml', { listed: false, isSafe: false })).toBe(false)
+    expect(namesASite('intranet.corp', { listed: false, isSafe: true })).toBe(true)
+  })
+
+  // Bought for exactly this trick, and on the list
+  it('keeps .zip and .mov', () => {
+    expect(namesASite('setup.zip', { listed: true, isSafe: false })).toBe(true)
+  })
+
+  // An answer that did not come is taken at the text's word
+  it('errs on the side of the warning when nobody could ask', () => {
+    expect(namesASite('config.yaml', { unchecked: true, isSafe: false })).toBe(true)
   })
 })

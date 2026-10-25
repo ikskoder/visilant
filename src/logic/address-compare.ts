@@ -67,6 +67,47 @@ function commonLengths(left: string[], right: string[]): number[][] {
   return table
 }
 
+/**
+ * A character swapped for another, as one column rather than two.
+ *
+ * The alignment only knows matches, insertions and deletions, so `paypa1`
+ * against `paypal` came out as "1 added, l missing" and was counted as two
+ * differences, when what happened is one letter replaced. Within each run of
+ * mismatches the characters from the two sides are paired up in order, and only
+ * what is left over stays an insertion or a deletion.
+ */
+function pairSubstitutions(cells: AddressCell[]): AddressCell[] {
+  const out: AddressCell[] = []
+  let index = 0
+
+  while (index < cells.length) {
+    if (cells[index].same) {
+      out.push(cells[index++])
+      continue
+    }
+
+    const checked: string[] = []
+    const known: string[] = []
+    for (; index < cells.length && !cells[index].same; index++) {
+      if (cells[index].checked !== undefined)
+        checked.push(cells[index].checked!)
+      if (cells[index].known !== undefined)
+        known.push(cells[index].known!)
+    }
+
+    for (let k = 0; k < Math.max(checked.length, known.length); k++) {
+      const cell: AddressCell = { same: false }
+      if (k < checked.length)
+        cell.checked = checked[k]
+      if (k < known.length)
+        cell.known = known[k]
+      out.push(cell)
+    }
+  }
+
+  return out
+}
+
 export function compareAddresses(checked: string, known: string): AddressComparison {
   const left = characters(checked)
   const right = characters(known)
@@ -99,10 +140,11 @@ export function compareAddresses(checked: string, known: string): AddressCompari
   for (; j < right.length; j++)
     cells.push({ known: right[j], same: false })
 
-  const differences = cells.filter(cell => !cell.same).length
+  const merged = pairSubstitutions(cells)
+  const differences = merged.filter(cell => !cell.same).length
 
   return {
-    cells,
+    cells: merged,
     differences,
     identical: differences === 0,
     sameIgnoringCase: differences > 0 && checked.toLowerCase() === known.toLowerCase(),

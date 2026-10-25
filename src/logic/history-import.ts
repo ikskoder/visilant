@@ -1,7 +1,8 @@
 import type { SiteVisitData } from './storage'
+import type { HistoryVisit } from './visit-stats'
 import { visitKey } from './domain-boundary'
 import { hasHistoryApi } from './platform'
-import { dayKey, isTrackableHostname } from './visit-stats'
+import { isTrackableHostname, summarizeVisits } from './visit-stats'
 import { updateVisitRecords, visitGeneration } from './visit-store'
 
 export interface ImportedDomainStats {
@@ -36,45 +37,21 @@ export function hostnameFromHistoryUrl(url: string | undefined): string | null {
   }
 }
 
-/** Fold one URL's individual visit timestamps into the running stats of its hostname. */
-export function addVisitTimes(
-  stats: ImportedDomainStats | undefined,
-  times: number[],
-  days: Set<string>,
-): ImportedDomainStats | undefined {
-  const valid = times.filter(time => typeof time === 'number' && Number.isFinite(time) && time > 0)
-  if (!valid.length)
-    return stats
-
-  for (const time of valid)
-    days.add(dayKey(time))
-
-  const first = Math.min(...valid)
-  const last = Math.max(...valid)
-
-  if (!stats)
-    return { count: valid.length, firstSeen: first, lastSeen: last }
-
-  return {
-    count: stats.count + valid.length,
-    firstSeen: Math.min(stats.firstSeen ?? first, first),
-    lastSeen: Math.max(stats.lastSeen, last),
-  }
-}
-
 /**
  * Merge imported history stats into an existing record.
  *
  * Deliberately idempotent – every field folds by min/max rather than by addition,
- * so importing twice cannot inflate the counters. `ignored` is user intent and is
+ * so importing twice cannot inflate the counters. The count after a quick pass
+ * is the one exception, and still folds by max – see `importedCount`. `ignored` is user intent and is
  * never touched by an import.
  */
 export function mergeImportedStats(
   existing: SiteVisitData | undefined,
   imported: ImportedDomainStats,
+  quick?: QuickImportEntry,
 ): SiteVisitData {
   const merged: SiteVisitData = {
-    count: Math.max(existing?.count || 0, imported.count),
+    count: importedCount(existing?.count || 0, imported.count, quick),
     lastSeen: Math.max(existing?.lastSeen || 0, imported.lastSeen),
     ignored: existing?.ignored || false,
   }
@@ -95,6 +72,36 @@ export function mergeImportedStats(
     merged.activeDays = Math.max(...activeDays)
 
   return merged
+}
+
+/**
+ * What a quick pass found for one hostname: the count before it, and its own.
+ *
+ * The quick pass has only the browser's total of loads for each address, which
+ * counts every reload, so its figure is too high for a site that reloads itself.
+ * The full pass reads the visits one by one and has an honest figure, but a merge
+ * by the larger of the two would keep the quick one for ever. So the quick pass
+ * leaves this note, and the full pass takes its own figure in place of the quick
+ * one while keeping whatever was counted live in between.
+ */
+export type QuickImportEntry = [before: number, quick: number]
+
+/** Where quick passes leave their notes until a full pass has used them. */
+export const QUICK_IMPORT_KEY = '__visilantQuickImport'
+
+/**
+ * The count after an import, see `QuickImportEntry`.
+ *
+ * A visit counted live after the quick pass is in the browser's history as
+ * well, so the full pass has already counted it. Hence the larger of the two
+ * rather than their sum, which also gives the same answer however often it runs.
+ */
+export function importedCount(existing: number, imported: number, quick?: QuickImportEntry): number {
+  if (!quick)
+    return Math.max(existing, imported)
+  const [before, quickCount] = quick
+  const live = Math.max(0, existing - Math.max(before, quickCount))
+  return Math.max(before + live, imported)
 }
 
 // ==========================================
@@ -439,11 +446,32 @@ export async function runHistoryImport(options: {
   ) => {
     for (let offset = 0; offset < hostnames.length; offset += IMPORT_WRITE_BATCH) {
       const chunk = hostnames.slice(offset, offset + IMPORT_WRITE_BATCH)
+      // Read and written with the records, in the same step – see `alongside`
+      let notes: Record<string, QuickImportEntry> = {}
 
       await updateVisitRecords(
         chunk,
-        (hostname, existing) => mergeImportedStats(existing, stats.get(hostname)!),
-        { generation: startedAtGeneration },
+        (hostname, existing, stored) => {
+          notes = (stored[QUICK_IMPORT_KEY] || {}) as Record<string, QuickImportEntry>
+          const imported = stats.get(hostname)!
+          if (mode === 'full') {
+            const note = notes[hostname]
+            // Used once. Left behind, a later Re-import would read the gap
+            // between two quick passes as visits counted live.
+            delete notes[hostname]
+            return mergeImportedStats(existing, imported, note)
+          }
+          // The first note for a hostname stands: a second quick pass would
+          // otherwise record its predecessor's inflated figure as the count before it
+          if (!notes[hostname])
+            notes[hostname] = [existing?.count || 0, imported.count]
+          return mergeImportedStats(existing, imported)
+        },
+        {
+          generation: startedAtGeneration,
+          alsoRead: [QUICK_IMPORT_KEY],
+          alongside: () => ({ [QUICK_IMPORT_KEY]: notes }),
+        },
       )
 
       await onBatch?.(Math.min(offset + chunk.length, hostnames.length))
@@ -536,16 +564,7 @@ export async function runHistoryImport(options: {
           urlCount += urlsByHostname.get(hostname)?.length || 0
         }
 
-        const stats = new Map<string, ImportedDomainStats>()
-        const daysByHostname = new Map<string, Set<string>>()
-        const daysFor = (hostname: string) => {
-          let days = daysByHostname.get(hostname)
-          if (!days) {
-            days = new Set<string>()
-            daysByHostname.set(hostname, days)
-          }
-          return days
-        }
+        const visitsByHostname = new Map<string, HistoryVisit[]>()
 
         const work = checkpoint.flatMap(hostname =>
           (urlsByHostname.get(hostname) || []).map(url => ({ hostname, url })),
@@ -557,12 +576,15 @@ export async function runHistoryImport(options: {
           async (item) => {
             try {
               const visits = await browser.history.getVisits({ url: item.url })
-              const times = visits
-                .map(visit => visit.visitTime)
-                .filter((time): time is number => typeof time === 'number')
-              const merged = addVisitTimes(stats.get(item.hostname), times, daysFor(item.hostname))
-              if (merged)
-                stats.set(item.hostname, merged)
+              let list = visitsByHostname.get(item.hostname)
+              if (!list) {
+                list = []
+                visitsByHostname.set(item.hostname, list)
+              }
+              for (const visit of visits) {
+                if (typeof visit.visitTime === 'number')
+                  list.push({ time: visit.visitTime, reload: visit.transition === 'reload' })
+              }
             }
             catch {
               // A URL can disappear between search() and getVisits() – skip it
@@ -580,9 +602,14 @@ export async function runHistoryImport(options: {
         if (shouldStop?.() || lost)
           return await finish('cancelled')
 
-        // Every URL of these hostnames has been read, so their day counts are final
-        for (const [hostname, entry] of stats)
-          entry.activeDays = daysByHostname.get(hostname)?.size || undefined
+        // Every URL of these hostnames has been read, so their visits can be
+        // counted the way the live counter counts them – see `summarizeVisits`
+        const stats = new Map<string, ImportedDomainStats>()
+        for (const [hostname, list] of visitsByHostname) {
+          const summary = summarizeVisits(list)
+          if (summary)
+            stats.set(hostname, summary)
+        }
 
         await writeHostnames([...stats.keys()], stats)
         state.domains += stats.size
@@ -595,6 +622,8 @@ export async function runHistoryImport(options: {
 
       state.domains += carriedDomains
       state.visits += carriedVisits
+      // Every hostname has had its honest figure, so the notes have done their job
+      await browser.storage.local.remove(QUICK_IMPORT_KEY)
       return await finish('done')
     }
 

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { DomainMarkerId, EmbeddedDomain } from '~/logic/domain-markers'
+import type { DomainMarker, DomainMarkerId, EmbeddedDomain } from '~/logic/domain-markers'
 import { computed, inject } from 'vue'
 import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
-import { useLookalikes } from '~/composables/useLookalikes'
+import { useDomainMarkers } from '~/composables/useRedFlags'
 import { ADDRESS_SHAPE_KEY, askBackgroundShape } from '~/logic/address-shape'
-import { dropExplainedMarkers, findDomainMarkers } from '~/logic/domain-markers'
+import { isRedFlagMarker } from '~/logic/red-flags'
 
 // Structural facts about an address – never a verdict, so this renders as a
 // short list of observations rather than as a safe/unsafe badge.
@@ -22,7 +22,7 @@ const props = defineProps<{
    * the host, say. Drawn first, in the same shape, so a notice and a marker under
    * one address read as one list rather than two blocks with a gap between them.
    */
-  notes?: { id: string, text: string, icon?: 'link' }[]
+  notes?: { id: string, text: string }[]
   /** No box around each line, for the tooltip where space is tight. */
   bare?: boolean
   /**
@@ -41,6 +41,57 @@ const TRANSLATION_KEYS: Record<DomainMarkerId, string> = {
   'embedded-public-suffix': 'domainMarkerEmbeddedSuffix',
   'deep-subdomains': 'domainMarkerDeepSubdomains',
   'mixed-scripts': 'domainMarkerMixedScripts',
+  'non-latin-name': 'domainMarkerNonLatin',
+}
+
+/**
+ * A second sentence after the detail, for the markers whose label says what was
+ * found but not why it matters. Kept apart from the label, which ends in the
+ * detail itself ("Too many subdomain levels: 5").
+ */
+const WHY_KEYS: Partial<Record<DomainMarkerId, string>> = {
+  'ip-host': 'domainMarkerIpHostWhy',
+  'deep-subdomains': 'domainMarkerDeepSubdomainsWhy',
+}
+
+const SCRIPT_KEYS: Record<string, string> = {
+  cyrillic: 'scriptCyrillic',
+  greek: 'scriptGreek',
+  armenian: 'scriptArmenian',
+  georgian: 'scriptGeorgian',
+  hebrew: 'scriptHebrew',
+  arabic: 'scriptArabic',
+  devanagari: 'scriptDevanagari',
+  bengali: 'scriptBengali',
+  thai: 'scriptThai',
+  cjk: 'scriptCjk',
+}
+
+/**
+ * The line's own words, with the alphabet and the ending named where the line
+ * names them. A name of Latin twins gets the sharper line, since it is read as
+ * the Latin name it imitates.
+ */
+function markerLabel(marker: DomainMarker): string {
+  if (marker.id !== 'non-latin-name')
+    return t.value(TRANSLATION_KEYS[marker.id])
+  const alphabet = t.value(SCRIPT_KEYS[marker.script] ?? 'scriptOther')
+  const key = marker.twins
+    ? 'domainMarkerLatinTwins'
+    : marker.tldScript === 'latin'
+      ? 'domainMarkerNonLatin'
+      : SCRIPT_KEYS[marker.tldScript] ? 'domainMarkerOtherEnding' : 'domainMarkerOtherEndingUnnamed'
+  return t.value(key)
+    .replace('{alphabet}', alphabet)
+    .replace('{endingAlphabet}', t.value(SCRIPT_KEYS[marker.tldScript] ?? 'scriptOther'))
+    .replace('{ending}', `.${marker.tld}`)
+}
+
+function markerWhy(marker: DomainMarker): string | undefined {
+  if (marker.id === 'non-latin-name')
+    return t.value(marker.twins ? 'domainMarkerLatinTwinsWhy' : 'domainMarkerNonLatinWhy')
+  const key = WHY_KEYS[marker.id]
+  return key ? t.value(key) : undefined
 }
 
 const lookupShape = inject(ADDRESS_SHAPE_KEY, askBackgroundShape)
@@ -58,32 +109,9 @@ const hostedSentence = computed(() => {
   return { before, glue, after: after.slice(glue.length) }
 })
 
-const found = computed(() => {
-  if (!props.hostname)
-    return []
-  return findDomainMarkers(props.hostname, props.url)
-})
-
-// Only the embedded ending can be explained by a lookalike, so nothing is asked
-// about an address that does not have one
-const hasEmbedded = computed(() => found.value.some(marker => marker.id === 'embedded-public-suffix'))
-const lookalikes = useLookalikes(() => props.hostname, () => props.context, () => hasEmbedded.value)
-
-/**
- * Every place that shows markers shows the lookalike notice beside them, so
- * this is the one place that decides which of the two explains an address.
- * The embedded ending is held back while the answer is on its way: drawn at
- * once, it would appear for a moment and vanish again under the lookalike
- * line that replaces it.
- */
-const markers = computed(() => {
-  const answer = lookalikes.value
-  if (!answer)
-    return found.value
-  if (answer.status === 'pending')
-    return found.value.filter(marker => marker.id !== 'embedded-public-suffix')
-  return dropExplainedMarkers(found.value, answer.status === 'answered' ? answer.matches : null)
-})
+// Which markers are drawn, and which wait for the lookalike answer, is decided
+// in `useDomainMarkers`, which the red-flag count beside the verdict reads too
+const markers = useDomainMarkers(() => props.hostname, () => props.url, () => props.context)
 
 type SentencePart
   = | { text: string }
@@ -124,15 +152,15 @@ function embeddedSentence(marker: EmbeddedDomain): SentencePart[] {
 </script>
 
 <template>
-  <!-- Every line here is a warning, so every line is red with the one warning
-       sign. There used to be an amber step below red, and a reader cannot tell
-       three warm colours apart at a glance. -->
+  <!-- Every line here is a warning, so every line is red. There used to be an
+       amber step below red, and a reader cannot tell three warm colours apart
+       at a glance. The sign says which kind: a flag for a red flag (see
+       logic/red-flags.ts), the triangle for every other warning. -->
   <div v-if="markers.length || notes?.length || platform" class="domain-markers grid gap-2">
     <VzNotice
       v-for="note in notes"
       :key="note.id"
       tone="danger"
-      :icon="note.icon"
       :bare="bare"
       :data-marker-note="note.id"
     >
@@ -145,6 +173,8 @@ function embeddedSentence(marker: EmbeddedDomain): SentencePart[] {
       v-for="marker in markers"
       :key="marker.id"
       tone="danger"
+      :icon="isRedFlagMarker(marker) ? 'flag' : undefined"
+      :data-red-flag="isRedFlagMarker(marker) ? '' : undefined"
       :bare="bare"
       :data-marker="marker.id"
     >
@@ -162,7 +192,7 @@ function embeddedSentence(marker: EmbeddedDomain): SentencePart[] {
         </template>
       </template>
       <template v-else>
-        {{ `${t(TRANSLATION_KEYS[marker.id])}${marker.detail ? ':' : ''}` }}
+        {{ `${markerLabel(marker)}${marker.detail ? ':' : ''}` }}
         <template v-if="marker.detail">
           <!-- The depth is a count, not a piece of the address, so it is not
                drawn as one -->
@@ -170,8 +200,9 @@ function embeddedSentence(marker: EmbeddedDomain): SentencePart[] {
           <!-- The part before @ is ignored by the browser and dressed as a
                site, so it is struck through rather than framed -->
           <span v-else-if="marker.id === 'url-userinfo'" class="vz-addr vz-addr--s vz-decoy">{{ marker.detail }}</span>
-          <SecureText v-else :text="marker.detail" :kind="marker.id === 'mixed-scripts' ? 'raw' : 'host'" size="s" />
-        </template>
+          <SecureText v-else :text="marker.detail" :kind="marker.id === 'mixed-scripts' || marker.id === 'non-latin-name' ? 'raw' : 'host'" size="s" />
+          <!-- Glued to the detail, or the full stop would start a line of its own -->
+        </template><span v-if="markerWhy(marker)">{{ `${marker.detail ? '. ' : ''}${markerWhy(marker)}` }}</span>
       </template>
     </VzNotice>
   </div>

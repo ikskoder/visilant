@@ -43,11 +43,11 @@ describe('mismatchTable component', () => {
     expect(labels.some(text => text.includes('familiarityAge'))).toBe(true)
   })
 
-  // A record written before those fields existed cannot answer them, and a zero
-  // there would read as a measured fact rather than as a blank
-  it('says unknown where a fact was never recorded', () => {
+  // A site never visited has no active days yet, and a zero there would read as
+  // a measured fact rather than as a blank
+  it('says none yet where a site was never visited', () => {
     const wrapper = mount(MismatchTable, { props: defaultProps })
-    expect(wrapper.text()).toContain('statsUnknown')
+    expect(wrapper.text()).toContain('statsNoneYet')
   })
 
   // The colour alone says nothing to a reader who does not already know what

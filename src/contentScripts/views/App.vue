@@ -1,9 +1,8 @@
 <!-- eslint-disable no-console -->
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { isMessageError } from '~/logic/message-error'
-import { resolveTooltipTrigger } from '~/logic/platform'
 import { applySettingsSnapshot, defaultSettings, settings } from '~/logic/storage'
 import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, onTooltipHoverEnter, onTooltipHoverLeave, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, showWarning, warningType } from '~/logic/ui-state'
 import { isTrackableHostname } from '~/logic/visit-stats'
@@ -18,12 +17,6 @@ import '~/styles/tokens.css'
 import '~/styles/vz.css'
 import '~/styles/help-cursor.css'
 import 'uno.css'
-
-// The tooltip's "go" button belongs to the trigger that intercepts the click,
-// which on a touchscreen is the one in use whatever the setting says
-const effectiveTooltipTrigger = computed(() => resolveTooltipTrigger(
-  settings.value?.linkSafety?.tooltipTrigger ?? defaultSettings.linkSafety.tooltipTrigger,
-))
 
 // Theme support for content scripts
 const isDark = ref(true) // default dark until settings load
@@ -205,7 +198,7 @@ onMounted(async () => {
     <LinkTooltip
       :visible="linkTooltipVisible"
       :data="linkTooltipData"
-      :show-go-button="effectiveTooltipTrigger === 'click-left'"
+      :show-go-button="linkTooltipData?.heldClick === true"
       :font-size="settings.popupFontSize"
       :show-visit-count="settings.linkSafety?.showVisitCount ?? 'always'"
       :show-full-url="settings.linkSafety?.shortUrlShowFullUrl ?? false"

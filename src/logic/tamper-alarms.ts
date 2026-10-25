@@ -13,10 +13,14 @@
  * in `storage.local` under the same key and are cleared on startup instead.
  */
 
-/** The record kept per alarmed tab, so a new navigation can be told apart. */
+/**
+ * The record kept per alarmed tab. Only its presence is read: a new navigation
+ * clears it (`clearTamperAlarm`), so nothing has to tell one page from the
+ * next. No address is kept: the one thing this needs to know is which tab,
+ * and the full address it once stored, path and query included, was never
+ * read back.
+ */
 export interface TamperAlarm {
-  /** The URL the alarm was raised on. A different one is a different page. */
-  url: string
   at: number
 }
 
@@ -68,10 +72,10 @@ async function write(alarms: AlarmMap): Promise<void> {
 }
 
 /** Mark a tab as having caught its page hiding the extension's UI. */
-export async function raiseTamperAlarm(tabId: number, url: string): Promise<void> {
+export async function raiseTamperAlarm(tabId: number): Promise<void> {
   await enqueue(async () => {
     const alarms = { ...(await read()) }
-    alarms[String(tabId)] = { url, at: Date.now() }
+    alarms[String(tabId)] = { at: Date.now() }
     await write(alarms)
   })
 }

@@ -5,6 +5,7 @@ import { ADDRESS_SHAPE_KEY } from '~/logic/address-shape'
 import { addressShape } from '~/logic/domain-boundary'
 import DomainMarkers from '../DomainMarkers.vue'
 import LookalikeNotice from '../LookalikeNotice.vue'
+import RedFlagCount from '../RedFlagCount.vue'
 
 const SUBDOMAIN_MATCH = {
   domain: 'yourbank.com',
@@ -40,6 +41,45 @@ describe('domainMarkers component', () => {
       .find('[data-marker="hosted-on"]').exists()).toBe(false)
     expect(mount(DomainMarkers, { props: { hostname: 'github.com' }, global })
       .find('[data-marker="hosted-on"]').exists()).toBe(false)
+  })
+
+  // The flag is for what is built to be misread, the triangle for the rest
+  it('draws a flag on a red flag and the triangle on any other warning', () => {
+    const wrapper = mount(DomainMarkers, { props: { hostname: 'a.b.c.d.evil.test', url: 'https://paypal.com@a.b.c.d.evil.test/' } })
+    expect(wrapper.find('[data-marker="url-userinfo"]').attributes()).toHaveProperty('data-red-flag')
+    expect(wrapper.find('[data-marker="url-userinfo"] .vz-icon--flag').exists()).toBe(true)
+    expect(wrapper.find('[data-marker="deep-subdomains"]').attributes()).not.toHaveProperty('data-red-flag')
+    expect(wrapper.find('[data-marker="deep-subdomains"] .vz-icon--alert').exists()).toBe(true)
+  })
+
+  it('counts the same red flags the lines draw', async () => {
+    answerLookalikes([SUBDOMAIN_MATCH])
+    const count = mount(RedFlagCount, { props: { hostname: 'yourbank.com.evil.net', url: 'https://x@yourbank.com.evil.net/' } })
+    const lines = mount({ components: { DomainMarkers, LookalikeNotice }, template: '<div><DomainMarkers hostname="yourbank.com.evil.net" url="https://x@yourbank.com.evil.net/" /><LookalikeNotice hostname="yourbank.com.evil.net" /></div>' })
+    await flushPromises()
+    // The decoy name and the lookalike. The embedded ending is explained by the
+    // lookalike line, so it is neither drawn nor counted.
+    expect(lines.findAll('[data-red-flag]')).toHaveLength(2)
+    expect(count.attributes('data-red-flags')).toBe('2')
+  })
+
+  // The name of Latin twins and the lookalike line about the same name are one
+  // trick, drawn once and counted once, as the click was decided on
+  it('counts a name of Latin twins once when it copies a familiar site', async () => {
+    answerLookalikes([{ domain: 'apple.com', visits: 40, reason: 'confusable', evidence: 'аррӏе', severity: 'high' }])
+    const count = mount(RedFlagCount, { props: { hostname: 'xn--80ak6aa92e.com' } })
+    const lines = mount({ components: { DomainMarkers, LookalikeNotice }, template: '<div><DomainMarkers hostname="xn--80ak6aa92e.com" /><LookalikeNotice hostname="xn--80ak6aa92e.com" /></div>' })
+    await flushPromises()
+    expect(lines.find('[data-marker="non-latin-name"]').exists()).toBe(false)
+    expect(lines.findAll('[data-red-flag]')).toHaveLength(1)
+    expect(count.attributes('data-red-flags')).toBe('1')
+  })
+
+  it('draws a name of Latin twins when no familiar site explains it', async () => {
+    answerLookalikes([])
+    const wrapper = mount(DomainMarkers, { props: { hostname: 'xn--80ak6aa92e.com' } })
+    await flushPromises()
+    expect(wrapper.find('[data-marker="non-latin-name"]').attributes()).toHaveProperty('data-red-flag')
   })
 
   it('renders nothing without a hostname', () => {

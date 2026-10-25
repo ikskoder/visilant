@@ -124,7 +124,12 @@ html.dark,
 
 /* Inside a web page: generic families only. A family named here would be looked
    up among the page's own @font-face rules, so a hostile page could declare one
-   with the same name and redraw the letters of an address. */
+   with the same name and redraw the letters of an address. Loading the font
+   through `FontFace` under a name made up at runtime is not enough on its own
+   either: the page can list `document.fonts`, read the name off it and add a
+   face of its own under it, which measurably wins in Chromium and both Firefox
+   releases. It only works together with a check that nothing else carries the
+   name and that no descriptor of ours was changed. */
 .vz-root--page {
   --font-sans: system-ui, sans-serif;
   /* Not `ui-monospace`: Chrome and Firefox do not know it as a generic family,

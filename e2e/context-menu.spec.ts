@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { blankPage, inWorker, patchSettings, serveSite } from './helpers'
+import { allText, blankPage, inWorker, patchSettings, serveSite } from './helpers'
 
 // Evaluated inside the extension's service worker
 declare const chrome: any
@@ -31,34 +31,6 @@ const PAGE = blankPage('Inbox', `
     })
   </script>
 `)
-
-/**
- * Every piece of text on the page, closed shadow roots included.
- *
- * The in-page interface lives in a closed shadow root in a production build,
- * which is what the suite runs against, and no locator reaches into one. The
- * DevTools protocol does, so the dialog is read the way the inspector reads it.
- */
-async function allText(page: Page): Promise<string> {
-  const cdp = await page.context().newCDPSession(page)
-  try {
-    const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true })
-    const parts: string[] = []
-    const walk = (node: any) => {
-      if (node.nodeType === 3 && node.nodeValue)
-        parts.push(node.nodeValue)
-      for (const child of node.children ?? [])
-        walk(child)
-      for (const child of node.shadowRoots ?? [])
-        walk(child)
-    }
-    walk(root)
-    return parts.join(' ')
-  }
-  finally {
-    await cdp.detach()
-  }
-}
 
 async function rightClick(page: Page, selector: string) {
   await page.locator(selector).click({ button: 'right' })
@@ -160,7 +132,7 @@ test('the menu check on a mailto link checks the address', async ({ page, contex
 // that is the only trigger, so a tapped mailto did nothing at all.
 test('a click on a mailto link with the click trigger shows the address', async ({ page, context }) => {
   await patchSettings(context, {
-    linkSafety: { enabled: true, tooltipTrigger: 'click-left', hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
+    linkSafety: { enabled: true, tooltipTrigger: 'click-right', intercept: { unfamiliar: true, shortLinks: true, redFlags: true, minRedFlags: 1 }, hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
   })
   await open(page)
 

@@ -3,8 +3,8 @@ import type { IconName } from './VzIcon.vue'
 
 /**
  * A verdict or a state, said with a shape, a word and a colour together – never
- * the colour alone. One per address. The tone decides the colours, the icon is
- * the tone's own unless the meaning has a better one (`link` for a short link).
+ * the colour alone. One per address. A verdict carries the shield, a count of
+ * red flags the flag, and anything else the sign of its tone.
  */
 defineProps<{
   tone: 'safe' | 'danger' | 'neutral' | 'brand'

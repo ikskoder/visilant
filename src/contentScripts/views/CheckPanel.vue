@@ -7,16 +7,20 @@ import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailCheckCaveat from '~/components/EmailCheckCaveat.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
+import RedFlagCount from '~/components/RedFlagCount.vue'
 import SecureText from '~/components/SecureText.vue'
 import VzBadge from '~/components/VzBadge.vue'
 import VzIcon from '~/components/VzIcon.vue'
 import VzNotice from '~/components/VzNotice.vue'
 import VzSig from '~/components/VzSig.vue'
+import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { useModalDialog } from '~/composables/useModalDialog'
 import { useTopLayer } from '~/composables/useTopLayer'
+import { useVisualViewport } from '~/composables/useVisualViewport'
 import { ADDRESS_FRAMES_KEY } from '~/logic/address-shape'
+import { isListedPublicOnlyRemotely } from '~/logic/email-providers'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { alternateSpelling } from '~/logic/link-safety'
 import { settings } from '~/logic/storage'
@@ -74,6 +78,9 @@ const layer = useTopLayer({
   onDismiss: () => emit('close'),
 })
 
+// Over what is on the screen, not the layout viewport, see `viewportCoverStyle`
+const cover = useVisualViewport(() => props.visible && Boolean(props.data))
+
 useModalDialog({
   visible: () => props.visible && Boolean(props.data),
   container: () => card.value,
@@ -93,6 +100,14 @@ const framesTitle = computed(() => localFrames.value
 
 const otherSpelling = computed(() => props.data ? alternateSpelling(displayDomain(props.data.hostname)) : null)
 
+/**
+ * Whether the spelling toggle would change anything on this panel. On a plain
+ * Latin address with plain Latin relatives it changes nothing, and on a phone,
+ * where a button has no tooltip, a press that changes nothing explains nothing.
+ */
+const hasOtherSpelling = computed(() => Boolean(otherSpelling.value)
+  || Boolean(props.data?.family.entries.some(entry => alternateSpelling(entry.hostname))))
+
 const punycodeTitle = computed(() => localPunycodeMode.value === 'unicode'
   ? t.value('punycodeShowAscii')
   : t.value('punycodeShowUnicode'))
@@ -111,13 +126,29 @@ function displayDomain(domain: string) {
 const familiarityRules = computed(() => normalizeFamiliarity(settings.value.familiarity))
 
 /**
- * The whole family's facts, which is what the verdict is about.
+ * The whole family's facts, drawn under the site's name.
  *
  * Falls back to the bare total for a background too old to send them, so the
  * panel still says something rather than treating every site as brand new.
  */
 const familyStats = computed<FamiliarityStats>(() =>
   props.data?.family.stats ?? { count: props.data?.family.total ?? 0 })
+
+/**
+ * The checked name's own record, which is what the verdict beside it is about.
+ *
+ * The badge used to be taken on the family, so `checkout.paypal.test` read
+ * "Familiar site" here, over a row of its own with a red cross, while a link
+ * to it showed red and a form on it raised the typing warning. It now answers
+ * the way the rest of the extension acts. A name with no record of its own is
+ * not in the list, and has no visits.
+ */
+const ownStats = computed<FamiliarityStats>(() => {
+  const family = props.data?.family
+  const key = family?.key || props.data?.hostname
+  const entry = family?.entries.find(candidate => candidate.hostname === key)
+  return entry ? { count: entry.count, activeDays: entry.activeDays, firstSeen: entry.firstSeen } : { count: 0 }
+})
 
 /**
  * Where the mail of an address domain is read, when that is somewhere else.
@@ -139,21 +170,11 @@ const isUntrackedHost = computed(() => {
   return Boolean(hostname) && !isTrackableHostname(hostname!)
 })
 
-/**
- * The badge beside the name being checked. Beside an email address it never
- * says "never visited": nobody visits an address, and next to "Email address"
- * it read as though somebody could. Familiar and unfamiliar are about the site
- * behind it, and read the same either way.
- */
+const { statusLabel } = useFamiliarityFacts()
+
+/** The badge beside the name being checked, worded as on every other surface. */
 function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
-  const count = stats.count
-  if (!isTrackableHostname(hostname))
-    return { text: t.value(untrackedReason(hostname) === 'ip' ? 'untrackedIpBadge' : 'untrackedHostBadge'), tone: 'neutral', icon: 'unknown', verdict: 'untracked' } as const
-  if (isFamiliar(stats, familiarityRules.value))
-    return { text: t.value('linkTooltipFamiliar'), tone: 'safe', icon: 'pass', verdict: 'familiar' } as const
-  if (count === 0)
-    return { text: t.value(email ? 'linkTooltipUnfamiliar' : 'linkTooltipNeverVisited'), tone: 'danger', icon: 'alert', verdict: email ? 'unfamiliar' : 'never' } as const
-  return { text: t.value('linkTooltipUnfamiliar'), tone: 'danger', icon: 'alert', verdict: 'unfamiliar' } as const
+  return statusLabel(passes(stats), stats.count, false, { hostname, email })
 }
 </script>
 
@@ -161,7 +182,8 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
   <Transition name="overlay-fade" appear @enter="layer.enter">
     <dialog
       v-if="visible && data"
-      class="vz-layer fixed inset-0 z-[2147483647] pointer-events-auto flex items-center justify-center p-4 vz-scrim"
+      :style="cover"
+      class="vz-layer z-[2147483647] pointer-events-auto flex items-center justify-center p-4 vz-scrim"
       :aria-label="t('checkPanelTitle')"
       @click.self="emit('close')"
     >
@@ -196,9 +218,10 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
             <VzBadge v-else-if="data.email.providerKind === 'public'" tone="neutral" icon="email" data-verdict="public">
               {{ t('emailPublicProvider') }}
             </VzBadge>
-            <VzBadge v-else :tone="statusBadge(familyStats, data.hostname, true).tone" :icon="statusBadge(familyStats, data.hostname, true).icon" :data-verdict="statusBadge(familyStats, data.hostname, true).verdict">
-              {{ statusBadge(familyStats, data.hostname, true).text }}
+            <VzBadge v-else :tone="statusBadge(ownStats, data.hostname, true).tone" :icon="statusBadge(ownStats, data.hostname, true).icon" :data-verdict="statusBadge(ownStats, data.hostname, true).verdict">
+              {{ statusBadge(ownStats, data.hostname, true).text }}
             </VzBadge>
+            <RedFlagCount :hostname="data.hostname" context="email" />
           </div>
           <div class="grid gap-1">
             <span class="vz-eyebrow">{{ t('emailAccountName') }}</span>
@@ -221,6 +244,10 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
           <VzNotice v-if="data.email.providerKind === 'public'" tone="neutral" icon="email">
             {{ t('emailPublicProviderHint') }}
           </VzNotice>
+          <!-- See `remotePublicSet` -->
+          <VzNotice v-else-if="data.email.providerKind === 'regular' && isListedPublicOnlyRemotely(data.email.analysis.domain)" tone="neutral" icon="email" data-status="listed-public">
+            {{ t('emailRemotePublicHint') }}
+          </VzNotice>
           <VzNotice v-else-if="data.email.providerKind === 'disposable'" tone="danger">
             {{ t('emailDisposableHint') }}
           </VzNotice>
@@ -231,9 +258,12 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
 
         <!-- Domain: checked hostname -->
         <div v-else class="grid gap-2">
-          <VzBadge :tone="statusBadge(familyStats, data.hostname).tone" :icon="statusBadge(familyStats, data.hostname).icon" :data-verdict="statusBadge(familyStats, data.hostname).verdict" class="justify-self-start">
-            {{ statusBadge(familyStats, data.hostname).text }}
-          </VzBadge>
+          <div class="flex items-center flex-wrap gap-2 justify-self-start">
+            <VzBadge :tone="statusBadge(ownStats, data.hostname).tone" :icon="statusBadge(ownStats, data.hostname).icon" :data-verdict="statusBadge(ownStats, data.hostname).verdict">
+              {{ statusBadge(ownStats, data.hostname).text }}
+            </VzBadge>
+            <RedFlagCount :hostname="data.hostname" />
+          </div>
           <SecureText :text="displayDomain(data.hostname)" :case-override="localCase" size="l" :diff="linkDiff(displayDomain(data.hostname))">
             <CopyButton :text="displayDomain(data.hostname)" />
           </SecureText>
@@ -257,7 +287,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
           <p>{{ t(untrackedReason(data.hostname) === 'ip' ? 'untrackedIpText' : 'untrackedHostText') }}</p>
         </VzNotice>
 
-        <DomainMarkers :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" :familiar="passes(familyStats)" />
+        <DomainMarkers :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" :familiar="passes(ownStats)" />
         <LookalikeNotice :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" />
 
         <!-- Display toggles for this panel only. Each shows its state by being
@@ -284,6 +314,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
             <VzIcon name="frames" />
           </button>
           <button
+            v-if="hasOtherSpelling"
             class="vz-toggle"
             :title="punycodeTitle"
             :aria-label="punycodeTitle"
@@ -359,9 +390,9 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
 
 <style scoped>
 .panel-container {
-  width: min(600px, 100vw - 32px);
+  width: min(600px, var(--vz-vw, 100vw) - 32px);
   max-width: none;
-  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: calc(var(--vz-vh, 100dvh) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
   overscroll-behavior: contain;
 }

@@ -52,30 +52,30 @@ export function supportsHover(): boolean {
 }
 
 /**
- * The link-check trigger that can actually fire on this device.
+ * The way to show the link check that can actually fire on this device, or
+ * `none` where there is no way at all.
  *
- * Hovering and right-clicking are both gone on a touchscreen, so either setting
- * would leave the link check quietly doing nothing – the worst outcome for a
- * feature whose whole job is to interrupt. The tap is the only moment left to
- * intervene at, which is exactly what the click-left trigger intervenes at.
+ * Hovering and right-clicking are both gone on a touchscreen. A tap used to
+ * stand in for them, by stopping every link to an unfamiliar site, and that is
+ * a decision of its own now (`linkSafety.intercept`): a link that has a reason
+ * to be stopped is stopped there like anywhere else, and the dialog shows what
+ * the check would have.
  *
- * The two are not the same question, which is why `canUseContextMenus` is asked
- * separately. Right-clicking needs a menu to put the item in, and Firefox for
- * Android has no menus API however good the pointer is – so a phone with a
- * Bluetooth mouse answers yes to hover and still cannot do it. Left as one
- * question, that device kept `click-right` and the link check never fired
- * again, with nothing on screen to explain it.
+ * Right-clicking also needs a menu to put the item in, and Firefox for Android
+ * has no menus API however good the pointer is – so a phone with a Bluetooth
+ * mouse can hover and still cannot right-click. That device gets hover rather
+ * than a trigger that never fires, with nothing on screen to explain it.
  *
- * A content script cannot answer the second one: the menus namespace is not
+ * A content script cannot answer the menus question: the namespace is not
  * exposed to it on any platform. It asks the background, and until the answer
- * arrives the safe assumption is no – a trigger that fires too eagerly is
- * recoverable, one that never fires is not.
+ * arrives the safe assumption is no – a check that shows too eagerly is
+ * recoverable, one that never shows is not.
  */
-export function resolveTooltipTrigger(trigger: TooltipTrigger, canUseContextMenus = false): TooltipTrigger {
+export function resolveTooltipTrigger(trigger: TooltipTrigger, canUseContextMenus = false): TooltipTrigger | 'none' {
   if (!supportsHover())
-    return 'click-left'
+    return 'none'
   if (trigger === 'click-right' && !canUseContextMenus)
-    return 'click-left'
+    return 'hover'
   return trigger
 }
 

@@ -156,7 +156,8 @@ const CASES: Case[] = [
   { name: 'opt-ls-off', section: 'link-safety', title: 'Link check switched off', note: 'Only the main switch is left.', settings: { linkSafety: { enabled: false } } },
   { name: 'opt-ls-blacklist', section: 'link-safety', title: 'Link check: everywhere except listed sites', note: 'The list of sites where links are not checked.', settings: { linkSafety: { scopeMode: 'blacklist', scopeDomains: 'ads.example\ntracker.test' } } },
   { name: 'opt-ls-whitelist-empty', section: 'link-safety', title: 'Link check: only on listed sites, list empty', note: 'Nothing is listed yet, so the box shows its placeholder.', settings: { linkSafety: { scopeMode: 'whitelist', scopeDomains: '' } } },
-  { name: 'opt-ls-click-left', section: 'link-safety', title: 'Link check on click', note: 'The hover delay slider is gone, since only hovering uses it.', settings: { linkSafety: { tooltipTrigger: 'click-left' } } },
+  { name: 'opt-ls-stop-all', section: 'link-safety', title: 'Link check: every reason to stop a link ticked', note: 'All three boxes ticked under "Stop and ask before opening a link", the red-flag box asking for 2. The number box sits inside its sentence.', settings: { linkSafety: { intercept: { unfamiliar: true, shortLinks: true, redFlags: true, minRedFlags: 2 } } } },
+  { name: 'opt-ls-stop-none', section: 'link-safety', title: 'Link check: no link is ever stopped', note: 'All three boxes cleared. The number box stays editable.', settings: { linkSafety: { intercept: { unfamiliar: false, shortLinks: false, redFlags: false, minRedFlags: 1 } } } },
   { name: 'opt-ls-hover-instant', section: 'link-safety', title: 'Link check on hover, no delay', note: 'The delay reads "instantly".', settings: { linkSafety: { tooltipTrigger: 'hover', hoverDelay: 0 } } },
   { name: 'opt-ls-hover-odd', section: 'link-safety', title: 'Link check on hover, delay off the slider steps', note: 'A delay of 1234 ms, which no slider step lands on: the label should still read sensibly.', settings: { linkSafety: { tooltipTrigger: 'hover', hoverDelay: 1234 } } },
   { name: 'opt-ls-no-menus', section: 'link-safety', title: 'Link check in a browser without context menus', note: 'As in Firefox for Android: right-click is dimmed with a reason, and a note explains the long-press menu cannot be used.', settings: { linkSafety: { tooltipTrigger: 'click-right' } }, init: hide('contextMenus') },
@@ -336,5 +337,5 @@ test('Settings: a change the browser refused to save', async ({ context, extensi
   await page.waitForTimeout(1500)
   await page.evaluate(() => window.scrollTo(0, 0))
   await page.waitForTimeout(300)
-  await shot(page, { name: 'opt-write-error', title: 'Settings: a change the browser refused to save', note: 'Over 8 KB pasted into the lookup links, more than the browser lets one setting hold. A red banner at the top should say the change was not saved.', covers: [OPTIONS] })
+  await shot(page, { name: 'opt-write-error', title: 'Settings: a change the browser refused to save', note: 'Over 8 KB pasted into the lookup links, more than the browser lets one setting hold. A red banner at the top should say the change was not saved because the synced settings are full, and to shorten a list.', covers: [OPTIONS] })
 })

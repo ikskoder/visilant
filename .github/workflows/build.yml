@@ -96,9 +96,17 @@ jobs:
             experimental-features = nix-command flakes
 
       # The same devshell the developer has, so node and pnpm are the versions
-      # flake.lock pins rather than whatever the runner ships
+      # flake.lock pins rather than whatever the runner ships. No lifecycle
+      # scripts: a hijacked package runs its code through one, and pnpm 10 only
+      # holds back those of dependencies. Ours is the git hook installer, which
+      # a CI checkout has no use for.
       - name: Install dependencies
-        run: nix develop --command pnpm install --frozen-lockfile
+        run: nix develop --command pnpm install --frozen-lockfile --ignore-scripts
+
+      # The cooldown in .npmrc only works while pnpm reads it, and pnpm 11 moves
+      # its settings out of .npmrc. Without this the move would drop it silently.
+      - name: Dependency cooldown is read
+        run: nix develop --command pnpm config get minimum-release-age | grep -qx 10080
 
       # Before the checks, not after them. `src/auto-imports.d.ts` and
       # `src/components.d.ts` are written by the Vite plugins and are not in the

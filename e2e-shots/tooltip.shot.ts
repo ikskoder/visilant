@@ -10,7 +10,7 @@ import type { Page } from '@playwright/test'
 import type { Seed } from './fixtures'
 import type { FetchAnswer } from './helpers'
 import { clickUi, FAMILIAR, openSite, patchSettings, seed, sitePage, test, waitForUi } from './fixtures'
-import { a, canHover, checkSelection, DAY, linkPage, qrResult, seedRaw, setLocal, SITE, workerFetch } from './helpers'
+import { a, canHover, checkSelection, DAY, linkPage, qrResult, seedRaw, setLocal, SITE, tapMailLink, workerFetch, workerRefusesVisits } from './helpers'
 import { t } from './messages'
 
 const TOOLTIP = 'src/contentScripts/views/LinkTooltip.vue'
@@ -41,6 +41,8 @@ interface Case {
   settings?: Record<string, unknown>
   local?: Record<string, unknown>
   fetch?: Record<string, FetchAnswer>
+  /** The background answers the visit lookup with an error, see `workerRefusesVisits` */
+  unreachable?: boolean
   /** What the tooltip must say before the picture, so a half-built one is not taken */
   needles: () => string[]
   /** A button pressed in the tooltip before the picture, by its text */
@@ -58,10 +60,11 @@ const CASES: Case[] = [
   // ==========================================
   // Verdicts and the facts behind them
   // ==========================================
+  { name: 'tt-unchecked', how: 'hover', title: 'A site that could not be looked up', note: 'The background answered with an error, as in a tab left open across an extension update. A grey "Not checked" badge and a line saying a reload usually fixes it, and no visit facts at all, never "Never visited".', unreachable: true, link: a('https://somewhere-new.test/', 'Somewhere'), needles: () => [t('verdictUnchecked')] },
   { name: 'tt-some-visits', how: 'hover', title: 'Link to a site seen a few times', note: 'Three visits, not enough to be familiar. The red badge should read "Unfamiliar site", not "Never visited".', seed: { 'low.test': LOW }, link: a('https://low.test/', 'A site seen three times'), needles: dest },
   { name: 'tt-count-hidden', how: 'hover', title: 'Link with visit counts switched off', note: 'Setting "show visit count: never". Only the verdict badge and the name, no facts.', settings: { linkSafety: { showVisitCount: 'never' } }, link: a('https://low.test/', 'A site seen three times'), seed: { 'low.test': LOW }, needles: () => [t('linkTooltipDestination')] },
-  { name: 'tt-rule-any', how: 'hover', title: 'Familiar under "any one check", most checks failing', note: 'Rule "any one check is enough": twelve visits pass, the other two fail. A green verdict over red crosses, with a "Passed checks 1 / 3" line explaining it.', settings: { familiarity: { mode: 'any' } }, seed: { 'x-visits.test': { visits: 12, activeDays: 1, ageDays: 1 } }, link: a('https://x-visits.test/', 'Busy but new'), needles: dest },
-  { name: 'tt-rule-atleast', how: 'hover', title: 'Unfamiliar under "at least 2 of 3"', note: 'Only one check passes, two are needed. Red "Unfamiliar site" badge and "Passed checks 1 / 3".', settings: { familiarity: { mode: 'atLeast', atLeast: 2 } }, seed: { 'x-visits.test': { visits: 12, activeDays: 1, ageDays: 1 } }, link: a('https://x-visits.test/', 'Busy but new'), needles: dest },
+  { name: 'tt-rule-any', how: 'hover', title: 'Familiar under "any one check", most checks failing', note: 'Rule "any one check is enough": twelve visits pass, the other two fail. A green shield verdict over red crosses, with a "Passed checks 1 / 1" line, in bold explaining it.', settings: { familiarity: { mode: 'any' } }, seed: { 'x-visits.test': { visits: 12, activeDays: 1, ageDays: 1 } }, link: a('https://x-visits.test/', 'Busy but new'), needles: dest },
+  { name: 'tt-rule-atleast', how: 'hover', title: 'Unfamiliar under "at least 2 of 3"', note: 'Only one check passes, two are needed. Red "Unfamiliar site" badge and "Passed checks 1 / 2" in bold.', settings: { familiarity: { mode: 'atLeast', atLeast: 2 } }, seed: { 'x-visits.test': { visits: 12, activeDays: 1, ageDays: 1 } }, link: a('https://x-visits.test/', 'Busy but new'), needles: dest },
   { name: 'tt-thresholds-any', how: 'hover', title: 'The facts as a table, with the "any" summary row', note: 'Bars shown and rule "any": a small table of check, value and bar, with a bold Checks row.', settings: { showFamiliarityThresholds: true, familiarity: { mode: 'any' } }, seed: { 'x-visits.test': { visits: 12, activeDays: 1, ageDays: 1 } }, link: a('https://x-visits.test/', 'Busy but new'), needles: dest },
   { name: 'tt-unknown-facts', how: 'hover', title: 'A site recorded before dates were kept', note: 'The record has visits but no first-visit date or active days. Those two read "not recorded" in grey with a red failed mark, and count as failed.', raw: now => ({ 'legacy.test': { count: 15, lastSeen: now - DAY, ignored: false } }), link: a('https://legacy.test/', 'An old favourite'), needles: dest },
   { name: 'tt-single-check', how: 'hover', title: 'Only the visits check switched on', note: 'One fact line, no others.', settings: { familiarity: { activeDays: { enabled: false, min: 5 }, age: { enabled: false, min: 10 } } }, seed: { 'low.test': LOW }, link: a('https://low.test/', 'A site seen three times'), needles: dest },
@@ -90,7 +93,8 @@ const CASES: Case[] = [
   { name: 'tt-mark-embedded-known', how: 'hover', title: 'The same, when the parked name is a site the user knows', note: 'paypal.com is familiar now, so the embedded-ending sentence is replaced by the lookalike line.', seed: { 'paypal.com': FAMILIAR }, link: a('https://paypal.com.verify.test/', 'PayPal'), needles: dest },
   { name: 'tt-mark-deep', how: 'hover', title: 'Too many subdomain levels', note: 'a.b.c.d.evil.test.', link: a('https://a.b.c.d.evil.test/', 'Somewhere'), needles: dest },
   { name: 'tt-mark-mixed-script', how: 'hover', title: 'Latin and Cyrillic letters mixed in one name', note: 'pаypal.test with a Cyrillic а. The name is also shown in its xn-- spelling, and a marker names the mixed part.', link: a('https://pаypal.test/', 'PayPal'), needles: dest },
-  { name: 'tt-idn-one-script', how: 'hover', title: 'A name entirely in another alphabet', note: 'пример.test. The xn-- spelling is shown, but no warning, since nothing is mixed.', link: a('https://пример.test/', 'Пример'), needles: dest },
+  { name: 'tt-idn-one-script', how: 'hover', title: 'A name entirely in another alphabet', note: 'пример.test. The xn-- spelling is shown, and a red flag says Cyrillic letters sit before the Latin ending .test, with no claim that it imitates a Latin name.', link: a('https://пример.test/', 'Пример'), needles: dest },
+  { name: 'tt-mark-latin-twins', how: 'hover', title: 'A name of Cyrillic letters that all look Latin', note: 'аррӏе.test, every letter Cyrillic and drawn like a Latin one, so it reads as apple. A red flag line names the alphabet, and the count beside the verdict says 1 red flag.', link: a('https://аррӏе.test/', 'Apple'), needles: dest },
   { name: 'tt-long-name', how: 'hover', title: 'A very long host name', note: 'Four long labels. The name should wrap at dots inside the tooltip, not overflow it.', link: a('https://this-is-a-very-long-label-that-goes-on-and-on.another-long-label-that-also-goes-on-and-on.yet-another-very-long-label-for-testing.evil.test/', 'Somewhere'), needles: dest },
   { name: 'tt-above-link', how: 'hover', title: 'Link at the bottom of the window', note: 'No room below, so the tooltip opens above the link.', html: sitePage('Unknown Shop', `<p>A link at the very bottom.</p><a id="l" href="https://low.test/" style="position:fixed;bottom:6px;left:40px;font-size:20px">A site seen three times</a>`), seed: { 'low.test': LOW }, needles: dest },
   { name: 'tt-right-edge', how: 'hover', title: 'Link at the right edge of the window', note: 'The tooltip is pushed back inside the window rather than cut off.', html: sitePage('Unknown Shop', `<p>A link at the right edge.</p><a id="l" href="https://low.test/" style="position:fixed;top:120px;right:4px;font-size:20px">Here</a>`), seed: { 'low.test': LOW }, needles: dest },
@@ -108,7 +112,7 @@ const CASES: Case[] = [
   // ==========================================
   // Short links
   // ==========================================
-  { name: 'tt-short-any-idle', how: 'hover', title: 'Any link may be followed, not only short ones', note: 'Setting "resolve any URL". An ordinary link gets a "Check where it leads" button but no short-link warning.', settings: { linkSafety: { shortUrlResolveAny: true } }, seed: { 'low.test': LOW }, link: a('https://low.test/go', 'Go'), needles: () => [...dest(), t('linkTooltipResolveButton')] },
+  { name: 'tt-short-any-idle', how: 'hover', title: 'Any link may be followed, not only short ones', note: 'Setting "resolve any URL". An ordinary link gets a "Try to find where it leads" button but no short-link warning.', settings: { linkSafety: { shortUrlResolveAny: true } }, seed: { 'low.test': LOW }, link: a('https://low.test/go', 'Go'), needles: () => [...dest(), t('linkResolveTry')] },
   { name: 'tt-short-loading', how: 'hover', title: 'Short link being followed', note: 'The short-link service does not answer. "Following the link...". The pending sign sits beside the text.', settings: { linkSafety: { shortUrlMode: 'auto' } }, fetch: { 'https://bit.ly/': { hang: true } }, link: a('https://bit.ly/3loadin', 'bit.ly/3loadin'), needles: () => [t('linkTooltipResolvingUrl')] },
   { name: 'tt-short-error', how: 'hover', title: 'Short link that could not be followed', note: 'The network failed. "Couldn\'t find out where this link leads" and a Retry button.', settings: { linkSafety: { shortUrlMode: 'auto' } }, fetch: { 'https://bit.ly/': { fail: true } }, link: a('https://bit.ly/3errorx', 'bit.ly/3errorx'), needles: () => [t('linkTooltipResolveError')] },
   { name: 'tt-short-same-host', how: 'hover', title: 'Short link that stays on the short-link site', note: 'Following it ended on bit.ly itself. A message says it may be broken, with no Retry.', settings: { linkSafety: { shortUrlMode: 'auto' } }, fetch: { 'https://bit.ly/': { to: 'https://bit.ly/landing' } }, link: a('https://bit.ly/3samehx', 'bit.ly/3samehx'), needles: () => [t('linkTooltipResolveSameDomainShortener')] },
@@ -120,36 +124,36 @@ const CASES: Case[] = [
   {
     name: 'tt-short-pressed-loading',
     how: 'hover',
-    title: 'Short link, "Show real destination" pressed, still waiting',
+    title: 'Short link, "Show where it leads" pressed, still waiting',
     note: 'The default mode follows only when asked. After pressing the button it looks the same as following straight away: "Following the link...". The pending sign sits beside the text.',
     fetch: { 'https://bit.ly/': { hang: true } },
     link: a('https://bit.ly/3presse', 'bit.ly/3presse'),
-    needles: () => [t('linkTooltipResolveButton')],
-    press: () => t('linkTooltipResolveButton'),
+    needles: () => [t('linkResolveKnown')],
+    press: () => t('linkResolveKnown'),
     after: () => [t('linkTooltipResolvingUrl')],
   },
   {
     name: 'tt-once-resolved',
     how: 'hover',
     title: 'An ordinary link checked for where it really leads',
-    note: '"Check where it leads" pressed on a link that is not a known shortener, and it redirected elsewhere. The destination block and a "Mark as shortener" button.',
+    note: '"Try to find where it leads" pressed on a link that is not a known shortener, and it redirected elsewhere. The destination block and a "Mark as shortener" button.',
     seed: { 'low.test': LOW },
     fetch: { 'https://low.test/': { to: 'https://somewhere-else.test/landing' } },
     link: a('https://low.test/out', 'Out'),
-    needles: () => [t('linkTooltipResolveOnce')],
-    press: () => t('linkTooltipResolveOnce'),
+    needles: () => [t('linkResolveTry')],
+    press: () => t('linkResolveTry'),
     after: () => [t('linkTooltipShortenedUrl')],
   },
   {
     name: 'tt-once-same-site',
     how: 'hover',
     title: 'An ordinary link checked, and it stays put',
-    note: '"Check where it leads" pressed, no redirect. A line says it stayed on the same site.',
+    note: '"Try to find where it leads" pressed, no redirect. A line says it stayed on the same site.',
     seed: { 'low.test': LOW },
     fetch: { 'https://low.test/': { to: 'https://low.test/out' } },
     link: a('https://low.test/out', 'Out'),
-    needles: () => [t('linkTooltipResolveOnce')],
-    press: () => t('linkTooltipResolveOnce'),
+    needles: () => [t('linkResolveTry')],
+    press: () => t('linkResolveTry'),
     after: () => [t('linkTooltipResolveSameDomain')],
   },
 
@@ -193,16 +197,16 @@ async function bringUp(page: Page, c: Case) {
     return qrResult(page, c.text!, c.needles())
   if (c.how === 'select')
     return checkSelection(page, c.text!, c.needles())
-  await patchSettings(page.context(), { linkSafety: { tooltipTrigger: 'hover', hoverDelay: 200 } })
+  const hover = await canHover(page)
+  await patchSettings(page.context(), { linkSafety: { tooltipTrigger: 'hover', hoverDelay: 200, ...(hover ? {} : { intercept: { unfamiliar: true } }) } })
   await openSite(page, SITE, c.html ?? linkPage(c.link!))
-  if (await canHover(page)) {
+  if (hover) {
     await page.locator('#l').hover()
+    await waitForUi(page, ...c.needles())
+    return
   }
-  else {
-    test.skip(!c.link?.includes('href="mailto:'), 'no hover on a touchscreen, a tap opens the link dialog instead')
-    await page.locator('#l').click()
-  }
-  await waitForUi(page, ...c.needles())
+  test.skip(!c.link?.includes('href="mailto:'), 'no hover on a touchscreen, a tap opens the link dialog instead')
+  await tapMailLink(page, c.needles())
 }
 
 for (const c of CASES) {
@@ -217,6 +221,8 @@ for (const c of CASES) {
       await patchSettings(context, c.settings)
     if (c.fetch)
       await workerFetch(context, c.fetch)
+    if (c.unreachable)
+      await workerRefusesVisits(context)
     await bringUp(page, c)
     if (c.press) {
       await clickUi(page, c.press())

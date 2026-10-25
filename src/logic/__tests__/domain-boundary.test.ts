@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { belongsToSite, hostingPlatform, isPlatformTenant, siteDomain, siteDomainOrSelf, visitKey } from '../domain-boundary'
+import { belongsToSite, hasKnownSuffix, hostingPlatform, isPlatformTenant, siteDomain, siteDomainOrSelf, visitKey } from '../domain-boundary'
 
 describe('siteDomain', () => {
   it('keeps two tenants of one platform apart', () => {
@@ -113,5 +113,21 @@ describe('visitKey', () => {
 
   it('folds case, since the stored keys are lower case', () => {
     expect(visitKey('WWW.Example.COM')).toBe('example.com')
+  })
+})
+
+describe('hasKnownSuffix', () => {
+  // A link reading like a file name is not naming another site
+  it('knows a suffix from a file ending', () => {
+    expect(hasKnownSuffix('example.com')).toBe(true)
+    expect(hasKnownSuffix('alice.github.io')).toBe(true)
+    expect(hasKnownSuffix('пример.рф')).toBe(true)
+    expect(hasKnownSuffix('config.yaml')).toBe(false)
+    expect(hasKnownSuffix('index.html')).toBe(false)
+  })
+
+  it('takes the names reserved for tests and examples as names', () => {
+    expect(hasKnownSuffix('bank.test')).toBe(true)
+    expect(hasKnownSuffix('shop.example')).toBe(true)
   })
 })

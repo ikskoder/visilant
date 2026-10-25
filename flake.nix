@@ -60,7 +60,7 @@
             root = ./.;
             fileset = lib.fileset.unions [ ./package.json ./pnpm-lock.yaml ./.npmrc ];
           };
-          hash = "sha256-osR6GWlGgEh/m3AYBxQCmJ0uHnn3J6OggSxiAeOsS5k=";
+          hash = "sha256-0WISTSgIJCcffcqEzCF6i3DTwi5Hcl5vGFzBgh/DEKk=";
         };
 
         # target: "chrome" | "firefox"
@@ -91,7 +91,9 @@
 
               mkdir -p $out
               cp artifacts/${artifact} $out/
-              cp -r extension $out/unpacked
+              # Each browser builds into a directory of its own, see OUT_DIRS in
+              # scripts/utils.ts
+              cp -r ${if target == "firefox" then "extension-firefox" else "extension"} $out/unpacked
 
               # Per-file hashes as well as the archive hash: a store-signed xpi
               # can never match the archive byte for byte, so verification is

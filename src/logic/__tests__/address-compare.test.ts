@@ -18,8 +18,9 @@ describe('comparing two addresses', () => {
     const result = compareAddresses('anna@exarnple.org', 'anna@example.org')
     const differing = result.cells.filter(cell => !cell.same)
 
-    // "m" became "rn": one character on the trusted side, two on the checked one
-    expect(differing.map(cell => cell.checked ?? cell.known).join('')).toBe('rnm')
+    // "m" became "rn": one letter swapped for "r", and an "n" added after it
+    expect(differing).toEqual([{ checked: 'r', known: 'm', same: false }, { checked: 'n', same: false }])
+    expect(result.differences).toBe(2)
     expect(row(result.cells, 'checked')).toBe('anna@exarnple.org')
     expect(row(result.cells, 'known')).toBe('anna@example.org')
   })
@@ -49,7 +50,15 @@ describe('comparing two addresses', () => {
     const result = compareAddresses('anna@exаmple.org', 'anna@example.org')
 
     expect(result.identical).toBe(false)
-    expect(result.cells.filter(cell => !cell.same)).toHaveLength(2)
+    expect(result.cells.filter(cell => !cell.same)).toEqual([{ checked: 'а', known: 'a', same: false }])
+  })
+
+  // One letter replaced is one difference, not an insertion plus a deletion
+  it('counts a swapped character once', () => {
+    const result = compareAddresses('support@paypa1.com', 'support@paypal.com')
+
+    expect(result.differences).toBe(1)
+    expect(result.cells.filter(cell => !cell.same)).toEqual([{ checked: '1', known: 'l', same: false }])
   })
 
   // A domain is case-insensitive and mail servers treat the name that way in

@@ -261,23 +261,25 @@ export function isPanelOffScreen(
 /**
  * The largest thing our shadow root is currently rendering, if anything is.
  *
- * A full-screen backdrop does not count. Both intercept dialogs draw one -
- * `fixed inset-0`, which is by definition the largest element in the tree - so
- * taking the largest outright measured the viewport rather than the card. Every
- * corner probe then landed on transparent backdrop, and the off-screen check
- * compared the viewport with itself and could never fire.
+ * The box a surface is laid out in does not count, and neither does a
+ * backdrop. Each covers the whole visible area, so taking the largest outright
+ * measured the screen rather than the card: every corner probe landed on
+ * transparent backdrop, and the off-screen check compared the screen with
+ * itself and could never fire.
+ *
+ * They are told apart by class (`.vz-layer` on the box of every surface, the
+ * link tooltip's included, `.vz-scrim` on a backdrop), not by being nearly the
+ * size of the window. On a zoomed phone page the visible area is a fraction of
+ * the window, and a card drawn at the phone's own size on a page drawn zoomed
+ * out comes to nearly all of it.
  */
 function largestRenderedRect(shadow: ShadowRoot | HTMLElement): DOMRect | null {
-  const view = (shadow as HTMLElement).ownerDocument?.defaultView
-  const viewportArea = (view?.innerWidth ?? 0) * (view?.innerHeight ?? 0)
-
   let best: DOMRect | null = null
   shadow.querySelectorAll('*').forEach((element) => {
+    if (element.matches('.vz-layer, .vz-scrim'))
+      return
     const rect = element.getBoundingClientRect()
     if (rect.width < 24 || rect.height < 24)
-      return
-    // A backdrop, not a panel
-    if (viewportArea > 0 && rect.width * rect.height > viewportArea * 0.9)
       return
     if (!best || rect.width * rect.height > best.width * best.height)
       best = rect

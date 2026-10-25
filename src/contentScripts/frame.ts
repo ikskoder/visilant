@@ -22,10 +22,14 @@
  * would be clipped to nothing.
  */
 
+import type { LinkElement } from '~/logic/link-element'
+import type { LinkSafetySettings } from '~/logic/settings-schema'
 import { listenForScriptedClipboardWrites } from '~/logic/clipboard-signal'
+import { interceptsAnything } from '~/logic/intercept'
+import { anchorLabels, findAnchorFromEvent, linkHref, linkTarget, withoutWww } from '~/logic/link-element'
 import { isMessageError } from '~/logic/message-error'
 import { isEditableEventTarget, isPasteSink, shouldInterceptPaste } from '~/logic/paste-guard'
-import { parseStoredSettings } from '~/logic/storage'
+import { normalizeLinkSafety, parseStoredSettings } from '~/logic/settings-schema'
 
 /**
  * What the background says about the page this frame sits in.
@@ -121,12 +125,22 @@ function install() {
    */
   let guardPaste: boolean | null = null
 
+  /** The link settings, read with the paste setting, so null until the first touch. */
+  let linkSafety: LinkSafetySettings | null = null
+
+  /** What the top document said about each link, by `linkKey`, for `LINK_ANSWER_TTL_MS`. */
+  const linkAnswers = new Map<string, { at: number, hold: boolean }>()
+  /** The top document holds no links at all on this page under these settings. */
+  let topHoldsNothing = false
+
   async function primeSettings(): Promise<void> {
     if (guardPaste !== null)
       return
     try {
       const stored = await browser.storage.sync.get('settings')
-      guardPaste = Boolean(parseStoredSettings(stored.settings)?.blockPasteOnUnfamiliar)
+      const parsed = parseStoredSettings(stored.settings)
+      guardPaste = Boolean(parsed?.blockPasteOnUnfamiliar)
+      linkSafety = normalizeLinkSafety(parsed?.linkSafety)
     }
     catch {
       // Nothing was read, so nothing is claimed and nothing is remembered. Off
@@ -198,6 +212,32 @@ function install() {
   on('focusin', prime)
 
   /**
+   * Using the frame is using the page, and counts as a visit to it.
+   *
+   * Events do not leave a frame, so a site somebody uses only through one – a
+   * frameset, an app wrapped whole in an iframe – never reached the top
+   * document's report and never became familiar however often it was used. The
+   * frame says nothing about where it is: the background counts the tab's own
+   * address, and takes one report per page load from whichever document sends
+   * first. Whether the page around it was a reload is not something a frame can
+   * see, so this is counted as an ordinary visit, which a person still has to
+   * make with their own hands.
+   */
+  let visitReported = false
+  const reportVisit = () => {
+    if (visitReported)
+      return
+    visitReported = true
+    send('record-visit', { fromFrame: true }).catch(() => {
+      visitReported = false
+    })
+  }
+  // No `wheel`: a wheel turned over an advert while scrolling the article is
+  // not somebody touching the frame, and the frame asks nothing until they do
+  for (const type of ['pointerdown', 'touchstart', 'keydown'])
+    on(type, reportVisit)
+
+  /**
    * Raised at most once per frame and kind, the same as the top document's
    * warnings. One kind cannot use up the other: with the copy warning switched
    * off, a copy used to spend the flag and the form in this frame was never
@@ -220,6 +260,8 @@ function install() {
     pending = null
     warned.input = false
     warned.copy = false
+    linkAnswers.clear()
+    topHoldsNothing = false
   }
 
   // Storage says all of this without a single message: the change is delivered
@@ -227,7 +269,9 @@ function install() {
   // somebody touches this frame – which is the whole rule this file lives by.
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.settings) {
-      guardPaste = Boolean(parseStoredSettings(changes.settings.newValue)?.blockPasteOnUnfamiliar)
+      const parsed = parseStoredSettings(changes.settings.newValue)
+      guardPaste = Boolean(parsed?.blockPasteOnUnfamiliar)
+      linkSafety = normalizeLinkSafety(parsed?.linkSafety)
       forget()
       return
     }
@@ -416,6 +460,288 @@ function install() {
       void hold('unfamiliar')
     }
   })
+
+  // ==========================================
+  // Clicks on links
+  // ==========================================
+  //
+  // Held on the same rules as in the top document, which does all the judging
+  // and draws the dialog: this frame sends a link's address and names, and
+  // follows the link or lets it go when it is told. See `answerFrameLinkClick`
+  // in index.ts. Only a plain left click is held here, and only one the browser
+  // raised: a middle or modified click would need a new tab opened after the
+  // dialog, which a cross-origin frame no longer has the press for. A click a
+  // script in the frame made is not held, unlike in the top document, which
+  // holds those too: the guard takes trusted events only, and a replay guard
+  // of its own for made-up clicks is not built yet. A link to a mail address is
+  // not held here.
+
+  const LINK_ANSWER_TTL_MS = 30_000
+  /** How long a click waits for the top document to say whether it holds it. */
+  const CLICK_ANSWER_MS = 4000
+  /** A held click nobody answered is dropped, without opening anything. */
+  const HELD_CLICK_MS = 10 * 60_000
+  /** How long "click it again" keeps the link open for that click. */
+  const ALLOWED_ONCE_MS = 60_000
+
+  interface FrameLinkInfo {
+    link: LinkElement
+    href: string
+    labels: string[]
+    target: string
+    key: string
+    /** Navigates this frame, which needs no press, see `canReplay`. */
+    staysHere: boolean
+  }
+
+  interface HeldClick extends FrameLinkInfo {
+    timer: ReturnType<typeof setTimeout>
+  }
+
+  const heldClicks = new Map<string, HeldClick>()
+  const allowedOnce = new Map<string, number>()
+  let replaying: LinkElement | null = null
+
+  /** The link behind an event, or null when no click on it would be held here. */
+  function frameLinkInfo(event: Event): FrameLinkInfo | null {
+    const link = findAnchorFromEvent(event)
+    const href = link ? linkHref(link) : ''
+    if (!link || !href)
+      return null
+    let url: URL
+    try {
+      url = new URL(href)
+    }
+    catch {
+      return null
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:')
+      return null
+    // The link's own target, or the one a `<base>` sets for the whole frame,
+    // which is how a mail body opens every link in a new window
+    const target = (link.hasAttribute('target') ? linkTarget(link) : document.querySelector('base[target]')?.getAttribute('target') ?? '').toLowerCase()
+    const staysHere = target === '' || target === '_self'
+    // A widget's own pages, opened inside the widget: a frame's host is never
+    // familiar, since visits are counted for whole pages, and holding these
+    // would stop every click in every embedded map, comment box and checkout
+    if (staysHere && withoutWww(url.hostname) === withoutWww(location.hostname))
+      return null
+    // As many as the top document takes, see `FRAME_LABEL_LIMIT` in index.ts
+    const labels = anchorLabels(link).slice(0, 12).map(label => label.slice(0, 200))
+    return { link, href, labels, target, staysHere, key: [href, ...labels].join('\u0000') }
+  }
+
+  /** A script left behind by an extension update has nobody to ask, and holds nothing. */
+  function extensionAlive(): boolean {
+    try {
+      return Boolean(browser.runtime?.id)
+    }
+    catch {
+      return false
+    }
+  }
+
+  function linksHeldHere(): boolean {
+    return Boolean(linkSafety?.enabled) && interceptsAnything(linkSafety!.intercept) && !topHoldsNothing && extensionAlive()
+  }
+
+  /** Kept to this many, the oldest going first, so a page of links cannot grow it without end. */
+  const LINK_ANSWER_LIMIT = 100
+
+  /** See `FrameLinkAnswer` in index.ts. "Unknown" is never remembered. */
+  interface LinkAnswer { pageOff?: boolean, unknown?: boolean, hold?: boolean, dialog?: boolean }
+
+  function rememberLinkAnswer(key: string, answer: LinkAnswer | null | undefined) {
+    if (answer?.pageOff) {
+      topHoldsNothing = true
+      return
+    }
+    if (typeof answer?.hold !== 'boolean')
+      return
+    if (linkAnswers.size >= LINK_ANSWER_LIMIT)
+      linkAnswers.delete(linkAnswers.keys().next().value!)
+    linkAnswers.set(key, { at: Date.now(), hold: answer.hold })
+  }
+
+  /** One question about a link at a time: a frame focusing link after link waits its turn, or is dropped. */
+  let prefetchInFlight = false
+
+  /**
+   * Ask about a link as soon as somebody reaches for it, so the click finds its
+   * answer waiting. A focus only counts once the frame has had a real press: a
+   * frame can focus its own links in a loop, and each would be a question.
+   */
+  function prefetchLink(event: Event) {
+    if (event.type === 'focusin' && !navigator.userActivation?.hasBeenActive)
+      return
+    const info = frameLinkInfo(event)
+    if (!info)
+      return
+    if (prefetchInFlight)
+      return
+    prefetchInFlight = true
+    void primeSettings().then(() => {
+      const cached = linkAnswers.get(info.key)
+      if (!linksHeldHere() || (cached && Date.now() - cached.at < LINK_ANSWER_TTL_MS))
+        return
+      return send<LinkAnswer>('frame-link-prefetch', { href: info.href, labels: info.labels })
+        .then(answer => rememberLinkAnswer(info.key, answer))
+    }).catch(() => {}).finally(() => {
+      prefetchInFlight = false
+    })
+  }
+  on('pointerdown', prefetchLink)
+  on('touchstart', prefetchLink)
+  on('focusin', prefetchLink)
+
+  /** Whether this frame is on the top page's origin, and so shares the press on its dialog. */
+  function sameOriginAsTop(): boolean {
+    try {
+      return Boolean(window.top?.location.href)
+    }
+    catch {
+      return false
+    }
+  }
+
+  function randomId(): string {
+    // `crypto.randomUUID` is missing outside a secure context, which a frame
+    // in an http page is
+    return Array.from(crypto.getRandomValues(new Uint32Array(4)), part => part.toString(16)).join('')
+  }
+
+  /**
+   * Put the click back, as in the top document's `followLink`, on the address
+   * the user was shown. A link the page has since pointed elsewhere or removed
+   * is not the one approved, so the approved address is opened directly.
+   */
+  function replay(info: FrameLinkInfo) {
+    const { link, href } = info
+    const elsewhere = () => {
+      if (info.staysHere)
+        location.href = href
+      else
+        window.open(href, '_blank', 'noopener,noreferrer')
+    }
+    if (!link.isConnected || linkHref(link) !== href) {
+      elsewhere()
+      return
+    }
+    // The last look, after the page's own handlers: one that repoints the link
+    // during the click would otherwise send the user somewhere nobody checked
+    let acted = false
+    const lastWord = (event: Event) => {
+      if (acted || linkHref(link) === href)
+        return
+      acted = true
+      event.preventDefault()
+      elsewhere()
+    }
+    link.addEventListener('click', lastWord)
+    window.addEventListener('click', lastWord)
+    replaying = link
+    try {
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window }))
+    }
+    finally {
+      replaying = null
+      link.removeEventListener('click', lastWord)
+      window.removeEventListener('click', lastWord)
+    }
+  }
+
+  on<MouseEvent>('click', (event) => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
+      return
+    const info = frameLinkInfo(event)
+    if (!info || replaying === info.link)
+      return
+    const until = allowedOnce.get(info.key)
+    if (until !== undefined) {
+      allowedOnce.delete(info.key)
+      if (Date.now() < until)
+        return
+    }
+    // The settings are read on the first touch, and a click can come before that
+    // read is back. Not known is not "off": the click is held until they are in.
+    const settingsKnown = linkSafety !== null
+    if (settingsKnown && !linksHeldHere())
+      return
+    const cached = linkAnswers.get(info.key)
+    if (cached && !cached.hold && Date.now() - cached.at < LINK_ANSWER_TTL_MS)
+      return
+
+    // Cancelled, so this ends in a navigation or a dialog. Failing silently
+    // leaves a link that does nothing when it is clicked.
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    for (const held of heldClicks.values()) {
+      if (held.link === info.link)
+        return
+    }
+    if (settingsKnown) {
+      askTop(info)
+      return
+    }
+    void primeSettings().then(() => {
+      if (linksHeldHere())
+        askTop(info)
+      else
+        replay(info)
+    })
+  })
+
+  /** Hand a held click to the top document, and follow the link unless it holds it. */
+  function askTop(info: FrameLinkInfo) {
+    const id = randomId()
+    const held: HeldClick = { ...info, timer: setTimeout(() => heldClicks.delete(id), HELD_CLICK_MS) }
+    heldClicks.set(id, held)
+    const letGo = () => {
+      clearTimeout(held.timer)
+      heldClicks.delete(id)
+      replay(info)
+    }
+
+    Promise.race([
+      send<LinkAnswer>('frame-link-click', {
+        id,
+        href: info.href,
+        labels: info.labels,
+        target: info.target,
+        canReplay: info.staysHere || sameOriginAsTop(),
+      }),
+      new Promise<null>(resolve => setTimeout(resolve, CLICK_ANSWER_MS, null)),
+    ]).then((answer) => {
+      // The dialog is up, and its answer comes as `frame-link-decision`
+      if (answer?.dialog)
+        return
+      // Out of time, and followed anyway below. A dialog that comes up after
+      // that would be about a page already open, so the top is told to drop it.
+      if (answer === null)
+        void send('frame-link-withdraw', { id }).catch(() => {})
+      rememberLinkAnswer(info.key, answer)
+      // Nothing holds it, or nobody could be asked: an answer that did not come
+      // is no reason to stop a link the user clicked
+      letGo()
+    }, letGo)
+  }
+
+  // The top document's answer about a click the dialog was shown for. Only the
+  // top document is let through by the background, and only for this frame.
+  browser.runtime.onMessage.addListener(((message: any) => {
+    if (message?.type !== 'frame-link-decision' || typeof message.data?.id !== 'string')
+      return undefined
+    const held = heldClicks.get(message.data.id)
+    if (!held || held.href !== message.data.href)
+      return undefined
+    clearTimeout(held.timer)
+    heldClicks.delete(message.data.id)
+    if (message.data.follow === true)
+      replay(held)
+    else if (message.data.allowOnce === true)
+      allowedOnce.set(held.key, Date.now() + ALLOWED_ONCE_MS)
+    return undefined
+  }) as Parameters<typeof browser.runtime.onMessage.addListener>[0])
 
   // Put the listeners back after `document.open()`, which leaves a new root
   // element behind it. An observer is not a listener and survives the call, and

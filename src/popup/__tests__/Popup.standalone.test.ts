@@ -50,10 +50,10 @@ async function mountForDomain(domain: string) {
  *
  * Asserting a number against `wrapper.text()` reads every other number on the
  * page too, and this panel carries one that moves on its own: the age criterion
- * renders the days since the first visit, which passed 612 in September 2026.
+ * renders the days since the first visit, a number that grows by one every day.
  * `not.toContain('12')`, written to prove that active days are not summed,
- * therefore started failing on a calendar date and would have kept doing it
- * through every 12x and 120x-day window afterwards.
+ * therefore started failing the day that number reached 612, and would have
+ * kept doing it through every 12x and 120x-day window afterwards.
  */
 function criterion(wrapper: ReturnType<typeof mount>, id: string) {
   return wrapper.get(`[data-criterion="${id}"]`).text()
@@ -100,7 +100,7 @@ describe('popup as a standalone page', () => {
 
     // Nothing is recorded for `example.com` itself, and the row says so rather
     // than showing what the subdomain has been up to
-    expect(criterion(wrapper, 'activeDays')).toContain('statsUnknown')
+    expect(criterion(wrapper, 'activeDays')).toContain('statsNoneYet')
     expect(criterion(wrapper, 'visits')).toContain('0')
 
     // The family's own facts, under the family's own name
@@ -150,7 +150,7 @@ describe('popup as a standalone page', () => {
     const wrapper = await mountForDomain('never-visited.example')
 
     expect(criterion(wrapper, 'visits')).toContain('0')
-    expect(criterion(wrapper, 'activeDays')).toContain('statsUnknown')
+    expect(criterion(wrapper, 'activeDays')).toContain('statsNoneYet')
     // No family either, so nothing is borrowed from one
     expect(wrapper.find('[data-family-stats]').exists()).toBe(false)
   })
@@ -524,7 +524,7 @@ describe('the check page draws each warning once', () => {
     answerBackground('yourbank.com.pay-verify.top', SUBDOMAIN_MATCH)
     const wrapper = await checkOnPage('https://yourbank.com.pay-verify.top/8842')
 
-    await wrapper.findAll('button').find(button => button.text() === 'checkFieldExpand')!.trigger('click')
+    await wrapper.get('[data-action="expand"]').trigger('click')
     await flushPromises()
 
     const panel = wrapper.get('[data-domain-panel]')

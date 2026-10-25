@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { evaluateFamiliarity, normalizeFamiliarity } from '~/logic/familiarity'
 import { settings } from '~/logic/storage'
+import { isTrackableHostname, untrackedReason } from '~/logic/visit-stats'
 
 /**
  * The facts behind a verdict, worded once for every surface that shows them.
@@ -26,11 +27,6 @@ const LABEL_KEYS: Record<FamiliarityCriterionId, string> = {
   age: 'familiarityAge',
 }
 
-/** Only age needs its unit spelled out – the other two labels already name theirs. */
-const UNIT_KEYS: Partial<Record<FamiliarityCriterionId, string>> = {
-  age: 'familiarityDaysUnit',
-}
-
 export interface FamiliarityFact {
   id: FamiliarityCriterionId
   label: string
@@ -52,17 +48,32 @@ export interface FamiliaritySummary {
   value: string
   /** How many had to. */
   required: string
-  /** Passed out of switched on, which is the ratio the badge draws too. */
+  /** Passed out of needed, worded like a fact's value against its bar. */
   combined: string
   met: boolean
   title: string
 }
 
 export interface VerdictLabel {
-  verdict: 'familiar' | 'unfamiliar' | 'never'
+  verdict: 'familiar' | 'unfamiliar' | 'never' | 'unchecked' | 'untracked'
   text: string
-  tone: 'safe' | 'danger'
-  icon: 'pass' | 'alert'
+  tone: 'safe' | 'danger' | 'neutral'
+  /** Always the shield: a verdict is drawn as Visilant's own sign, see VzIcon */
+  icon: 'shield-pass' | 'shield-fail' | 'shield-unknown'
+}
+
+export interface VerdictOptions {
+  /**
+   * The name the verdict is about. A hostname without a dot is never counted,
+   * so its zero says "there is no question here", not "you have never been",
+   * and a red "never visited" would be a verdict on the user's own machine.
+   */
+  hostname?: string
+  /**
+   * Beside an email address: never "never visited", since nobody visits an
+   * address and next to "Email address" it read as though somebody could.
+   */
+  email?: boolean
 }
 
 export function useFamiliarityFacts() {
@@ -79,12 +90,17 @@ export function useFamiliarityFacts() {
     const translate = t.value
 
     return verdictFor(stats).criteria.map((outcome) => {
-      const unitKey = UNIT_KEYS[outcome.id]
-      const unit = unitKey ? ` ${translate(unitKey)}` : ''
-      const bar = `${translate('familiarityRequiredAtLeast')} ${outcome.required}${unit}`
+      // No unit after any number: every label already names what it counts
+      // ("Visits", "Active days", "Days known"), and "days" after one value
+      // and not the next made the column read unevenly.
+      const bar = `${translate('familiarityRequiredAtLeast')} ${outcome.required}`
       const known = outcome.value !== undefined
-      const value = known ? `${outcome.value}${unit}` : translate('statsUnknown')
-      const required = `${outcome.required}${unit}`
+      // A site never visited has no active days or first visit yet, which is
+      // not the same as a record that never kept them: "not recorded" beside a
+      // site somebody has never opened read as a failure to record something
+      const neverVisited = (stats?.count ?? 0) === 0
+      const value = known ? String(outcome.value) : translate(neverVisited ? 'statsNoneYet' : 'statsUnknown')
+      const required = String(outcome.required)
 
       return {
         id: outcome.id,
@@ -97,7 +113,8 @@ export function useFamiliarityFacts() {
         combined: known ? `${outcome.value} / ${required}` : value,
         known,
         met: outcome.met,
-        title: known ? bar : `${bar}\n${translate('statsImportHint')}`,
+        // The import can only fill in a fact for a site that has visits
+        title: known || neverVisited ? bar : `${bar}\n${translate('statsImportHint')}`,
       }
     })
   }
@@ -118,7 +135,10 @@ export function useFamiliarityFacts() {
     return {
       value: String(verdict.met),
       required: String(verdict.required),
-      combined: `${verdict.met} / ${verdict.criteria.length}`,
+      // Against the number that has to pass rather than the number switched on:
+      // under "any one" a familiar site reads "1 / 1", not "1 / 3", which looked
+      // like two failures short of a verdict it had already reached
+      combined: `${verdict.met} / ${verdict.required}`,
       met: verdict.familiar,
       title: `${t.value('familiarityRequiredAtLeast')} ${verdict.required}`,
     }
@@ -132,12 +152,18 @@ export function useFamiliarityFacts() {
    * times is as much a stranger as one never seen when it asks for a password.
    * The words still tell the two apart.
    */
-  function statusLabel(isSafe: boolean, count: number): VerdictLabel {
+  function statusLabel(isSafe: boolean, count: number, unchecked = false, options: VerdictOptions = {}): VerdictLabel {
+    // Not red: nothing says the site is unfamiliar, only that nobody could ask.
+    // Not green either, and the dialog it heads still stops the link.
+    if (unchecked)
+      return { verdict: 'unchecked', text: t.value('verdictUnchecked'), tone: 'neutral', icon: 'shield-unknown' }
+    if (options.hostname && !isTrackableHostname(options.hostname))
+      return { verdict: 'untracked', text: t.value(untrackedReason(options.hostname) === 'ip' ? 'untrackedIpBadge' : 'untrackedHostBadge'), tone: 'neutral', icon: 'shield-unknown' }
     if (isSafe)
-      return { verdict: 'familiar', text: t.value('linkTooltipFamiliar'), tone: 'safe', icon: 'pass' }
-    if (count === 0)
-      return { verdict: 'never', text: t.value('linkTooltipNeverVisited'), tone: 'danger', icon: 'alert' }
-    return { verdict: 'unfamiliar', text: t.value('linkTooltipUnfamiliar'), tone: 'danger', icon: 'alert' }
+      return { verdict: 'familiar', text: t.value('linkTooltipFamiliar'), tone: 'safe', icon: 'shield-pass' }
+    if (count === 0 && !options.email)
+      return { verdict: 'never', text: t.value('linkTooltipNeverVisited'), tone: 'danger', icon: 'shield-fail' }
+    return { verdict: 'unfamiliar', text: t.value('linkTooltipUnfamiliar'), tone: 'danger', icon: 'shield-fail' }
   }
 
   return { t, rules, withThresholds, verdictFor, factsFor, summaryFor, statusLabel }

@@ -59,7 +59,8 @@ export function badgeText(
     return asBadgeNumber(criterionValue(drawn, stats, now))
 
   const verdict = evaluateFamiliarity(stats, rules, now)
-  return `${verdict.met}/${verdict.criteria.length}`
+  // Out of how many must pass, as everywhere the tally is drawn
+  return `${verdict.met}/${verdict.required}`
 }
 
 /**

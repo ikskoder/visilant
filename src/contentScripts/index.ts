@@ -1,26 +1,32 @@
 import type { FamiliarityStats } from '~/logic/familiarity'
+import type { InterceptReason, LinkFacts } from '~/logic/intercept'
+import type { LinkElement } from '~/logic/link-element'
 import type { ContextLinkSnapshot, VisitFacts } from '~/logic/link-safety'
 import type { Settings } from '~/logic/storage'
 import type { TamperWatch } from '~/logic/tamper-watch'
-import type { CheckPanelData, DomainFamilyInfo, EmailRecipientInfo, LinkTooltipData, RawPayloadInfo, ShortUrlInfo } from '~/logic/ui-state'
+import type { CheckPanelData, DomainFamilyInfo, EmailRecipientInfo, LinkMismatch, LinkTooltipData, RawPayloadInfo, ShortUrlInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { createApp, watch, watchEffect } from 'vue'
+import { lookalikeAnswer } from '~/composables/useLookalikes'
 import { raiseTopLayer } from '~/composables/useTopLayer'
 import { listenForScriptedClipboardWrites } from '~/logic/clipboard-signal'
 import { setupApp } from '~/logic/common-setup'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
-import { alternateSpelling, anchorLabel, checkAnchorMismatch, clearVisitCache, contextLinkTextDomain, extractDomainFromText, findAnchorFromEvent, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isMailtoHref, setCachedVisitCount, snapshotContextLink } from '~/logic/link-safety'
+import { interceptReasons, interceptsAnything } from '~/logic/intercept'
+import { anchorLabel, anchorLabels, findAnchorFromEvent, linkHref, linkRect, linkRel, linkTarget } from '~/logic/link-element'
+import { alternateSpelling, checkAnchorMismatch, checkDomainMismatch, checkLabelsMismatch, clearVisitCache, contextLinkTextDomain, extractDomainFromText, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isFileLikeName, isMailtoHref, namesASite, setCachedVisitCount, snapshotContextLink } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
 import { isMessageError } from '~/logic/message-error'
 import { describePastePayload, editableTargetOf, isEditableEventTarget, isPasteSink, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyQrPayload, extractCheckTarget } from '~/logic/payload-classify'
 import { resolveTooltipTrigger } from '~/logic/platform'
-import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, parseStoredSettings, settings, settingsReady } from '~/logic/storage'
+import { addressRedFlagCount } from '~/logic/red-flags'
+import { applySettingsSnapshot, defaultSettings, makeSettingsReadOnly, normalizeLinkSafety, parseStoredSettings, settings, settingsReady } from '~/logic/storage'
 import { applyHostStyles, createTamperWatch } from '~/logic/tamper-watch'
 import { checkPanelData, checkPanelVisible, isIgnored, linkInterceptData, linkInterceptResolve, linkInterceptVisible, linkTooltipData, linkTooltipVisible, notifiedOnThisPage, pasteAllowedOnThisPage, pasteInterceptData, pasteInterceptResolve, pasteInterceptVisible, safetyLevel, setOnTooltipHoverEnter, setOnTooltipHoverLeave, showWarning, warningType } from '~/logic/ui-state'
-import { addCustomShortener, isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
+import { addCustomShortener, isOwnServiceShortLink, isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
 import { isTrackableHostname } from '~/logic/visit-stats'
 import App from './views/App.vue'
 
@@ -32,6 +38,7 @@ interface VisitCountResponse {
   ignored: boolean
   activeDays?: number
   firstSeen?: number
+  listed?: boolean
 }
 
 /**
@@ -176,7 +183,7 @@ async function loadPlatformCapabilities() {
     canUseContextMenus = platform?.contextMenus === true
   }
   catch {
-    // Left as no, which resolves a right-click trigger to the tap
+    // Left as no, which resolves a right-click trigger to hovering
   }
 }
 
@@ -597,13 +604,17 @@ async function handleBeforeInput(event: Event) {
  * before this the tab simply went quiet: no typing warning, no paste guard, no
  * copy warning until it was reloaded. See `watchForDocumentOpen`.
  */
-const pageListeners: [string, EventListener][] = []
+const pageListeners: [string, EventListener, AddEventListenerOptions][] = []
 
-/** Listen on the window in the capture phase, ahead of the page, and remember it. */
-function onPage<E extends Event>(type: string, listener: (event: E) => unknown) {
+/**
+ * Listen on the window in the capture phase, ahead of the page, and remember it.
+ * The options are kept with it, so a passive listener comes back passive.
+ */
+function onPage<E extends Event>(type: string, listener: (event: E) => unknown, options: AddEventListenerOptions = {}) {
   const registered = listener as unknown as EventListener
-  pageListeners.push([type, registered])
-  window.addEventListener(type, registered, true)
+  const kept = { ...options, capture: true }
+  pageListeners.push([type, registered, kept])
+  window.addEventListener(type, registered, kept)
 }
 
 /**
@@ -622,6 +633,55 @@ function trusted<E extends Event>(handler: (event: E) => unknown) {
   }
 }
 
+/**
+ * A visit is counted once a person does something on the page.
+ *
+ * A finished load proves nothing about a person: a site reloading itself in a
+ * background tab used to collect a visit every minute, and visits are the one
+ * check that can be passed in a day. So the first pointer, touch, key or wheel
+ * the browser raises on this document is what reports it, once. A reload counts
+ * only as the first visit of its day, see `applyReport`.
+ *
+ * What this costs: a page read top to bottom with nothing pressed and nothing
+ * scrolled is not counted. That is rare, and the next visit counts.
+ */
+let visitReported = false
+function reportVisit() {
+  if (visitReported)
+    return
+  visitReported = true
+
+  // Said rather than decided here: whether a reload counts depends on whether
+  // the site was seen earlier today, which only the record knows.
+  //
+  // A page that navigates itself with `location.assign` or `location.href` is
+  // not caught: the timing says "navigate", as for a click. Chromium's
+  // `webNavigation` would flag those as `client_redirect`, but Firefox (157 and
+  // ESR 140) flags only meta refresh, so the permission, and the prompt it costs
+  // every user on update, would close the gap in one browser only. Not taken:
+  // a visit still needs a person to act on the page, a minute apart.
+  const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+  const reload = navigation?.type === 'reload'
+
+  sendMessageSafe('record-visit', { url: window.location.href, reload }).catch((error) => {
+    // Left open, so the next thing the person does tries again
+    visitReported = false
+    console.error('Visilant: could not record this visit', error)
+  })
+}
+for (const type of ['pointerdown', 'touchstart', 'keydown', 'wheel'])
+  onPage(type, trusted(reportVisit))
+// A page brought back from the back-forward cache keeps this script and its
+// flag, and coming back to it is a visit like any other
+onPage('pageshow', (event: PageTransitionEvent) => {
+  if (event.persisted)
+    visitReported = false
+})
+
+// Every editable field warns alike. Keeping the warning loud in a password or
+// card field and softening it in a search box was considered and dropped: the
+// page decides what a field says it is, and a password box declared as
+// `type="search"` with a masking font would have been the quiet one.
 onPage('keydown', trusted(handleKeydown))
 onPage('beforeinput', trusted(handleBeforeInput))
 onPage('paste', trusted(handlePaste))
@@ -666,8 +726,9 @@ onPage<MouseEvent>('contextmenu', (event) => {
     return
   const pressed = contextPressPending
   contextPressPending = false
-  const href = (findAnchorFromEvent(event) as HTMLAnchorElement | null)?.href
-  if (pressed && contextLink && typeof href === 'string' && href === contextLink.href)
+  const link = findAnchorFromEvent(event)
+  const href = link ? linkHref(link) : ''
+  if (pressed && contextLink && href && href === contextLink.href)
     return
   contextLink = snapshotContextLink(findAnchorFromEvent(event))
 })
@@ -678,8 +739,53 @@ onPage<MouseEvent>('contextmenu', (event) => {
 
 let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let tooltipGraceTimer: ReturnType<typeof setTimeout> | null = null
-let currentHoveredAnchor: HTMLAnchorElement | null = null
+let currentHoveredAnchor: LinkElement | null = null
 let linkSafetyCleanup: (() => void) | null = null
+
+/**
+ * What the link listeners do, while link safety is set up on this page.
+ *
+ * The listeners are on the window from the start, through `onPage`, and call
+ * whatever is here. On the window in the capture phase and added before the
+ * page has run anything, they hear a click before any listener the page adds,
+ * and the page's own handlers see a held click already cancelled. They also
+ * come back after `document.open()`, which a listener added later on the
+ * document did not, though only once the script that called it has finished:
+ * a listener that script adds to the window comes first (see
+ * `watchForDocumentOpen` and the README's Limitations).
+ *
+ * Empty until the settings are read and the UI is up, and emptied again when
+ * the settings change, so until then a click goes through untouched as it did
+ * before. Not "held from the first moment": that waits for `mount`.
+ */
+interface LinkHandlers {
+  mouseover: (event: MouseEvent) => void
+  mouseout: (event: MouseEvent) => void
+  click: (event: MouseEvent) => void
+  auxclick: (event: MouseEvent) => void
+  prefetch: (event: Event) => void
+  scroll: () => void
+  keydown: (event: KeyboardEvent) => void
+}
+let linkHandlers: LinkHandlers | null = null
+
+/**
+ * Whether links are held on this page: `pending` until the settings are read
+ * and the UI is up, and again while they are being applied anew. Told apart
+ * from `off` for a frame asking about its links: "not held on this page" can
+ * be remembered for the page, "not known yet" must not be.
+ */
+let linkSafetyState: 'pending' | 'on' | 'off' = 'pending'
+
+onPage<MouseEvent>('mouseover', event => linkHandlers?.mouseover(event))
+onPage<MouseEvent>('mouseout', event => linkHandlers?.mouseout(event))
+onPage<MouseEvent>('click', event => linkHandlers?.click(event))
+onPage<MouseEvent>('auxclick', event => linkHandlers?.auxclick(event))
+onPage('pointerdown', event => linkHandlers?.prefetch(event))
+onPage('touchstart', event => linkHandlers?.prefetch(event), { passive: true })
+onPage('focusin', event => linkHandlers?.prefetch(event))
+onPage('scroll', () => linkHandlers?.scroll())
+onPage<KeyboardEvent>('keydown', event => linkHandlers?.keydown(event))
 
 // Register callback so tooltip component can cancel the grace timer on mouseenter
 setOnTooltipHoverEnter(() => {
@@ -717,22 +823,43 @@ async function fetchLinkData(href: string, hostname: string) {
   if (cached)
     return cached
 
-  // Fetch from background
-  const response = await sendMessageSafe<VisitCountResponse>('get-visit-count', { url: href })
+  // Fetch from background. No answer is not a verdict, see `VisitFacts.unchecked`
+  const unchecked: VisitFacts = { stats: { count: 0 }, isSafe: false, ignored: false, unchecked: true }
+  let response: VisitCountResponse | undefined
+  try {
+    response = await sendMessageSafe<VisitCountResponse>('get-visit-count', { url: href })
+  }
+  catch (error) {
+    console.error('Visilant: could not ask about this site', error)
+    return unchecked
+  }
   if (!response)
-    return { stats: { count: 0 }, isSafe: true, ignored: false }
+    return unchecked
 
   // Every fact travels on, not just the count: the check surfaces show the
   // evidence a verdict rests on, and only the background can read it
   const stats: FamiliarityStats = { count: response.count, activeDays: response.activeDays, firstSeen: response.firstSeen }
   const isSafe = isFamiliar(stats, normalizeFamiliarity(settings.value.familiarity))
-  const data: VisitFacts = { stats, isSafe, ignored: response.ignored }
+  const data: VisitFacts = { stats, isSafe, ignored: response.ignored, listed: response.listed }
   setCachedVisitCount(hostname, data)
   return data
 }
 
-function getAnchorRect(anchor: HTMLAnchorElement) {
-  const rect = anchor.getBoundingClientRect()
+/**
+ * What a link's text names, when it names another site, with what is known of
+ * that site. Null for text that only looks like a domain, see `namesASite`.
+ */
+async function linkMismatch(textDomain: string | undefined): Promise<LinkMismatch | null> {
+  if (!textDomain)
+    return null
+  const data = await fetchLinkData(`https://${textDomain}`, textDomain)
+  if (!namesASite(textDomain, data))
+    return null
+  return { textDomain, textDomainStats: data.stats, textDomainIsSafe: data.isSafe, textDomainUnchecked: data.unchecked }
+}
+
+function getAnchorRect(anchor: LinkElement) {
+  const rect = linkRect(anchor)
   return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }
 }
 
@@ -774,6 +901,7 @@ async function resolveForIntercept(url: string, hostname: string, isKnownShorten
       resolvedStats: resolvedVisitData.stats,
       resolvedPunycode: alternateSpelling(result.finalHostname),
       resolvedIsSafe: resolvedVisitData.isSafe,
+      resolvedUnchecked: resolvedVisitData.unchecked,
       chain: result.chain,
       status: 'resolved',
       isKnownShortener,
@@ -810,7 +938,7 @@ async function showLinkInterceptByUrl(url: string, textDomain: string | null = n
   if (shouldResolve) {
     shortUrlInfo = await resolveForIntercept(url, hostname, isKnownShortener)
     // A failure only has something to say about a known shortener. For any other
-    // host the dialog keeps its "Show real destination" and "Mark as shortener"
+    // host the dialog keeps its "Show where it leads" and "Mark as shortener"
     // buttons, which is how a shortener missing from the list gets added.
     if (!isKnownShortener && shortUrlInfo.status === 'error')
       shortUrlInfo = null
@@ -828,11 +956,7 @@ async function showLinkInterceptByUrl(url: string, textDomain: string | null = n
     }
   }
 
-  let mismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null = null
-  if (textDomain) {
-    const textDomainData = await fetchLinkData(`https://${textDomain}`, textDomain)
-    mismatch = { textDomain, textDomainStats: textDomainData.stats, textDomainIsSafe: textDomainData.isSafe }
-  }
+  const mismatch = await linkMismatch(textDomain ?? undefined)
 
   linkInterceptData.value = {
     domain: hostname,
@@ -840,6 +964,7 @@ async function showLinkInterceptByUrl(url: string, textDomain: string | null = n
     target: '_blank',
     stats: visitData.stats,
     isSafe: visitData.isSafe,
+    unchecked: visitData.unchecked,
     mismatch,
     punycode: alternateSpelling(hostname),
     shortUrl: shortUrlInfo,
@@ -892,6 +1017,7 @@ async function showLinkTooltipByUrl(url: string, opts?: { force?: boolean }) {
     domain: hostname,
     stats: visitData.stats,
     isSafe: visitData.isSafe,
+    unchecked: visitData.unchecked,
     mismatch: null, // No text to compare from context menu
     punycode: alternateSpelling(hostname),
     shortUrl: shouldShowShortUrl
@@ -952,6 +1078,7 @@ async function buildEmailTooltipData(
     providerKind: classifyEmailDomain(entry.analysis.domain),
     stats: facts[index].stats,
     isSafe: facts[index].isSafe,
+    unchecked: facts[index].unchecked,
   }))
 
   let mismatch: { textAddress: string } | null = null
@@ -966,10 +1093,12 @@ async function buildEmailTooltipData(
         mismatch = { textAddress: textEmail }
     }
     else {
+      // Compared as sites, the way a link's text is: text reading `acme.com` on
+      // an address at `careers.acme.com` names the company the mail goes to.
+      // A file name is not a site, see `namesASite`.
       const textDomain = extractDomainFromText(anchorText)
-      const bare = textDomain?.replace(/^www\./, '')
-      if (bare && !recipients.some(r => r.analysis.domain === bare))
-        mismatch = { textAddress: textDomain! }
+      if (textDomain && !isFileLikeName(textDomain) && recipients.every(r => checkDomainMismatch(textDomain, r.analysis.domain).mismatch))
+        mismatch = { textAddress: textDomain }
     }
   }
 
@@ -978,6 +1107,7 @@ async function buildEmailTooltipData(
     domain: analysis.domain,
     stats: visitData.stats,
     isSafe: visitData.isSafe,
+    unchecked: visitData.unchecked,
     mismatch: null,
     punycode: analysis.domainInfo.punycode,
     shortUrl: null,
@@ -994,9 +1124,9 @@ async function buildEmailTooltipData(
   }
 }
 
-async function showEmailTooltip(anchor: HTMLAnchorElement) {
+async function showEmailTooltip(anchor: LinkElement) {
   const request = ++tooltipRequest
-  const data = await buildEmailTooltipData(anchor.href, anchorLabel(anchor), getAnchorRect(anchor))
+  const data = await buildEmailTooltipData(linkHref(anchor), anchorLabel(anchor), getAnchorRect(anchor))
 
   // The pointer has moved on, or something else claimed the tooltip while the
   // recipients were being looked up
@@ -1108,6 +1238,7 @@ async function resolveAndUpdateTooltip(url: string, originalHostname: string, re
           resolvedStats: resolvedVisitData.stats,
           resolvedPunycode: alternateSpelling(result.finalHostname),
           resolvedIsSafe: resolvedVisitData.isSafe,
+          resolvedUnchecked: resolvedVisitData.unchecked,
           chain: result.chain,
           status: 'resolved',
           isKnownShortener,
@@ -1239,6 +1370,7 @@ async function resolveAndUpdateIntercept(retry = false) {
           resolvedStats: resolvedVisitData.stats,
           resolvedPunycode: alternateSpelling(result.finalHostname),
           resolvedIsSafe: resolvedVisitData.isSafe,
+          resolvedUnchecked: resolvedVisitData.unchecked,
           chain: result.chain,
           status: 'resolved',
           isKnownShortener,
@@ -1357,8 +1489,8 @@ async function resolveAndUpdateIntercept(retry = false) {
     (window as any).__visilant_resolveInterceptUrl?.()
 }
 
-async function showLinkTooltip(anchor: HTMLAnchorElement) {
-  const href = anchor.href
+async function showLinkTooltip(anchor: LinkElement) {
+  const href = linkHref(anchor)
   const hostname = getHostnameFromHref(href)
   if (!hostname)
     return
@@ -1381,12 +1513,11 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
   const mismatchResult = checkAnchorMismatch(anchor, hostname)
 
   // Fetch textDomain visit data if mismatch
-  let mismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null = null
+  let mismatch: LinkMismatch | null = null
   if (mismatchResult.mismatch && mismatchResult.textDomain) {
-    const textDomainData = await fetchLinkData(`https://${mismatchResult.textDomain}`, mismatchResult.textDomain)
+    mismatch = await linkMismatch(mismatchResult.textDomain)
     if (!stillCurrent())
       return
-    mismatch = { textDomain: mismatchResult.textDomain, textDomainStats: textDomainData.stats, textDomainIsSafe: textDomainData.isSafe }
   }
 
   // Measured here, immediately before the tooltip is placed. Taken before the
@@ -1405,6 +1536,7 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
     domain: hostname,
     stats: visitData.stats,
     isSafe: visitData.isSafe,
+    unchecked: visitData.unchecked,
     mismatch,
     punycode: alternateSpelling(hostname),
     shortUrl: shouldShowShortUrl
@@ -1420,11 +1552,64 @@ async function showLinkTooltip(anchor: HTMLAnchorElement) {
 }
 
 /**
+ * Whether a click put back opens a new tab, and where.
+ *
+ * What the press asked for: a middle click and ctrl or cmd open one behind the
+ * page, shift and ctrl+shift one in front. Shift on its own opens a new window,
+ * and a tab in front is the nearest a click put back can come.
+ */
+type NewTab = false | 'background' | 'front'
+
+function newTabFor(event: MouseEvent): NewTab {
+  if (event.shiftKey)
+    return 'front'
+  return event.button === 1 || event.ctrlKey || event.metaKey ? 'background' : false
+}
+
+/**
+ * Open a link in a new tab, from the background.
+ *
+ * A page can open a tab only in front of itself, so a middle or ctrl click put
+ * back that way took the user off the page they were reading, which the browser
+ * never does with one. The background places it beside this tab, behind or in
+ * front as the press said, and sends no referrer.
+ *
+ * Only while the person's press is still fresh. The background opens a tab no
+ * popup blocker looks at, so without a press behind it this would be a way for a
+ * page to open tabs on its own. Otherwise, and whenever the background does not
+ * open it, the page opens it, where the browser's own rules apply.
+ */
+function openTab(url: string, newTab: 'background' | 'front', rel = '') {
+  const byPage = () => {
+    const features = rel.toLowerCase().includes('noreferrer') ? 'noopener,noreferrer' : 'noopener'
+    window.open(url, '_blank', features)
+  }
+  if (!pressStillFresh()) {
+    byPage()
+    return
+  }
+  sendMessageSafe<{ opened?: boolean }>('open-link-tab', { url, active: newTab === 'front' })
+    .then((answer) => {
+      if (!answer?.opened)
+        byPage()
+    }, byPage)
+}
+
+/**
+ * Whether the press that started this is still one the browser counts, which it
+ * does for about five seconds. A browser that cannot say is taken at its word
+ * that a held click came from a person, which `isTrusted` already checked.
+ */
+function pressStillFresh(): boolean {
+  return !navigator.userActivation || navigator.userActivation.isActive
+}
+
+/**
  * The click we are putting back, so our own handler lets it through.
  *
  * Set for the length of one synchronous dispatch and cleared immediately after.
  */
-let replayingClick: HTMLAnchorElement | null = null
+let replayingClick: LinkElement | null = null
 
 /**
  * Send the user where the link said, as much like a real click as possible.
@@ -1437,10 +1622,10 @@ let replayingClick: HTMLAnchorElement | null = null
  * A click dispatched on the anchor keeps all of that: the browser follows the
  * element with its attributes, and the page's handlers run. The one thing that
  * cannot be put back is a modifier: a browser only honours ctrl and shift on an
- * event it produced itself, so a middle or ctrl click is opened by hand and
- * loses the rest.
+ * event it produced itself, so a middle, ctrl or shift click is opened by
+ * `openTab` and loses the rest, `rel` and the referrer included.
  */
-function followLink(anchor: HTMLAnchorElement, openInNewTab: boolean, confirmed?: string) {
+function followLink(anchor: LinkElement, newTab: NewTab, confirmed?: string) {
   // The address that was on screen when the user said yes, checked again right
   // before the browser is sent anywhere. A dialog stays open for as long as it
   // takes somebody to read it, and the page owns the anchor the whole time: it
@@ -1448,22 +1633,24 @@ function followLink(anchor: HTMLAnchorElement, openInNewTab: boolean, confirmed?
   // follows the element as it stands rather than the link that was approved.
   // The same goes for an element the page has since taken out of the document,
   // where dispatching a click does nothing at all and the link dies silently.
-  if (confirmed !== undefined && (anchor.href !== confirmed || !anchor.isConnected)) {
+  if (confirmed !== undefined && (linkHref(anchor) !== confirmed || !anchor.isConnected)) {
     // Not the link that was agreed to any more, so it is not the one asked to do
-    // the navigating. The address the user actually read is opened directly.
-    if (openInNewTab)
+    // the navigating. The address the user actually read is opened directly,
+    // where the link would have opened it: a page that makes a link to a new
+    // tab, clicks it and takes it away again must not lose the tab it is on.
+    if (newTab)
+      openTab(confirmed, newTab)
+    else if (linkTarget(anchor).toLowerCase() === '_blank')
       window.open(confirmed, '_blank', 'noopener,noreferrer')
     else
       window.location.href = confirmed
     return
   }
 
-  if (openInNewTab) {
-    const rel = anchor.rel?.toLowerCase() ?? ''
-    const features = rel.includes('noreferrer') ? 'noopener,noreferrer' : 'noopener'
+  if (newTab) {
     // The address that was agreed to, where there was one. Read off the element
     // it would be whatever the element says by now.
-    window.open(confirmed ?? anchor.href, '_blank', features)
+    openTab(confirmed ?? linkHref(anchor), newTab, linkRel(anchor))
     return
   }
 
@@ -1481,7 +1668,7 @@ function followLink(anchor: HTMLAnchorElement, openInNewTab: boolean, confirmed?
   if (confirmed !== undefined) {
     let acted = false
     lastWord = (event: Event) => {
-      if (acted || anchor.href === confirmed)
+      if (acted || linkHref(anchor) === confirmed)
         return
       acted = true
       event.preventDefault()
@@ -1511,22 +1698,221 @@ function followLink(anchor: HTMLAnchorElement, openInNewTab: boolean, confirmed?
   }
 }
 
-async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: boolean): Promise<boolean> {
-  const href = anchor.href
-  const target = openInNewTab ? '_blank' : (anchor.target || '_self')
-  const hostname = getHostnameFromHref(href)
-  if (!hostname) {
-    followLink(anchor, openInNewTab)
+// ==========================================
+// Whether a click on a link is held
+// ==========================================
+
+/** Everything a click on a link is decided on, and the decision. */
+interface LinkAssessment {
+  href: string
+  hostname: string
+  visit: VisitFacts
+  mismatch: LinkMismatch | null
+  reasons: InterceptReason[]
+}
+
+interface AssessmentEntry<T> {
+  at: number
+  promise: Promise<T>
+  /** Set once the promise has resolved, so a click can be decided without waiting. */
+  settled?: T
+}
+
+/** As long as a visit answer is trusted, see the visit cache. */
+const ASSESSMENT_TTL_MS = 30_000
+const ASSESSMENT_LIMIT = 100
+/**
+ * How long a click waits for its answer before the dialog shows with what is
+ * known. The answer is asked for when the pointer or the finger comes down, so
+ * by the click it is nearly always in, and a click is almost never held at all.
+ */
+const HOLD_LIMIT_MS = 1500
+
+const linkAssessments = new Map<string, AssessmentEntry<LinkAssessment>>()
+const mailAssessments = new Map<string, AssessmentEntry<MailAssessment>>()
+/** Links whose click is being held, so a second click does not start a second hold. */
+const heldClicks = new WeakSet<LinkElement>()
+
+function interceptSettings() {
+  return normalizeLinkSafety(settings.value.linkSafety).intercept
+}
+
+/**
+ * Keyed by the address and by what the link says, since a mismatch is about the
+ * text, and taken from the anchor as it is at the moment of asking: a page can
+ * show a clean href on hover and swap it when the button goes down.
+ */
+function assessmentKey(labels: string[], href: string): string {
+  // Cut short: a card-sized link can carry a whole article as its text, and
+  // a domain it might name sits in the first few words of it
+  return [href, ...labels.map(label => label.slice(0, 200))].join('\u0000')
+}
+
+function remember<T>(
+  cache: Map<string, AssessmentEntry<T>>,
+  key: string,
+  compute: () => Promise<T>,
+  unchecked: (result: T) => boolean,
+): AssessmentEntry<T> {
+  const now = Date.now()
+  const existing = cache.get(key)
+  if (existing && now - existing.at < ASSESSMENT_TTL_MS)
+    return existing
+  if (!existing && cache.size >= ASSESSMENT_LIMIT)
+    cache.delete(cache.keys().next().value!)
+
+  const entry: AssessmentEntry<T> = { at: now, promise: compute() }
+  // Only this entry is forgotten: a newer one under the same key, after the
+  // settings changed or this one went stale, is somebody else's answer
+  const forget = () => {
+    if (cache.get(key) === entry)
+      cache.delete(key)
+  }
+  entry.promise.then((result) => {
+    // An answer that did not come is asked again next time, never kept
+    if (unchecked(result))
+      forget()
+    else
+      entry.settled = result
+  }, forget)
+  cache.set(key, entry)
+  return entry
+}
+
+async function computeLinkAssessment(labels: string[], href: string, hostname: string): Promise<LinkAssessment> {
+  const named = checkLabelsMismatch(labels, hostname)
+  const [visit, mismatch, lookalikes] = await Promise.all([
+    fetchLinkData(href, hostname),
+    named.mismatch ? linkMismatch(named.textDomain) : Promise.resolve(null),
+    lookalikeAnswer(hostname),
+  ])
+  const matches = lookalikes.status === 'answered' ? lookalikes.matches : null
+  const shortener = isShortenedUrl(hostname)
+  const linkSafety = normalizeLinkSafety(settings.value.linkSafety)
+  // The site's own short link on the site, which the user asked not to stop.
+  // Not "unfamiliar" either: nobody ever visits t.co, so it is unfamiliar to
+  // everybody, and that says nothing about where the link goes.
+  // Only while short links are stopped at all: the box is greyed out otherwise,
+  // and a control nobody can reach must not change anything
+  const ownService = shortener && linkSafety.intercept.shortLinks && !linkSafety.intercept.shortLinksOnOwnSite
+    && isOwnServiceShortLink(hostname, window.location.hostname)
+  const facts: LinkFacts = {
+    familiar: visit.isSafe || ownService,
+    unchecked: Boolean(visit.unchecked) || lookalikes.status === 'failed',
+    // "Resolve any link" on its own setting is a request to follow every link
+    // before it opens, which is what holding it as a short link does
+    shortLink: (shortener && !ownService) || (linkSafety.shortUrlMode === 'auto' && linkSafety.shortUrlResolveAny),
+    // Counted as the dialog draws them: the address's own lines, and the link's
+    // text when it names another site. Not for a short link, whose text naming
+    // its destination is how short links are written (every external link on X
+    // reads as its site and goes through t.co): it cannot be checked, and that
+    // is what the short-link reason is for.
+    redFlags: addressRedFlagCount(hostname, href, matches) + (mismatch && !shortener ? 1 : 0),
+  }
+  return { href, hostname, visit, mismatch, reasons: interceptReasons(facts, interceptSettings()) }
+}
+
+/**
+ * The assessment of a link by the names it goes by, which is all a link in a
+ * frame can send up. Read once off an element, at the moment of asking.
+ */
+function assessLabels(labels: string[], href: string, hostname: string) {
+  return remember(linkAssessments, assessmentKey(labels, href), () => computeLinkAssessment(labels, href, hostname), result => result.reasons.includes('unchecked'))
+}
+
+function assessLink(anchor: LinkElement, href: string, hostname: string) {
+  return assessLabels(anchorLabels(anchor), href, hostname)
+}
+
+interface MailAssessment {
+  data: LinkTooltipData | null
+  reasons: InterceptReason[]
+}
+
+async function computeMailAssessment(anchor: LinkElement, href: string): Promise<MailAssessment> {
+  const data = await buildEmailTooltipData(href, anchorLabel(anchor), getAnchorRect(anchor))
+  if (!data?.email)
+    return { data: null, reasons: [] }
+
+  // Every recipient, not just the one the tooltip is headed with: a copy of
+  // a lookalike address in `bcc=` is the one an attacker would hide there.
+  // The count beside the verdict is the first address's, the recipient list
+  // below it names the rest.
+  const domains = [...new Set([data.domain, ...(data.email.recipients ?? []).map(recipient => recipient.analysis.domain)])]
+  const answers = await Promise.all(domains.map(domain => lookalikeAnswer(domain, 'email')))
+  const flagsPerDomain = domains.map((domain, index) => addressRedFlagCount(domain, null, answers[index].status === 'answered' ? answers[index].matches : null))
+  // Nobody visits a public or a throwaway mail service, so "unfamiliar" is a
+  // question about an ordinary domain only
+  const regular = data.email.providerKind === 'regular'
+  const facts: LinkFacts = {
+    familiar: !regular || data.isSafe,
+    unchecked: Boolean(data.unchecked) || answers.some(answer => answer.status === 'failed'),
+    shortLink: false,
+    redFlags: Math.max(...flagsPerDomain) + (data.email.mismatch ? 1 : 0),
+  }
+  return { data, reasons: interceptReasons(facts, interceptSettings()) }
+}
+
+function assessMail(anchor: LinkElement, href: string) {
+  return remember(mailAssessments, assessmentKey(anchorLabels(anchor), href), () => computeMailAssessment(anchor, href), result => result.reasons.includes('unchecked'))
+}
+
+function forgetLinkAssessments() {
+  linkAssessments.clear()
+  mailAssessments.clear()
+}
+
+/** The answer, or null once the click has waited as long as it should. */
+function withinHold<T>(promise: Promise<T>): Promise<T | null> {
+  return Promise.race([promise, new Promise<null>(resolve => setTimeout(resolve, HOLD_LIMIT_MS, null))])
+}
+
+/**
+ * Whether this content script still belongs to a running extension.
+ *
+ * One left behind by an update has no background to ask, so every answer it
+ * could get is "not checked". Holding clicks on that would stop every link in
+ * every tab left open across the update, so it holds nothing: the tab's next
+ * load brings a script that can ask.
+ */
+function extensionAlive(): boolean {
+  try {
+    return Boolean(browser.runtime?.id)
+  }
+  catch {
     return false
   }
+}
 
-  const currentHostname = window.location.hostname
-  if (!isExternalLink(href, currentHostname)) {
-    followLink(anchor, openInNewTab)
-    return false
+/**
+ * A link whose click is being held, wherever it is: an element in this
+ * document, or a link in a frame, which only its frame can follow.
+ */
+interface HeldLink {
+  /** The browsing context it names, `''` when none. */
+  target: string
+  follow: (newTab: NewTab, confirmed: string) => void
+  /** Called when the answer is "go back", so a frame can let go of its click. */
+  cancel?: () => void
+  /** The dialog says the link has to be clicked again, see `FrameLinkClick.canReplay`. */
+  clickAgain?: boolean
+  /**
+   * Asked just before the dialog is drawn, after any waiting. False when the
+   * click is no longer there to be decided, and then nothing is drawn.
+   */
+  beforeShow?: () => boolean
+}
+
+function heldElement(anchor: LinkElement): HeldLink {
+  return {
+    target: linkTarget(anchor),
+    follow: (newTab, confirmed) => followLink(anchor, newTab, confirmed),
   }
+}
 
-  const visitData = await fetchLinkData(href, hostname)
+async function handleLinkIntercept(link: HeldLink, newTab: NewTab, assessment: LinkAssessment): Promise<boolean> {
+  const { href, hostname, visit: visitData, mismatch, reasons } = assessment
+  const target = newTab ? '_blank' : (link.target || '_self')
 
   // Resolve shortened URL if auto mode is enabled
   const shortUrlMode = settings.value.linkSafety.shortUrlMode
@@ -1534,19 +1920,29 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
   const resolveAny = settings.value.linkSafety.shortUrlResolveAny
   const shouldResolve = shortUrlMode === 'auto' && (isKnownShortener || resolveAny)
   let shortUrlInfo: ShortUrlInfo | null = null
+  // A red flag is about the link itself, and no destination makes it go away
+  const onlyTheDestinationMatters = reasons.every(reason => reason === 'short-link' || reason === 'unfamiliar')
 
   if (shouldResolve) {
     shortUrlInfo = await resolveForIntercept(href, hostname, isKnownShortener)
+    // A new tab needs a press the browser still counts, and following a short
+    // link can take longer than that lasts. Past it the dialog is shown, with
+    // the calm "Go to link", whose own press opens the tab. Where the link
+    // turned out to stay on a familiar site that dialog has little to add, and
+    // is shown anyway: rare, and a tab the popup blocker ate is worse.
+    // A link in a frame that has to be clicked again is never followed here
+    // without a word: the dialog is what says so.
+    const canFollowNow = !link.clickAgain && (!newTab || pressStillFresh())
     // Use resolved domain's safety for intercept decision
-    if (shortUrlInfo.status === 'resolved' && shortUrlInfo.resolvedIsSafe) {
-      followLink(anchor, openInNewTab, href)
+    if (canFollowNow && onlyTheDestinationMatters && shortUrlInfo.status === 'resolved' && shortUrlInfo.resolvedIsSafe) {
+      link.follow(newTab, href)
       return false
     }
     // "Resolve any link" asks about every link, and most of them go nowhere
     // else. One that stays on a familiar host leads where it says, and stopping
     // it put a dialog in front of every ordinary link on the page.
-    if (!isKnownShortener && shortUrlInfo.error === 'same_domain' && visitData.isSafe) {
-      followLink(anchor, openInNewTab, href)
+    if (canFollowNow && onlyTheDestinationMatters && !isKnownShortener && shortUrlInfo.error === 'same_domain' && visitData.isSafe) {
+      link.follow(newTab, href)
       return false
     }
     // See `showLinkInterceptByUrl` for why a failure on any other host is dropped
@@ -1567,20 +1963,14 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
     }
   }
 
-  // Safe site – allow navigation (only if we didn't auto-resolve, which was handled above)
-  if (!shouldResolve && visitData.isSafe) {
-    followLink(anchor, openInNewTab, href)
+  if (link.beforeShow && !link.beforeShow())
     return false
-  }
 
-  // Check for mismatch and punycode
-  const mismatchResult = checkAnchorMismatch(anchor, hostname)
-
-  // Fetch textDomain visit data if mismatch
-  let interceptMismatch: { textDomain: string, textDomainStats: FamiliarityStats, textDomainIsSafe: boolean } | null = null
-  if (mismatchResult.mismatch && mismatchResult.textDomain) {
-    const textDomainData = await fetchLinkData(`https://${mismatchResult.textDomain}`, mismatchResult.textDomain)
-    interceptMismatch = { textDomain: mismatchResult.textDomain, textDomainStats: textDomainData.stats, textDomainIsSafe: textDomainData.isSafe }
+  // A dialog already up for another held link is answered "go back" before this
+  // one takes its place, or that click would wait on an answer for ever
+  if (linkInterceptResolve.value) {
+    linkInterceptResolve.value(false)
+    linkInterceptResolve.value = null
   }
 
   linkInterceptData.value = {
@@ -1589,11 +1979,14 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
     target,
     stats: visitData.stats,
     isSafe: visitData.isSafe,
-    mismatch: interceptMismatch,
+    unchecked: visitData.unchecked,
+    mismatch,
     punycode: alternateSpelling(hostname),
     shortUrl: shortUrlInfo,
     // There is a real link behind this one, and it is put back as a click
     ownNavigation: false,
+    reasons,
+    clickAgain: link.clickAgain,
   }
   linkInterceptVisible.value = true
 
@@ -1602,21 +1995,239 @@ async function handleLinkIntercept(anchor: HTMLAnchorElement, openInNewTab: bool
   })
 
   if (proceed)
-    followLink(anchor, openInNewTab, href)
+    link.follow(newTab, href)
+  else
+    link.cancel?.()
 
   return proceed
 }
 
-function setupLinkSafety() {
-  const linkSafety = settings.value.linkSafety
-  if (!linkSafety?.enabled)
+/** A held link click, decided once its answer is in or the hold runs out. */
+async function decideHeldLinkClick(link: HeldLink, href: string, hostname: string, newTab: NewTab, entry: AssessmentEntry<LinkAssessment>) {
+  const answer = await withinHold(entry.promise)
+  if (answer && !answer.reasons.length) {
+    link.follow(newTab, href)
     return
+  }
+  await handleLinkIntercept(link, newTab, answer ?? uncheckedAssessment(href, hostname))
+}
+
+/**
+ * What the dialog shows when the hold ran out: what is known, its lines filling
+ * in as the answers arrive. Said as not checked, since nothing was.
+ */
+function uncheckedAssessment(href: string, hostname: string): LinkAssessment {
+  return {
+    href,
+    hostname,
+    visit: { ...(getCachedVisitCount(hostname) ?? { stats: { count: 0 }, isSafe: false, ignored: false }), unchecked: true },
+    mismatch: null,
+    reasons: ['unchecked'],
+  }
+}
+
+// ==========================================
+// Links in frames
+// ==========================================
+
+/**
+ * A link somebody is reaching for or has clicked inside a frame on this page.
+ *
+ * Events do not leave a frame, so a phishing link in a mail body served in an
+ * iframe was never held. The frame guard has no checks of its own and no UI:
+ * it sends the link's address and names, this document judges it exactly as it
+ * judges its own links, and the dialog is drawn here.
+ */
+interface FrameLink {
+  frameId: number
+  href: string
+  labels: string[]
+}
+
+interface FrameLinkClick extends FrameLink {
+  /** Random per click, so an answer can never reach a click it was not about. */
+  id: string
+  target: string
+  /**
+   * Whether the frame can still follow the link itself once the dialog has
+   * taken the press. A frame on this page's own origin shares the press on the
+   * dialog (measured in Firefox 157 and ESR 140, and the HTML rule Chromium
+   * follows), and any frame can navigate itself without one. A cross-origin
+   * frame opening a window or moving the page needs a press of its own, and this
+   * document does not do it in the frame's place: the frame's sandbox, which it
+   * cannot read, may forbid exactly that. Such a link is allowed once instead,
+   * and the dialog says to click it again.
+   */
+  canReplay: boolean
+}
+
+/**
+ * `pageOff`: no link is held on this page, which the frame may remember until
+ * the settings change. `unknown`: nothing could be said now, and nothing is to
+ * be remembered. `hold`: the answer about this link. `dialog`: the dialog is
+ * up, and the answer comes as `frame-link-decision`.
+ */
+type FrameLinkAnswer = { pageOff: true } | { unknown: true } | { hold: boolean } | { dialog: true }
+
+/** At most this many names, each as long as `assessmentKey` keeps. */
+const FRAME_LABEL_LIMIT = 12
+
+function frameLinkFrom(data: any): FrameLink | null {
+  if (typeof data?.href !== 'string' || typeof data?.frameId !== 'number')
+    return null
+  const labels = Array.isArray(data.labels)
+    ? data.labels.filter((label: unknown) => typeof label === 'string').slice(0, FRAME_LABEL_LIMIT).map((label: string) => label.slice(0, 200))
+    : []
+  return { frameId: data.frameId, href: data.href, labels }
+}
+
+/**
+ * The assessment, or the answer to give instead. Only "off" and "nothing is
+ * held at all" are about the page. A link to this page's own site is about that
+ * link, and must not be read as the page holding nothing: a mail body's first
+ * link to the webmail itself would otherwise switch the hold off for the
+ * phishing link below it.
+ */
+function frameLinkAssessment(link: FrameLink): { hostname: string, entry: AssessmentEntry<LinkAssessment> } | FrameLinkAnswer {
+  if (!extensionAlive() || linkSafetyState === 'pending' || !linkHandlers)
+    return linkSafetyState === 'off' ? { pageOff: true } : { unknown: true }
+  if (!interceptsAnything(interceptSettings()))
+    return { pageOff: true }
+  // Judged against this page, which is the one the user is on: a link in the
+  // frame to this very site leaves nothing the user does not know
+  const hostname = getHostnameFromHref(link.href)
+  if (!hostname || !isExternalLink(link.href, window.location.hostname))
+    return { hold: false }
+  return { hostname, entry: assessLabels(link.labels, link.href, hostname) }
+}
+
+async function answerFrameLinkPrefetch(data: any): Promise<FrameLinkAnswer> {
+  const link = frameLinkFrom(data)
+  if (!link)
+    return { unknown: true }
+  const found = frameLinkAssessment(link)
+  if (!('entry' in found))
+    return found
+  const answer = await withinHold(found.entry.promise)
+  return answer ? { hold: answer.reasons.length > 0 } : { unknown: true }
+}
+
+/** The frame click a dialog is up for, so the frame can take it back. */
+let frameClickInDialog: { frameId: number, id: string } | null = null
+/** Clicks a frame took back before their dialog came up, by frame and id. */
+const withdrawnFrameClicks = new Set<string>()
+
+/**
+ * The frame gave up waiting and followed its link already. A dialog about it
+ * is about a page that has opened, so it goes, without a word to the frame.
+ */
+function withdrawFrameLinkClick(data: any) {
+  if (typeof data?.id === 'string' && typeof data?.frameId === 'number') {
+    if (withdrawnFrameClicks.size >= 50)
+      withdrawnFrameClicks.delete(withdrawnFrameClicks.values().next().value!)
+    withdrawnFrameClicks.add(`${data.frameId}:${data.id}`)
+  }
+  if (!frameClickInDialog || frameClickInDialog.id !== data?.id || frameClickInDialog.frameId !== data?.frameId)
+    return
+  frameClickInDialog = null
+  linkInterceptVisible.value = false
+  linkInterceptData.value = null
+  const resolve = linkInterceptResolve.value
+  linkInterceptResolve.value = null
+  resolve?.(false)
+}
+
+async function answerFrameLinkClick(data: any): Promise<FrameLinkAnswer> {
+  const link = frameLinkFrom(data)
+  if (!link || typeof data.id !== 'string')
+    return { unknown: true }
+  const click: FrameLinkClick = { ...link, id: data.id, target: typeof data.target === 'string' ? data.target : '', canReplay: data.canReplay === true }
+  const found = frameLinkAssessment(click)
+  if (!('entry' in found))
+    return found
+
+  const answer = await withinHold(found.entry.promise)
+  // The frame follows it, with its own press still fresh. Or it has already,
+  // having given up on this answer.
+  if ((answer && !answer.reasons.length) || withdrawnFrameClicks.has(`${click.frameId}:${click.id}`))
+    return { hold: false }
+
+  const mine = { frameId: click.frameId, id: click.id }
+  const decide = (follow: boolean, allowOnce = false) => {
+    if (frameClickInDialog === mine)
+      frameClickInDialog = null
+    return sendMessageSafe('frame-link-decision', { ...mine, href: click.href, follow, allowOnce })
+      .catch(error => console.error('Visilant: could not answer a frame about its link', error))
+  }
+  // What "go ahead" means for this frame after the dialog: followed there, or
+  // let through for the next click when the frame cannot follow it any more
+  const goAhead = () => void decide(click.canReplay, !click.canReplay)
+  const withdrawn = () => withdrawnFrameClicks.has(`${click.frameId}:${click.id}`)
+  const held: HeldLink = {
+    target: click.target,
+    clickAgain: !click.canReplay,
+    follow: goAhead,
+    cancel: () => void decide(false),
+    // Taken back while the dialog was being prepared: the link is open already
+    beforeShow: () => {
+      if (withdrawn())
+        return false
+      frameClickInDialog = mine
+      return true
+    },
+  }
+  // No dialog could be drawn, and a link that does nothing is the one outcome
+  // that is never right: followed, as a click with no answer is. The frame's
+  // own press was never spent on a dialog, so it still has it.
+  const noDialog = () => void decide(true)
+  ensureTooltipUiMounted()
+    .then(mounted => mounted ? handleLinkIntercept(held, false, answer ?? uncheckedAssessment(click.href, found.hostname)) : noDialog())
+    .catch((error) => {
+      console.error('Visilant: could not check a link in a frame', error)
+      noDialog()
+    })
+  return { dialog: true }
+}
+
+/** A held mail-link click: the tooltip with its "Open mail app", or on its way. */
+async function decideHeldMailClick(anchor: LinkElement, href: string, entry: AssessmentEntry<MailAssessment>) {
+  const answer = await withinHold(entry.promise)
+  if (answer && (!answer.reasons.length || !answer.data)) {
+    followLink(anchor, false, href)
+    return
+  }
+  // Out of time: the address is drawn from what can be read now, with no
+  // second wait on the background
+  const data = answer?.data ?? await withinHold(buildEmailTooltipData(href, anchorLabel(anchor), getAnchorRect(anchor)))
+  if (!data) {
+    followLink(anchor, false, href)
+    return
+  }
+  // The tooltip only opens over the link it is current for
+  if (tooltipGraceTimer) {
+    clearTimeout(tooltipGraceTimer)
+    tooltipGraceTimer = null
+  }
+  currentHoveredAnchor = anchor
+  data.anchorRect = getAnchorRect(anchor)
+  linkTooltipData.value = { ...data, heldClick: true }
+  linkTooltipVisible.value = true
+}
+
+function setupLinkSafety() {
+  const linkSafety = normalizeLinkSafety(settings.value.linkSafety)
+  if (!linkSafety.enabled) {
+    linkSafetyState = 'off'
+    return
+  }
 
   const currentHostname = window.location.hostname
 
   // Check scope
-  if (!isDomainInScope(currentHostname, linkSafety))
+  if (!isDomainInScope(currentHostname, linkSafety)) {
+    linkSafetyState = 'off'
     return
+  }
 
   // What the user picked, corrected for what this device can do: on a
   // touchscreen the hover and right-click triggers can never fire
@@ -1630,11 +2241,12 @@ function setupLinkSafety() {
       return
 
     const anchor = findAnchorFromEvent(event)
-    if (!anchor || !anchor.href)
+    const href = anchor ? linkHref(anchor) : ''
+    if (!anchor || !href)
       return
 
-    const mailto = isMailtoHref(anchor.href)
-    if (!mailto && !isExternalLink(anchor.href, currentHostname))
+    const mailto = isMailtoHref(href)
+    if (!mailto && !isExternalLink(href, currentHostname))
       return
 
     // Clear any grace timer (user moved back to a link)
@@ -1693,13 +2305,67 @@ function setupLinkSafety() {
     }
   }
 
-  // Click handler for left-click intercept trigger
-  function handleClick(event: MouseEvent) {
-    if (trigger !== 'click-left' || event.button !== 0)
+  /**
+   * Ask about a link as soon as somebody reaches for it, so the click finds its
+   * answer waiting. The pointer and the finger come down a little before the
+   * click, and the keyboard focuses a link before Enter follows it. Only links
+   * that could be held are asked about.
+   */
+  function prefetchLink(event: Event) {
+    if (!event.isTrusted || !interceptsAnything(interceptSettings()))
       return
-
     const anchor = findAnchorFromEvent(event)
-    if (!anchor || !anchor.href)
+    const href = anchor ? linkHref(anchor) : ''
+    if (!anchor || !href)
+      return
+    if (isMailtoHref(href)) {
+      assessMail(anchor, href)
+      return
+    }
+    if (!isExternalLink(href, currentHostname))
+      return
+    const hostname = getHostnameFromHref(href)
+    if (hostname)
+      assessLink(anchor, href, hostname)
+  }
+
+  /**
+   * Hold a click on a link only when there is a reason to, see
+   * `interceptReasons`. A link whose answer is already in and gives no reason
+   * is not cancelled at all, so it behaves exactly like a link: the page's own
+   * router runs, `download` downloads, and a modified click does what the
+   * browser does with one.
+   */
+  function handleClick(event: MouseEvent) {
+    // A click the page made up is still held, since it still follows the link,
+    // but never as a new tab: a page can set ctrl and shift on an event of its
+    // own, and a tab opened from the background passes no popup blocker. It is
+    // put back as a plain click, in this tab.
+    if (event.button === 0)
+      holdClick(event, event.isTrusted ? newTabFor(event) : false)
+  }
+
+  /**
+   * A middle click opens the link in a new tab, and is held on the same rules.
+   * It arrives as `auxclick`, not `click`, and cancelling that is what stops
+   * the tab: measured in Chromium 151, Firefox 157 and ESR 140, where cancelling
+   * the `mousedown` or a `click` does not.
+   */
+  function handleAuxClick(event: MouseEvent) {
+    // A made-up one opens nothing, so there is nothing to hold
+    if (event.button === 1 && event.isTrusted)
+      holdClick(event, newTabFor(event))
+  }
+
+  function holdClick(event: MouseEvent, newTab: NewTab) {
+    const anchor = findAnchorFromEvent(event)
+    if (!anchor)
+      return
+    // Captured before anything is awaited: this ends in a navigation either
+    // way, and it has to be the one that was read off the page rather than
+    // whatever the anchor says by then
+    const href = linkHref(anchor)
+    if (!href)
       return
 
     // The click we are putting back after checking it. Letting it through is the
@@ -1707,50 +2373,56 @@ function setupLinkSafety() {
     if (replayingClick === anchor)
       return
 
-    // mailto: never goes through the intercept dialog – show the email tooltip
-    // instead. Its "open mail app" button performs the actual navigation
-    if (isMailtoHref(anchor.href)) {
+    if (!interceptsAnything(interceptSettings()) || !extensionAlive())
+      return
+
+    // Alt saves the link in some browsers, which a click put back cannot do
+    if (event.altKey)
+      return
+
+    if (isMailtoHref(href)) {
+      const entry = assessMail(anchor, href)
+      if (entry.settled && !entry.settled.reasons.length)
+        return
       event.preventDefault()
       event.stopPropagation()
-      // The tooltip only opens over the link it is current for, and with this
-      // trigger no hover ever names one, so a click used to do nothing at all
-      if (tooltipGraceTimer) {
-        clearTimeout(tooltipGraceTimer)
-        tooltipGraceTimer = null
-      }
-      currentHoveredAnchor = anchor
-      showEmailTooltip(anchor)
+      if (heldClicks.has(anchor))
+        return
+      heldClicks.add(anchor)
+      decideHeldMailClick(anchor, href, entry)
+        .catch((error) => {
+          console.error('Visilant: could not check this address', error)
+          followLink(anchor, false, href)
+        })
+        .finally(() => heldClicks.delete(anchor))
       return
     }
 
-    if (!isExternalLink(anchor.href, currentHostname))
+    if (!isExternalLink(href, currentHostname))
+      return
+    const hostname = getHostnameFromHref(href)
+    if (!hostname)
       return
 
-    // Already known to be a site the user knows, and nothing to resolve. Not
-    // cancelled at all, so the link behaves exactly like a link: the page's own
-    // router runs, `download` downloads, and a modified click does what the
-    // browser does with one.
-    const hostname = getHostnameFromHref(anchor.href)
-    const known = hostname ? getCachedVisitCount(hostname) : null
-    const shortUrl = settings.value.linkSafety.shortUrlMode
-    const mightBeShort = shortUrl === 'auto'
-      && (settings.value.linkSafety.shortUrlResolveAny || (hostname ? isShortenedUrl(hostname) : false))
-    if (known?.isSafe && !mightBeShort)
+    const entry = assessLink(anchor, href, hostname)
+    if (entry.settled && !entry.settled.reasons.length)
       return
 
     event.preventDefault()
     event.stopPropagation()
+    // A second click while the first is held would hold it twice and replay it twice
+    if (heldClicks.has(anchor))
+      return
+    heldClicks.add(anchor)
 
     // Cancelled, so this must end in a navigation or a dialog. Failing silently
     // leaves a link that does nothing at all when it is clicked.
-    // Captured before the check runs, for the same reason the dialog captures
-    // it: this ends in a navigation either way, and it has to be the one that
-    // was read off the page rather than whatever the anchor says by then
-    const intended = anchor.href
-    handleLinkIntercept(anchor, event.ctrlKey || event.metaKey).catch((error) => {
-      console.error('Visilant: could not check this link', error)
-      followLink(anchor, event.ctrlKey || event.metaKey, intended)
-    })
+    decideHeldLinkClick(heldElement(anchor), href, hostname, newTab, entry)
+      .catch((error) => {
+        console.error('Visilant: could not check this link', error)
+        followLink(anchor, newTab, href)
+      })
+      .finally(() => heldClicks.delete(anchor))
   }
 
   // Dismiss tooltip on scroll or Escape
@@ -1780,20 +2452,23 @@ function setupLinkSafety() {
     }
   }
 
-  // Register all listeners
-  document.addEventListener('mouseover', handleMouseOver, true)
-  document.addEventListener('mouseout', handleMouseOut, true)
-  document.addEventListener('click', handleClick, true)
-  window.addEventListener('scroll', handleScroll, true)
-  document.addEventListener('keydown', handleEscape, true)
+  // The listeners themselves were put on the window when the script started,
+  // see `linkHandlers`
+  linkHandlers = {
+    mouseover: handleMouseOver,
+    mouseout: handleMouseOut,
+    click: handleClick,
+    auxclick: handleAuxClick,
+    prefetch: prefetchLink,
+    scroll: handleScroll,
+    keydown: handleEscape,
+  }
 
-  // Return cleanup function
+  linkSafetyState = 'on'
+
   linkSafetyCleanup = () => {
-    document.removeEventListener('mouseover', handleMouseOver, true)
-    document.removeEventListener('mouseout', handleMouseOut, true)
-    document.removeEventListener('click', handleClick, true)
-    window.removeEventListener('scroll', handleScroll, true)
-    document.removeEventListener('keydown', handleEscape, true)
+    linkHandlers = null
+    linkSafetyState = 'pending'
     if (hoverDebounceTimer)
       clearTimeout(hoverDebounceTimer)
     if (tooltipGraceTimer)
@@ -1844,7 +2519,7 @@ function startTamperWatch() {
     guardedNodes,
     isSelfRemoving: () => isSelfRemoving,
     onTamper: (reason) => {
-      sendMessageSafe('tampering-detected', { reason, url: window.location.href })
+      sendMessageSafe('tampering-detected', { reason })
     },
     raise: raiseTopLayer,
   })
@@ -1890,6 +2565,12 @@ function applyTamperingSetting() {
 async function applySettingsChange() {
   // Every entry in it is a verdict reached under the rules as they were
   clearVisitCache()
+  forgetLinkAssessments()
+  // Not known again until `setupLinkSafety` has run under the new settings,
+  // which waits for the verdict below: a frame told "off" in between would
+  // stop holding links for good
+  if (linkSafetyState === 'off')
+    linkSafetyState = 'pending'
 
   verdictSettled = checkSiteSafety(window.location.href)
     .then(() => {
@@ -1945,17 +2626,25 @@ async function mount(force = false) {
     if (!document.body || generation !== uiGeneration)
       return
 
-    // Determine if we need to mount the UI
-    const isNotificationsEnabled = settings.value.showWarningNotification
-    const isSiteSafe = safetyLevel.value
-    const isLinkSafetyEnabled = settings.value.linkSafety?.enabled
-
-    // Mount if: (warnings needed) OR (link safety enabled) OR explicitly requested
-    // (message-triggered tooltips need the UI even on pages that skipped mounting)
-    const needsWarningUI = isNotificationsEnabled && !isSiteSafe
-    if (!force && !needsWarningUI && !isLinkSafetyEnabled) {
+    // Whether this page gets the UI at all, decided by the settings alone and
+    // never by what is known about this site. The box is an element in the page,
+    // and it used to go only on pages that might need a warning: with the link
+    // check off, any script on the page, analytics present on half the web
+    // included, could read "this person comes here often" from its absence, and
+    // collect that site by site. Not by this site's own exceptions either (the
+    // ignore list, the scope lists, the tamper exclusions), which are facts
+    // about the site too. (The tamper watch putting a removed box back does
+    // follow the exclusion list, which is the user's own choice about the site,
+    // not their history.) The app inside is mounted with it every time rather
+    // than when first needed: mounting is a long task on the page's thread, and
+    // a page timing its frames would see it only where it was needed at once.
+    // What that costs falls on profiles with the link check off, since it is on
+    // by default and already put the UI on every page.
+    const anyProtection = settings.value.showWarningNotification
+      || settings.value.linkSafety?.enabled
+      || settings.value.blockPasteOnUnfamiliar
+    if (!force && !anyProtection)
       return
-    }
 
     container = document.createElement('div')
     container.id = generateSecureId()
@@ -2005,7 +2694,7 @@ async function mount(force = false) {
       // Immediate verification, in case the append itself was undone
       const problem = tamperWatch?.verify()
       if (problem)
-        sendMessageSafe('tampering-detected', { reason: problem, url: window.location.href })
+        sendMessageSafe('tampering-detected', { reason: problem })
     }
 
     app = createApp(App)
@@ -2133,8 +2822,8 @@ async function mount(force = false) {
   )
 })()
 
-// The Vue app is only mounted when the page needs a warning or link safety is
-// on, so message-triggered tooltips (context menu, QR) must force-mount it first
+// The Vue app is not mounted with every protection switched off, so
+// message-triggered tooltips (context menu, QR) must force-mount it first
 async function ensureTooltipUiMounted(): Promise<boolean> {
   if (!container)
     await mount(true)
@@ -2229,6 +2918,16 @@ browser.runtime.onMessage.addListener(((message: any, _sender: any, sendResponse
       .then(outcome => sendResponse({ outcome }), () => sendResponse({ outcome: 'later' }))
     return true
   }
+  // A link in a frame, asked about before the click and when it comes
+  if ((message.type === 'frame-link-prefetch' || message.type === 'frame-link-click') && message.data) {
+    const answer = message.type === 'frame-link-click' ? answerFrameLinkClick : answerFrameLinkPrefetch
+    answer(message.data).then(sendResponse, () => sendResponse({ unknown: true }))
+    return true
+  }
+  if (message.type === 'frame-link-withdraw' && message.data) {
+    withdrawFrameLinkClick(message.data)
+    return undefined
+  }
   if (message.type === 'frame-paste-intercept' && message.data) {
     // The only message here that answers. The frame is holding a cancelled paste
     // and cannot stop holding it until the user has said something.
@@ -2245,7 +2944,7 @@ browser.runtime.onMessage.addListener(((message: any, _sender: any, sendResponse
     const textDomain = contextLinkTextDomain(contextLink, url, message.data.frameId)
     contextLink = null
     // A mailto link has no site to open and nothing for the dialog to say. It
-    // gets the address check a left click on it gives, instead of the menu item
+    // gets the address check a held click on it gives, instead of the menu item
     // doing nothing at all.
     if (isMailtoHref(url))
       ensureTooltipUiMounted().then(() => showEmailTooltipByAddress(url))
@@ -2392,8 +3091,8 @@ function watchForDocumentOpen() {
     // replacement, and there is nothing to put back yet
     if (!replaced && !rebuild)
       return
-    for (const [type, listener] of pageListeners)
-      window.addEventListener(type, listener, true)
+    for (const [type, listener, options] of pageListeners)
+      window.addEventListener(type, listener, options)
     if (container || isMounting || rebuild) {
       rebuild = false
       tearDownUi()

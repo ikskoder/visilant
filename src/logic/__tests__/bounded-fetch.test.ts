@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchTextBounded, MAX_LIST_SOURCES, ResponseTooLargeError } from '../bounded-fetch'
+import { fetchBlobBounded, fetchTextBounded, MAX_LIST_SOURCES, ResponseTooLargeError } from '../bounded-fetch'
 import { parseListUrls } from '../email-providers'
 
 function streamOf(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
@@ -23,6 +23,25 @@ afterEach(() => {
 })
 
 describe('fetchTextBounded', () => {
+  // A list host has no business knowing who fetched its list, and from the
+  // background the referrer names the extension
+  it('sends no cookies and no referrer', async () => {
+    respond('one.test\n')
+    await fetchTextBounded('https://list.test/a')
+    const init = vi.mocked(fetch).mock.calls[0][1]
+    expect(init?.credentials).toBe('omit')
+    expect(init?.referrerPolicy).toBe('no-referrer')
+  })
+
+  // A right-clicked image may sit behind the user's own login
+  it('keeps the browser cookie rule only when asked to', async () => {
+    respond(new Uint8Array([1, 2, 3]))
+    await fetchBlobBounded('https://mail.test/attachment.png', { browserCookies: true })
+    const init = vi.mocked(fetch).mock.calls[0][1]
+    expect(init?.credentials).toBeUndefined()
+    expect(init?.referrerPolicy).toBe('no-referrer')
+  })
+
   it('returns the body as text', async () => {
     respond('one.test\ntwo.test\n')
     await expect(fetchTextBounded('https://list.test/a')).resolves.toBe('one.test\ntwo.test\n')

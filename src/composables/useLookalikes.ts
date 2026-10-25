@@ -33,6 +33,8 @@ const PATIENCE_MS = 2000
 
 const entries = shallowReactive(new Map<string, { answer: LookalikeAnswer, at: number }>())
 const inFlight = new Set<string>()
+/** The question in flight, for a caller that has to wait for the real answer. */
+const inFlightAnswers = new Map<string, Promise<LookalikeAnswer>>()
 // Moved on by a reset, so an answer to a question asked before it lands nowhere
 let generation = 0
 
@@ -80,13 +82,31 @@ function request(hostname: string, context: Context) {
       store(key, { status: 'failed' })
   }, PATIENCE_MS)
 
-  ask(hostname, context).then((answer) => {
+  const answered = ask(hostname, context).then((answer) => {
     clearTimeout(patience)
-    if (asked !== generation)
-      return
-    inFlight.delete(key)
-    store(key, answer)
+    if (asked === generation) {
+      inFlight.delete(key)
+      store(key, answer)
+    }
+    inFlightAnswers.delete(key)
+    return answer
   })
+  inFlightAnswers.set(key, answered)
+}
+
+/**
+ * The answer as a promise, for a decision taken outside a view: whether a
+ * click on a link is stopped. Asks the same question the lines under the
+ * address ask, through the same cache and the same question in flight, so the
+ * dialog the click opens draws the very answer it was stopped on.
+ *
+ * Waits for the background itself, not for the views' patience: a lookalike
+ * that arrives late is still the reason to stop a click.
+ */
+export function lookalikeAnswer(hostname: string, context: Context = undefined): Promise<LookalikeAnswer> {
+  request(hostname, context)
+  const key = cacheKey(hostname, context)
+  return inFlightAnswers.get(key) ?? Promise.resolve(entries.get(key)?.answer ?? { status: 'failed' })
 }
 
 /**
@@ -119,6 +139,7 @@ export function resetLookalikeCache() {
   generation++
   entries.clear()
   inFlight.clear()
+  inFlightAnswers.clear()
 }
 
 /** An address the way the detector counts positions in it. */

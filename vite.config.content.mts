@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite'
 import { defineConfig } from 'vite'
 import packageJson from './package.json'
-import { isDev, r } from './scripts/utils'
+import { isDev, out, r } from './scripts/utils'
 import { BUILD_TARGET, sharedConfig } from './vite.config.mjs'
 
 /**
@@ -56,7 +56,7 @@ export default defineConfig({
     watch: isDev
       ? {}
       : undefined,
-    outDir: r('extension/dist/contentScripts'),
+    outDir: out('dist/contentScripts'),
     cssCodeSplit: false,
     emptyOutDir: false,
     sourcemap: false,

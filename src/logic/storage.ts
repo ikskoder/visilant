@@ -1,273 +1,11 @@
-import type { BadgeContent } from './badge'
-import type { DomainMetric } from './domain-metric'
-import type { FamiliaritySettings } from './familiarity'
+import type { Settings } from './settings-schema'
 import { createWebExtensionStorage } from '~/composables/useWebExtensionStorage'
 import { defaultFamiliaritySettings } from './familiarity'
-import { DEFAULT_LOOKUP_SERVICES, serializeLookupServices } from './lookup-services'
 import { isMessageError } from './message-error'
+import { DEFAULT_SHORTENER_LIST_URL, defaultSettings, normalizeLinkSafety, parseStoredSettings } from './settings-schema'
+import { SETTINGS_NOT_SAVED } from './storage-error'
 
-export interface Settings {
-  /**
-   * The visit threshold as it was stored before familiarity had more than one
-   * criterion. Read once, by the migration below, and kept only so that a user
-   * who had set it to 25 does not silently go back to 10 on update.
-   */
-  safety: number
-
-  // What counts as a familiar site – see logic/familiarity.ts
-  familiarity: FamiliaritySettings
-
-  /**
-   * Whether every fact behind a verdict is shown next to the bar it has to clear.
-   *
-   * Off, a check reads `Visits: 3`, and the bar is one hover away in the title.
-   * On, it reads `Visits: 3 / 10`, which answers "how far off is this" without
-   * asking, at the cost of a longer line in a tooltip that is already narrow.
-   * The facts themselves are shown either way – this is only about the bar.
-   */
-  showFamiliarityThresholds: boolean
-
-  // Display settings
-  showBadge: boolean
-
-  /**
-   * Which number the badge draws – see logic/badge.ts. The colour is the whole
-   * familiarity verdict either way, drawn in grey rather than red on a site
-   * whose warnings the user switched off.
-   */
-  badgeContent: BadgeContent
-  changeIcon: boolean
-  showWarningNotification: boolean
-  notificationStyle: 'browser' | 'in-page' | 'both'
-
-  // Warning types
-  showInputWarning: boolean
-  showCopyWarning: boolean
-
-  // Hold a paste on an unfamiliar site until the user confirms it
-  blockPasteOnUnfamiliar: boolean
-
-  // Turn a site's warnings back on once it is familiar – see auto-unsilence.ts
-  autoUnsilenceFamiliar: boolean
-
-  // Language settings
-  selectedLanguage: string
-
-  /**
-   * Which number the related-domain list draws beside each host – see
-   * logic/domain-metric.ts.
-   *
-   * Kept apart from the order below, because the two used to be one setting and
-   * one of its values was `name`: picking alphabetical order therefore had to
-   * choose a number as well, and the only honest answer was to throw the
-   * reader's choice away and go back to visits. What is shown and what it is
-   * sorted by are two questions, so they are two settings.
-   */
-  listMetric: DomainMetric
-  /** Order by the hostname rather than by the number on show. */
-  sortByName: boolean
-  sortOrder: 'asc' | 'desc'
-
-  // Display settings
-  domainCase: 'lower' | 'upper'
-
-  /**
-   * The half of an email address before the @, which gets its own control.
-   *
-   * Upper and lower mean the same thing to a domain, so that one only has two
-   * settings. An account name is a name somebody chose, and the capitals in it
-   * are part of how it was written down, so this one keeps a third position
-   * that leaves it exactly as it arrived. That is the default: the check panel
-   * echoing the address back unchanged is what a reader compares against the
-   * message in front of them.
-   */
-  accountNameCase: 'as-typed' | 'lower' | 'upper'
-  /**
-   * Every label of an address in a frame of its own, the owner's labels in
-   * heavier ones. Most readers do not know a dot is a boundary, and a frame is
-   * hard to miss. Off, the frames go and the owner's labels turn bold, and the
-   * marks on unexpected characters stay either way.
-   */
-  addressFrames: boolean
-  punycodeListMode: 'unicode' | 'ascii'
-
-  // Font size (percentage, 100 = default)
-  popupFontSize: number
-
-  // Theme
-  theme: 'system' | 'light' | 'dark'
-
-  /**
-   * Whether the settings page explains itself.
-   *
-   * On, every setting carries the line that says what it does. Off, those lines
-   * go and the page is a short list of controls. Nothing outside the settings
-   * page reads this – warnings, tooltips and the popup say what they say.
-   */
-  verboseOptions: boolean
-
-  // Link safety settings
-  linkSafety: LinkSafetySettings
-
-  // Anti-tampering exclusions
-  antiTamperingExcludedDomains: string
-
-  // Remote sources for the email lists, one URL per line
-  disposableEmailListUrl: string
-  publicEmailListUrl: string
-
-  // Remote sources for the mail-site mapping, one URL per line. Empty by
-  // default – there is no public list in this shape to point at.
-  mailSiteListUrl: string
-
-  // Third-party lookup links, one `Name | https://…/{domain}` per line. Seeded
-  // with the shipped list as plain text so any entry can be removed. Empty means
-  // no links at all. These are links the user may follow, never requests the
-  // extension makes.
-  lookupServices: string
-}
-
-/** What makes the link check show itself. */
-export type TooltipTrigger = 'hover' | 'click-left' | 'click-right'
-
-export interface LinkSafetySettings {
-  enabled: boolean
-  tooltipTrigger: TooltipTrigger
-  // How long the pointer has to rest on a link before the tooltip appears, in
-  // milliseconds. Only the hover trigger uses it.
-  hoverDelay: number
-  showVisitCount: 'always' | 'never' | 'unfamiliar' | 'familiar'
-  // Shortened URL settings
-  shortUrlMode: 'off' | 'button' | 'auto' // off=disabled, button=resolve on click, auto=resolve automatically
-  shortUrlShowFullUrl: boolean // show full resolved URL or just domain
-  shortUrlTraceChain: boolean // show full redirect chain trace
-  shortUrlResolveAny: boolean // allow resolving ANY url, not just known shorteners
-  shortUrlListUpdateUrl: string // remote URL to fetch updated shortener list
-  scopeMode: 'everywhere' | 'whitelist' | 'blacklist'
-  scopeDomains: string
-}
-
-/**
- * Default sources for the two email lists.
- *
- * Both are plain text, one domain per line, which is what the parser expects –
- * a JSON list would come through as quoted junk. Picked for being maintained
- * and modest in size: the disposable blocklist is the widely used curated one
- * (~8k domains) rather than the 88k-domain aggregate, which would cost far more
- * memory in every tab for a long tail nobody types.
- *
- * Nothing is fetched on its own – these only fill the field, and the user
- * presses Update. Either can be replaced or cleared.
- */
-/**
- * Where the shortener list is topped up from.
- *
- * The same collection the built-in list was taken from, so an update refreshes
- * what shipped rather than mixing in a second opinion. Maintained, plain text,
- * one domain per line with `#` comments – the format the parser already expects.
- *
- * Knowing that a link is shortened is not a verdict about anybody, which is why
- * a list is allowed here at all: it says the destination is hidden, and the
- * extension then offers to resolve it.
- */
-export const DEFAULT_SHORTENER_LIST_URL = 'https://raw.githubusercontent.com/PeterDaveHello/url-shorteners/master/list'
-
-export const DEFAULT_DISPOSABLE_LIST_URL = 'https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/main/disposable_email_blocklist.conf'
-export const DEFAULT_PUBLIC_LIST_URL = 'https://raw.githubusercontent.com/willwhite/freemail/master/data/free.txt'
-
-export const defaultSettings: Settings = {
-  // Legacy visit threshold, superseded by `familiarity` below
-  safety: 10,
-
-  familiarity: defaultFamiliaritySettings,
-
-  // The numbers alone, with the bar behind them left to the title. A tooltip on
-  // a link is the narrowest surface in the extension and the one shown most
-  // often, so it starts at the shorter of the two lines
-  showFamiliarityThresholds: false,
-
-  // Display settings
-  showBadge: true,
-
-  // Visits are the count this extension has always shown, and the one criterion
-  // every record can answer
-  badgeContent: 'visits',
-  changeIcon: false,
-  showWarningNotification: true,
-  notificationStyle: 'in-page',
-
-  // Warning types - both enabled by default
-  showInputWarning: true,
-  showCopyWarning: true,
-
-  // Off by default: it interrupts a real action, so it has to be asked for
-  blockPasteOnUnfamiliar: false,
-
-  // Off by default: a silence is the user's choice, and lifting one is not ours
-  autoUnsilenceFamiliar: false,
-
-  // Language settings
-  selectedLanguage: 'en',
-
-  // The related-domain list: visits are the count it has always drawn, largest first
-  listMetric: 'visits',
-  sortByName: false,
-  sortOrder: 'desc',
-
-  // Display settings
-  domainCase: 'lower',
-  accountNameCase: 'as-typed',
-  addressFrames: true,
-  punycodeListMode: 'unicode',
-
-  // Font size (percentage, 100 = default)
-  popupFontSize: 100,
-
-  // Theme
-  theme: 'system',
-
-  // The settings page explains itself until somebody says they know it by heart
-  verboseOptions: true,
-
-  // Anti-tampering exclusions
-  antiTamperingExcludedDomains: '',
-
-  // Seeded with a maintained source each. Nothing is fetched until the user
-  // presses Update, and clearing a field turns that source off
-  disposableEmailListUrl: DEFAULT_DISPOSABLE_LIST_URL,
-  publicEmailListUrl: DEFAULT_PUBLIC_LIST_URL,
-
-  // Nothing to seed: the mapping of a mail domain to the site it is read on is
-  // not published anywhere, so this stays empty until somebody has a source
-  mailSiteListUrl: '',
-
-  // Seeded with the shipped links, which the user may edit or clear
-  lookupServices: serializeLookupServices(DEFAULT_LOOKUP_SERVICES),
-
-  // Link safety settings
-  linkSafety: {
-    enabled: true,
-
-    // Asked for rather than volunteered: the check appears on the link the user
-    // right-clicked, and never while they are only passing over one. A pointer
-    // crossing a page would otherwise open the tooltip again and again for links
-    // nobody meant to ask about. Hovering is still there for whoever wants it.
-    tooltipTrigger: 'click-right',
-
-    // Only the hover trigger reads this. Deliberately long: hovering is the one
-    // trigger nobody asks for on purpose, so a pointer resting on a link has to
-    // look like a question rather than like crossing the page.
-    hoverDelay: 1500,
-    showVisitCount: 'always',
-    shortUrlMode: 'button',
-    shortUrlShowFullUrl: false,
-    shortUrlTraceChain: false,
-    shortUrlResolveAny: false,
-    shortUrlListUpdateUrl: DEFAULT_SHORTENER_LIST_URL,
-    scopeMode: 'everywhere',
-    scopeDomains: '',
-  },
-}
+export * from './settings-schema'
 
 const settingsStorage = createWebExtensionStorage<Settings>(
   'settings',
@@ -347,7 +85,7 @@ export function editSettingsThroughBackground(): void {
     if (isMessageError(answer))
       throw new Error(answer.error)
     if (!(answer as { success?: boolean })?.success)
-      throw new Error('the settings were not saved')
+      throw new Error(SETTINGS_NOT_SAVED)
   })
 }
 
@@ -382,29 +120,6 @@ export function settingsReady(options: { migrate?: boolean } = {}): Promise<void
   return settingsReadyPromise
 }
 
-/**
- * Read a settings value the way it actually sits in storage.
- *
- * `useWebExtensionStorage` serializes, so the `settings` key holds a JSON string
- * and not an object. Anywhere the raw value is read – a `storage.onChanged`
- * listener above all, where the ref is not what arrives – reaching straight for
- * a field silently yields `undefined` on every one of them, and every comparison
- * between two of those quietly succeeds.
- */
-export function parseStoredSettings(value: unknown): Settings | undefined {
-  if (typeof value === 'string') {
-    try {
-      return JSON.parse(value) as Settings
-    }
-    catch {
-      return undefined
-    }
-  }
-  // An object is accepted as-is: nothing writes one today, but a reader that
-  // breaks the day something does is worse than a type check
-  return typeof value === 'object' && value !== null ? value as Settings : undefined
-}
-
 /** Marks that the shipped text defaults have been put into the settings once. */
 const TEXT_DEFAULTS_SEEDED_KEY = 'textDefaultsSeeded'
 
@@ -414,11 +129,15 @@ const SHORTENER_SOURCE_SEEDED_KEY = 'shortenerSourceSeeded'
 /** Marks that the old single-threshold setting has been carried over. */
 const FAMILIARITY_MIGRATED_KEY = 'familiarityMigrated'
 
+/** Marks that the link settings have been written in their two-part shape. */
+const INTERCEPT_MIGRATED_KEY = 'interceptMigrated'
+
 /** Every one-off pass over the stored settings, in the order they are applied. */
 const MIGRATION_KEYS = [
   TEXT_DEFAULTS_SEEDED_KEY,
   SHORTENER_SOURCE_SEEDED_KEY,
   FAMILIARITY_MIGRATED_KEY,
+  INTERCEPT_MIGRATED_KEY,
 ] as const
 
 /** Fields whose default is content the user is meant to see and may delete. */
@@ -507,6 +226,24 @@ function migrateFamiliarity(draft: Partial<Settings>): boolean {
 }
 
 /**
+ * Write the link settings in their two-part shape, once.
+ *
+ * Every reader already goes through `normalizeLinkSafety`, so this only makes
+ * the stored value say what is being read, a `click-left` turned into a
+ * ticked "unfamiliar site" box among it. Once written, the boxes are what is
+ * stored, and stored boxes win over any trigger beside them. What nothing can
+ * tell apart: another device still on an old version syncing back a blob with
+ * `click-left` and no boxes at all reads exactly like a profile that never
+ * migrated, and ticks the box again.
+ */
+function migrateIntercept(draft: Partial<Settings>): boolean {
+  if (!draft.linkSafety || (draft.linkSafety.intercept && (draft.linkSafety.tooltipTrigger as string) !== 'click-left'))
+    return false
+  draft.linkSafety = normalizeLinkSafety(draft.linkSafety)
+  return true
+}
+
+/**
  * Every one-off pass over the stored settings, as one read and one write.
  *
  * They used to run as three independent fire-and-forget passes, each doing its
@@ -552,6 +289,8 @@ export async function runSettingsMigrations(): Promise<void> {
     changed = seedShortenerSource(draft) || changed
   if (pending.includes(FAMILIARITY_MIGRATED_KEY))
     changed = migrateFamiliarity(draft) || changed
+  if (pending.includes(INTERCEPT_MIGRATED_KEY))
+    changed = migrateIntercept(draft) || changed
 
   if (!changed) {
     await markDone()

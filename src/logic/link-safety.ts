@@ -1,6 +1,9 @@
 import type { FamiliarityStats } from './familiarity'
 import type { LinkSafetySettings } from './storage'
 import punycode from 'punycode'
+import { anchorLabels, isLinkElement, linkHref, withoutWww } from './link-element'
+
+export { anchorLabel, anchorLabels, findAnchorElement, findAnchorFromEvent } from './link-element'
 
 /**
  * What is known about one hostname, cached for the current page session.
@@ -13,6 +16,18 @@ export interface VisitFacts {
   stats: FamiliarityStats
   isSafe: boolean
   ignored: boolean
+  /**
+   * The background could not be asked. Never cached, and never read as safe:
+   * an answer that did not come is a third answer, not a familiar site. A
+   * content script left behind by an extension update, or a background that did
+   * not start, used to wave every link through on exactly that misreading.
+   */
+  unchecked?: boolean
+  /**
+   * The name ends in a suffix the public suffix list knows, see
+   * `hasKnownSuffix`. Only the background holds the list, so it says.
+   */
+  listed?: boolean
 }
 
 const visitCountCache = new Map<string, VisitFacts & { timestamp: number }>()
@@ -66,24 +81,6 @@ export function setCachedVisitCount(hostname: string, data: VisitFacts) {
  */
 export function clearVisitCache() {
   visitCountCache.clear()
-}
-
-/**
- * A hostname without its leading `www.`, as far as telling two names apart goes.
- *
- * The background keeps `www.X` and `X` as one record (`visitKey`), and a link
- * from one to the other is a link within the site. The suffix list `visitKey`
- * uses is too big for a content script, and it is not needed here: both names
- * being compared are real addresses a browser has opened or is about to, so the
- * only case the list guards against – a bare suffix like `co.uk` – cannot come
- * up. The prefix stays when nothing with a dot would be left, so `www.com` is
- * still not `com`.
- */
-function withoutWww(hostname: string): string {
-  let name = hostname.toLowerCase()
-  while (name.startsWith('www.') && name.slice(4).includes('.'))
-    name = name.slice(4)
-  return name
 }
 
 /**
@@ -176,45 +173,6 @@ function canonicalHost(hostname: string): string {
 }
 
 /**
- * What a link says it points at, to somebody looking at the page.
- *
- * Its text where it has any. A link whose whole content is an image has none,
- * and the name on that image is in its `alt` – which is where a button reading
- * `paypal.com` sits when the check only ever read text. `aria-label` and
- * `title` come last for the same reason: both are what the link is announced
- * as, and neither was looked at either.
- */
-export function anchorLabel(anchor: Element | null): string {
-  return anchorLabels(anchor)[0] ?? ''
-}
-
-/**
- * Every name this link goes by, most likely first.
- *
- * A link has more than one, and picking a single one always picks wrong for
- * somebody. `aria-label` is what a screen reader announces and it overrides the
- * text for that reader, while the text is what everybody else sees - so
- * `<a aria-label="paypal.com">Click here</a>` and `<a href="evil">paypal.com</a>`
- * are the same trick told to two different audiences. Both are read, and a name
- * that disagrees with the destination is a mismatch whichever of them it was.
- */
-export function anchorLabels(anchor: Element | null): string[] {
-  if (!anchor)
-    return []
-
-  // The text first, because that is the name on screen and the one every other
-  // surface shows. The rest are read too, but none of them displaces it.
-  const names = [
-    (anchor.textContent || '').trim(),
-    ...Array.from(anchor.querySelectorAll('img')).map(image => (image.getAttribute('alt') || '').trim()),
-    (anchor.getAttribute('aria-label') || '').trim(),
-    (anchor.getAttribute('title') || '').trim(),
-  ]
-
-  return [...new Set(names.filter(Boolean))]
-}
-
-/**
  * Is one of these names the other one, or somewhere inside it?
  *
  * Written out here rather than taken from `domain-boundary`, which reaches for
@@ -247,13 +205,50 @@ function sameSiteOrBelow(a: string, b: string): boolean {
  * and never was, and two tenants of one hosting platform are two sites.
  */
 export function checkAnchorMismatch(anchor: Element | null, hrefHostname: string): { mismatch: boolean, textDomain?: string } {
-  for (const name of anchorLabels(anchor)) {
+  return checkLabelsMismatch(anchorLabels(anchor), hrefHostname)
+}
+
+/** The same check on names read off a link elsewhere, a link in a frame above all. */
+export function checkLabelsMismatch(labels: string[], hrefHostname: string): { mismatch: boolean, textDomain?: string } {
+  for (const name of labels) {
     const result = checkDomainMismatch(name, hrefHostname)
     if (result.mismatch)
       return result
   }
 
   return { mismatch: false }
+}
+
+/**
+ * Names a project's files go by, which read like domains to the pattern.
+ *
+ * `README.md` and `setup.py` end in real country suffixes (Moldova,
+ * Paraguay), so the suffix list lets them through, and a repository page is
+ * full of links whose text is a file name. Only the stems files are actually
+ * called, so a link reading `allegro.pl` or `shop.md` is still compared.
+ */
+const FILE_STEMS = new Set(['readme', 'license', 'licence', 'changelog', 'changes', 'contributing', 'authors', 'copying', 'notice', 'security', 'setup', 'main', 'index', 'app', 'manage', 'requirements', 'package', 'cargo', 'makefile', 'dockerfile', 'config', 'settings', 'install', 'build', 'test', 'tests', 'todo', 'history', 'news', 'lib', 'mod'])
+const FILE_EXTENSIONS = new Set(['md', 'py', 'rs', 'sh', 'pl', 'cc', 'rb', 'go', 'mk'])
+
+export function isFileLikeName(name: string): boolean {
+  const labels = name.toLowerCase().split('.')
+  return labels.length === 2 && FILE_STEMS.has(labels[0]) && FILE_EXTENSIONS.has(labels[1])
+}
+
+/**
+ * Whether the text of a link names a site, so that a link going elsewhere is
+ * a red flag rather than a page linking a file.
+ *
+ * The name has to be one the internet knows (its suffix is on the public
+ * suffix list, which only the background holds) or one the user knows, and not
+ * a file name. A background that could not be asked says neither, and then the
+ * text is taken at its word: that is the side a warning should err on. `.zip`
+ * and `.mov` are real suffixes bought for exactly this, and stay in.
+ */
+export function namesASite(textDomain: string, facts: Pick<VisitFacts, 'listed' | 'isSafe' | 'unchecked'>): boolean {
+  if (isFileLikeName(textDomain))
+    return false
+  return Boolean(facts.unchecked || facts.listed || facts.isSafe)
 }
 
 export function checkDomainMismatch(linkText: string, hrefHostname: string): { mismatch: boolean, textDomain?: string } {
@@ -363,12 +358,11 @@ export interface ContextLinkSnapshot {
 /**
  * Take the snapshot for one anchor, or null when there is nothing to check.
  *
- * An SVG `<a>` matches `a[href]` too, and its `href` is an object rather than a
- * string, so the type is tested rather than assumed.
+ * An SVG `<a>` and an `<area>` are links too, read through `linkHref`.
  */
 export function snapshotContextLink(anchor: Element | null): ContextLinkSnapshot | null {
-  const href = (anchor as HTMLAnchorElement | null)?.href
-  if (typeof href !== 'string' || !href)
+  const href = isLinkElement(anchor) ? linkHref(anchor) : ''
+  if (!href)
     return null
   const hostname = getHostnameFromHref(href)
   if (!hostname)
@@ -394,40 +388,6 @@ export function contextLinkTextDomain(
   if (!snapshot || (frameId !== undefined && frameId !== 0))
     return null
   return snapshot.href === url ? snapshot.textDomain : null
-}
-
-/**
- * Find the closest `<a>` element behind an event.
- *
- * Takes the event rather than its target on purpose. A link inside a custom
- * element's shadow root retargets: `event.target` is the element that owns the
- * shadow root, not the anchor inside it, and `closest('a')` from there finds
- * nothing at all. `composedPath()` is the list of nodes the event actually
- * travelled through, shadow boundaries included, so the anchor is in it.
- *
- * A closed shadow root does not appear in the path, and there is nothing to be
- * done about that from a content script. It is a limitation, not an oversight.
- */
-export function findAnchorFromEvent(event: Event): HTMLAnchorElement | null {
-  const path = typeof event.composedPath === 'function' ? event.composedPath() : []
-  for (const node of path) {
-    if (node instanceof Element && node.matches?.('a[href]'))
-      return node as HTMLAnchorElement
-  }
-
-  return findAnchorElement(event.target)
-}
-
-/**
- * Find the closest `<a>` element from an event target.
- *
- * The fallback for a caller with no event to hand. Prefer `findAnchorFromEvent`,
- * which also sees through an open shadow root.
- */
-export function findAnchorElement(target: EventTarget | null): HTMLAnchorElement | null {
-  if (!target || !(target instanceof Element))
-    return null
-  return target.closest('a[href]') as HTMLAnchorElement | null
 }
 
 /**

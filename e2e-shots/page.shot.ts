@@ -122,7 +122,7 @@ test('link tooltip, QR code with no link in it', async ({ page, context, shot })
 // ==========================================
 
 test('link dialog on click', async ({ page, context, shot }) => {
-  await patchSettings(context, { linkSafety: { tooltipTrigger: 'click-left' } })
+  await patchSettings(context, { linkSafety: { intercept: { unfamiliar: true } } })
   await openSite(page, SITE, linkPage('<a id="l" href="https://never-seen-before.test/offer">Claim your offer</a>'))
   await page.locator('#l').click()
   await waitForUi(page, t('linkInterceptTitle'))

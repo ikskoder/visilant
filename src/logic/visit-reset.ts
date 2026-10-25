@@ -1,7 +1,7 @@
 import type { SiteVisitData } from './storage'
 import { visitKey } from './domain-boundary'
 import { FAMILIAR_INDEX_KEY } from './familiar-index'
-import { HISTORY_IMPORT_STATE_KEY } from './history-import'
+import { HISTORY_IMPORT_STATE_KEY, QUICK_IMPORT_KEY } from './history-import'
 
 /**
  * Which of the `storage.local` keys "delete my visits" is allowed to touch.
@@ -23,6 +23,8 @@ import { HISTORY_IMPORT_STATE_KEY } from './history-import'
 const VISIT_DERIVED_KEYS: readonly string[] = [
   FAMILIAR_INDEX_KEY,
   HISTORY_IMPORT_STATE_KEY,
+  // Counts from before the wipe, which a later full pass would otherwise put back
+  QUICK_IMPORT_KEY,
 ]
 
 /**

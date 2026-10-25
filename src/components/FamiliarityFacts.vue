@@ -54,16 +54,16 @@ const summary = computed(() => summaryFor(props.stats))
             {{ fact.label }}
           </th>
           <td class="vz-fact__value" :class="{ 'vz-fact__value--none': !fact.known }" :data-criterion="fact.id">
-            <FactText :text="fact.value" />
+            {{ fact.value }}
           </td>
           <td class="vz-fact__need" :data-required="fact.id">
-            <FactText :text="fact.required" />
+            {{ fact.required }}
           </td>
         </tr>
 
         <!-- Bold, because this row is the conclusion and the ones above it are
              the working that led there -->
-        <tr v-if="summary" class="font-bold" :title="summary.title">
+        <tr v-if="summary" class="vz-fact--total" :title="summary.title">
           <td class="familiarity-mark">
             <VzIcon :name="summary.met ? 'pass' : 'fail'" :label="t(summary.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="summary.met ? 'tone-safe' : 'tone-danger'" data-passed="checks" :data-result="summary.met ? 'pass' : 'fail'" />
           </td>
@@ -89,10 +89,10 @@ const summary = computed(() => summaryFor(props.stats))
       <li v-for="fact in facts" :key="fact.id" class="vz-fact" :title="fact.title">
         <VzIcon :name="fact.met ? 'pass' : 'fail'" :label="t(fact.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="fact.met ? 'tone-safe' : 'tone-danger'" :data-passed="fact.id" :data-result="fact.met ? 'pass' : 'fail'" />
         <span class="vz-fact__label">{{ fact.label }}</span>
-        <span class="vz-fact__value" :class="{ 'vz-fact__value--none': !fact.known }" :data-criterion="fact.id"><FactText :text="fact.value" /></span>
+        <span class="vz-fact__value" :class="{ 'vz-fact__value--none': !fact.known }" :data-criterion="fact.id">{{ fact.value }}</span>
       </li>
 
-      <li v-if="summary" class="vz-fact font-bold" :title="summary.title">
+      <li v-if="summary" class="vz-fact vz-fact--total" :title="summary.title">
         <VzIcon :name="summary.met ? 'pass' : 'fail'" :label="t(summary.met ? 'familiarityFactPassed' : 'familiarityFactFailed')" :class="summary.met ? 'tone-safe' : 'tone-danger'" data-passed="checks" :data-result="summary.met ? 'pass' : 'fail'" />
         <span class="vz-fact__label">{{ t('badgeContentChecks') }}</span>
         <span class="vz-fact__value" data-criterion="checks">{{ summary.combined }}</span>

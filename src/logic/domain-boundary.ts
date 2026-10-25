@@ -1,4 +1,4 @@
-import { getDomain, getPublicSuffix } from 'tldts'
+import { getDomain, getPublicSuffix, parse } from 'tldts'
 
 /**
  * Where one owner's site stops and the next one's begins.
@@ -20,6 +20,25 @@ import { getDomain, getPublicSuffix } from 'tldts'
  * switched on. Two tenants of one platform are two sites, which is what they are.
  */
 const BOUNDARY = { allowPrivateDomains: true } as const
+
+const RESERVED_SUFFIXES = new Set(['test', 'example', 'invalid', 'localhost'])
+
+/**
+ * Whether the name ends in a suffix the public suffix list knows, which is what
+ * a name has to do to be somebody's address on the internet at all.
+ *
+ * `config.yaml` and `index.html` read like domains to a pattern and are
+ * file names, and a link whose text is a file name is not naming another site.
+ */
+export function hasKnownSuffix(hostname: string): boolean {
+  // Set aside for testing and examples (RFC 2606, RFC 6761) and so on no list.
+  // Nobody can register one, but text reading `bank.test` still names a site
+  // to the person reading it, and every test page here is built from them.
+  if (RESERVED_SUFFIXES.has(hostname.toLowerCase().replace(/\.$/, '').split('.').pop() ?? ''))
+    return true
+  const result = parse(hostname, BOUNDARY)
+  return result.isIcann === true || result.isPrivate === true
+}
 
 /**
  * The site a hostname belongs to, or null when there is no site to speak of.

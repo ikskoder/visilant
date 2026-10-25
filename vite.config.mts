@@ -10,7 +10,7 @@ import Icons from 'unplugin-icons/vite'
 import Components from 'unplugin-vue-components/vite'
 import { defineConfig } from 'vite'
 import packageJson from './package.json'
-import { isDev, port, r } from './scripts/utils'
+import { isDev, out, port, r } from './scripts/utils'
 
 /**
  * The oldest browsers this build compiles for.
@@ -111,7 +111,7 @@ export default defineConfig(({ command }) => ({
     watch: isDev
       ? {}
       : undefined,
-    outDir: r('extension/dist'),
+    outDir: out('dist'),
     emptyOutDir: false,
     sourcemap: isDev ? 'hidden' : false,
     rolldownOptions: {

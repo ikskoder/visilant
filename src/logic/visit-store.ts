@@ -107,8 +107,19 @@ export async function updateVisitRecord(
  */
 export async function updateVisitRecords(
   hostnames: string[],
-  update: (hostname: string, existing: SiteVisitData | undefined) => SiteVisitData | undefined,
-  options: { generation?: number } = {},
+  update: (hostname: string, existing: SiteVisitData | undefined, stored: Record<string, unknown>) => SiteVisitData | undefined,
+  options: {
+    generation?: number
+    /** Other keys the update needs to see, read in the same step. */
+    alsoRead?: string[]
+    /**
+     * Other keys to write with the records, in the same `set`. Whatever has to
+     * agree with the records goes here: written separately it could land after
+     * a reset that had already cleared it, or be lost to a worker stopped
+     * between the two writes.
+     */
+    alongside?: (stored: Record<string, unknown>) => Record<string, unknown>
+  } = {},
 ): Promise<number> {
   const decidedAt = options.generation ?? generation
   if (!hostnames.length)
@@ -118,18 +129,19 @@ export async function updateVisitRecords(
     if (decidedAt !== generation)
       return 0
 
-    const stored = await browser.storage.local.get(hostnames)
-    const payload: Record<string, SiteVisitData> = {}
+    const stored = await browser.storage.local.get([...hostnames, ...(options.alsoRead ?? [])])
+    const payload: Record<string, unknown> = {}
     for (const hostname of hostnames) {
-      const next = update(hostname, stored[hostname] as SiteVisitData | undefined)
+      const next = update(hostname, stored[hostname] as SiteVisitData | undefined, stored)
       if (next)
         payload[hostname] = next
     }
+    const written = Object.keys(payload).length
+    Object.assign(payload, options.alongside?.(stored))
 
-    const keys = Object.keys(payload)
-    if (keys.length)
+    if (Object.keys(payload).length)
       await browser.storage.local.set(payload)
-    return keys.length
+    return written
   })
 }
 

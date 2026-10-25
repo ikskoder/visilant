@@ -89,7 +89,9 @@ export async function getManifest() {
     permissions: [
       'tabs',
       'storage',
-      'activeTab',
+      // No `activeTab`: the host permission for every site already covers each
+      // thing it would grant, and a permission nothing uses is one more for a
+      // reviewer to ask about
       'notifications',
       'contextMenus',
       // Required rather than optional: an empty profile treats every site as

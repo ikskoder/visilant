@@ -34,11 +34,26 @@ interface BoundedOptions {
   maxBytes?: number
   /** Rejects a response whose content type is not wanted, before any of it is read. */
   accept?: (contentType: string) => boolean
+  /**
+   * Leave fetch's own credentials mode as it was instead of sending no cookies.
+   * A list host has no business knowing who fetched its list, so none is the
+   * default. The one caller that keeps the old mode is the right-clicked image,
+   * which the user pointed at, so its fetch was left exactly as it behaved
+   * before. Whether that mode reaches an image behind a login (a webmail
+   * attachment) has not been measured.
+   */
+  browserCookies?: boolean
 }
 
 async function boundedResponse(url: string, options: BoundedOptions): Promise<{ response: Response, maxBytes: number }> {
   const maxBytes = options.maxBytes ?? MAX_LIST_BYTES
-  const response = await fetch(url, { signal: AbortSignal.timeout(options.timeoutMs ?? FETCH_TIMEOUT_MS) })
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(options.timeoutMs ?? FETCH_TIMEOUT_MS),
+    ...(options.browserCookies ? {} : { credentials: 'omit' as const }),
+    // From the background the referrer is the extension's own page, which
+    // names the extension and, in Chrome, its fixed id
+    referrerPolicy: 'no-referrer',
+  })
   if (!response.ok)
     throw new Error(`HTTP ${response.status}`)
 

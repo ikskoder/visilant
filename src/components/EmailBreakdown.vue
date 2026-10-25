@@ -6,6 +6,7 @@ import SecureText from '~/components/SecureText.vue'
 import { useI18n } from '~/composables/useI18n'
 import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { findEmbeddedPublicSuffix } from '~/logic/domain-markers'
+import { isListedPublicOnlyRemotely } from '~/logic/email-providers'
 import { settings } from '~/logic/storage'
 
 const props = defineProps<{
@@ -71,8 +72,28 @@ const showSuspiciousPattern = computed(() => Boolean(props.analysis.suspiciousPa
 
 const MAX_PARAM_VALUE_LENGTH = 200
 
+/**
+ * The fields a mail program fills in, named as words. Matched without regard to
+ * case, as mail programs read them (RFC 6068), or `Subject=` would stay raw
+ * beside a translated "Subject". Anything else keeps the name the link gave it.
+ */
+const FIELD_KEYS: Record<string, string> = {
+  to: 'emailFieldTo',
+  cc: 'emailFieldCc',
+  bcc: 'emailFieldBcc',
+  subject: 'emailFieldSubject',
+  body: 'emailFieldBody',
+}
+
+// Own keys only: a page writes the link, and `?constructor=x` would otherwise
+// find `Object` on the prototype and print it as the field's name
+function fieldName(key: string): string {
+  const lower = key.toLowerCase()
+  return Object.hasOwn(FIELD_KEYS, lower) ? t.value(FIELD_KEYS[lower]) : key
+}
+
 const displayParams = computed(() => props.params.map(({ key, value }) => ({
-  key,
+  key: fieldName(key),
   value: value.length > MAX_PARAM_VALUE_LENGTH ? `${value.slice(0, MAX_PARAM_VALUE_LENGTH)}…` : value,
 })))
 </script>
@@ -140,6 +161,11 @@ const displayParams = computed(() => props.params.map(({ key, value }) => ({
     <!-- Provider hints: judge the name, not the domain / throwaway warning -->
     <VzNotice v-if="providerKind === 'public'" tone="neutral" icon="email" :bare="compact">
       {{ t('emailPublicProviderHint') }}
+    </VzNotice>
+    <!-- Only the downloaded list says so, which is not enough to lift the
+         verdict, see `remotePublicSet` -->
+    <VzNotice v-else-if="providerKind === 'regular' && isListedPublicOnlyRemotely(analysis.domain)" tone="neutral" icon="email" :bare="compact" data-status="listed-public">
+      {{ t('emailRemotePublicHint') }}
     </VzNotice>
     <VzNotice v-else-if="providerKind === 'disposable'" tone="danger" :bare="compact">
       {{ t('emailDisposableHint') }}

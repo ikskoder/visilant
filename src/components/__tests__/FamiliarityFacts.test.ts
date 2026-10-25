@@ -109,6 +109,15 @@ describe('familiarityFacts component', () => {
     expect(wrapper.html()).toContain('statsImportHint')
   })
 
+  // Never visited is not a gap in a record, there is no record at all yet
+  it('says none yet for a site never visited, with no import hint', () => {
+    configure()
+    const wrapper = mount(FamiliarityFacts, { props: { stats: { count: 0 } } })
+    expect(wrapper.text()).toContain('statsNoneYet')
+    expect(wrapper.text()).not.toContain('statsUnknown')
+    expect(wrapper.html()).not.toContain('statsImportHint')
+  })
+
   it('marks a passed check apart from a failed one', () => {
     configure()
     const wrapper = mount(FamiliarityFacts, {
@@ -129,7 +138,7 @@ describe('familiarityFacts component', () => {
     configure({ familiarity: { mode: 'any' } })
     const wrapper = mount(FamiliarityFacts, { props })
     expect(wrapper.text()).toContain('badgeContentChecks')
-    expect(wrapper.find('[data-criterion="checks"]').text()).toBe('1 / 3')
+    expect(wrapper.find('[data-criterion="checks"]').text()).toBe('1 / 1')
   })
 
   // The tally is the conclusion and the checks above it are the working, so it
@@ -139,7 +148,7 @@ describe('familiarityFacts component', () => {
     const wrapper = mount(FamiliarityFacts, { props: { stats: { count: 50 } } })
     const tally = wrapper.find('[data-criterion="checks"]')
     const line = thresholds ? tally.element.closest('tr') : tally.element.parentElement
-    expect(line?.className).toContain('font-bold')
+    expect(line?.className).toContain('vz-fact--total')
   })
 
   // The verdict is the answer and the facts are the working, so it goes first,

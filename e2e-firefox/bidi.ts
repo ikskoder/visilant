@@ -114,8 +114,8 @@ export class Firefox {
     return (await this.send('browsingContext.getTree', {})).contexts
   }
 
-  /** A real click at a point in the viewport, which counts as the user's. */
-  async clickAt(context: string, x: number, y: number) {
+  /** A real click at a point in the viewport, which counts as the user's. 1 is the middle button. */
+  async clickAt(context: string, x: number, y: number, button = 0) {
     await this.send('input.performActions', {
       context,
       actions: [{
@@ -124,12 +124,24 @@ export class Firefox {
         parameters: { pointerType: 'mouse' },
         actions: [
           { type: 'pointerMove', x: Math.round(x), y: Math.round(y), origin: 'viewport' },
-          { type: 'pointerDown', button: 0 },
-          { type: 'pointerUp', button: 0 },
+          { type: 'pointerDown', button },
+          { type: 'pointerUp', button },
         ],
       }],
     })
     await this.send('input.releaseActions', { context })
+  }
+
+  /** Press keys one after another, by WebDriver key value (Tab is \uE004, Enter \uE007). */
+  async press(context: string, keys: string[]) {
+    await this.send('input.performActions', {
+      context,
+      actions: [{
+        type: 'key',
+        id: 'keyboard',
+        actions: keys.flatMap(key => [{ type: 'keyDown', value: key }, { type: 'keyUp', value: key }]),
+      }],
+    })
   }
 
   async type(context: string, text: string) {

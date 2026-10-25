@@ -150,6 +150,66 @@ export function createWebExtensionStorage<T>(
     return typeof rawInit === 'object' && rawInit !== null ? structuredClone(rawInit) : rawInit
   }
 
+  /**
+   * The keys this context has sent through `commitVia` and not yet seen come
+   * back, each with the value sent. `resolved` once the writer has answered,
+   * which means it has stored the value, so any change event read after that
+   * already reflects it.
+   */
+  const sent = new Map<string, { value: string, resolved: boolean }>()
+
+  /**
+   * A stored value that arrived while this context had edits not yet saved,
+   * with those edits laid back over it.
+   *
+   * A save is a round trip, and the change event of one save can arrive before
+   * the next has left, carrying the value as it was when the first one did. Put
+   * in the ref whole, it took back every edit made meanwhile, and since the ref
+   * then matched storage the queued save found nothing to do: a setting typed
+   * in while the one next to it was saving was gone from the page and from
+   * storage. Kept per top-level key of an object, so a change another context
+   * made to a different key still comes through. A key is this context's own
+   * while it differs from the value last agreed with storage, or while a value
+   * sent for it is still on its way, which also covers an edit put back to
+   * what storage held before.
+   */
+  async function keepUnsaved(incoming: T): Promise<T> {
+    const local = data.value
+    const isRecord = (value: unknown): value is Record<string, unknown> =>
+      typeof value === 'object' && value !== null && !Array.isArray(value)
+    if (!isRecord(incoming) || !isRecord(local)) {
+      sent.clear()
+      if (settled === null || await serializer.write(local) === settled)
+        return incoming
+      return local
+    }
+
+    const own = new Set<string>()
+    for (const [name, entry] of sent) {
+      // Edited again since it was sent, which no stored value can answer for
+      if (JSON.stringify(local[name]) !== entry.value)
+        own.add(name)
+      if (entry.resolved || JSON.stringify(incoming[name]) === entry.value)
+        sent.delete(name)
+      else own.add(name)
+    }
+    if (settled !== null) {
+      const base = await serializer.read(settled) as unknown
+      if (isRecord(base)) {
+        for (const name of Object.keys(local)) {
+          if (JSON.stringify(local[name]) !== JSON.stringify(base[name]))
+            own.add(name)
+        }
+      }
+    }
+    if (!own.size)
+      return incoming
+    const merged: Record<string, unknown> = { ...incoming }
+    for (const name of own)
+      merged[name] = local[name]
+    return merged as T
+  }
+
   async function read(event?: { key: string, newValue: string | null }) {
     if (event && event.key !== key)
       return
@@ -178,18 +238,22 @@ export function createWebExtensionStorage<T>(
       }
       else if (mergeDefaults) {
         const value = await serializer.read(rawValue) as T
+        let incoming: T
         if (typeof mergeDefaults === 'function')
-          data.value = mergeDefaults(value, rawInit)
+          incoming = mergeDefaults(value, rawInit)
         else if (type === 'object' && !Array.isArray(value))
-          data.value = { ...(cloneInit() as Record<keyof unknown, unknown>), ...(value as Record<keyof unknown, unknown>) } as T
-        else data.value = value
+          incoming = { ...(cloneInit() as Record<keyof unknown, unknown>), ...(value as Record<keyof unknown, unknown>) } as T
+        else incoming = value
         // The merged object, not the raw string: a merge that only filled in
         // keys the profile never stored is not an edit, and used to be written
         // back by every document that opened.
-        settled = await serializer.write(data.value)
+        const incomingText = await serializer.write(incoming)
+        data.value = event ? await keepUnsaved(incoming) : incoming
+        settled = incomingText
       }
       else {
-        data.value = await serializer.read(rawValue) as T
+        const incoming = await serializer.read(rawValue) as T
+        data.value = event ? await keepUnsaved(incoming) : incoming
         settled = rawValue
       }
     }
@@ -223,15 +287,51 @@ export function createWebExtensionStorage<T>(
 
       const serialized = await serializer.write(data.value)
       // Nothing changed – most often this is a hydration coming back round
-      if (serialized === settled)
+      if (serialized === settled && !sent.size)
         return
 
       if (commitVia) {
         // The writer elsewhere decides what the stored value becomes, so
         // nothing is recorded as settled here: the change event brings back
         // what was actually stored, this context's edit merged into it.
-        const stored = settled === null ? null : await serializer.read(settled) as T
-        await commitVia(data.value, stored)
+        // Compared with what was last sent rather than what was last stored,
+        // so a key put back while its first save is on its way is sent again.
+        let stored = settled === null ? null : await serializer.read(settled) as T
+        if (stored !== null && typeof stored === 'object' && sent.size) {
+          stored = { ...stored }
+          for (const [name, entry] of sent)
+            (stored as Record<string, unknown>)[name] = JSON.parse(entry.value)
+        }
+        const next = data.value
+        const entries: { value: string, resolved: boolean }[] = []
+        if (next !== null && typeof next === 'object' && !Array.isArray(next)) {
+          for (const [name, value] of Object.entries(next)) {
+            const text = JSON.stringify(value)
+            if (stored === null || text !== JSON.stringify((stored as Record<string, unknown>)[name])) {
+              const entry = { value: text, resolved: false }
+              sent.set(name, entry)
+              entries.push(entry)
+            }
+          }
+        }
+        try {
+          await commitVia(next, stored)
+        }
+        catch (error) {
+          // Nothing of it was stored, so nothing of it is on its way. And
+          // `settled` stays: storage is as it was, and forgetting it made the
+          // next save send every key, putting this page's stale copy of a
+          // setting another page had just changed over that change.
+          for (const [name, entry] of sent) {
+            if (entries.includes(entry))
+              sent.delete(name)
+          }
+          writeError.value = error
+          onError(error)
+          return
+        }
+        for (const entry of entries)
+          entry.resolved = true
         writeError.value = null
         return
       }

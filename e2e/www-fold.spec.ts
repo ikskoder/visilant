@@ -11,7 +11,7 @@ const FLAG = '__visilantWwwFolded'
 
 /** Link checking on, stopping a click on a link to somewhere unfamiliar. */
 const CLICK_LEFT = {
-  linkSafety: { enabled: true, tooltipTrigger: 'click-left', hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
+  linkSafety: { enabled: true, tooltipTrigger: 'click-right', intercept: { unfamiliar: true, shortLinks: true, redFlags: true, minRedFlags: 1 }, hoverDelay: 1500, showVisitCount: 'always', shortUrlMode: 'off', shortUrlShowFullUrl: false, shortUrlTraceChain: false, shortUrlResolveAny: false, shortUrlListUpdateUrl: '', scopeMode: 'everywhere', scopeDomains: '' },
 }
 
 /**

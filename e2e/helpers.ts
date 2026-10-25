@@ -132,3 +132,42 @@ export async function waitForAutoImport(context: any) {
 
   throw new Error(`the install-time import never settled, last state: ${previous}`)
 }
+
+/**
+ * Every piece of text on the page, closed shadow roots included.
+ *
+ * The in-page interface lives in a closed shadow root in a production build,
+ * which is what the suite runs against, and no locator reaches into one. The
+ * DevTools protocol does, so the dialog is read the way the inspector reads it.
+ */
+export async function allText(page: any): Promise<string> {
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true })
+    const parts: string[] = []
+    const walk = (node: any) => {
+      if (node.nodeType === 3 && node.nodeValue)
+        parts.push(node.nodeValue)
+      for (const child of node.children ?? [])
+        walk(child)
+      for (const child of node.shadowRoots ?? [])
+        walk(child)
+    }
+    walk(root)
+    return parts.join(' ')
+  }
+  finally {
+    await cdp.detach()
+  }
+}
+
+/**
+ * Do what a person does on a page, which is what counts it as a visit.
+ *
+ * A page that only finished loading is not a visit any more – a site reloading
+ * itself in a background tab used to make itself familiar that way – so a test
+ * that wants one has to use the page. A click on empty space does nothing else.
+ */
+export async function usePage(page: any) {
+  await page.mouse.click(5, 5)
+}

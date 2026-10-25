@@ -3,6 +3,7 @@ import VzIcon from '~/components/VzIcon.vue'
 import VzSig from '~/components/VzSig.vue'
 import { useI18n } from '~/composables/useI18n'
 import { useTopLayer } from '~/composables/useTopLayer'
+import { useVisualViewport } from '~/composables/useVisualViewport'
 
 const props = defineProps<{
   safetyLevel: boolean | null
@@ -16,59 +17,77 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
+// No facts, no address and no button that acts on the site. The warning points
+// to the toolbar popup instead, deliberately: anything drawn inside a page can be
+// drawn by the page too, a fake "familiar site" box included, while the popup is
+// the one surface it cannot imitate. A "stop warning here" button was tried and
+// taken out – a site can talk a reader into pressing whatever appears on top of
+// it. Putting the address and the red flags in this box would only teach people
+// to trust a box the page could paint.
+
 // Above anything the page can lay over it, without blocking the page – see
 // `useTopLayer`
 const layer = useTopLayer({
   mode: 'popover',
   visible: () => props.show && props.safetyLevel === false,
 })
+
+// Over what is on the screen rather than the layout viewport, see
+// `viewportCoverStyle`. The typing warning is raised as a field takes the
+// focus, which is exactly when a phone zooms in on the field.
+const cover = useVisualViewport(() => props.show && props.safetyLevel === false)
 </script>
 
 <template>
   <Transition name="slide-fade" appear @enter="layer.enter">
-    <!-- `left-auto bottom-auto`: a popover is pinned to all four edges until told otherwise -->
+    <!-- The popover is the whole visible area and lets every press through to
+         the page. The toast sits in its top right corner and takes its own. -->
     <div
       v-if="show && safetyLevel === false"
       popover="manual"
-      class="vz-layer fixed top-4 right-4 left-auto bottom-auto z-[2147483647] pointer-events-auto popup-container vz-overlay vz-toast vz-toast--danger"
-      role="alert"
-      data-verdict="unfamiliar"
+      class="vz-layer z-[2147483647] pointer-events-none"
+      :style="cover"
     >
-      <!-- A tinted band carries the warning. No pulsing frame and no glow: they
+      <div
+        class="absolute top-4 right-4 pointer-events-auto popup-container vz-overlay vz-toast vz-toast--danger"
+        role="alert"
+        data-verdict="unfamiliar"
+      >
+        <!-- A tinted band carries the warning. No pulsing frame and no glow: they
            drew the eye to the box, not to what it says. -->
-      <div class="vz-toast__head">
-        <VzIcon name="alert" large class="tone-danger" />
-        <h3 class="vz-title">
-          {{ t('securityWarning') }}
-        </h3>
-        <button
-          class="vz-iconbtn"
-          :aria-label="t('dismiss')"
-          :title="t('dismiss')"
-          @click="emit('close')"
-        >
-          <VzIcon name="close" />
-        </button>
-      </div>
+        <div class="vz-toast__head">
+          <VzIcon name="alert" large class="tone-danger" />
+          <h3 class="vz-title">
+            {{ t('securityWarning') }}
+          </h3>
+          <button
+            class="vz-iconbtn"
+            :aria-label="t('dismiss')"
+            :title="t('dismiss')"
+            @click="emit('close')"
+          >
+            <VzIcon name="close" />
+          </button>
+        </div>
 
-      <div class="vz-toast__body">
-        <p class="vz-body-strong">
-          <template v-if="warningType === 'input'">
-            {{ t('inputWarningMessage') }}
-          </template>
-          <template v-else>
-            {{ t('copyWarningMessage') }}
-          </template>
-        </p>
-        <!-- Typing is about which site this is, and the message itself sends
+        <div class="vz-toast__body">
+          <p class="vz-body-strong">
+            <template v-if="warningType === 'input'">
+              {{ t('inputWarningMessage') }}
+            </template>
+            <template v-else>
+              {{ t('copyWarningMessage') }}
+            </template>
+          </p>
+          <!-- Typing is about which site this is, and the message itself sends
              the reader to the toolbar window for that. Copying is about what
              ended up in the clipboard, which no check of the address can tell. -->
-        <ul v-if="warningType === 'copy'" class="toast-list vz-body">
-          <li>{{ t('avoidShell') }}</li>
-          <li>{{ t('verifyContent') }}</li>
-        </ul>
+          <ul v-if="warningType === 'copy'" class="toast-list vz-body">
+            <li>{{ t('avoidShell') }}</li>
+            <li>{{ t('verifyContent') }}</li>
+          </ul>
 
-        <!--
+          <!--
           A line, and deliberately not a button.
 
           This used to be "Don't show again", one click from silencing every
@@ -84,10 +103,11 @@ const layer = useTopLayer({
           than at the page's. The last sentence is here to be read at exactly
           the moment such an instruction would be.
         -->
-        <p class="vz-small">
-          {{ t('warningSilenceHint') }}
-        </p>
-        <VzSig />
+          <p class="vz-small">
+            {{ t('warningSilenceHint') }}
+          </p>
+          <VzSig />
+        </div>
       </div>
     </div>
   </Transition>
@@ -95,7 +115,7 @@ const layer = useTopLayer({
 
 <style scoped>
 .popup-container {
-  width: min(400px, calc(100vw - 32px));
+  width: min(400px, calc(var(--vz-vw, 100vw) - 32px));
   max-width: none;
 }
 

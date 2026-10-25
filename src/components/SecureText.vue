@@ -132,8 +132,12 @@ function transform(char: string, account: boolean): string {
 /**
  * One label's characters as runs: plain characters merged, every marked one on
  * its own. `start` is the code point position of the first one, for `diff`.
+ *
+ * `encoded` is a label in its `xn--` form, whose digits are part of the
+ * encoding rather than digits anybody wrote. Coloured, they read as a warning
+ * about characters that are not there.
  */
-function runsOf(chars: string[], start: number, mode: 'host' | 'account' | 'raw'): Run[] {
+function runsOf(chars: string[], start: number, mode: 'host' | 'account' | 'raw', encoded = false): Run[] {
   const runs: Run[] = []
   const diff = props.diff ?? []
   const translate = t.value
@@ -157,7 +161,9 @@ function runsOf(chars: string[], start: number, mode: 'host' | 'account' | 'raw'
       classes.push('vz-ch--foreign')
       title = translate(mode === 'host' ? 'addressCharNotPlain' : 'addressCharNotAscii').replace('$1', codePointName(char))
     }
-    else if (mode !== 'raw' && DIGIT.test(char)) {
+    // A changed digit carries only the mark for the change: red and the digit
+    // colour on one character read as two different warnings
+    else if (mode !== 'raw' && !changed && !encoded && DIGIT.test(char)) {
       classes.push('vz-ch--digit')
     }
 
@@ -227,7 +233,7 @@ const model = computed<Model>(() => {
   const suffix = Math.min(shape?.suffixLabels ?? 0, owned)
 
   const segments: Segment[] = labels.map((label, index) => {
-    const runs = runsOf(label, position, 'host')
+    const runs = runsOf(label, position, 'host', label.slice(0, 4).join('').toLowerCase() === 'xn--')
     position += label.length
     const sepChar = seps[index]
     let sep: Run | undefined

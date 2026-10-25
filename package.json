@@ -12,7 +12,7 @@
   },
   "scripts": {
     "dev": "npm run clear && cross-env NODE_ENV=development run-p dev:prepare dev:background dev:js dev:frame dev:clipboard dev:build",
-    "dev-firefox": "npm run clear && cross-env NODE_ENV=development EXTENSION=firefox run-p dev:prepare dev:background dev:js dev:frame dev:clipboard dev:build",
+    "dev-firefox": "npm run clear-firefox && cross-env NODE_ENV=development EXTENSION=firefox run-p dev:prepare dev:background dev:js dev:frame dev:clipboard dev:build",
     "dev:prepare": "esno scripts/prepare.ts",
     "dev:background": "npm run build:background -- --mode development",
     "dev:server": "vite",
@@ -21,7 +21,7 @@
     "dev:frame": "npm run build:frame -- --mode development",
     "dev:clipboard": "npm run build:clipboard -- --mode development",
     "build": "cross-env NODE_ENV=production run-s clear build:web build:prepare build:background build:js build:frame build:clipboard",
-    "build-firefox": "cross-env EXTENSION=firefox NODE_ENV=production run-s clear build:web build:prepare build:background build:js build:frame build:clipboard",
+    "build-firefox": "cross-env EXTENSION=firefox NODE_ENV=production run-s clear-firefox build:web build:prepare build:background build:js build:frame build:clipboard",
     "build:prepare": "esno scripts/prepare.ts",
     "build:background": "vite build --config vite.config.background.mts",
     "build:web": "vite build",
@@ -33,10 +33,11 @@
     "pack:xpi": "esno scripts/pack.ts firefox",
     "pack:src": "bash scripts/pack-src.sh",
     "start:chromium": "web-ext run --source-dir ./extension --target=chromium",
-    "start:firefox": "LD_LIBRARY_PATH= web-ext run --source-dir ./extension --target=firefox-desktop",
-    "start:firefox-android": "LD_LIBRARY_PATH= web-ext run --source-dir ./extension --target=firefox-android",
-    "start:firefox:wait": "node -e \"const fs=require('fs'); const sleep=ms=>new Promise(r=>setTimeout(r,ms)); (async()=>{while(fs.existsSync('extension/manifest.json'))await sleep(200);while(!fs.existsSync('extension/manifest.json'))await sleep(200);})()\" && npm run start:firefox",
-    "clear": "rimraf --glob extension/dist extension/manifest.json extension.* artifacts",
+    "start:firefox": "LD_LIBRARY_PATH= web-ext run --source-dir ./extension-firefox --target=firefox-desktop",
+    "start:firefox-android": "LD_LIBRARY_PATH= web-ext run --source-dir ./extension-firefox --target=firefox-android",
+    "start:firefox:wait": "node -e \"const fs=require('fs'); const sleep=ms=>new Promise(r=>setTimeout(r,ms)); (async()=>{while(fs.existsSync('extension-firefox/manifest.json'))await sleep(200);while(!fs.existsSync('extension-firefox/manifest.json'))await sleep(200);})()\" && npm run start:firefox",
+    "clear": "rimraf --glob extension/dist extension/manifest.json extension.crx artifacts/*-chrome.zip",
+    "clear-firefox": "rimraf --glob extension-firefox/dist extension-firefox/manifest.json artifacts/*-firefox.xpi",
     "lint": "eslint --cache .",
     "test": "NODE_OPTIONS='--disable-warning=MODULE_TYPELESS_PACKAGE_JSON' vitest test",
     "test:e2e": "playwright test",
@@ -83,7 +84,7 @@
     "unplugin-auto-import": "^19.3.0",
     "unplugin-icons": "^22.5.0",
     "unplugin-vue-components": "^28.8.0",
-    "vite": "^8.2.2",
+    "vite": "~8.2.4",
     "vitest": "^4.1.11",
     "vue": "^3.5.41",
     "vue-demi": "^0.14.10",
@@ -96,7 +97,8 @@
       "adm-zip": "^0.6.1",
       "image-size": "^2.0.3",
       "js-yaml@^4": "^4.3.2",
-      "shell-quote": "^1.11.0"
+      "shell-quote": "^1.11.0",
+      "undici@^7": "^7.30.1"
     }
   },
   "simple-git-hooks": {
