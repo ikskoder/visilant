@@ -36,7 +36,32 @@ RUN apt-get update \
         jq \
         procps \
         unzip \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419~deb12u2 \
     && rm -rf /var/lib/apt/lists/*
+
+# eMudhra incident (Oct 2026, https://emudhra.we-have-a-problem.com/): eight
+# intermediates under emSign ECC Root CA - G3 have recoverable private keys.
+# Browsers block them through their own revocation data, but curl, git and node
+# check no revocation and trusted them, so the root has to leave the store.
+# ca-certificates 20250419~deb12u2 drops it. apt-get install above upgrades the
+# copy the base image carries, and the version floor there also keeps a cached
+# layer from an older build out of the image.
+#
+# The official node binary trusts its own compiled-in roots, not the system
+# store, and 22.21.1 (pinned to match flake.lock) still carries G3. The flag
+# points it at the system store, which is how the nixpkgs node on the host
+# already behaves. A script that sets NODE_OPTIONS itself (`pnpm test`) drops
+# the flag for that process.
+#
+# The check fails the build while either half is missing, so a base image bump
+# that brings back an old store cannot pass unnoticed.
+ENV NODE_OPTIONS=--use-openssl-ca
+RUN node -e " \
+      const { X509Certificate } = require('crypto'); \
+      if (!/--use-openssl-ca/.test(process.env.NODE_OPTIONS ?? '')) { console.error('node is not on the system CA store'); process.exit(1) } \
+      const pems = require('fs').readFileSync('/etc/ssl/certs/ca-certificates.crt', 'utf8').match(/-----BEGIN CERTIFICATE-----[^-]+-----END CERTIFICATE-----/g); \
+      if (pems.some(p => new X509Certificate(p).subject.includes('CN=emSign ECC Root CA - G3'))) { console.error('the system CA store still trusts emSign ECC Root CA - G3'); process.exit(1) } \
+    "
 
 # The command runner and the secret scanner, checksum-pinned. See the installer.
 COPY dev-tools/install-tools.sh /tmp/install-tools.sh
@@ -109,4 +134,7 @@ ENV NPM_CONFIG_UPDATE_NOTIFIER=false \
     NPM_CONFIG_FUND=false \
     DO_NOT_TRACK=1
 
-WORKDIR /workspaces/visilant
+# No WORKDIR. The checkout is mounted at the host's own path, which compose.yaml
+# sets as working_dir. A fixed directory baked in here would exist empty in
+# every container, so a stale VS Code entry for an old path opened it silently
+# instead of failing with "folder not found".
