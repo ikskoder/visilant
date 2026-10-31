@@ -1381,7 +1381,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             </div>
             <label class="vz-switch flex-shrink-0">
               <input v-model="settings.addressFrames" type="checkbox" data-setting="addressFrames" :aria-label="t('addressFramesLabel')">
-              <span class="vz-switch__track" />
+              <VzSwitchTrack />
             </label>
           </div>
 
@@ -1396,7 +1396,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             </div>
             <label class="vz-switch">
               <input v-model="settings.verboseOptions" type="checkbox">
-              <span class="vz-switch__track" />
+              <VzSwitchTrack />
             </label>
           </div>
         </div>
@@ -1530,7 +1530,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             </div>
             <label class="vz-switch">
               <input v-model="settings.showFamiliarityThresholds" type="checkbox">
-              <span class="vz-switch__track" />
+              <VzSwitchTrack />
             </label>
           </div>
 
@@ -1585,7 +1585,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               </div>
               <label class="vz-switch">
                 <input v-model="settings.changeIcon" type="checkbox">
-                <span class="vz-switch__track" />
+                <VzSwitchTrack />
               </label>
             </div>
 
@@ -1598,7 +1598,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               </div>
               <label class="vz-switch">
                 <input v-model="settings.showBadge" type="checkbox">
-                <span class="vz-switch__track" />
+                <VzSwitchTrack />
               </label>
             </div>
 
@@ -1640,7 +1640,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             </div>
             <label class="vz-switch">
               <input v-model="settings.showWarningNotification" type="checkbox">
-              <span class="vz-switch__track" />
+              <VzSwitchTrack />
             </label>
           </div>
           <!-- <div> -->
@@ -1708,7 +1708,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 </div>
                 <label class="vz-switch flex-shrink-0">
                   <input v-model="settings.blockPasteOnUnfamiliar" type="checkbox">
-                  <span class="vz-switch__track" />
+                  <VzSwitchTrack />
                 </label>
               </div>
             </div>
@@ -1832,7 +1832,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               </div>
               <label class="vz-switch flex-shrink-0">
                 <input v-model="settings.autoUnsilenceFamiliar" data-auto-unsilence type="checkbox">
-                <span class="vz-switch__track" />
+                <VzSwitchTrack />
               </label>
             </div>
           </div>
@@ -1879,7 +1879,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             </div>
             <label class="vz-switch">
               <input v-model="settings.linkSafety.enabled" type="checkbox">
-              <span class="vz-switch__track" />
+              <VzSwitchTrack />
             </label>
           </div>
 

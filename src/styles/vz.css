@@ -599,30 +599,29 @@
 .vz-switch { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 .vz-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 
+/* An SVG drawn by VzSwitchTrack.vue, see there for why */
 .vz-switch__track {
-  position: relative;
+  display: block;
+  flex-shrink: 0;
   width: 40px;
   height: 24px;
   border-radius: var(--radius-full);
-  background: var(--surface-sunken);
-  border: 1px solid var(--line-strong);
-  transition: background-color 120ms ease;
 }
 
-.vz-switch__track::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 16px;
-  height: 16px;
-  border-radius: var(--radius-full);
-  background: var(--ink-3);
+.vz-switch__rail {
+  fill: var(--surface-sunken);
+  stroke: var(--line-strong);
+  stroke-width: 1px;
+  transition: fill 120ms ease, stroke 120ms ease;
+}
+
+.vz-switch__knob {
+  fill: var(--ink-3);
   transition: transform 120ms ease;
 }
 
-.vz-switch input:checked + .vz-switch__track { background: var(--brand); border-color: var(--brand); }
-.vz-switch input:checked + .vz-switch__track::after { transform: translateX(16px); background: var(--on-brand); }
+.vz-switch input:checked + .vz-switch__track .vz-switch__rail { fill: var(--brand); stroke: var(--brand); }
+.vz-switch input:checked + .vz-switch__track .vz-switch__knob { transform: translateX(16px); fill: var(--on-brand); }
 
 .vz-check { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 .vz-check input,
@@ -845,4 +844,8 @@ dialog.vz-layer { width: 100%; height: 100%; }
   .vz-notice { border-color: CanvasText; }
   /* The tint is gone in forced colours, so a pressed toggle needs an edge again */
   .vz-toggle[aria-pressed="true"] { border-color: Highlight; }
+  .vz-switch__rail { fill: Canvas; stroke: CanvasText; }
+  .vz-switch__knob { fill: CanvasText; }
+  .vz-switch input:checked + .vz-switch__track .vz-switch__rail { fill: Highlight; stroke: Highlight; }
+  .vz-switch input:checked + .vz-switch__track .vz-switch__knob { fill: HighlightText; }
 }
