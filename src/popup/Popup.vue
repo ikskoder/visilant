@@ -938,7 +938,7 @@ onMounted(async () => {
             </span>
             <button
               class="vz-btn vz-btn--sm vz-btn--quiet"
-              :title="isIgnoredHost ? translations.warningsActiveTooltip : translations.ignoredSiteTooltip"
+              :title="isIgnoredHost ? translations.ignoredSiteTooltip : translations.warningsActiveTooltip"
               @click="setWarnings(!isIgnoredHost)"
             >
               {{ isIgnoredHost ? translations.ignoredSiteResume : translations.ignoredSiteSilence }}
@@ -973,7 +973,7 @@ onMounted(async () => {
             <button
               class="vz-btn vz-btn--sm vz-btn--quiet"
               data-anti-tampering-toggle
-              :title="isAntiTamperingExcluded ? translations.antiTamperingTooltipOn : translations.antiTamperingTooltipOff"
+              :title="isAntiTamperingExcluded ? translations.antiTamperingTooltipOff : translations.antiTamperingTooltipOn"
               @click="toggleAntiTampering"
             >
               {{ isAntiTamperingExcluded ? translations.antiTamperingEnableForSite : translations.antiTamperingDisableForSite }}

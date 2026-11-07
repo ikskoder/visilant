@@ -267,6 +267,54 @@ describe('turning the warnings off for a site', () => {
 })
 
 /**
+ * A switch's tooltip speaks for the state the row beside it reports.
+ *
+ * Both buttons used to carry the other state's text, so a row reading "Watching
+ * whether this site hides Visilant's warnings" had a "Turn off" button whose
+ * tooltip said protection was already off.
+ */
+describe('the site switches explain the state on screen', () => {
+  function rowParts(button: ReturnType<ReturnType<typeof mount>['get']>) {
+    const row = button.element.parentElement!
+    return {
+      state: row.querySelector('[data-status]')!.getAttribute('data-status'),
+      buttonTitle: button.attributes('title'),
+    }
+  }
+
+  it.each([
+    [false, 'on', 'warningsActiveTooltip'],
+    [true, 'off', 'ignoredSiteTooltip'],
+  ])('warnings switch, silenced %s', async (ignored, state, tooltip) => {
+    stubLocalStorage({ 'example.com': { ...unfamiliar, ignored } })
+    const wrapper = await mountForDomain('example.com')
+
+    const button = wrapper.findAll('button').find(b => ['ignoredSiteSilence', 'ignoredSiteResume'].includes(b.text()))!
+    expect(rowParts(button)).toEqual({ state, buttonTitle: tooltip })
+  })
+
+  it.each([
+    ['', 'on', 'antiTamperingTooltipOn'],
+    ['example.com', 'off', 'antiTamperingTooltipOff'],
+  ])('anti-tampering switch, excluded list %j', async (excluded, state, tooltip) => {
+    const before = settings.value.antiTamperingExcludedDomains
+    settings.value.antiTamperingExcludedDomains = excluded
+    try {
+      stubLocalStorage({ 'example.com': unfamiliar })
+      const wrapper = await mountForDomain('example.com')
+
+      const parts = rowParts(wrapper.get('[data-anti-tampering-toggle]'))
+      expect(parts).toEqual({ state, buttonTitle: tooltip })
+      // The row's own tooltip tells the same state
+      expect(wrapper.get('[data-anti-tampering-toggle]').element.parentElement!.querySelector('[data-status]')!.getAttribute('title')).toContain(tooltip)
+    }
+    finally {
+      settings.value.antiTamperingExcludedDomains = before
+    }
+  })
+})
+
+/**
  * The list under the panel, which is about the rest of the family.
  *
  * Everything it can say about the address at the top of the page is already
