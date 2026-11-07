@@ -627,6 +627,38 @@
 .vz-check input,
 .vz-check-box { width: 18px; height: 18px; margin: 0; accent-color: var(--brand); }
 
+/* A tick box that only means something while the one above it is on: an
+   L-shaped line runs from under the upper box to the lower one, so the step
+   in reads as "belongs to that" and not as a margin gone wrong. The upper
+   label draws the stem down to its own bottom, the lower one draws the gap
+   and the foot, so the line follows however tall the upper description is. */
+.vz-subgroup { --vz-sub-gap: 12px; display: grid; gap: var(--vz-sub-gap); }
+.vz-subgroup > :first-child { position: relative; }
+.vz-subgroup > :first-child::after {
+  content: "";
+  position: absolute;
+  left: 8.5px;
+  top: 20px;
+  bottom: 0;
+  border-left: 1px solid var(--line-strong);
+  pointer-events: none;
+}
+.vz-sub { position: relative; margin-left: 24px; }
+.vz-sub::before {
+  content: "";
+  position: absolute;
+  left: -15.5px;
+  top: calc(-1 * var(--vz-sub-gap));
+  width: 11.5px;
+  height: calc(var(--vz-sub-gap) + 9.5px);
+  border-left: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  border-bottom-left-radius: 4px;
+  pointer-events: none;
+}
+/* Greyed out while the upper box is off, the line kept whole */
+.vz-sub--off > * { opacity: 0.5; }
+
 /* ---------- Surfaces ---------- */
 
 /* In the browser's top layer (`useTopLayer`): the dialog and popover defaults

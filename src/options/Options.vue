@@ -2026,12 +2026,14 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 {{ translations.linkInterceptHeadingDesc }}
               </p>
               <div class="space-y-3">
-                <label class="flex items-start">
+                <!-- The number box makes the first line taller than the tick box, so
+                     the box is centred on that line rather than pinned to its top -->
+                <label class="intercept-flags">
                   <input
-                    :checked="intercept.redFlags" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="redFlags"
+                    :checked="intercept.redFlags" type="checkbox" class="vz-check-box" data-intercept="redFlags"
                     @change="updateIntercept({ redFlags: ($event.target as HTMLInputElement).checked })"
                   >
-                  <span class="ml-2 text-sm">
+                  <span class="intercept-flags__text text-sm">
                     <span class="inline-flex items-center gap-1 flex-wrap">
                       {{ redFlagsLabel.before }}<input
                         :value="intercept.minRedFlags"
@@ -2045,27 +2047,29 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     <p class="hint vz-small">{{ translations.linkInterceptRedFlagsDesc }}</p>
                   </span>
                 </label>
-                <label class="flex items-start">
-                  <input
-                    :checked="intercept.shortLinks" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="shortLinks"
-                    @change="updateIntercept({ shortLinks: ($event.target as HTMLInputElement).checked })"
-                  >
-                  <span class="ml-2 text-sm">
-                    <span>{{ translations.linkInterceptShortLinks }}</span>
-                    <p class="hint vz-small">{{ translations.linkInterceptShortLinksDesc }}</p>
-                  </span>
-                </label>
-                <!-- Under short links, and nothing to decide while those are not stopped -->
-                <label class="flex items-start ml-6" :class="{ 'opacity-50': !intercept.shortLinks }">
-                  <input
-                    :checked="intercept.shortLinksOnOwnSite" :disabled="!intercept.shortLinks" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="shortLinksOnOwnSite"
-                    @change="updateIntercept({ shortLinksOnOwnSite: ($event.target as HTMLInputElement).checked })"
-                  >
-                  <span class="ml-2 text-sm">
-                    <span>{{ translations.linkInterceptShortLinksOwnSite }}</span>
-                    <p class="hint vz-small">{{ translations.linkInterceptShortLinksOwnSiteDesc }}</p>
-                  </span>
-                </label>
+                <div class="vz-subgroup">
+                  <label class="flex items-start">
+                    <input
+                      :checked="intercept.shortLinks" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="shortLinks"
+                      @change="updateIntercept({ shortLinks: ($event.target as HTMLInputElement).checked })"
+                    >
+                    <span class="ml-2 text-sm">
+                      <span>{{ translations.linkInterceptShortLinks }}</span>
+                      <p class="hint vz-small">{{ translations.linkInterceptShortLinksDesc }}</p>
+                    </span>
+                  </label>
+                  <!-- Under short links, and nothing to decide while those are not stopped -->
+                  <label class="vz-sub flex items-start" :class="{ 'vz-sub--off': !intercept.shortLinks }">
+                    <input
+                      :checked="intercept.shortLinksOnOwnSite" :disabled="!intercept.shortLinks" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="shortLinksOnOwnSite"
+                      @change="updateIntercept({ shortLinksOnOwnSite: ($event.target as HTMLInputElement).checked })"
+                    >
+                    <span class="ml-2 text-sm">
+                      <span>{{ translations.linkInterceptShortLinksOwnSite }}</span>
+                      <p class="hint vz-small">{{ translations.linkInterceptShortLinksOwnSiteDesc }}</p>
+                    </span>
+                  </label>
+                </div>
                 <label class="flex items-start">
                   <input
                     :checked="intercept.unfamiliar" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="unfamiliar"
@@ -2604,6 +2608,17 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 </template>
 
 <style>
+.intercept-flags {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.5rem;
+  align-items: center;
+}
+
+/* Its two lines join the grid: the sentence beside the box, the hint under the sentence */
+.intercept-flags__text { display: contents; }
+.intercept-flags__text > .hint { grid-column: 2; }
+
 .intercept-count {
   width: 4em;
   padding-block: 0;
