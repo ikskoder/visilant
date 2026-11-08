@@ -696,7 +696,7 @@ listenForScriptedClipboardWrites(() => void handleCopyCut())
 /**
  * The link the context menu was last opened on, as it read at the time.
  *
- * "Check link safety" arrives with an address and no link text, so without this
+ * "Check this link" arrives with an address and no link text, so without this
  * the dialog could never say that the text names one site and the link opens
  * another – which is the trick the check is most often asked about. See
  * `snapshotContextLink`.
@@ -922,7 +922,7 @@ async function showLinkInterceptByUrl(url: string, textDomain: string | null = n
 
   // No external-link gate here, unlike the hover and click paths. Those run on
   // every link the pointer meets, and one on the same site says nothing new.
-  // This one runs because the user picked "Check link safety" on this link, and
+  // This one runs because the user picked "Check this link" on this link, and
   // an answer about the site they are on is still an answer, where returning
   // left the menu item doing nothing at all.
 
@@ -2461,7 +2461,9 @@ function setupLinkSafety() {
     auxclick: handleAuxClick,
     prefetch: prefetchLink,
     scroll: handleScroll,
-    keydown: handleEscape,
+    // Only a key somebody pressed. A page could otherwise send an Escape of
+    // its own and keep the link check shut for as long as it liked
+    keydown: trusted(handleEscape),
   }
 
   linkSafetyState = 'on'
@@ -2494,6 +2496,36 @@ let isMounting = false
 /** How long a document has to produce a body before this gives up on it. */
 const MOUNT_BODY_TIMEOUT_MS = 10_000
 const MOUNT_BODY_POLL_MS = 50
+
+/**
+ * Set when a mount stopped waiting for a body that had not come.
+ *
+ * Giving up used to be for good: a page that held its body back for longer -
+ * a slow script in the head on a slow line, or a page doing it on purpose -
+ * had no warnings and no link check for as long as it stayed open, and the
+ * warning it was owed was spent with nothing on screen. The body is watched
+ * for instead, and the mount runs when it arrives. A document that never gets
+ * one, an XML or SVG file, keeps an observer on its root that never fires.
+ */
+let bodyWatch: MutationObserver | null = null
+/** Whether the mount that is waiting for a body was a forced one. */
+let bodyWatchForce = false
+
+function mountWhenBodyArrives(force: boolean) {
+  bodyWatch?.disconnect()
+  bodyWatchForce = force
+  const root = document.documentElement
+  if (!root)
+    return
+  bodyWatch = new MutationObserver(() => {
+    if (!document.body)
+      return
+    bodyWatch?.disconnect()
+    bodyWatch = null
+    void mount(force)
+  })
+  bodyWatch.observe(root, { childList: true })
+}
 // Set while we take our own UI down, so our removal is not read as the page's.
 // This has to be an explicit flag rather than "has the app mounted yet": a page
 // that rips the container out in the moments before Vue finishes mounting is
@@ -2623,8 +2655,12 @@ async function mount(force = false) {
     for (let waited = 0; !document.body && waited < MOUNT_BODY_TIMEOUT_MS; waited += MOUNT_BODY_POLL_MS)
       await new Promise(resolve => setTimeout(resolve, MOUNT_BODY_POLL_MS))
 
-    if (!document.body || generation !== uiGeneration)
+    if (generation !== uiGeneration)
       return
+    if (!document.body) {
+      mountWhenBodyArrives(force)
+      return
+    }
 
     // Whether this page gets the UI at all, decided by the settings alone and
     // never by what is known about this site. The box is an element in the page,
@@ -2868,18 +2904,18 @@ async function showFrameWarning(kind: 'input' | 'copy'): Promise<WarningOutcome>
  * guard anyway. The answer travels back so the frame knows whether to stop
  * asking.
  */
-async function showFramePasteIntercept(data: { hostname?: string, status: 'unfamiliar' | 'settled' | 'error' }): Promise<{ allowed: boolean }> {
-  // The frame is holding a cancelled paste and is waiting on this answer. With
-  // no dialog to answer from, saying no now is what stops it waiting.
+async function showFramePasteIntercept(data: { id?: string, frameId?: number, hostname?: string, status: 'unfamiliar' | 'settled' | 'error' }): Promise<{ dialog: boolean }> {
+  // With no dialog to answer from, saying so now is what tells the frame there
+  // is nothing to wait for
   if (!await ensureTooltipUiMounted())
-    return { allowed: false }
+    return { dialog: false }
 
   const host = data.hostname || window.location.hostname
   const facts = await fetchLinkData(`https://${host}`, host).catch(() => null)
 
   // A second dialog over the first would leave the first paste unanswered
   if (pasteInterceptVisible.value)
-    return { allowed: false }
+    return { dialog: false }
 
   const answer = new Promise<boolean>((resolve) => {
     pasteInterceptResolve.value = resolve
@@ -2899,9 +2935,17 @@ async function showFramePasteIntercept(data: { hostname?: string, status: 'unfam
   }
   pasteInterceptVisible.value = true
 
-  const allowed = await answer
-  pasteInterceptResolve.value = null
-  return { allowed }
+  // The reply goes now, the decision whenever the reader makes it: a reply
+  // kept open while somebody reads was ended by the browser, Firefox after
+  // about 30 idle seconds, and the answer went nowhere
+  void answer.then((allowed) => {
+    pasteInterceptResolve.value = null
+    if (typeof data.id === 'string' && typeof data.frameId === 'number') {
+      return sendMessageSafe('frame-paste-decision', { id: data.id, frameId: data.frameId, allowed })
+        .catch(error => console.error('Visilant: could not answer a frame about its paste', error))
+    }
+  })
+  return { dialog: true }
 }
 
 // Listen for context menu requests from background
@@ -2929,9 +2973,9 @@ browser.runtime.onMessage.addListener(((message: any, _sender: any, sendResponse
     return undefined
   }
   if (message.type === 'frame-paste-intercept' && message.data) {
-    // The only message here that answers. The frame is holding a cancelled paste
-    // and cannot stop holding it until the user has said something.
-    showFramePasteIntercept(message.data).then(sendResponse, () => sendResponse({ allowed: false }))
+    // Answers whether the dialog went up. What the reader decides there goes
+    // back to the frame as a message of its own, see showFramePasteIntercept.
+    showFramePasteIntercept(message.data).then(sendResponse, () => sendResponse({ dialog: false }))
     return true
   }
 
@@ -3080,7 +3124,8 @@ function watchForDocumentOpen() {
     // and writes to it later. Taken down now rather than left for the tamper
     // watch to find missing and raise an alarm about an ordinary page.
     if (!now) {
-      if (container || isMounting) {
+      // A mount waiting for a body was waiting in the root that just went
+      if (container || isMounting || bodyWatch) {
         tearDownUi()
         rebuild = true
       }
@@ -3093,10 +3138,14 @@ function watchForDocumentOpen() {
       return
     for (const [type, listener, options] of pageListeners)
       window.addEventListener(type, listener, options)
-    if (container || isMounting || rebuild) {
+    // A mount still waiting for a body was waiting in the old root
+    if (container || isMounting || rebuild || bodyWatch) {
       rebuild = false
+      const force = bodyWatch ? bodyWatchForce : false
+      bodyWatch?.disconnect()
+      bodyWatch = null
       tearDownUi()
-      void mount()
+      void mount(force)
     }
   }).observe(document, { childList: true })
 }

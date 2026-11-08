@@ -104,7 +104,7 @@ const CASES: Case[] = [
   { name: 'pp-warnings-on', title: 'Popup: warnings on for an unfamiliar site', note: '"Warnings are on for this site" in plain text, a "Turn off" button.', seed: { 'few.test': LOW }, url: 'https://few.test/' },
   { name: 'pp-silenced-familiar', title: 'Popup: a familiar site whose warnings were turned off', note: 'Still says warnings are off, with "Turn back on".', seed: { 'trusted.test': { ...FAMILIAR, ignored: true } }, url: 'https://trusted.test/' },
   { name: 'pp-tamper-off', title: 'Popup: anti-tampering off for this site', note: 'The row reads "Not watching whether this site hides Visilant’s warnings", with a "Turn on" button.', settings: { antiTamperingExcludedDomains: 'shop.test' }, url: 'https://shop.test/' },
-  { name: 'pp-tamper-parent', title: 'Popup: anti-tampering off by a rule for the parent site', note: '"turned off by a rule for paypal.test".', settings: { antiTamperingExcludedDomains: 'paypal.test' }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
+  { name: 'pp-tamper-parent', title: 'Popup: anti-tampering off by a rule for the parent site', note: 'The same row as off for this site alone: the badge and "Turn on" on one line. The parent rule is named in the button tooltip only.', settings: { antiTamperingExcludedDomains: 'paypal.test' }, seed: FAMILY, url: 'https://checkout.paypal.test/' },
   { name: 'pp-details-both-off', title: 'Site details: warnings and anti-tampering both off', note: 'Two grey badges together.', settings: { antiTamperingExcludedDomains: 'x-off.test' }, seed: { 'x-off.test': { visits: 2, ignored: true } }, details: 'x-off.test' },
 
   // ==========================================
@@ -150,7 +150,7 @@ const CASES: Case[] = [
   // Layout
   // ==========================================
   { name: 'pp-tab-view', title: 'Popup opened as a tab', note: 'Full width instead of a 600 px card, and the list has no height limit. Firefox for Android shows the popup this way.', tabView: true, seed: FAMILY, url: 'https://checkout.paypal.test/' },
-  { name: 'pp-tab-view-empty', title: 'Popup opened as a tab over a browser page', note: 'The globe and "Visit a website", full width.', tabView: true, url: null },
+  { name: 'pp-tab-view-empty', title: 'Popup opened as a tab over a browser page', note: 'The globe and "Open a site to see what Visilant knows about it", full width.', tabView: true, url: null },
 ]
 
 for (const c of CASES) {

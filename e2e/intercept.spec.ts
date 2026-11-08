@@ -54,7 +54,7 @@ test('a short link is stopped', async ({ page }) => {
 
   await page.locator('#l').click()
 
-  await expect.poll(() => allText(page), { timeout: 5000, intervals: [300] }).toContain('Shortened link')
+  await expect.poll(() => allText(page), { timeout: 5000, intervals: [300] }).toContain('Short link')
   expect(page.url()).toBe(SITE_URL)
 })
 
@@ -164,7 +164,7 @@ test('a t.co link on X is stopped by default, and opens with "own site" cleared'
   await serveSite(page, xPage, linksPage('<a id="l" href="https://t.co/abc123">example.com/article</a>'))
   await page.waitForTimeout(2000)
   await page.locator('#l').click()
-  await expect.poll(() => allText(page), { timeout: 5000, intervals: [300] }).toContain('Shortened link')
+  await expect.poll(() => allText(page), { timeout: 5000, intervals: [300] }).toContain('Short link')
   expect(page.url()).toBe(xPage)
 
   await patchSettings(context, { linkSafety: { enabled: true, intercept: { unfamiliar: true, shortLinks: true, shortLinksOnOwnSite: false, redFlags: true, minRedFlags: 1 } } })
@@ -245,3 +245,27 @@ async function clickInDialog(page: any, action: string) {
     await cdp.detach()
   }
 }
+
+test('a made-up Tab from the page does not move the focus in the link dialog', async ({ page }) => {
+  // The dialog wraps the focus by hand, and it used to do that for a keydown
+  // the page dispatched as well: with the focus taken off the dialog, a made-up
+  // Tab sent it to a button of the page's choosing, and the reader's next real
+  // Enter pressed it. Wherever a made-up key could have sent it, the real Enter
+  // after it would have pressed a button and the dialog would be gone.
+  await open(page, '<a id="l" href="https://paypal.com@plain-new-site.test/landed">Log in</a>')
+
+  await page.locator('#l').click()
+  await expect.poll(() => allText(page), { timeout: 5000, intervals: [300] }).toContain('Continue anyway')
+  await page.waitForTimeout(800)
+
+  for (const shiftKey of [false, true]) {
+    await page.evaluate((shift: boolean) => {
+      (document.activeElement as HTMLElement | null)?.blur()
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: shift, bubbles: true }))
+    }, shiftKey)
+    await page.keyboard.press('Enter')
+    await page.waitForTimeout(800)
+    expect(page.url()).toBe(SITE_URL)
+    expect(await allText(page)).toContain('Continue anyway')
+  }
+})

@@ -146,7 +146,6 @@ function updateTranslations() {
     'importStatusCancelled',
     'importStatusFailed',
     'importStatusUnsupported',
-    'importKeepPageOpen',
     'importLastRun',
     'importSitesStored',
     'importHistoryRun',
@@ -398,9 +397,13 @@ async function resetSection(id: string) {
 
 // Last import of any kind, including the automatic one at install
 const lastImport = ref<HistoryImportState | null>(null)
+/** Cancel was pressed and the import has not stopped yet, so it is not pressed twice */
+const importCancelled = ref(false)
 
 /** How far the running import has got, read off the state it publishes. */
-const importProgress = ref({ current: 0, total: 0 })
+const importProgress = computed(() => lastImport.value?.status === 'running'
+  ? { current: lastImport.value.current, total: lastImport.value.total }
+  : { current: 0, total: 0 })
 
 /**
  * A clock the import status can depend on.
@@ -427,12 +430,11 @@ function watchImportState(changes: Record<string, { newValue?: unknown }>) {
     return
 
   const state = (changes[HISTORY_IMPORT_STATE_KEY].newValue as HistoryImportState | undefined) ?? null
+  // The progress bar reads this too, see importProgress: the import runs in the
+  // background, and this page is a watcher of it like any other
   lastImport.value = state
-
-  // The progress bar reads the published state now, because the import runs in
-  // the background and this page is a watcher of it like any other
-  if (state && state.status === 'running')
-    importProgress.value = { current: state.current, total: state.total }
+  if (state?.status !== 'running')
+    importCancelled.value = false
 }
 const lastImportLabel = computed(() => {
   const state = lastImport.value
@@ -632,7 +634,6 @@ function updateShortenerListNow() {
 
 // Loading states
 const isImporting = ref(false)
-const importCancelled = ref(false)
 const showResetConfirm = ref(false)
 
 // Said out loud rather than left to be inferred from a date, because the whole
@@ -655,6 +656,17 @@ const canRightClick = pointerCanHover && hasContextMenus()
 const importHealth = computed<ImportHealth>(() => canImportHistory
   ? describeImportHealth(lastImport.value, now.value, isImporting.value)
   : 'unsupported')
+
+/**
+ * Whether an import is going, whoever started it.
+ *
+ * The button, its progress and Cancel used to hang off `isImporting`, which
+ * only this page sets. Opened while the import at install was running, the page
+ * said "An import is running right now" over a live "Re-import history" button,
+ * with no progress and no way to stop it. `isImporting` still covers the moment
+ * between the press and the first published state.
+ */
+const importRunning = computed(() => importHealth.value === 'running')
 /** Why the last change was not saved, in the words that say what to do about it. */
 const saveErrorText = computed(() => {
   const error = settingsWriteError.value
@@ -1160,7 +1172,6 @@ async function importHistory() {
   finally {
     isImporting.value = false
     importCancelled.value = false
-    importProgress.value = { current: 0, total: 0 }
   }
 }
 
@@ -1330,7 +1341,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         <!-- General Settings -->
         <div id="section-general" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('general')" @reset="resetSection('general')" />
-          <h2 class="vz-title text-center mb-4">
+          <h2 class="vz-title text-center settings-card-title">
             {{ translations.generalSettings }}
           </h2>
 
@@ -1338,35 +1349,39 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                cannot do anything, so it stays out of the way until a second
                language ships -->
           <div v-if="availableLanguages.length > 1" class="flex flex-col items-start mb-6">
-            <label class="vz-heading mb-2">{{ translations.selectLanguage }}</label>
-            <select
-              v-model="currentLanguage"
-              class="vz-input w-full"
-              @change="(e) => changeLanguage((e.target as HTMLSelectElement).value)"
-            >
-              <option v-for="lang in availableLanguages" :key="lang.code" :value="lang.code">
-                {{ translations[lang.name] }}
-              </option>
-            </select>
+            <label class="vz-heading settings-label">{{ translations.selectLanguage }}</label>
+            <span class="vz-selectbox w-full">
+              <select
+                v-model="currentLanguage"
+                class="vz-select"
+                @change="(e) => changeLanguage((e.target as HTMLSelectElement).value)"
+              >
+                <option v-for="lang in availableLanguages" :key="lang.code" :value="lang.code">
+                  {{ translations[lang.name] }}
+                </option>
+              </select>
+            </span>
           </div>
 
           <!-- Theme Settings -->
           <div class="flex flex-col items-start mb-6">
-            <label class="vz-heading mb-2">{{ translations.themeSettings }}</label>
-            <select
-              v-model="settings.theme"
-              class="vz-input w-full"
-            >
-              <option value="system">
-                {{ translations.themeSystem }}
-              </option>
-              <option value="light">
-                {{ translations.themeLight }}
-              </option>
-              <option value="dark">
-                {{ translations.themeDark }}
-              </option>
-            </select>
+            <label class="vz-heading settings-label">{{ translations.themeSettings }}</label>
+            <span class="vz-selectbox w-full">
+              <select
+                v-model="settings.theme"
+                class="vz-select"
+              >
+                <option value="system">
+                  {{ translations.themeSystem }}
+                </option>
+                <option value="light">
+                  {{ translations.themeLight }}
+                </option>
+                <option value="dark">
+                  {{ translations.themeDark }}
+                </option>
+              </select>
+            </span>
           </div>
 
           <!-- How every address in the extension is drawn. The same switch sits
@@ -1405,47 +1420,51 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
              why it has a section of its own rather than a number in General -->
         <div id="section-familiarity" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('familiarity')" @reset="resetSection('familiarity')" />
-          <h2 class="vz-title text-center mb-2">
+          <h2 class="vz-title text-center settings-card-title">
             {{ translations.familiaritySettings }}
           </h2>
-          <p class="hint vz-small mb-4">
+          <p class="hint vz-small settings-intro">
             {{ translations.familiarityIntro }}
           </p>
 
           <!-- How many checks have to agree, said before the checks themselves,
                because it is what they are being read against -->
           <div class="flex flex-col items-start mb-2">
-            <label class="vz-heading mb-2">{{ translations.familiarityModeLabel }}</label>
-            <select
-              :value="familiarity.mode"
-              class="vz-input w-full"
-              @change="updateFamiliarityMode(($event.target as HTMLSelectElement).value)"
-            >
-              <option value="all">
-                {{ translations.familiarityModeAll }}
-              </option>
-              <option value="any">
-                {{ translations.familiarityModeAny }}
-              </option>
-              <option value="atLeast">
-                {{ translations.familiarityModeAtLeast }}
-              </option>
-            </select>
+            <label class="vz-heading settings-label">{{ translations.familiarityModeLabel }}</label>
+            <span class="vz-selectbox w-full">
+              <select
+                :value="familiarity.mode"
+                class="vz-select"
+                @change="updateFamiliarityMode(($event.target as HTMLSelectElement).value)"
+              >
+                <option value="all">
+                  {{ translations.familiarityModeAll }}
+                </option>
+                <option value="any">
+                  {{ translations.familiarityModeAny }}
+                </option>
+                <option value="atLeast">
+                  {{ translations.familiarityModeAtLeast }}
+                </option>
+              </select>
+            </span>
 
             <!-- A list rather than a number field: there are never more than
                  three checks to choose from, and every one of them is a valid
                  answer, so nothing here has to be typed or corrected -->
             <div v-if="familiarity.mode === 'atLeast'" class="flex items-center gap-2 mt-2">
               <label class="text-sm">{{ translations.familiarityModeAtLeastLabel }}</label>
-              <select
-                :value="familiarityRequired"
-                class="vz-input vz-input--sm"
-                @change="updateFamiliarityAtLeast(($event.target as HTMLSelectElement).value)"
-              >
-                <option v-for="n in familiarityEnabledCount" :key="n" :value="n">
-                  {{ n }}
-                </option>
-              </select>
+              <span class="vz-selectbox">
+                <select
+                  :value="familiarityRequired"
+                  class="vz-select vz-select--sm"
+                  @change="updateFamiliarityAtLeast(($event.target as HTMLSelectElement).value)"
+                >
+                  <option v-for="n in familiarityEnabledCount" :key="n" :value="n">
+                    {{ n }}
+                  </option>
+                </select>
+              </span>
               <span class="text-sm text-ink-3">/ {{ familiarityEnabledCount }}</span>
             </div>
           </div>
@@ -1565,13 +1584,13 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         <!-- Display Settings -->
         <div id="section-display" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('display')" @reset="resetSection('display')" />
-          <h2 class="vz-title text-center mb-2">
+          <h2 class="vz-title text-center settings-card-title">
             {{ translations.displaySettings }}
           </h2>
 
           <!-- Said once for the whole section: both toggles draw on the same
                icon, and neither shows anything while it is hidden in the menu -->
-          <p class="hint vz-small mb-4">
+          <p class="hint vz-small settings-intro">
             {{ isAndroid ? translations.displaySettingsPinNoteAndroid : translations.displaySettingsPinNote }}
           </p>
 
@@ -1606,19 +1625,21 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                  nothing to choose between while a single check is on: the badge
                  can only be that check's number -->
             <div v-if="settings.showBadge && familiarityEnabledCount > 1" class="flex flex-col items-start">
-              <label class="vz-heading mb-1">{{ translations.badgeContentLabel }}</label>
-              <p class="hint vz-small mb-2">
+              <label class="vz-heading settings-label">{{ translations.badgeContentLabel }}</label>
+              <p class="hint vz-small settings-label-hint">
                 {{ translations.badgeContentDesc }}
               </p>
-              <select
-                :value="shownBadgeContent"
-                class="vz-input w-full"
-                @change="settings.badgeContent = ($event.target as HTMLSelectElement).value as BadgeContent"
-              >
-                <option v-for="option in badgeContentOptions" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </option>
-              </select>
+              <span class="vz-selectbox w-full">
+                <select
+                  :value="shownBadgeContent"
+                  class="vz-select"
+                  @change="settings.badgeContent = ($event.target as HTMLSelectElement).value as BadgeContent"
+                >
+                  <option v-for="option in badgeContentOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
+              </span>
             </div>
           </div>
         </div>
@@ -1626,7 +1647,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         <!-- Notification Settings -->
         <div id="section-notifications" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('notifications')" @reset="resetSection('notifications')" />
-          <h2 class="vz-title text-center mb-4">
+          <h2 class="vz-title text-center settings-card-title">
             {{ translations.notificationSettings }}
           </h2>
 
@@ -1647,68 +1668,49 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           <div v-if="settings.showWarningNotification">
             <!-- Warning Trigger Events Section -->
             <div class="mt-6 border-t border-line pt-4">
-              <h3 class="text-sm font-medium mb-3">
-                {{ translations.warningTriggerEventsTitle }}:
+              <h3 class="vz-heading settings-group-title">
+                {{ translations.warningTriggerEventsTitle }}
               </h3>
 
-              <div class="space-y-3">
-                <label class="flex items-start">
+              <div class="settings-choices">
+                <label class="settings-choice">
                   <input
                     type="radio" name="warningType" value="input"
                     :checked="settings.showInputWarning && !settings.showCopyWarning"
-                    class="vz-check-box flex-shrink-0 mt-0.5" @change="() => {
+                    class="vz-check-box" @change="() => {
                       settings.showInputWarning = true;
                       settings.showCopyWarning = false;
                     }"
                   >
-                  <span class="ml-2 text-sm">
+                  <span class="settings-choice__text">
                     <span class="block">{{ translations.showInputWarning }}</span>
-                    <span class="hint block vz-small mt-0.5">
-                      {{ translations.showInputWarningDesc }}
-                    </span>
+                    <span class="hint block vz-small">{{ translations.showInputWarningDesc }}</span>
                   </span>
                 </label>
-                <label class="flex items-start">
+                <label class="settings-choice">
                   <input
                     type="radio" name="warningType" value="copy"
                     :checked="!settings.showInputWarning && settings.showCopyWarning"
-                    class="vz-check-box flex-shrink-0 mt-0.5" @change="() => {
+                    class="vz-check-box" @change="() => {
                       settings.showInputWarning = false;
                       settings.showCopyWarning = true;
                     }"
                   >
-                  <span class="ml-2 text-sm">
+                  <span class="settings-choice__text">
                     <span class="block">{{ translations.showCopyWarning }}</span>
-                    <span class="hint block vz-small mt-0.5">
-                      {{ translations.showCopyWarningDesc }}
-                    </span>
+                    <span class="hint block vz-small">{{ translations.showCopyWarningDesc }}</span>
                   </span>
                 </label>
-                <label class="flex items-start">
+                <label class="settings-choice">
                   <input
                     type="radio" name="warningType" value="both"
                     :checked="settings.showInputWarning && settings.showCopyWarning"
-                    class="vz-check-box flex-shrink-0 mt-0.5" @change="() => {
+                    class="vz-check-box" @change="() => {
                       settings.showInputWarning = true;
                       settings.showCopyWarning = true;
                     }"
                   >
-                  <span class="ml-2 text-sm">{{ translations.bothWarningTriggers }}</span>
-                </label>
-              </div>
-
-              <!-- Only offered where it applies: holding a paste is meaningless
-                   if pasting is not one of the moments being watched -->
-              <div v-if="settings.showInputWarning" class="flex items-start justify-between mt-4 pt-4 border-t border-line">
-                <div class="pr-3">
-                  <label class="vz-heading">{{ translations.blockPasteOnUnfamiliar }}</label>
-                  <p class="hint vz-small mt-0.5">
-                    {{ translations.blockPasteOnUnfamiliarDesc }}
-                  </p>
-                </div>
-                <label class="vz-switch flex-shrink-0">
-                  <input v-model="settings.blockPasteOnUnfamiliar" type="checkbox">
-                  <VzSwitchTrack />
+                  <span class="settings-choice__text">{{ translations.bothWarningTriggers }}</span>
                 </label>
               </div>
             </div>
@@ -1716,40 +1718,36 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <!-- Notification Style -->
             <div class="space-y-2">
               <div class="mt-6">
-                <h3 class="text-sm font-medium mb-3">
+                <h3 class="vz-heading settings-group-title">
                   {{ translations.notificationStyle }}
                 </h3>
-                <div class="space-y-3">
-                  <label class="flex items-start">
+                <div class="settings-choices">
+                  <label class="settings-choice">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="browser"
-                      class="vz-check-box flex-shrink-0 mt-0.5"
+                      class="vz-check-box"
                     >
-                    <span class="ml-2 text-sm">
+                    <span class="settings-choice__text">
                       <span class="block">{{ translations.browserNotifications }}</span>
-                      <span class="hint block vz-small mt-0.5">
-                        {{ translations.browserNotificationsDesc }}
-                      </span>
+                      <span class="hint block vz-small">{{ translations.browserNotificationsDesc }}</span>
                     </span>
                   </label>
-                  <label class="flex items-start">
+                  <label class="settings-choice">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="in-page"
-                      class="vz-check-box flex-shrink-0 mt-0.5"
+                      class="vz-check-box"
                     >
-                    <span class="ml-2 text-sm">
+                    <span class="settings-choice__text">
                       <span class="block">{{ translations.inPageNotifications }}</span>
-                      <span class="hint block vz-small mt-0.5">
-                        {{ translations.inPageNotificationsDesc }}
-                      </span>
+                      <span class="hint block vz-small">{{ translations.inPageNotificationsDesc }}</span>
                     </span>
                   </label>
-                  <label class="flex items-start">
+                  <label class="settings-choice">
                     <input
                       v-model="settings.notificationStyle" type="radio" value="both"
-                      class="vz-check-box flex-shrink-0"
+                      class="vz-check-box"
                     >
-                    <span class="ml-2 text-sm">{{ translations.bothNotifications }}</span>
+                    <span class="settings-choice__text">{{ translations.bothNotifications }}</span>
                   </label>
                 </div>
 
@@ -1763,6 +1761,22 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             </div>
           </div>
 
+          <!-- Its own row, outside the warning settings above. The hold reads this
+               switch alone, and it used to sit inside the typing warning, so
+               turning that off hid a switch that went on holding pastes -->
+          <div class="flex items-start justify-between mt-6 pt-4 border-t border-line">
+            <div class="pr-3">
+              <label class="vz-heading">{{ translations.blockPasteOnUnfamiliar }}</label>
+              <p class="hint vz-small mt-0.5">
+                {{ translations.blockPasteOnUnfamiliarDesc }}
+              </p>
+            </div>
+            <label class="vz-switch flex-shrink-0">
+              <input v-model="settings.blockPasteOnUnfamiliar" type="checkbox">
+              <VzSwitchTrack />
+            </label>
+          </div>
+
           <!--
             Outside the toggle above, because it reports on sites that stay
             silenced whether the notifications are switched on or not.
@@ -1774,8 +1788,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             the data section's business.
           -->
           <div class="mt-6 border-t border-line pt-4">
-            <label class="vz-heading">{{ translations.silencedSitesTitle }}</label>
-            <p class="hint vz-small mb-1">
+            <label class="vz-heading settings-label">{{ translations.silencedSitesTitle }}</label>
+            <p class="hint vz-small settings-label-hint">
               {{ translations.silencedSitesDesc }}
             </p>
             <!--
@@ -1840,22 +1854,23 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         <!-- Anti-Tampering Settings -->
         <div id="section-tampering" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('tampering')" @reset="resetSection('tampering')" />
-          <h2 class="vz-title text-center mb-2">
+          <h2 class="vz-title text-center settings-card-title">
             {{ translations.antiTamperingSettings }}
           </h2>
-          <p class="hint vz-small mb-4">
+          <p class="hint vz-small settings-intro">
             {{ translations.antiTamperingSettingsDesc }}
           </p>
 
           <div>
-            <label class="vz-heading">{{ translations.antiTamperingExcludedDomains }}</label>
-            <p class="hint vz-small mb-1">
+            <label class="vz-heading settings-label">{{ translations.antiTamperingExcludedDomains }}</label>
+            <p class="hint vz-small settings-label-hint">
               {{ translations.antiTamperingExcludedDomainsDesc }}
             </p>
             <textarea
               v-model="settings.antiTamperingExcludedDomains"
               wrap="off"
-              class="vz-input settings-textarea w-full"
+              spellcheck="false"
+              class="vz-input vz-input--addr settings-textarea w-full"
               rows="3"
               placeholder="example.com&#10;another-site.org"
             />
@@ -1865,10 +1880,10 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         <!-- Link Safety Settings -->
         <div id="section-link-safety" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('link-safety')" @reset="resetSection('link-safety')" />
-          <h2 class="vz-title text-center mb-2">
+          <h2 class="vz-title text-center settings-card-title">
             {{ translations.linkSafetySettings }}
           </h2>
-          <p class="hint vz-small mb-4">
+          <p class="hint vz-small settings-intro">
             {{ translations.linkSafetySettingsDesc }}
           </p>
 
@@ -1886,33 +1901,33 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
           <div v-if="settings.linkSafety.enabled">
             <!-- Scope Mode -->
             <div class="mt-4 border-t border-line pt-4">
-              <h3 class="vz-heading mb-1">
-                {{ translations.linkScopeMode }}:
+              <h3 class="vz-heading settings-group-title">
+                {{ translations.linkScopeMode }}
               </h3>
-              <p class="hint vz-small mb-3">
+              <p class="hint vz-small settings-group-hint">
                 {{ translations.linkScopeModeDesc }}
               </p>
-              <div class="space-y-2">
-                <label class="flex items-start">
+              <div class="settings-choices">
+                <label class="settings-choice">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="everywhere"
-                    class="vz-check-box flex-shrink-0"
+                    class="vz-check-box"
                   >
-                  <span class="ml-2 text-sm">{{ translations.linkScopeEverywhere }}</span>
+                  <span class="settings-choice__text">{{ translations.linkScopeEverywhere }}</span>
                 </label>
-                <label class="flex items-start">
+                <label class="settings-choice">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="whitelist"
-                    class="vz-check-box flex-shrink-0"
+                    class="vz-check-box"
                   >
-                  <span class="ml-2 text-sm">{{ translations.linkScopeWhitelist }}</span>
+                  <span class="settings-choice__text">{{ translations.linkScopeWhitelist }}</span>
                 </label>
-                <label class="flex items-start">
+                <label class="settings-choice">
                   <input
                     v-model="settings.linkSafety.scopeMode" type="radio" value="blacklist"
-                    class="vz-check-box flex-shrink-0"
+                    class="vz-check-box"
                   >
-                  <span class="ml-2 text-sm">{{ translations.linkScopeBlacklist }}</span>
+                  <span class="settings-choice__text">{{ translations.linkScopeBlacklist }}</span>
                 </label>
               </div>
 
@@ -1921,7 +1936,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 <textarea
                   v-model="settings.linkSafety.scopeDomains"
                   wrap="off"
-                  class="vz-input settings-textarea w-full"
+                  spellcheck="false"
+                  class="vz-input vz-input--addr settings-textarea w-full"
                   rows="3"
                   :placeholder="translations.linkScopeDomains"
                 />
@@ -1933,8 +1949,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
             <!-- Tooltip Trigger -->
             <div class="mt-4 border-t border-line pt-4">
-              <h3 class="text-sm font-medium mb-3">
-                {{ translations.linkTooltipTrigger }}:
+              <h3 class="vz-heading settings-group-title">
+                {{ translations.linkTooltipTrigger }}
               </h3>
               <!-- Said before the choice, not after it: on a touchscreen two of
                    the three options below cannot fire at all -->
@@ -1947,7 +1963,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <p v-else-if="!canRightClick" class="vz-small mb-3">
                 {{ translations.linkTooltipTriggerNoMenusNote }}
               </p>
-              <div class="space-y-2">
+              <div class="settings-choices">
                 <!-- Hovering and right-clicking are disabled rather than hidden
                      where they cannot fire: a choice that silently does nothing
                      is worse than one the device visibly cannot offer, and
@@ -1956,14 +1972,14 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                      Each carries its own reason, because they are not the same
                      reason – one is about the pointer, the other about an API
                      the browser does not have. -->
-                <label class="flex items-start">
+                <label class="settings-choice">
                   <input
                     :checked="tooltipTrigger === 'hover'" type="radio" value="hover" name="tooltip-trigger"
                     :disabled="!pointerCanHover"
-                    class="vz-check-box flex-shrink-0"
+                    class="vz-check-box"
                     :class="{ 'opacity-45': !pointerCanHover }" @change="setTooltipTrigger('hover')"
                   >
-                  <span class="ml-2 text-sm">
+                  <span class="settings-choice__text">
                     <span :class="{ 'opacity-45': !pointerCanHover }">{{ translations.linkTooltipTriggerHover }}</span>
                     <p class="hint vz-small" :class="{ 'opacity-45': !pointerCanHover }">{{ translations.linkTooltipTriggerHoverDesc }}</p>
                     <!-- Full strength while the option it belongs to is dimmed: the
@@ -1974,14 +1990,14 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     </p>
                   </span>
                 </label>
-                <label class="flex items-start">
+                <label class="settings-choice">
                   <input
                     :checked="tooltipTrigger === 'click-right'" type="radio" value="click-right" name="tooltip-trigger"
                     :disabled="!canRightClick"
-                    class="vz-check-box flex-shrink-0"
+                    class="vz-check-box"
                     :class="{ 'opacity-45': !canRightClick }" @change="setTooltipTrigger('click-right')"
                   >
-                  <span class="ml-2 text-sm">
+                  <span class="settings-choice__text">
                     <span :class="{ 'opacity-45': !canRightClick }">{{ translations.linkTooltipTriggerClickRight }}</span>
                     <p class="hint vz-small" :class="{ 'opacity-45': !canRightClick }">{{ translations.linkTooltipTriggerClickRightDesc }}</p>
                     <p v-if="!canRightClick" class="vz-small">
@@ -2019,13 +2035,13 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                  on it are two decisions, and the second one is the one that costs
                  the reader a step on every link it applies to. -->
             <div class="mt-4 border-t border-line pt-4" data-intercept-settings>
-              <h3 class="vz-heading mb-1">
-                {{ translations.linkInterceptHeading }}:
+              <h3 class="vz-heading settings-group-title">
+                {{ translations.linkInterceptHeading }}
               </h3>
-              <p class="hint vz-small mb-3">
+              <p class="hint vz-small settings-group-hint">
                 {{ translations.linkInterceptHeadingDesc }}
               </p>
-              <div class="space-y-3">
+              <div class="settings-choices">
                 <!-- The number box makes the first line taller than the tick box, so
                      the box is centred on that line rather than pinned to its top -->
                 <label class="intercept-flags">
@@ -2038,7 +2054,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                       {{ redFlagsLabel.before }}<input
                         :value="intercept.minRedFlags"
                         type="number" min="1" :max="MAX_RED_FLAG_THRESHOLD" step="1" inputmode="numeric"
-                        class="vz-input intercept-count" data-intercept="minRedFlags"
+                        class="vz-input vz-input--sm intercept-count" data-intercept="minRedFlags"
                         :aria-label="translations.linkInterceptRedFlags.replace('{n}', '').trim()"
                         @change="updateMinRedFlags(($event.target as HTMLInputElement).value)"
                         @click.prevent.stop
@@ -2048,34 +2064,34 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                   </span>
                 </label>
                 <div class="vz-subgroup">
-                  <label class="flex items-start">
+                  <label class="settings-choice">
                     <input
-                      :checked="intercept.shortLinks" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="shortLinks"
+                      :checked="intercept.shortLinks" type="checkbox" class="vz-check-box" data-intercept="shortLinks"
                       @change="updateIntercept({ shortLinks: ($event.target as HTMLInputElement).checked })"
                     >
-                    <span class="ml-2 text-sm">
+                    <span class="settings-choice__text">
                       <span>{{ translations.linkInterceptShortLinks }}</span>
                       <p class="hint vz-small">{{ translations.linkInterceptShortLinksDesc }}</p>
                     </span>
                   </label>
                   <!-- Under short links, and nothing to decide while those are not stopped -->
-                  <label class="vz-sub flex items-start" :class="{ 'vz-sub--off': !intercept.shortLinks }">
+                  <label class="vz-sub settings-choice" :class="{ 'vz-sub--off': !intercept.shortLinks }">
                     <input
-                      :checked="intercept.shortLinksOnOwnSite" :disabled="!intercept.shortLinks" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="shortLinksOnOwnSite"
+                      :checked="intercept.shortLinksOnOwnSite" :disabled="!intercept.shortLinks" type="checkbox" class="vz-check-box" data-intercept="shortLinksOnOwnSite"
                       @change="updateIntercept({ shortLinksOnOwnSite: ($event.target as HTMLInputElement).checked })"
                     >
-                    <span class="ml-2 text-sm">
+                    <span class="settings-choice__text">
                       <span>{{ translations.linkInterceptShortLinksOwnSite }}</span>
                       <p class="hint vz-small">{{ translations.linkInterceptShortLinksOwnSiteDesc }}</p>
                     </span>
                   </label>
                 </div>
-                <label class="flex items-start">
+                <label class="settings-choice">
                   <input
-                    :checked="intercept.unfamiliar" type="checkbox" class="vz-check-box flex-shrink-0" data-intercept="unfamiliar"
+                    :checked="intercept.unfamiliar" type="checkbox" class="vz-check-box" data-intercept="unfamiliar"
                     @change="updateIntercept({ unfamiliar: ($event.target as HTMLInputElement).checked })"
                   >
-                  <span class="ml-2 text-sm">
+                  <span class="settings-choice__text">
                     <span>{{ translations.linkInterceptUnfamiliar }}</span>
                     <p class="hint vz-small">{{ translations.linkInterceptUnfamiliarDesc }}</p>
                   </span>
@@ -2085,112 +2101,119 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
             <!-- Show Visit Count -->
             <div class="mt-4 border-t border-line pt-4">
-              <h3 class="vz-heading mb-1">
-                {{ translations.linkShowVisitCount }}:
+              <h3 class="vz-heading settings-group-title">
+                {{ translations.linkShowVisitCount }}
               </h3>
-              <p class="hint vz-small mb-3">
+              <p class="hint vz-small settings-group-hint">
                 {{ translations.linkShowVisitCountDesc }}
               </p>
-              <div class="space-y-2">
-                <label class="flex items-start">
+              <div class="settings-choices">
+                <label class="settings-choice">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="always"
-                    class="vz-check-box flex-shrink-0"
+                    class="vz-check-box"
                   >
-                  <span class="ml-2 text-sm">{{ translations.linkShowVisitCountAlways }}</span>
+                  <span class="settings-choice__text">{{ translations.linkShowVisitCountAlways }}</span>
                 </label>
-                <label class="flex items-start">
+                <label class="settings-choice">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="unfamiliar"
-                    class="vz-check-box flex-shrink-0"
+                    class="vz-check-box"
                   >
-                  <span class="ml-2 text-sm">{{ translations.linkShowVisitCountUnfamiliar }}</span>
+                  <span class="settings-choice__text">{{ translations.linkShowVisitCountUnfamiliar }}</span>
                 </label>
-                <label class="flex items-start">
+                <label class="settings-choice">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="familiar"
-                    class="vz-check-box flex-shrink-0"
+                    class="vz-check-box"
                   >
-                  <span class="ml-2 text-sm">{{ translations.linkShowVisitCountFamiliar }}</span>
+                  <span class="settings-choice__text">{{ translations.linkShowVisitCountFamiliar }}</span>
                 </label>
-                <label class="flex items-start">
+                <label class="settings-choice">
                   <input
                     v-model="settings.linkSafety.showVisitCount" type="radio" value="never"
-                    class="vz-check-box flex-shrink-0"
+                    class="vz-check-box"
                   >
-                  <span class="ml-2 text-sm">{{ translations.linkShowVisitCountNever }}</span>
+                  <span class="settings-choice__text">{{ translations.linkShowVisitCountNever }}</span>
                 </label>
               </div>
             </div>
 
             <!-- Shortened URL Settings -->
             <div class="mt-4 border-t border-line pt-4">
-              <h3 class="vz-heading mb-1">
+              <h3 class="vz-heading settings-group-title">
                 {{ translations.linkShortUrlSection }}
               </h3>
-              <p class="hint vz-small mb-3">
+              <p class="hint vz-small settings-group-hint">
                 {{ translations.linkShortUrlSectionWarning }}
               </p>
 
               <!-- Mode: off / button / auto -->
-              <div class="space-y-3 mb-3">
-                <label class="flex items-start cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="off" class="vz-check-box flex-shrink-0 mt-0.5">
-                  <span class="ml-2 text-sm">{{ translations.linkShortUrlModeOff }}</span>
+              <div class="settings-choices mb-3">
+                <label class="settings-choice">
+                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="off" class="vz-check-box">
+                  <span class="settings-choice__text">{{ translations.linkShortUrlModeOff }}</span>
                 </label>
-                <label class="flex items-start cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="button" class="vz-check-box flex-shrink-0 mt-0.5">
-                  <span class="ml-2 text-sm">
+                <label class="settings-choice">
+                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="button" class="vz-check-box">
+                  <span class="settings-choice__text">
                     <span class="block">{{ translations.linkShortUrlModeButton }}</span>
-                    <span class="hint block vz-small mt-0.5">
-                      {{ translations.linkShortUrlModeButtonDesc }}
-                    </span>
+                    <span class="hint block vz-small">{{ translations.linkShortUrlModeButtonDesc }}</span>
                   </span>
                 </label>
-                <label class="flex items-start cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="auto" class="vz-check-box flex-shrink-0 mt-0.5">
-                  <span class="ml-2 text-sm">
+                <label class="settings-choice">
+                  <input v-model="settings.linkSafety.shortUrlMode" type="radio" value="auto" class="vz-check-box">
+                  <span class="settings-choice__text">
                     <span class="block">{{ translations.linkShortUrlModeAuto }}</span>
-                    <span class="hint block vz-small mt-0.5">
-                      {{ translations.linkShortUrlModeAutoDesc }}
-                    </span>
+                    <span class="hint block vz-small">{{ translations.linkShortUrlModeAutoDesc }}</span>
                   </span>
                 </label>
               </div>
 
               <!-- Sub-options (only when not off) -->
-              <div v-if="settings.linkSafety.shortUrlMode !== 'off'" class="space-y-3 border-t border-line pt-3">
-                <!-- Show full URL -->
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlShowFullUrl" type="checkbox" class="vz-check-box flex-shrink-0">
-                  <span class="text-sm">{{ translations.linkShortUrlShowFullUrl }}</span>
+              <div v-if="settings.linkSafety.shortUrlMode !== 'off'" class="space-y-4 border-t border-line pt-4">
+                <!-- Switches rather than tick boxes: each is a setting of its own that
+                     takes effect at once, not one of several picked from a list -->
+                <label class="flex items-start justify-between gap-4 cursor-pointer">
+                  <span>
+                    <span class="vz-heading block">{{ translations.linkShortUrlShowFullUrl }}</span>
+                  </span>
+                  <span class="vz-switch flex-shrink-0">
+                    <input v-model="settings.linkSafety.shortUrlShowFullUrl" type="checkbox">
+                    <VzSwitchTrack />
+                  </span>
                 </label>
-
-                <!-- Show redirect chain -->
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlTraceChain" type="checkbox" class="vz-check-box flex-shrink-0">
-                  <span class="text-sm">{{ translations.linkShortUrlTraceChain }}</span>
+                <label class="flex items-start justify-between gap-4 cursor-pointer">
+                  <span>
+                    <span class="vz-heading block">{{ translations.linkShortUrlTraceChain }}</span>
+                  </span>
+                  <span class="vz-switch flex-shrink-0">
+                    <input v-model="settings.linkSafety.shortUrlTraceChain" type="checkbox">
+                    <VzSwitchTrack />
+                  </span>
                 </label>
-
-                <!-- Resolve any URL -->
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input v-model="settings.linkSafety.shortUrlResolveAny" type="checkbox" class="vz-check-box flex-shrink-0">
-                  <span class="text-sm">{{ translations.linkShortUrlResolveAny }}</span>
+                <label class="flex items-start justify-between gap-4 cursor-pointer">
+                  <span>
+                    <span class="vz-heading block">{{ translations.linkShortUrlResolveAny }}</span>
+                    <span class="hint block vz-small">{{ translations.linkShortUrlResolveAnyDesc }}</span>
+                  </span>
+                  <span class="vz-switch flex-shrink-0">
+                    <input v-model="settings.linkSafety.shortUrlResolveAny" type="checkbox">
+                    <VzSwitchTrack />
+                  </span>
                 </label>
-                <p v-if="settings.linkSafety.shortUrlResolveAny" class="vz-small ml-6">
-                  {{ translations.linkShortUrlResolveAnyDesc }}
-                </p>
 
                 <!-- Custom shortener domains -->
                 <div>
-                  <label class="vz-heading">{{ translations.linkShortUrlCustomDomains }}</label>
-                  <p class="hint vz-small mb-1">
+                  <label class="vz-heading settings-label">{{ translations.linkShortUrlCustomDomains }}</label>
+                  <p class="hint vz-small settings-label-hint">
                     {{ translations.linkShortUrlCustomDomainsDesc }}
                   </p>
                   <textarea
                     v-model="customShortenersText"
                     wrap="off"
-                    class="vz-input settings-textarea w-full"
+                    spellcheck="false"
+                    class="vz-input vz-input--addr settings-textarea w-full"
                     rows="3"
                     placeholder="short.link&#10;go.example.com"
                   />
@@ -2198,8 +2221,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
                 <!-- Remote list update URLs -->
                 <div>
-                  <label class="vz-heading">{{ translations.linkShortUrlListUpdateUrl }}</label>
-                  <p class="hint vz-small mb-1">
+                  <label class="vz-heading settings-label">{{ translations.linkShortUrlListUpdateUrl }}</label>
+                  <p class="hint vz-small settings-label-hint">
                     {{ translations.linkShortUrlListUpdateUrlDesc }}
                   </p>
                   <textarea
@@ -2211,7 +2234,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                     placeholder="https://raw.githubusercontent.com/...&#10;https://example.com/another-list.txt"
                   />
                   <button
-                    class="vz-btn vz-btn--primary vz-btn--sm w-full mt-2 whitespace-nowrap"
+                    class="vz-btn vz-btn--sm w-full mt-2 whitespace-nowrap"
                     :disabled="shortenerUpdateStatus === 'loading' || !shortenerListUrls.length"
                     @click="updateShortenerListNow"
                   >
@@ -2243,10 +2266,10 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         <!-- Lookup links – links the user may follow, never requests the extension makes -->
         <div id="section-lookups" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('lookups')" @reset="resetSection('lookups')" />
-          <h2 class="vz-title text-center mb-2">
+          <h2 class="vz-title text-center settings-card-title">
             {{ translations.lookupServicesLabel }}
           </h2>
-          <p class="hint vz-small mb-4">
+          <p class="hint vz-small settings-intro">
             {{ translations.lookupServicesNote }}
           </p>
 
@@ -2267,24 +2290,25 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         <!-- Email Domain Lists -->
         <div id="section-email-lists" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('email-lists')" @reset="resetSection('email-lists')" />
-          <h2 class="vz-title text-center mb-2">
+          <h2 class="vz-title text-center settings-card-title">
             {{ translations.emailListsTitle }}
           </h2>
-          <p class="hint vz-small mb-4">
+          <p class="hint vz-small settings-intro">
             {{ translations.emailListsDesc }}
           </p>
 
           <div class="space-y-4">
             <!-- Public providers: what the user adds, then where more come from -->
             <div>
-              <label class="vz-heading">{{ translations.emailCustomPublicLabel }}</label>
-              <p class="hint vz-small mb-1">
+              <label class="vz-heading settings-label">{{ translations.emailCustomPublicLabel }}</label>
+              <p class="hint vz-small settings-label-hint">
                 {{ translations.emailCustomPublicDesc }}
               </p>
               <textarea
                 v-model="customPublicProvidersText"
                 wrap="off"
-                class="vz-input settings-textarea w-full"
+                spellcheck="false"
+                class="vz-input vz-input--addr settings-textarea w-full"
                 rows="3"
                 placeholder="mail.example.com"
               />
@@ -2292,8 +2316,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
             <!-- Remote public provider list update -->
             <div>
-              <label class="vz-heading">{{ translations.emailPublicUpdateUrlLabel }}</label>
-              <p class="hint vz-small mb-1">
+              <label class="vz-heading settings-label">{{ translations.emailPublicUpdateUrlLabel }}</label>
+              <p class="hint vz-small settings-label-hint">
                 {{ translations.emailPublicUpdateUrlDesc }}
               </p>
               <textarea
@@ -2305,7 +2329,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 placeholder="https://raw.githubusercontent.com/.../free.txt&#10;https://example.com/another-list.txt"
               />
               <button
-                class="vz-btn vz-btn--primary vz-btn--sm w-full mt-2 whitespace-nowrap"
+                class="vz-btn vz-btn--sm w-full mt-2 whitespace-nowrap"
                 :disabled="publicUpdateStatus === 'loading' || !publicListUrls.length"
                 @click="updatePublicListNow"
               >
@@ -2332,14 +2356,15 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
             <!-- Disposable domains: the same pair, own list then sources -->
             <div>
-              <label class="vz-heading">{{ translations.emailCustomDisposableLabel }}</label>
-              <p class="hint vz-small mb-1">
+              <label class="vz-heading settings-label">{{ translations.emailCustomDisposableLabel }}</label>
+              <p class="hint vz-small settings-label-hint">
                 {{ translations.emailCustomDisposableDesc }}
               </p>
               <textarea
                 v-model="customDisposableText"
                 wrap="off"
-                class="vz-input settings-textarea w-full"
+                spellcheck="false"
+                class="vz-input vz-input--addr settings-textarea w-full"
                 rows="3"
                 placeholder="temp-mail.example&#10;trash.example.org"
               />
@@ -2347,8 +2372,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
             <!-- Remote disposable list update -->
             <div>
-              <label class="vz-heading">{{ translations.emailDisposableUpdateUrlLabel }}</label>
-              <p class="hint vz-small mb-1">
+              <label class="vz-heading settings-label">{{ translations.emailDisposableUpdateUrlLabel }}</label>
+              <p class="hint vz-small settings-label-hint">
                 {{ translations.emailDisposableUpdateUrlDesc }}
               </p>
               <textarea
@@ -2360,7 +2385,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 placeholder="https://raw.githubusercontent.com/.../disposable_email_blocklist.conf&#10;https://example.com/another-list.txt"
               />
               <button
-                class="vz-btn vz-btn--primary vz-btn--sm w-full mt-2 whitespace-nowrap"
+                class="vz-btn vz-btn--sm w-full mt-2 whitespace-nowrap"
                 :disabled="disposableUpdateStatus === 'loading' || !disposableListUrls.length"
                 @click="updateDisposableListNow"
               >
@@ -2388,8 +2413,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <!-- Where a mail domain is read, for the brands the built-in table
                  does not cover -->
             <div>
-              <label class="vz-heading">{{ translations.emailMailSitesLabel }}</label>
-              <p class="hint vz-small mb-1">
+              <label class="vz-heading settings-label">{{ translations.emailMailSitesLabel }}</label>
+              <p class="hint vz-small settings-label-hint">
                 {{ translations.emailMailSitesDesc }}
               </p>
               <textarea
@@ -2405,8 +2430,8 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
             <!-- Remote mapping sources. Empty by default, so this stays a way in
                  for somebody who keeps a list rather than a promise of one -->
             <div>
-              <label class="vz-heading">{{ translations.emailMailSitesUpdateUrlLabel }}</label>
-              <p class="hint vz-small mb-1">
+              <label class="vz-heading settings-label">{{ translations.emailMailSitesUpdateUrlLabel }}</label>
+              <p class="hint vz-small settings-label-hint">
                 {{ translations.emailMailSitesUpdateUrlDesc }}
               </p>
               <textarea
@@ -2418,7 +2443,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
                 placeholder="https://example.com/mail-sites.txt"
               />
               <button
-                class="vz-btn vz-btn--primary vz-btn--sm w-full mt-2 whitespace-nowrap"
+                class="vz-btn vz-btn--sm w-full mt-2 whitespace-nowrap"
                 :disabled="mailSiteUpdateStatus === 'loading' || !mailSiteListUrls.length"
                 @click="updateMailSiteListNow"
               >
@@ -2447,7 +2472,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
         <!-- Database Management -->
         <div id="section-data" class="scroll-mt-6 vz-card settings-card">
-          <h2 class="vz-title text-center mb-4">
+          <h2 class="vz-title text-center settings-card-title">
             {{ translations.databaseManagement }}
           </h2>
 
@@ -2481,56 +2506,58 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <button
                 v-if="canImportHistory"
                 class="vz-btn vz-btn--primary w-full"
-                :disabled="isImporting" @click="importHistory()"
+                :disabled="importRunning" @click="importHistory()"
               >
-                <template v-if="!isImporting">
+                <template v-if="!importRunning">
                   {{ importButtonLabel }}
                 </template>
-                <template v-else>
+                <!-- No count while the history is still being read: there is
+                     nothing to count yet, and "0/0" read as an import of nothing -->
+                <template v-else-if="importProgress.total">
                   {{ translations.importing }} {{ importProgress.current }}/{{ importProgress.total }}
+                </template>
+                <template v-else>
+                  {{ translations.importing }}
                 </template>
               </button>
               <p v-if="canImportHistory" class="hint vz-small mt-1">
                 {{ translations.importHistoryRunDesc }}
               </p>
-              <div v-if="isImporting" class="w-full h-1 mt-2 bg-surface-hover rounded-full overflow-hidden">
+              <div v-if="importRunning" class="w-full h-1 mt-2 bg-surface-hover rounded-full overflow-hidden">
                 <div
                   class="h-full bg-brand transition-all duration-200"
                   :style="{ width: `${importProgress.total ? (importProgress.current / importProgress.total) * 100 : 0}%` }"
                 />
               </div>
               <button
-                v-if="isImporting"
+                v-if="importRunning"
                 class="vz-btn vz-btn--sm w-full mt-2"
+                :disabled="importCancelled"
                 @click="cancelImport"
               >
                 {{ translations.cancel }}
               </button>
-              <!-- Unlike the automatic import, this one runs in the page and dies with it -->
-              <p v-if="isImporting" class="hint vz-small mt-2">
-                {{ translations.importKeepPageOpen }}
-              </p>
             </div>
 
             <div class="space-y-2">
               <div>
-                <h3 class="vz-heading mb-2">
+                <h3 class="vz-heading settings-group-title">
                   {{ translations.resetData }}
                 </h3>
-                <div class="space-y-2">
-                  <label class="flex items-start">
+                <div class="settings-choices">
+                  <label class="settings-choice">
                     <input
                       v-model="resetSelections.visits" type="checkbox"
-                      class="vz-check-box flex-shrink-0"
+                      class="vz-check-box"
                     >
-                    <span class="ml-2 text-sm">{{ translations.visitsInfo }}</span>
+                    <span class="settings-choice__text">{{ translations.visitsInfo }}</span>
                   </label>
-                  <label class="flex items-start">
+                  <label class="settings-choice">
                     <input
                       v-model="resetSelections.settings" type="checkbox"
-                      class="vz-check-box flex-shrink-0"
+                      class="vz-check-box"
                     >
-                    <span class="ml-2 text-sm">{{ translations.allSettings }}</span>
+                    <span class="settings-choice__text">{{ translations.allSettings }}</span>
                   </label>
                 </div>
               </div>
@@ -2608,6 +2635,37 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 </template>
 
 <style>
+/*
+ * The space under a title belongs to the title, not to the explanation under
+ * it. It used to be the other way round, so on a compact page, with the
+ * explanations hidden, one heading stood 4px from its options and the next
+ * 12px. An explanation now pulls itself up to its title instead, and leaves
+ * the same space below itself as the title would have.
+ */
+.settings-card .settings-card-title { margin-bottom: 16px; }
+.settings-card .settings-intro { margin: -8px 0 16px; }
+.settings-card .settings-group-title { margin-bottom: 12px; }
+.settings-card .settings-group-hint { margin: -8px 0 12px; }
+.settings-card .settings-label { display: block; margin-bottom: 6px; }
+.settings-card .settings-label-hint { margin: -6px 0 6px; }
+
+/* A group of tick boxes or radio buttons, and one choice in it: the box beside
+   the first line of its words, the explanation under the words */
+.settings-choices { display: grid; gap: 10px; }
+
+.settings-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: start;
+  cursor: pointer;
+}
+
+/* An 18px box centred on the first 20px line */
+.settings-choice > input { margin-top: 1px; }
+.settings-choice:has(> input:disabled) { cursor: not-allowed; }
+.settings-choice__text { font-size: 0.875rem; line-height: 1.25rem; }
+
 .intercept-flags {
   display: grid;
   grid-template-columns: auto 1fr;

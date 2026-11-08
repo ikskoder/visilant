@@ -128,15 +128,15 @@ const CASES: Case[] = [
   // ==========================================
   // Check this domain elsewhere
   // ==========================================
-  { name: 'ck-lookups-open', title: 'Check page: "Check this domain elsewhere" unfolded', note: 'Three links to outside services.', seed: FAMILY, input: 'paypal.test', card: 'paypal.test', then: async (page) => {
-    await page.locator('[data-domain-panel] >> text=Check this domain elsewhere').first().click()
+  { name: 'ck-lookups-open', title: 'Check page: "Check elsewhere" unfolded', note: 'Three links to outside services.', seed: FAMILY, input: 'paypal.test', card: 'paypal.test', then: async (page) => {
+    await page.locator('[data-domain-panel] >> text=Check elsewhere').first().click()
     await page.waitForTimeout(300)
   } },
   { name: 'ck-lookups-many', title: 'Check page: eight lookup links', note: 'Own list of eight services. The links wrap.', settings: { lookupServices: Array.from({ length: 8 }, (_, i) => `Service number ${i + 1} | https://lookup-${i + 1}.example/{domain}`).join('\n') }, seed: FAMILY, input: 'paypal.test', card: 'paypal.test', then: async (page) => {
-    await page.locator('[data-domain-panel] >> text=Check this domain elsewhere').first().click()
+    await page.locator('[data-domain-panel] >> text=Check elsewhere').first().click()
     await page.waitForTimeout(300)
   } },
-  { name: 'ck-lookups-none', title: 'Check page with the lookup links removed', note: 'No "Check this domain elsewhere" anywhere.', settings: { lookupServices: '' }, seed: FAMILY, input: 'paypal.test', card: 'paypal.test' },
+  { name: 'ck-lookups-none', title: 'Check page with the lookup links removed', note: 'No "Check elsewhere" anywhere.', settings: { lookupServices: '' }, seed: FAMILY, input: 'paypal.test', card: 'paypal.test' },
 ]
 
 for (const c of CASES) {

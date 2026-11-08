@@ -11,6 +11,7 @@ import { useTheme } from '~/composables/useTheme'
 import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
 import { displayDomain } from '~/logic/domain-display'
 import { DOMAIN_METRICS, metricReading, metricSortValue } from '~/logic/domain-metric'
+import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
 import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { getPunycodeInfo } from '~/logic/link-safety'
 import { applyListChanges } from '~/logic/list-sync'
@@ -53,6 +54,7 @@ function updateTranslations() {
     'familyOnlyCurrentDomain',
     'shortenerHostNotice',
     'listNumberLabel',
+    'listShowLabel',
     'listSortLabel',
     'sortByName',
     'sortToName',
@@ -97,6 +99,8 @@ function updateTranslations() {
     'familiarityActiveDays',
     'familiarityAge',
     'badgeContentChecks',
+    'emailPublicProvider',
+    'emailDisposableDomain',
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -548,6 +552,19 @@ const isAntiTamperingExcluded = computed(() => antiTamperingRule.value !== null)
 const antiTamperingRuleIsParent = computed(() =>
   antiTamperingRule.value !== null && antiTamperingRule.value !== currentHostname.value?.toLowerCase())
 
+/**
+ * What the switch says before it is pressed. Over a host that is off by its
+ * parent's line it also names that line, because pressing removes it and that
+ * puts protection back on every host under it, not just this one.
+ */
+const antiTamperingToggleTitle = computed(() => {
+  if (!isAntiTamperingExcluded.value)
+    return translations.value.antiTamperingTooltipOn
+  if (!antiTamperingRuleIsParent.value)
+    return translations.value.antiTamperingTooltipOff
+  return `${translations.value.antiTamperingTooltipOff}\n\n${translations.value.antiTamperingParentRule} ${antiTamperingRule.value}`
+})
+
 function toggleAntiTampering() {
   const hostname = currentHostname.value
   if (!hostname)
@@ -560,7 +577,7 @@ function toggleAntiTampering() {
   if (rule) {
     // The line that actually covers this host, which for a subdomain is the
     // parent's. Removing it puts protection back on every host under it, and
-    // the line below the switch says so before it is pressed.
+    // the switch's tooltip says so before it is pressed.
     settings.value.antiTamperingExcludedDomains = excluded.filter(d => d !== rule).join('\n')
   }
   else {
@@ -657,6 +674,28 @@ const isShortenerHost = computed(() => {
 const { statusLabel } = useFamiliarityFacts()
 
 /**
+ * Bumped once the mail provider lists are read. They are plain module sets, as
+ * the shortener lists are, so a computed reading them needs something that is
+ * reactive to know they arrived.
+ */
+const emailListsVersion = ref(0)
+
+/**
+ * What kind of mail provider an address domain is, when the card is about one.
+ *
+ * Nobody opens gmail.com or a throwaway mail service, so their own visits are a
+ * zero that never moves. Judged by it, the card drew a red "never visited" for
+ * an address whose tooltip on the page had just said "public email service".
+ */
+const providerKind = computed(() => {
+  void emailListsVersion.value
+  return currentContext.value === 'email' && currentHostname.value
+    ? classifyEmailDomain(currentHostname.value)
+    : null
+})
+const isMailProvider = computed(() => providerKind.value === 'public' || providerKind.value === 'disposable')
+
+/**
  * The verdict on the address at the top of the card, the one thing the popup
  * used to leave the reader to add up from three marks.
  *
@@ -673,6 +712,12 @@ const addressVerdict = computed(() => {
   const host = currentHostname.value
   if (!host || visitsReadFor.value !== host || isUntrackedHost.value || isShortenerHost.value)
     return null
+  // The provider, said as the tooltip and the panel say it, never a visit
+  // verdict on a name nobody opens
+  if (providerKind.value === 'public')
+    return { verdict: 'public', text: translations.value.emailPublicProvider, tone: 'neutral', icon: 'email' } as const
+  if (providerKind.value === 'disposable')
+    return { verdict: 'disposable', text: translations.value.emailDisposableDomain, tone: 'danger', icon: 'alert' } as const
   const own = visits.value[currentKey.value] ?? { count: 0 }
   return statusLabel(isFamiliar(own, familiarityRules.value), Number(own.count) || 0, false, { hostname: host, email: currentContext.value === 'email' })
 })
@@ -696,6 +741,11 @@ function onShortenerListChange(changes: Record<string, { newValue?: unknown }>, 
   applyListChanges(changes)
   shortenerListsVersion.value += 1
 }
+
+onMounted(async () => {
+  await loadEmailListsFromStorage().catch(() => {})
+  emailListsVersion.value += 1
+})
 
 onMounted(async () => {
   window.addEventListener('resize', refreshWidthCap)
@@ -730,7 +780,7 @@ onMounted(async () => {
 
   if (domainParam) {
     isStandalonePage.value = true
-    await loadDomainData(domainParam)
+    await loadDomainData(domainParam, urlParams.get('context') === 'email' ? 'email' : undefined)
     return
   }
 
@@ -915,7 +965,7 @@ onMounted(async () => {
                is the name they are about. firstSeen/activeDays stay empty until
                a full history import supplies them – nothing guesses a date. -->
           <FamiliarityGrid
-            v-if="currentStats"
+            v-if="currentStats && !isMailProvider"
             :stats="currentStats"
             class="popup-rule"
           />
@@ -964,16 +1014,15 @@ onMounted(async () => {
             >
               <VzBadge v-if="isAntiTamperingExcluded" tone="neutral" icon="unknown">{{ translations.antiTamperingNotProtected }}</VzBadge>
               <template v-else>{{ translations.antiTamperingProtected }}</template>
-              <!-- Named, because the switch removes this line and that puts
-                   protection back on every host under it, not just this one -->
-              <template v-if="antiTamperingRuleIsParent">
-                – {{ translations.antiTamperingParentRule }} <SecureText :text="antiTamperingRule" size="s" />
-              </template>
             </span>
+            <!-- Which line of the list switched it off is said in the button's
+                 tooltip only. The list is the one thing that can switch it off,
+                 so on the row itself the name of the rule was a second sentence
+                 that pushed the button onto a line of its own -->
             <button
               class="vz-btn vz-btn--sm vz-btn--quiet"
               data-anti-tampering-toggle
-              :title="isAntiTamperingExcluded ? translations.antiTamperingTooltipOff : translations.antiTamperingTooltipOn"
+              :title="antiTamperingToggleTitle"
               @click="toggleAntiTampering"
             >
               {{ isAntiTamperingExcluded ? translations.antiTamperingEnableForSite : translations.antiTamperingDisableForSite }}
@@ -1062,13 +1111,15 @@ onMounted(async () => {
               </button>
             </div>
             <div class="flex items-center gap-2">
-              <span class="vz-small">{{ translations.listNumberLabel }}</span>
+              <!-- Not "Number" as well: the sort button beside it already says
+                   that, and two "Number"s in one row read as one control -->
+              <span class="vz-small">{{ translations.listShowLabel }}</span>
               <span class="vz-selectbox">
                 <select
                   class="vz-select vz-select--sm"
                   data-list-metric
                   :value="listMetric"
-                  :aria-label="translations.listNumberLabel"
+                  :aria-label="translations.listShowLabel"
                   @change="onListMetricChange"
                 >
                   <option v-for="metric in DOMAIN_METRICS" :key="metric" :value="metric">
@@ -1085,7 +1136,7 @@ onMounted(async () => {
           <span class="vz-eyebrow">{{ translations.relatedDomains }}</span>
           <ul
             class="vz-list popup-list"
-            :class="isPageView ? '' : 'popup-list--capped'"
+            :class="isPageView ? '' : 'popup-list--capped vz-scroll-y'"
           >
             <li
               v-for="domain in sortedFamilyHosts"
@@ -1298,8 +1349,9 @@ html:not(.standalone-page) .popup-list--capped {
   min-width: 5.5em;
 }
 
+/* Six rows and half of the seventh, so the cut runs through a row rather than
+   along the line between two, where it read as the end of the list */
 .popup-list--capped {
-  max-height: 265px;
-  overflow-y: auto;
+  max-height: calc(44px * 6.5 * var(--vz-scale, 1));
 }
 </style>

@@ -171,3 +171,30 @@ export async function allText(page: any): Promise<string> {
 export async function usePage(page: any) {
   await page.mouse.click(5, 5)
 }
+
+/** Press a dialog button by its `data-action`, through the closed shadow root. */
+export async function clickInDialog(page: any, action: string) {
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true })
+    let found: number | null = null
+    const walk = (node: any) => {
+      const attributes: string[] = node.attributes ?? []
+      for (let i = 0; i < attributes.length; i += 2) {
+        if (attributes[i] === 'data-action' && attributes[i + 1] === action)
+          found = node.backendNodeId
+      }
+      for (const child of [...(node.children ?? []), ...(node.shadowRoots ?? [])])
+        walk(child)
+    }
+    walk(root)
+    if (found === null)
+      throw new Error(`no button with data-action="${action}"`)
+    const { model } = await cdp.send('DOM.getBoxModel', { backendNodeId: found })
+    const [x1, y1, , , x3, y3] = model.content
+    await page.mouse.click((x1 + x3) / 2, (y1 + y3) / 2)
+  }
+  finally {
+    await cdp.detach()
+  }
+}

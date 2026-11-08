@@ -8,7 +8,7 @@
     "description": "Description of the extension"
   },
   "securityWarning": {
-    "message": "Security warning",
+    "message": "Unfamiliar site",
     "description": "Title of the security warning popup"
   },
   "inputWarningMessage": {
@@ -192,7 +192,7 @@
     "description": "Title for display settings section"
   },
   "displaySettingsPinNote": {
-    "message": "Both settings here only matter if the extension icon is pinned to your browser toolbar, and pinning it is well worth doing. The reason is in the notification settings just below.",
+    "message": "Both settings here only matter if the extension icon is pinned to your browser toolbar, and pinning it is well worth doing. The reason is in the warning settings just below.",
     "description": "Note explaining that the icon settings require the extension icon to be pinned"
   },
   "displaySettingsPinNoteAndroid": {
@@ -240,11 +240,11 @@
     "description": "Description for badge setting"
   },
   "notificationSettings": {
-    "message": "Notifications",
+    "message": "Warnings",
     "description": "Title for notification settings section"
   },
   "showWarningNotification": {
-    "message": "Show notifications",
+    "message": "Show warnings",
     "description": "Label for notifications toggle"
   },
   "showWarningNotificationDesc": {
@@ -252,7 +252,7 @@
     "description": "Description for notifications setting"
   },
   "notificationStyle": {
-    "message": "Notification style:",
+    "message": "Where warnings appear",
     "description": "Label for notification style selection"
   },
   "browserNotifications": {
@@ -276,7 +276,7 @@
     "description": "Option for both types of notifications"
   },
   "notificationStylePinNote": {
-    "message": "As you can see, every style has a caveat of its own. That's why pinning the extension icon to the toolbar is worth doing. The icon sits in the browser's own frame, outside every page, so a site can neither silence it, nor remove it, nor draw a convincing fake over it. Whatever happens to a notification, the icon still tells you how well the site is known.",
+    "message": "As you can see, every style has a caveat of its own. That's why pinning the extension icon to the toolbar is worth doing. The icon sits in the browser's own frame, outside every page, so a site can neither silence it, nor remove it, nor draw a convincing fake over it. Whatever happens to a warning, the icon still tells you how well the site is known.",
     "description": "Note below the notification style options, recommending the pinned icon as the indicator a site cannot fake"
   },
   "databaseManagement": {
@@ -322,10 +322,6 @@
   "importStatusUnsupported": {
     "message": "This browser doesn't let extensions read its history, so there's nothing to import. Sites become familiar as you visit them.",
     "description": "Import status: the browser has no history API, as on Firefox for Android"
-  },
-  "importKeepPageOpen": {
-    "message": "This import runs in this page, so leave it open until it finishes. The automatic one runs in the background and doesn't need it.",
-    "description": "Hint shown while a manual import runs in the settings page"
   },
   "importLastRun": {
     "message": "Last import",
@@ -464,7 +460,7 @@
     "description": "Label of the setting that holds a paste until confirmed"
   },
   "blockPasteOnUnfamiliarDesc": {
-    "message": "Instead of only warning you, the first paste on an unfamiliar site is stopped and nothing is inserted until you've looked at the address. Allowing it doesn't paste anything by itself: you press paste again and it goes through as an ordinary paste, with formatting, images, undo and the page’s own handling all behaving normally. After that the page stops asking.",
+    "message": "The first paste on an unfamiliar site is stopped and nothing is inserted until you've looked at the address. Allowing it doesn't paste anything by itself: you press paste again and it goes through as an ordinary paste, with formatting, images, undo and the page's own handling all behaving normally. After that the page stops asking. This works on its own, whether or not the warnings above are on.",
     "description": "What the paste hold does and what it cannot do"
   },
   "pasteInterceptTitle": {
@@ -516,7 +512,7 @@
     "description": "Clipboard contents look like a number, card or code"
   },
   "warningTriggerEventsTitle": {
-    "message": "When to show notifications",
+    "message": "When to warn",
     "description": "Title for warning trigger events section"
   },
   "currentDomain": {
@@ -528,7 +524,7 @@
     "description": "Heading of the domain card when the popup is opened as its own tab, where there is no current domain"
   },
   "currentAddress": {
-    "message": "Current address",
+    "message": "This address",
     "description": "Heading of the card when the site is an IP address, which is not a domain"
   },
   "checkedAddress": {
@@ -540,7 +536,7 @@
     "description": "Label preceding the base (registrable) domain"
   },
   "relatedDomains": {
-    "message": "Related domains",
+    "message": "Addresses on this site",
     "description": "Header for the list of recorded hostnames under the base domain. Not \"Subdomains\": the list holds every name at any depth, the base domain itself among them, and that one is nobody's subdomain"
   },
   "foldTotal": {
@@ -556,7 +552,7 @@
     "description": "Small label over the row of facts on the base domain card, saying the numbers under it summarise every host in the list below rather than describing one address"
   },
   "shortenerHostNotice": {
-    "message": "Link shortener: its links can lead to any site, so your visit history here says nothing about whether they are safe.",
+    "message": "Short-link service: its links can lead to any site, so your visit history here says nothing about where they lead.",
     "description": "Warning line on the domain card of the popup when the domain is on the shortener list. The figures stay, since they are true about the site itself, but they say nothing about where its links go"
   },
   "familyOnlyCheckedDomain": {
@@ -570,6 +566,10 @@
   "listNumberLabel": {
     "message": "Number",
     "description": "Label before the chips picking which number the subdomain list draws, and the same word on the sort button when the list is ordered by that number. The chips themselves are named after the familiarity checks, since they are the same facts"
+  },
+  "listShowLabel": {
+    "message": "Show",
+    "description": "Label before the dropdown that picks which number each row of the related-address list shows"
   },
   "listSortLabel": {
     "message": "Sort",
@@ -640,11 +640,11 @@
     "description": "Title for punycode help"
   },
   "punycodeHelpContent": {
-    "message": "Punycode is a technical format for domains with special characters. It starts with 'xn--'.\n\nPotential Risk:\nThe danger arises when a domain looks like it only contains standard English letters (ASCII), but is actually Punycode. This usually means it contains hidden 'look-alike' characters from other languages to impersonate a trusted site.\n\nIf the domain characters are in the same language as the website content, then Punycode is expected and likely safe.",
+    "message": "Punycode is how an address in another alphabet is written for the browser. It starts with xn--.\n\nThe risk: an address can look like plain English letters while it really uses letters from another alphabet that only look like Latin ones. A copy of a site you know can use them to look like the real one.\n\nIf the address is in the same language as the site and its content, the xn-- form is expected.",
     "description": "Explanation of punycode and homograph attacks"
   },
   "current": {
-    "message": "CURRENT",
+    "message": "Current",
     "description": "Label for current domain in list"
   },
   "noVisitData": {
@@ -652,7 +652,7 @@
     "description": "Message when no data is found"
   },
   "visitWebsite": {
-    "message": "Visit a website to see stats",
+    "message": "Open a site to see what Visilant knows about it",
     "description": "Message when no current hostname"
   },
   "logoAlt": {
@@ -664,7 +664,7 @@
     "description": "Message shown when tampering is detected"
   },
   "linkSafetySettings": {
-    "message": "Link safety",
+    "message": "Link check",
     "description": "Title for link safety settings section"
   },
   "linkSafetySettingsDesc": {
@@ -672,7 +672,7 @@
     "description": "Description for link safety feature"
   },
   "linkSafetyEnabled": {
-    "message": "Enable link safety",
+    "message": "Check links",
     "description": "Label for link safety master toggle"
   },
   "linkTooltipTrigger": {
@@ -708,7 +708,7 @@
     "description": "Tooltip trigger option: right click via context menu"
   },
   "linkTooltipTriggerClickRightDesc": {
-    "message": "Right-clicking a link will show a \"Check link safety\" option in the context menu",
+    "message": "Right-clicking a link shows \"Check this link\" in the context menu.",
     "description": "Description for right click trigger option"
   },
   "linkTooltipTriggerHoverUnavailable": {
@@ -752,15 +752,15 @@
     "description": "Show visit count only for familiar sites"
   },
   "linkShortUrlSection": {
-    "message": "Shortened URL detection",
+    "message": "Short links",
     "description": "Section header for shortened URL settings"
   },
   "linkShortUrlModeOff": {
-    "message": "Disabled",
+    "message": "Never follow",
     "description": "Short URL mode: off"
   },
   "linkShortUrlModeButton": {
-    "message": "Resolve by button click",
+    "message": "Follow when you press the button",
     "description": "Short URL mode: manual button"
   },
   "linkShortUrlModeButtonDesc": {
@@ -768,35 +768,35 @@
     "description": "What resolving on button click means"
   },
   "linkShortUrlModeAuto": {
-    "message": "Auto-resolve",
+    "message": "Follow at once",
     "description": "Short URL mode: automatic"
   },
   "linkShortUrlModeAutoDesc": {
-    "message": "Every shortened link you look at is resolved immediately. Convenient, but the shortener and every site the link passes through, the last one included, learn that you saw the link even if you never click it.",
+    "message": "Every short link you look at is followed at once. Convenient, but the short-link service and every site the link passes through, the last one included, learn that you saw the link even if you never click it.",
     "description": "What auto-resolving costs in privacy"
   },
   "linkShortUrlShowFullUrl": {
-    "message": "Show full resolved URL (not just domain)",
+    "message": "Show the whole address it leads to, not only the site",
     "description": "Toggle to show full URL vs domain only"
   },
   "linkShortUrlTraceChain": {
-    "message": "Show redirect chain trace",
+    "message": "Show every step on the way",
     "description": "Toggle to show full redirect hop chain"
   },
   "linkShortUrlResolveAny": {
-    "message": "Allow resolving any URL (not just known shorteners)",
+    "message": "Offer to follow any link, not only known short links",
     "description": "Toggle to enable resolving any link"
   },
   "linkShortUrlResolveAnyDesc": {
-    "message": "Useful if a shortener isn't in the built-in list",
+    "message": "Useful when a short-link service is missing from the built-in list.",
     "description": "Explanation for resolve-any option"
   },
   "linkShortUrlListUpdateUrl": {
-    "message": "Shortener list sources",
+    "message": "Lists of short-link services",
     "description": "Label for remote list URLs textarea"
   },
   "linkShortUrlListUpdateUrlDesc": {
-    "message": "One URL per line. Each should be a plain-text list of shortener domains (one per line, # for comments). Fetched on demand, merged together and with the built-in list. A source that fails is skipped, not fatal.",
+    "message": "One address per line. Each should be a plain-text list of short-link services (one per line, # for comments). Downloaded when you press the button and merged with the built-in list. A source that fails is skipped.",
     "description": "Description for remote list URLs"
   },
   "linkScopeMode": {
@@ -804,19 +804,19 @@
     "description": "Label for scope mode selection"
   },
   "linkScopeModeDesc": {
-    "message": "Where link checking is active. Leaving it on for all websites is the recommended setting, since a link you weren't expecting can turn up anywhere. If it does get in the way somewhere, choose \"Everywhere except these domains\" and list those sites in the box that appears, one per line.",
+    "message": "Where link checking is active. Leaving it on for every site is the recommended setting, since a link you weren't expecting can turn up anywhere. If it does get in the way somewhere, choose \"Everywhere except these sites\" and list those sites in the box that appears, one per line.",
     "description": "What the scope option is for"
   },
   "linkScopeEverywhere": {
-    "message": "All websites",
+    "message": "Every site",
     "description": "Scope option: everywhere"
   },
   "linkScopeWhitelist": {
-    "message": "Only on these domains",
+    "message": "Only on these sites",
     "description": "Scope option: whitelist"
   },
   "linkScopeBlacklist": {
-    "message": "Everywhere except these domains",
+    "message": "Everywhere except these sites",
     "description": "Scope option: blacklist"
   },
   "linkScopeDomains": {
@@ -1012,7 +1012,7 @@
     "description": "Title for navigation intercept dialog"
   },
   "linkInterceptTitleHidden": {
-    "message": "Shortened link",
+    "message": "Short link",
     "description": "Title of the navigation dialog when the link goes through a known shortener that has not been resolved"
   },
   "linkInterceptTitleFamiliar": {
@@ -1044,11 +1044,11 @@
     "description": "Label for destination domain in tooltip"
   },
   "linkContextMenuCheckDomain": {
-    "message": "Check domain safety",
+    "message": "Check this site",
     "description": "Context menu item to check domain safety (opens popup tab)"
   },
   "linkContextMenuCheckLink": {
-    "message": "Check link safety",
+    "message": "Check this link",
     "description": "Context menu item to check link safety (shows intercept dialog)"
   },
   "linkTooltipShortener": {
@@ -1062,6 +1062,10 @@
   "linkTooltipResolvingUrl": {
     "message": "Following the link...",
     "description": "Loading state while resolving shortened URL"
+  },
+  "linkTooltipResolveRefused": {
+    "message": "This link leads into your own network, to a router or a computer near you. Visilant stops following a link there, so where it ends is not known.",
+    "description": "Shown instead of a destination when following a short link would mean a request into the local network"
   },
   "linkTooltipResolveError": {
     "message": "Couldn't find out where this link leads",
@@ -1084,7 +1088,7 @@
     "description": "Button that follows a link once when nothing says it is a short link, to see whether it ends up somewhere else. Worded as an attempt, because it may well lead nowhere new. Same wording in the tooltip, the link dialog and the popup"
   },
   "linkShortUrlSectionWarning": {
-    "message": "Resolving a shortened link means actually requesting it and following every hop to the end. Each host along the way sees that request, the final destination included, so it learns your address and that someone followed the link. It's still far less exposure than opening the page, because nothing is rendered and no script on it ever runs, but it isn't nothing: a click can be counted, a one-time link can be spent, and a server can act on the request. If a link looks suspicious, not resolving it at all is the safer choice.",
+    "message": "Following a short link means actually requesting it and following every hop to the end. Each host along the way sees that request, the final destination included, so it learns your address and that someone followed the link. It's still far less exposure than opening the page, because nothing is rendered and no script on it ever runs, but it isn't nothing: a click can be counted, a one-time link can be spent, and a server can act on the request. If a link looks suspicious, not following it at all is the safer choice.",
     "description": "Warning in settings about risks of URL resolution"
   },
   "linkTooltipRetryResolve": {
@@ -1108,15 +1112,15 @@
     "description": "Label for real destination in intercept dialog"
   },
   "linkTooltipMarkAsShortener": {
-    "message": "Mark as shortener",
+    "message": "Mark as a short-link service",
     "description": "Button to mark current domain as a URL shortener"
   },
   "linkShortUrlCustomDomains": {
-    "message": "Custom shortener domains",
+    "message": "Your short-link services",
     "description": "Label for custom shortener domains textarea"
   },
   "linkShortUrlCustomDomainsDesc": {
-    "message": "Domains you've marked as shorteners, one per line. Subdomains are included automatically. Merged with the built-in and remote lists",
+    "message": "Sites you marked as short-link services, one per line. Subdomains are included automatically. Merged with the built-in and downloaded lists.",
     "description": "Description for custom shortener domains textarea"
   },
   "antiTamperingSettings": {
@@ -1152,7 +1156,7 @@
     "description": "Button in popup to re-enable anti-tampering for current site"
   },
   "antiTamperingTooltipWhat": {
-    "message": "Anti-tampering monitors whether the page tries to remove the extension's UI. Malicious sites may do this to hide security warnings.",
+    "message": "Visilant watches whether the page tries to remove its warnings. A fake site may do this to hide them.",
     "description": "Tooltip explaining what anti-tampering does"
   },
   "antiTamperingTooltipOn": {
@@ -1200,7 +1204,7 @@
     "description": "Label for mailto query parameters (cc, subject, body)"
   },
   "emailSuspiciousPattern": {
-    "message": "Suspicious domain: a well-known ending appears in the middle",
+    "message": "A well-known ending appears in the middle of the domain",
     "description": "Warning for embedded-TLD domains like paypal.com.evil.ru"
   },
   "emailLocalUnicodeWarning": {
@@ -1432,7 +1436,7 @@
     "description": "Label for the email domain part (after @)"
   },
   "externalLookupsTitle": {
-    "message": "Check this domain elsewhere",
+    "message": "Check elsewhere",
     "description": "Label of the collapsible third-party lookup links"
   },
   "externalLookupsCaveat": {
@@ -1740,8 +1744,8 @@
     "description": "Line added to the paste dialog when the paste was made inside an iframe"
   },
   "antiTamperingParentRule": {
-    "message": "turned off by a rule for",
-    "description": "Precedes the parent domain whose exclusion rule covers the current host"
+    "message": "It is off for the whole site, and turns back on for the whole site:",
+    "description": "Tooltip line, followed by the parent domain whose exclusion rule covers the current host"
   },
   "ignoredSiteNotice": {
     "message": "Warnings are off for this site",

@@ -35,8 +35,10 @@ const { t, factsFor, summaryFor, withThresholds } = useFamiliarityFacts()
 function foldLabel(metric: DomainMetric) {
   if (!props.aggregated)
     return ''
-  // Held to the word before it, so a wrapped heading never starts with the dot
-  return `\u00A0·\u00A0${t.value(metricAggregation(metric) === 'total' ? 'foldTotal' : 'foldMax')}`
+  // Held to the word before it, so a wrapped heading never starts with the dot,
+  // and free to break after it: on a phone "DAYS KNOWN · HIGHEST" held in one
+  // piece ran into the padding of the card
+  return `\u00A0· ${t.value(metricAggregation(metric) === 'total' ? 'foldTotal' : 'foldMax')}`
 }
 
 const facts = computed(() => factsFor(props.stats))

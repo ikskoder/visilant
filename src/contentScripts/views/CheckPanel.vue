@@ -6,6 +6,7 @@ import { computed, provide, ref, watch } from 'vue'
 import DomainMarkers from '~/components/DomainMarkers.vue'
 import EmailCheckCaveat from '~/components/EmailCheckCaveat.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
+import FamiliarityGrid from '~/components/FamiliarityGrid.vue'
 import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import RedFlagCount from '~/components/RedFlagCount.vue'
 import SecureText from '~/components/SecureText.vue'
@@ -170,6 +171,30 @@ const isUntrackedHost = computed(() => {
   return Boolean(hostname) && !isTrackableHostname(hostname!)
 })
 
+/**
+ * Whether the family holds any host besides the one checked. Without one, the
+ * fold is the checked host's own record again, number for number, and is not
+ * drawn a second time under another name.
+ */
+const hasOtherHosts = computed(() => {
+  const family = props.data?.family
+  const key = family?.key || props.data?.hostname
+  return Boolean(family?.entries.some(entry => entry.hostname !== key))
+})
+
+/**
+ * Whether the checked name's own record is evidence at all. Not for a public or
+ * throwaway mail provider, whose badge is about the provider, nor for an
+ * address domain whose mail is read on another site, listed below: nobody
+ * opens either, and their zero is the one number that never moves.
+ */
+const showOwnFacts = computed(() => {
+  const data = props.data
+  if (!data || isUntrackedHost.value || mailSites.value.length)
+    return false
+  return data.kind !== 'email' || data.email?.providerKind === 'regular'
+})
+
 const { statusLabel } = useFamiliarityFacts()
 
 /** The badge beside the name being checked, worded as on every other surface. */
@@ -235,6 +260,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
               <CopyButton :text="data.email.analysis.domain" />
             </SecureText>
           </div>
+          <FamiliarityGrid v-if="showOwnFacts" :stats="ownStats" data-own-facts />
           <VzNotice v-if="data.email.analysis.suspiciousPattern" tone="danger">
             {{ t('emailSuspiciousPattern') }} (.{{ data.email.analysis.suspiciousPattern.label }})
           </VzNotice>
@@ -268,6 +294,12 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
             <CopyButton :text="displayDomain(data.hostname)" />
           </SecureText>
         </div>
+
+        <!-- What the badge above was decided on: this name's own record, as on
+             the toolbar popup. The family's figures used to stand here under
+             the site's name, so a red badge sat over three green marks that
+             were about a different name. -->
+        <FamiliarityGrid v-if="showOwnFacts && data.kind !== 'email'" :stats="ownStats" data-own-facts />
 
         <!-- The other spelling of the name drawn above. The other one of the two
              as drawn, not of the hostname as it came: the panel draws the
@@ -337,10 +369,14 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
             <SecureText :text="displayDomain(data.family.baseDomain)" :case-override="localCase" size="m" />
           </div>
 
-          <!-- What the badge above was decided on. Left out when the mail sites
-               are listed below: those facts belong to the name nobody opens, and
-               the numbers that mean anything are on the rows further down. -->
-          <FamiliarityFacts v-if="!mailSites.length" :stats="familyStats" />
+          <!-- The whole family folded, under the name it is about and said to be
+               a fold: visits a total, the rest the best single host. Only where
+               there is a family beyond the checked name, and not for an address
+               domain, whose mail sites below are what counts. -->
+          <template v-if="hasOtherHosts && !mailSites.length">
+            <span class="vz-eyebrow">{{ t('familySummaryTitle') }}</span>
+            <FamiliarityGrid :stats="familyStats" aggregated data-family-stats />
+          </template>
 
           <!-- An address domain has no site of its own – say where its mail lives -->
           <template v-if="mailSites.length">
@@ -361,7 +397,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
 
           <template v-if="data.family.entries.length > 0">
             <span class="vz-eyebrow">{{ t('relatedDomains') }}</span>
-            <ul class="vz-list panel-list">
+            <ul class="vz-list vz-scroll-y panel-list">
               <li
                 v-for="entry in data.family.entries"
                 :key="entry.hostname"
@@ -411,9 +447,9 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
   border-top: 1px solid var(--line);
 }
 
+/* See .popup-list--capped */
 .panel-list {
-  max-height: 265px;
-  overflow-y: auto;
+  max-height: calc(44px * 6.5 * var(--vz-scale, 1));
 }
 
 .panel-mail-row {

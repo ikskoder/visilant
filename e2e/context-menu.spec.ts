@@ -6,7 +6,7 @@ import { allText, blankPage, inWorker, patchSettings, serveSite } from './helper
 declare const chrome: any
 
 /**
- * "Check link safety" from the context menu.
+ * "Check this link" from the context menu.
  *
  * No automation tool can open the browser's own menu, so each test does the two
  * halves separately: a real right-click on the link, which is what the page and

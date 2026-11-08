@@ -60,9 +60,6 @@ interface FrameVerdict {
 
 const UNKNOWN: FrameVerdict = { isSafe: null, ignored: false, guardPaste: false, warn: false, hostname: '', key: '' }
 
-/** How long a held paste waits for a verdict before the dialog stops waiting. */
-const HOLD_TIMEOUT_MS = 6000
-
 const IGNORED_KEYS = new Set([
   'Shift',
   'Control',
@@ -377,6 +374,22 @@ function install() {
   let holding = false
   /** Lifted once the user has confirmed a paste into this frame. */
   let allowed = false
+  /** The held paste whose dialog is up in the top document, see below. */
+  let pastePending: string | null = null
+
+  // The answer from the dialog, sent as a message of its own when a button is
+  // pressed. Not as the reply to the request: a reply kept waiting while
+  // somebody reads holds the background open, and Firefox suspends an idle
+  // background after about 30 seconds and Chrome ends a reply after 5 minutes,
+  // either of which lost the answer of a reader who took their time.
+  browser.runtime.onMessage.addListener(((message: any) => {
+    if (message?.type !== 'frame-paste-decision' || message.data?.id !== pastePending || !pastePending)
+      return undefined
+    pastePending = null
+    if (message.data.allowed === true)
+      allowed = true
+    return undefined
+  }) as Parameters<typeof browser.runtime.onMessage.addListener>[0])
 
   async function hold(status: 'unfamiliar' | 'checking') {
     holding = true
@@ -396,24 +409,26 @@ function install() {
             : (answer.isSafe === false && !answer.ignored ? 'unfamiliar' : 'settled'))
         : 'unfamiliar'
 
-      // Raced against a deadline. Without one, a top document that took the
-      // message and never answered - two frames pasting at once used to manage
-      // exactly that - left `holding` set, and from then on every paste in this
-      // frame was cancelled with no dialog and no way to get one.
-      const proceed = await Promise.race([
-        send<{ allowed: boolean }>('frame-paste-intercept', {
-          hostname: answer.hostname,
-          isSafe: answer.isSafe,
-          status: shown,
-        }),
-        new Promise<null>(resolve => setTimeout(() => resolve(null), HOLD_TIMEOUT_MS)),
-      ])
-      if (proceed?.allowed)
-        allowed = true
+      // Answered at once: either the dialog is up, and what the reader decides
+      // comes later as `frame-paste-decision`, or there is no dialog, and the
+      // answer is no. It used to be the reply that carried the decision, raced
+      // against 6 seconds, and a reader who took longer and allowed the paste
+      // was not heard.
+      const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+      pastePending = id
+      const proceed = await send<{ dialog?: boolean }>('frame-paste-intercept', {
+        id,
+        hostname: answer.hostname,
+        isSafe: answer.isSafe,
+        status: shown,
+      })
+      if (!proceed?.dialog && pastePending === id)
+        pastePending = null
     }
     catch {
       // The top document could not be reached. The paste stays cancelled, which
       // is the safe outcome, and the next one is asked about again.
+      pastePending = null
     }
     finally {
       holding = false

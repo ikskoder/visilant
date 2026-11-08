@@ -96,6 +96,9 @@
 /* ---------- Icons ---------- */
 
 .vz-icon {
+  /* Inline, beside the words it marks. The page reset makes every svg a block,
+     which put an icon in a line of text on a line of its own */
+  display: inline-block;
   width: calc(var(--icon-md) * var(--vz-scale, 1));
   height: calc(var(--icon-md) * var(--vz-scale, 1));
   flex: none;
@@ -632,13 +635,13 @@
    in reads as "belongs to that" and not as a margin gone wrong. The upper
    label draws the stem down to its own bottom, the lower one draws the gap
    and the foot, so the line follows however tall the upper description is. */
-.vz-subgroup { --vz-sub-gap: 12px; display: grid; gap: var(--vz-sub-gap); }
+.vz-subgroup { --vz-sub-gap: 10px; display: grid; gap: var(--vz-sub-gap); }
 .vz-subgroup > :first-child { position: relative; }
 .vz-subgroup > :first-child::after {
   content: "";
   position: absolute;
   left: 8.5px;
-  top: 20px;
+  top: 21px;
   bottom: 0;
   border-left: 1px solid var(--line-strong);
   pointer-events: none;
@@ -650,14 +653,14 @@
   left: -15.5px;
   top: calc(-1 * var(--vz-sub-gap));
   width: 11.5px;
-  height: calc(var(--vz-sub-gap) + 9.5px);
+  height: calc(var(--vz-sub-gap) + 10.5px);
   border-left: 1px solid var(--line-strong);
   border-bottom: 1px solid var(--line-strong);
   border-bottom-left-radius: 4px;
   pointer-events: none;
 }
 /* Greyed out while the upper box is off, the line kept whole */
-.vz-sub--off > * { opacity: 0.5; }
+.vz-sub--off > * { opacity: 0.45; }
 
 /* ---------- Surfaces ---------- */
 
@@ -696,6 +699,20 @@ dialog.vz-layer { width: 100%; height: 100%; }
     radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.22), transparent) left / 10px 100% no-repeat scroll,
     radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.22), transparent) right / 10px 100% no-repeat scroll,
     var(--surface-sunken);
+}
+
+/* The same for a list that scrolls down: a shade under the top edge once
+   something has scrolled past it, and over the bottom edge while more is
+   below. Without it a list cut at a row boundary read as the whole list. */
+.vz-scroll-y,
+.vz-list.vz-scroll-y {
+  overflow-y: auto;
+  background:
+    linear-gradient(var(--surface) 30%, transparent) top / 100% 24px no-repeat local,
+    linear-gradient(to top, var(--surface) 30%, transparent) bottom / 100% 24px no-repeat local,
+    radial-gradient(farthest-side at 50% 0, rgb(0 0 0 / 0.22), transparent) top / 100% 10px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / 0.22), transparent) bottom / 100% 10px no-repeat scroll,
+    var(--surface);
 }
 
 .vz-rule { border: 0; border-top: 1px solid var(--line); margin: 0; }
@@ -843,12 +860,14 @@ dialog.vz-layer { width: 100%; height: 100%; }
 
 /* ---------- Phone and touch ---------- */
 
-/* On a phone the actions stack full width, the primary one on top */
+/* On a phone the actions stack full width, the primary one on top and the
+   risk one at the bottom, never under the thumb that pressed the primary */
 @media (max-width: 480px) {
   .vz-dialog { padding: var(--space-4); }
   .vz-dialog__actions { flex-direction: column; }
   .vz-dialog__actions .vz-btn { width: 100%; }
   .vz-dialog__actions .vz-btn--primary { order: -1; }
+  .vz-dialog__actions .vz-btn--risk { order: 1; }
 }
 
 @media (pointer: coarse) {

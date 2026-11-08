@@ -6,9 +6,11 @@ import {
   getCustomShorteners,
   getShortenerCount,
   isOwnServiceShortLink,
+  isRefusedTarget,
   isShortenedUrl,
   loadCustomShorteners,
   parseDomainList,
+  resolveUrlChain,
   setCachedResolvedUrl,
   SHORTENER_HOMES,
   updateShortenerList,
@@ -207,5 +209,52 @@ describe('short links of a service on its own site', () => {
   it('names only services the built-in list knows', () => {
     for (const service of Object.keys(SHORTENER_HOMES))
       expect(isShortenedUrl(service), service).toBe(true)
+  })
+})
+
+/**
+ * Following a link never steps into the user's own network. A short link whose
+ * page sends it on to the router would otherwise have the extension make that
+ * request from inside the network.
+ */
+describe('following a link into the local network', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('refuses anything but http and https, and private or local addresses', () => {
+    expect(isRefusedTarget('https://bit.ly/x')).toBe(false)
+    expect(isRefusedTarget('http://example.com/')).toBe(false)
+    expect(isRefusedTarget('ftp://example.com/')).toBe(true)
+    expect(isRefusedTarget('http://192.168.1.1/apply?reboot=1')).toBe(true)
+    expect(isRefusedTarget('http://127.0.0.1:8080/')).toBe(true)
+    expect(isRefusedTarget('http://[::1]/')).toBe(true)
+    expect(isRefusedTarget('http://[::ffff:192.168.1.1]/')).toBe(true)
+    expect(isRefusedTarget('http://router.local/')).toBe(true)
+    expect(isRefusedTarget('http://intranet/')).toBe(true)
+  })
+
+  it('stops at a page that sends the link on to a private address, without requesting it', async () => {
+    const fetched: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      fetched.push(url)
+      return new Response('<meta http-equiv="refresh" content="0; url=http://192.168.1.1/apply?reboot=1">', { status: 200 })
+    }))
+
+    const result = await resolveUrlChain('https://bit.ly/to-router')
+
+    expect(result.status).toBe('error')
+    expect(result.error).toBe('refused')
+    expect(fetched).toEqual(['https://bit.ly/to-router'])
+  })
+
+  it('asks nothing at all for a link that starts in the local network', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const result = await resolveUrlChain('http://10.0.0.1/')
+
+    expect(result.error).toBe('refused')
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

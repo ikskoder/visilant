@@ -135,7 +135,7 @@ test('link dialog from the menu, text names another site', async ({ page, contex
   await rightClick(page, '#l')
   await fromMenu(context, MAIL, { type: 'show-link-intercept', data: { url: 'https://yourbank-secure-login.test/verify', frameId: 0 } })
   await waitForUi(page, t('linkTooltipLeadsTo'))
-  await shot(page, { name: 'dialog-link-mismatch', title: '"Check link safety" on a link whose text names another site', covers: [INTERCEPT, MISMATCH] })
+  await shot(page, { name: 'dialog-link-mismatch', title: '"Check this link" on a link whose text names another site', covers: [INTERCEPT, MISMATCH] })
 })
 
 test('link dialog for a familiar site', async ({ page, context, shot }) => {
@@ -143,14 +143,14 @@ test('link dialog for a familiar site', async ({ page, context, shot }) => {
   await openSite(page, SITE, linkPage('<a id="l" href="https://my-bank.test/login">My bank</a>'))
   await fromMenu(context, SITE, { type: 'show-link-intercept', data: { url: 'https://my-bank.test/login', frameId: 0 } })
   await waitForUi(page, t('linkInterceptTitleFamiliar'))
-  await shot(page, { name: 'dialog-link-familiar', title: '"Check link safety" on a familiar site', covers: [INTERCEPT] })
+  await shot(page, { name: 'dialog-link-familiar', title: '"Check this link" on a familiar site', covers: [INTERCEPT] })
 })
 
 test('link dialog for a shortened link', async ({ page, context, shot }) => {
   await openSite(page, SITE, linkPage('<a id="l" href="https://bit.ly/3xYz9Q">bit.ly/3xYz9Q</a>'))
   await fromMenu(context, SITE, { type: 'show-link-intercept', data: { url: 'https://bit.ly/3xYz9Q', frameId: 0 } })
   await waitForUi(page, t('linkInterceptTitleHidden'))
-  await shot(page, { name: 'dialog-link-shortener', title: '"Check link safety" on a shortened link', covers: [INTERCEPT] })
+  await shot(page, { name: 'dialog-link-shortener', title: '"Check this link" on a shortened link', covers: [INTERCEPT] })
 })
 
 // ==========================================

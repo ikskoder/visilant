@@ -86,6 +86,16 @@ describe('findEmbeddedPublicSuffix', () => {
     expect(findEmbeddedPublicSuffix('paypal.com.ab.net')).toEqual({ imitated: 'paypal.com', site: 'ab.net' })
   })
 
+  it('is not fooled by a short name under a two-letter ending', () => {
+    // `abc.me` has the shape of `co.uk`, and taking it for a suffix hid the
+    // embedded domain completely
+    expect(findEmbeddedPublicSuffix('paypal.com.abc.me')).toEqual({ imitated: 'paypal.com', site: 'abc.me' })
+    expect(findEmbeddedPublicSuffix('secure.paypal.com.bit.ly')).toEqual({ imitated: 'paypal.com', site: 'bit.ly' })
+    // Real two-label suffixes with a two-letter second level stay suffixes
+    expect(findEmbeddedPublicSuffix('www.gov.bc.ca')).toBeNull()
+    expect(findEmbeddedPublicSuffix('www.com.br')).toBeNull()
+  })
+
   it('leaves out an ending with no name in front, which spells no domain', () => {
     expect(findEmbeddedPublicSuffix('com.evil.net')).toBeNull()
   })

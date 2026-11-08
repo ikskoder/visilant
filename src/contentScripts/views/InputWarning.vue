@@ -71,6 +71,9 @@ const cover = useVisualViewport(() => props.show && props.safetyLevel === false)
         </div>
 
         <div class="vz-toast__body">
+          <!-- At the top of the body, under the title band, so whose box this is is
+               read before what it says, as on the other surfaces -->
+          <VzSig />
           <p class="vz-body-strong">
             <template v-if="warningType === 'input'">
               {{ t('inputWarningMessage') }}
@@ -106,7 +109,6 @@ const cover = useVisualViewport(() => props.show && props.safetyLevel === false)
           <p class="vz-small">
             {{ t('warningSilenceHint') }}
           </p>
-          <VzSig />
         </div>
       </div>
     </div>

@@ -114,12 +114,17 @@ function handleTooltipGo(href: string) {
 }
 
 function handleTooltipDetails(domain: string) {
+  // An address domain from an email tooltip is a mail provider, not a site
+  // somebody opens, and the page has to know that to say so instead of
+  // reading its zero as "never visited"
+  const tooltip = linkTooltipData.value
+  const context = tooltip?.kind === 'email' && tooltip.domain === domain ? 'email' : undefined
   linkTooltipVisible.value = false
   linkTooltipData.value = null
   // Send message to background to open popup page with domain context
   browser.runtime.sendMessage({
     type: 'open-popup-tab',
-    data: { domain },
+    data: { domain, context },
   })
 }
 

@@ -92,7 +92,7 @@ export async function rightClick(page: Page, selector: string) {
 }
 
 /**
- * "Check link safety" from the context menu: a real right-click on the link,
+ * "Check this link" from the context menu: a real right-click on the link,
  * which is what the content script remembers the link's words from, then the
  * message the menu item sends.
  */

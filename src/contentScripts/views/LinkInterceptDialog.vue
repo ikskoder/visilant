@@ -385,9 +385,9 @@ function onContinue() {
           <!-- Short link: could not be followed -->
           <div v-if="data.shortUrl?.status === 'error'" class="dialog-section">
             <VzNotice tone="neutral" bare>
-              {{ data.shortUrl.error === 'same_domain' ? t(data.shortUrl.isKnownShortener ? 'linkTooltipResolveSameDomainShortener' : 'linkTooltipResolveSameDomain') : t('linkTooltipResolveError') }}
+              {{ data.shortUrl.error === 'same_domain' ? t(data.shortUrl.isKnownShortener ? 'linkTooltipResolveSameDomainShortener' : 'linkTooltipResolveSameDomain') : t(data.shortUrl.error === 'refused' ? 'linkTooltipResolveRefused' : 'linkTooltipResolveError') }}
             </VzNotice>
-            <button v-if="data.shortUrl.error !== 'same_domain'" class="vz-btn vz-btn--block" data-action="retry" @click="emit('resolveShortUrl')">
+            <button v-if="data.shortUrl.error !== 'same_domain' && data.shortUrl.error !== 'refused'" class="vz-btn vz-btn--block" data-action="retry" @click="emit('resolveShortUrl')">
               {{ t('linkTooltipRetryResolve') }}
             </button>
           </div>
@@ -422,15 +422,19 @@ function onContinue() {
         <!-- The way out of danger is the loud button. Continuing is the risk
              button, outlined in red, and it ignores a press for the first half
              second. A calm, familiar destination just has "Go to link". -->
+        <!-- The way out is at the right edge, where a hand goes without
+             looking, and going ahead is at the far left: risk, details, back.
+             In this order in the markup, not by CSS order, so Tab goes the way
+             the eye does and the focus trap ends on the way back. A calm,
+             familiar destination has no way back to offer and just goes. -->
         <div class="vz-dialog__actions">
           <button
             v-if="!calm"
-            ref="backButton"
-            class="vz-btn vz-btn--primary"
-            data-action="back"
-            @click="emit('cancel')"
+            class="vz-btn vz-btn--risk"
+            data-action="continue"
+            @click="onContinue"
           >
-            {{ t('dialogGoBack') }}
+            {{ t('linkInterceptContinue') }}
           </button>
           <!-- Not on a mismatch, where each column of the table has its own. Not
                for a short link not yet seen through either: all it could open is
@@ -444,12 +448,21 @@ function onContinue() {
             {{ t('linkInterceptDomainInfo') }}
           </button>
           <button
-            class="vz-btn"
-            :class="calm ? 'vz-btn--primary' : 'vz-btn--risk'"
+            v-if="calm"
+            class="vz-btn vz-btn--primary"
             data-action="continue"
             @click="onContinue"
           >
-            {{ calm ? t('linkTooltipGoToLink') : t('linkInterceptContinue') }}
+            {{ t('linkTooltipGoToLink') }}
+          </button>
+          <button
+            v-else
+            ref="backButton"
+            class="vz-btn vz-btn--primary"
+            data-action="back"
+            @click="emit('cancel')"
+          >
+            {{ t('dialogGoBack') }}
           </button>
         </div>
       </div>

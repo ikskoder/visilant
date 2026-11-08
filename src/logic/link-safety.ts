@@ -342,7 +342,7 @@ function parseDomainList(raw: string): string[] {
 /**
  * What a link looked like at the moment it was right-clicked.
  *
- * The context menu's "Check link safety" hands the page an address and nothing
+ * The context menu's "Check this link" hands the page an address and nothing
  * else – Chrome's click data has no link text at all – so the words the link was
  * wearing have to be read off the page. They are read when the user acts on the
  * link rather than when the menu item arrives, so a page cannot rewrite the text

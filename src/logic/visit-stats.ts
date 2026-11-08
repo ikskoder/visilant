@@ -58,8 +58,27 @@ function isPrivateIpv4(hostname: string): boolean {
     || (a === 100 && b >= 64 && b <= 127)
 }
 
+/**
+ * The IPv4 address carried inside an IPv6 one, if any: `::ffff:192.168.1.1`,
+ * which the URL parser rewrites to `::ffff:c0a8:101`, and the NAT64 prefix
+ * `64:ff9b::`. Without this a private v4 address passed for a public v6 one.
+ */
+function embeddedIpv4(lower: string): string | null {
+  const match = /^(?:::ffff:|64:ff9b::)(?:(\d{1,3}(?:\.\d{1,3}){3})|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/.exec(lower)
+  if (!match)
+    return null
+  if (match[1])
+    return match[1]
+  const high = Number.parseInt(match[2], 16)
+  const low = Number.parseInt(match[3], 16)
+  return [high >> 8, high & 255, low >> 8, low & 255].join('.')
+}
+
 function isPrivateIpv6(address: string): boolean {
   const lower = address.toLowerCase()
+  const v4 = embeddedIpv4(lower)
+  if (v4)
+    return isPrivateIpv4(v4)
   return lower === '::1'
     || lower === '::'
     || lower.startsWith('fe80:')
@@ -122,6 +141,22 @@ export function untrackedReason(hostname: string): 'ip' | 'local' {
 export function applyVisit(existing: SiteVisitData | undefined, now: number): SiteVisitData {
   if (!existing)
     return { count: 1, firstSeen: now, lastSeen: now, activeDays: 1, ignored: false }
+
+  // A record with no visit in it yet: written when somebody silenced a site
+  // before ever using it. This visit is the first one, and it is known to be,
+  // so the dates start here. Taken for a record from before the dates were
+  // kept, it never got them, and under the checks that need them the site
+  // could never become familiar however often it was used.
+  if (!existing.count && !existing.lastSeen) {
+    return {
+      count: 1,
+      firstSeen: now,
+      lastSeen: now,
+      activeDays: 1,
+      ignored: existing.ignored || false,
+      ...(existing.ignored && existing.silencedWhileFamiliar && { silencedWhileFamiliar: true }),
+    }
+  }
 
   const lastSeen = existing.lastSeen || 0
   const count = existing.count || 0

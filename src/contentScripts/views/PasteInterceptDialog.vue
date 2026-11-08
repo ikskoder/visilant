@@ -261,15 +261,17 @@ const payloadKind = computed(() => {
               {{ t('pasteInterceptUnderstood') }}
             </button>
           </template>
+          <!-- Risk, details, way out: the way out at the right edge in every
+               state, as in the link dialog -->
           <template v-else-if="isDecision">
-            <button ref="safeButton" class="vz-btn vz-btn--primary" data-action="cancel" @click="emit('cancel')">
-              {{ t('pasteInterceptCancel') }}
+            <button class="vz-btn vz-btn--risk" data-action="allow" @click="onAllow">
+              {{ t('pasteInterceptAllow') }}
             </button>
             <button class="vz-btn" data-action="details" @click="emit('details', data.domain)">
               {{ t('linkInterceptDomainInfo') }}
             </button>
-            <button class="vz-btn vz-btn--risk" data-action="allow" @click="onAllow">
-              {{ t('pasteInterceptAllow') }}
+            <button ref="safeButton" class="vz-btn vz-btn--primary" data-action="cancel" @click="emit('cancel')">
+              {{ t('pasteInterceptCancel') }}
             </button>
           </template>
           <button v-else ref="safeButton" class="vz-btn vz-btn--primary" data-action="cancel" @click="emit('cancel')">

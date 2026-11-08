@@ -75,6 +75,14 @@ describe('applyVisit', () => {
     const existing = { count: 2, lastSeen: now, ignored: true }
     expect(applyVisit(existing, now + VISIT_DEBOUNCE_MS + 1).ignored).toBe(true)
   })
+
+  it('dates the first visit to a site that was silenced before it was used', () => {
+    // What silencing an unknown site writes. Read as a record from before the
+    // dates were kept, it never got any, and could never pass the date checks
+    const silenced = { count: 0, lastSeen: 0, ignored: true, silencedWhileFamiliar: true }
+    expect(applyVisit(silenced, now)).toEqual({ count: 1, firstSeen: now, lastSeen: now, activeDays: 1, ignored: true, silencedWhileFamiliar: true })
+    expect(applyVisit({ count: 0, lastSeen: 0, ignored: false }, now)).toEqual({ count: 1, firstSeen: now, lastSeen: now, activeDays: 1, ignored: false })
+  })
 })
 
 describe('classifyHost', () => {
@@ -90,6 +98,11 @@ describe('classifyHost', () => {
     ['169.254.1.1', 'private-ip'],
     ['2606:4700::1111', 'ipv6'],
     ['[2606:4700::1111]', 'ipv6'],
+    // IPv4 inside IPv6, as the URL parser writes it, judged by the IPv4 inside
+    ['[::ffff:c0a8:101]', 'private-ip'],
+    ['::ffff:192.168.1.1', 'private-ip'],
+    ['[::ffff:7f00:1]', 'private-ip'],
+    ['[::ffff:808:808]', 'ipv6'],
     ['::1', 'private-ip'],
     ['[::1]', 'private-ip'],
     ['fe80::1', 'private-ip'],

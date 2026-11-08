@@ -64,6 +64,8 @@ const { t } = useI18n()
 
 interface UrlResolveState {
   status: 'idle' | 'loading' | 'resolved' | 'error'
+  /** Set when Visilant would not take a step, see isRefusedTarget */
+  refused?: boolean
   finalHostname?: string
   finalUrl?: string
   chain?: string[]
@@ -343,7 +345,7 @@ async function expandUrl() {
       emit('checkedDomain', resolved.finalHostname, undefined, resolved.finalUrl)
     }
     else {
-      checked.resolve = { status: 'error' }
+      checked.resolve = { status: 'error', refused: resolved?.error === 'refused' }
     }
   }
   catch {
@@ -530,7 +532,7 @@ function payloadTypeLabel(payloadKind: string) {
 
         <!-- Expand shortened URL -->
         <button
-          v-if="result.resolve.status === 'idle' || result.resolve.status === 'error'"
+          v-if="result.resolve.status === 'idle' || (result.resolve.status === 'error' && !result.resolve.refused)"
           class="vz-btn vz-btn--sm justify-self-start"
           data-action="expand"
           @click="expandUrl"
@@ -538,7 +540,7 @@ function payloadTypeLabel(payloadKind: string) {
           <VzIcon name="link" />{{ t(result.isShortener ? 'linkResolveKnown' : 'linkResolveTry') }}
         </button>
         <VzNotice v-if="result.resolve.status === 'error'" tone="neutral" bare>
-          {{ t('linkTooltipResolveError') }}
+          {{ t(result.resolve.refused ? 'linkTooltipResolveRefused' : 'linkTooltipResolveError') }}
         </VzNotice>
 
         <button v-if="result.resolve.status === 'loading'" class="vz-btn vz-btn--sm justify-self-start" disabled>
@@ -656,9 +658,11 @@ function payloadTypeLabel(payloadKind: string) {
 }
 
 .check-input {
-  /* Below about 14 characters the buttons move under the field rather than
-     leaving it too narrow to read an address in */
-  flex: 1 1 14em;
+  /* Below about 12 characters the buttons move under the field rather than
+     leaving it too narrow to read an address in. 12 rather than 14 so a phone
+     keeps both buttons beside the field, where at 14 the Check button alone
+     dropped to a line of its own */
+  flex: 1 1 12em;
   min-width: 0;
   height: auto;
   min-height: calc(var(--control-md) * var(--vz-scale, 1));

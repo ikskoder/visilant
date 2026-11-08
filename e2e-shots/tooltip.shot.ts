@@ -120,6 +120,7 @@ const CASES: Case[] = [
   { name: 'tt-short-to-mixed-script', how: 'hover', title: 'Short link that leads to a Cyrillic lookalike', note: 'The destination block shows the xn-- spelling and the mixed-alphabet marker.', settings: { linkSafety: { shortUrlMode: 'auto' } }, fetch: { 'https://bit.ly/': { to: 'https://xn--pypal-4ve.test/login' } }, link: a('https://bit.ly/3topuny', 'bit.ly/3topuny'), needles: () => [t('linkTooltipShortenedUrl')] },
   { name: 'tt-short-to-lookalike', how: 'hover', title: 'Short link that leads to a lookalike of a known site', note: 'A lookalike line inside the destination block.', seed: KNOWN, settings: { linkSafety: { shortUrlMode: 'auto' } }, fetch: { 'https://bit.ly/': { to: 'https://n0rthbank.test/login' } }, link: a('https://bit.ly/3tolook', 'bit.ly/3tolook'), needles: () => [t('linkTooltipShortenedUrl')] },
   { name: 'tt-short-long-url', how: 'hover', title: 'Short link with a very long destination, full address shown', note: 'The full address should break across lines, not widen the tooltip past the window.', settings: { linkSafety: { shortUrlMode: 'auto', shortUrlShowFullUrl: true } }, fetch: { 'https://bit.ly/': { to: `https://prize-winner.test/claim?${Array.from({ length: 20 }, (_, i) => `param${i}=value-${i}-with-some-length`).join('&')}` } }, link: a('https://bit.ly/3longur', 'bit.ly/3longur'), needles: () => [t('linkTooltipShortenedUrl')] },
+  { name: 'tt-short-local', how: 'hover', title: 'Short link whose page sends it into the local network', note: 'The short-link page redirects to 192.168.1.1. Visilant stops there and says why, with no Retry, and the router is never asked.', settings: { linkSafety: { shortUrlMode: 'auto' } }, fetch: { 'https://bit.ly/': { body: '<meta http-equiv="refresh" content="0; url=http://192.168.1.1/apply?reboot=1">' } }, link: a('https://bit.ly/3router', 'bit.ly/3router'), needles: () => [t('linkTooltipResolveRefused')] },
   { name: 'tt-short-mode-off', how: 'hover', title: 'Short links not followed at all', note: 'Setting off: bit.ly looks like any other site, no short-link badge, no buttons.', settings: { linkSafety: { shortUrlMode: 'off' } }, link: a('https://bit.ly/3offmod', 'bit.ly/3offmod'), needles: dest },
   {
     name: 'tt-short-pressed-loading',
@@ -136,7 +137,7 @@ const CASES: Case[] = [
     name: 'tt-once-resolved',
     how: 'hover',
     title: 'An ordinary link checked for where it really leads',
-    note: '"Try to find where it leads" pressed on a link that is not a known shortener, and it redirected elsewhere. The destination block and a "Mark as shortener" button.',
+    note: '"Try to find where it leads" pressed on a link that is not a known shortener, and it redirected elsewhere. The destination block and a "Mark as a short-link service" button.',
     seed: { 'low.test': LOW },
     fetch: { 'https://low.test/': { to: 'https://somewhere-else.test/landing' } },
     link: a('https://low.test/out', 'Out'),

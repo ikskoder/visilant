@@ -31,8 +31,11 @@ interface Case {
   local?: (now: number) => Record<string, unknown>
   /** Changes to the finished import the profile starts with. `null` removes it. */
   importState?: Record<string, unknown> | null
-  /** Runs on the page before anything of the extension's does */
-  init?: () => void
+  /**
+       Runs on the page before anything of the extension's does. A function is
+      sent as its source text alone, so it must not use anything from outside it
+   */
+  init?: (() => void) | { content: string }
   /** Done on the open page before the picture */
   act?: (page: Page) => Promise<void>
 }
@@ -54,13 +57,18 @@ function undatedRecords(now: number) {
   }
 }
 
-/** Hide a browser API from the page, before its scripts look for it. */
+/**
+ * Hide a browser API from the page, before its scripts look for it.
+ *
+ * Written out as text with the name inside it. A closure over `api` reached
+ * the page as source alone, where `api` was not defined, so the script threw
+ * and the picture showed an ordinary desktop browser under its Android title.
+ */
 function hide(api: 'contextMenus' | 'history') {
-  return () => {
-    for (const ns of [(globalThis as any).chrome, (globalThis as any).browser]) {
-      if (ns)
-        Object.defineProperty(ns, api, { value: undefined, configurable: true })
-    }
+  return {
+    content: `for (const ns of [globalThis.chrome, globalThis.browser]) {
+      if (ns) Object.defineProperty(ns, ${JSON.stringify(api)}, { value: undefined, configurable: true })
+    }`,
   }
 }
 
@@ -107,9 +115,9 @@ const CASES: Case[] = [
   // ==========================================
   // Notifications
   // ==========================================
-  { name: 'opt-notif-off', section: 'notifications', title: 'Notifications: warnings switched off', note: 'Everything about when and how to warn is gone. The silenced sites list stays.', settings: { showWarningNotification: false } },
-  { name: 'opt-notif-input-only', section: 'notifications', title: 'Notifications: only typing warns', note: 'The paste guard toggle is shown, since it belongs to typing.', settings: { showInputWarning: true, showCopyWarning: false } },
-  { name: 'opt-notif-copy-only', section: 'notifications', title: 'Notifications: only copying warns', note: 'The paste guard toggle is hidden.', settings: { showInputWarning: false, showCopyWarning: true } },
+  { name: 'opt-notif-off', section: 'notifications', title: 'Notifications: warnings switched off', note: 'Everything about when and how to warn is gone. The paste hold switch and the silenced sites list stay, since both work without the warnings.', settings: { showWarningNotification: false } },
+  { name: 'opt-notif-input-only', section: 'notifications', title: 'Notifications: only typing warns', note: 'The paste hold switch sits in its own row under the warning settings.', settings: { showInputWarning: true, showCopyWarning: false } },
+  { name: 'opt-notif-copy-only', section: 'notifications', title: 'Notifications: only copying warns', note: 'The paste hold switch is still there: it holds pastes whatever warns.', settings: { showInputWarning: false, showCopyWarning: true } },
   { name: 'opt-notif-none', section: 'notifications', title: 'Notifications: neither typing nor copying (storage edited by hand)', note: 'No radio is selected. Only reachable by editing storage, here to see that the page does not break.', settings: { showInputWarning: false, showCopyWarning: false } },
   { name: 'opt-notif-both-styles', section: 'notifications', title: 'Notifications: browser and in-page both', note: '"Both" is selected.', settings: { notificationStyle: 'both', autoUnsilenceFamiliar: true } },
   {

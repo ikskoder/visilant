@@ -44,7 +44,11 @@ export function useModalDialog(options: {
   }
 
   function onKeydown(event: KeyboardEvent) {
-    if (!options.visible())
+    // Only a key somebody pressed. The page shares this window and can dispatch
+    // a keydown of its own: a made-up Shift+Tab, with the focus taken off the
+    // dialog first, used to send it to the last button, which was the one that
+    // goes ahead, and the next real Enter pressed it.
+    if (!event.isTrusted || !options.visible())
       return
 
     if (event.key === 'Escape') {

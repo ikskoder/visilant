@@ -1,6 +1,6 @@
 import { ACTION_ICONS, BADGE_COLORS } from '../src/logic/badge'
 import { expect, test } from './fixtures'
-import { allText, blankPage, inWorker, patchSettings, seedVisits, serveSite, usePage, waitForAutoImport } from './helpers'
+import { allText, blankPage, clickInDialog, inWorker, patchSettings, seedVisits, serveSite, usePage, waitForAutoImport } from './helpers'
 
 // Evaluated inside the extension's own worker, where the namespace exists
 declare const chrome: any
@@ -105,7 +105,7 @@ test('the domain card says when the domain is a shortener', async ({ page, exten
   await setShorteners(['short-link.test'])
   await seedVisits(context, 'short-link.test', 3)
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=short-link.test`)
-  await expect(notice).toContainText('Link shortener', { timeout: 5000 })
+  await expect(notice).toContainText('Short-link service', { timeout: 5000 })
   await expect(page.locator('[data-criterion="visits"]').first()).toHaveText('3')
 
   await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?domain=${SITE_HOST}`)
@@ -335,7 +335,9 @@ test('reset asks before it wipes, and only for what was ticked', async ({ page, 
   await expect(page.locator('li', { hasText: 'All information about site visits' })).toBeVisible()
   await expect(page.locator('li', { hasText: 'All settings' })).toHaveCount(0)
 
-  await page.locator('button', { hasText: 'Cancel' }).click()
+  // The dialog's own Cancel: the import at install may still be running and
+  // showing a Cancel of its own in the same card
+  await page.locator('button[data-action="cancel"]').click()
   await expect(page.locator('text=Confirm reset')).toHaveCount(0)
 })
 
@@ -1020,6 +1022,10 @@ test('every choice on the options page is written at the same size', async ({ pa
     document.querySelectorAll('label').forEach((label) => {
       if (!label.querySelector('input[type="radio"], input[type="checkbox"]'))
         return
+      // A switch row is a setting with a name, drawn as a heading like every
+      // other switch, not one choice among several
+      if (label.querySelector('.vz-switch'))
+        return
       const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT)
       let node: Node | null
       // eslint-disable-next-line no-cond-assign
@@ -1038,6 +1044,8 @@ test('every choice on the options page is written at the same size', async ({ pa
 })
 
 test('wiping the visits updates what the page says about the import, without a reload', async ({ page, context, extensionId }) => {
+  // The re-import button is dead while the import at install is still running
+  await waitForAutoImport(context)
   await page.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
   await page.waitForTimeout(1500)
 
@@ -1324,6 +1332,32 @@ test('a paste into an iframe on an unfamiliar site is held', async ({ context })
     return Boolean(el?.style && el.style.getPropertyValue('z-index') === '2147483647')
   })
   expect(overlay).toBe(true)
+})
+
+test('a paste allowed in a frame after reading the dialog for a while goes through next time', async ({ context }) => {
+  // The frame used to give up waiting after 6 seconds, so a reader who took
+  // longer and allowed the paste was not heard, and the next paste was held again
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'https://tracked-site.test' })
+  await patchSettings(context, { blockPasteOnUnfamiliar: true })
+
+  const page = await context.newPage()
+  await serveFramedForm(page)
+  await page.evaluate(() => navigator.clipboard.writeText('correct-horse-battery-staple'))
+
+  const inner = page.frameLocator('#frame').locator('#inner')
+  await inner.click()
+  await page.waitForTimeout(500)
+  await page.keyboard.press('ControlOrMeta+V')
+  await expect.poll(() => allText(page), { timeout: 8000, intervals: [300] }).toContain('Allow pasting')
+  await expect(inner).toHaveValue('')
+
+  await page.waitForTimeout(7000)
+  await clickInDialog(page, 'allow')
+  await page.waitForTimeout(500)
+
+  await inner.click()
+  await page.keyboard.press('ControlOrMeta+V')
+  await expect(inner).toHaveValue('correct-horse-battery-staple', { timeout: 5000 })
 })
 
 test('CONTROL: with the guard off, a paste into a frame lands in the field', async ({ context }) => {

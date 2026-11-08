@@ -1,6 +1,7 @@
 import { readTextBounded } from './bounded-fetch'
 import { matchesDomainSet } from './domain-set'
 import { parseShortenerDomains, STORAGE_KEY_REMOTE_SHORTENERS } from './shortener-lists'
+import { classifyHost } from './visit-stats'
 
 // Built-in list of known URL shortener domains (one per line, raw text)
 // Source: https://github.com/PeterDaveHello/url-shorteners (active + inactive, merged)
@@ -2752,9 +2753,43 @@ const MAX_HTML_BYTES = 512 * 1024
  * step from the start to the end, and only a hop this code had to make itself,
  * by reading a page and finding a redirect in it, appears in between.
  */
+/**
+ * Whether following a link may take the next step to this address.
+ *
+ * Only http and https, and not to an address that is plainly in the user's
+ * own network: a short link whose page sends it on to `http://192.168.1.1/…`
+ * would otherwise have the extension make that request, from inside the
+ * network, to the router. "Plainly" because a public name can point at a
+ * private address, and only a DNS lookup would tell. A name
+ * the user listed as a short-link service themselves is let through, since a
+ * company's own `go/` links live on exactly such a name.
+ *
+ * Checked before every step this code takes itself. An HTTP redirect is
+ * followed by the browser and cannot be stopped half way, so an address that
+ * turns up that way is caught only once it is reached, and reported the same.
+ */
+export function isRefusedTarget(target: string): boolean {
+  if (!isHttpUrl(target))
+    return true
+  const hostname = getHostname(target)
+  if (!hostname)
+    return true
+  const kind = classifyHost(hostname)
+  return (kind === 'local' || kind === 'private-ip') && !isShortenedUrl(hostname)
+}
+
 export async function resolveUrlChain(url: string): Promise<ResolvedUrlResult> {
   const chain: string[] = [url]
   let currentUrl = url
+  const refused = (): ResolvedUrlResult => ({
+    finalUrl: currentUrl,
+    finalHostname: getHostname(currentUrl) || '',
+    chain,
+    status: 'error',
+    error: 'refused',
+  })
+  if (isRefusedTarget(url))
+    return refused()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), RESOLVE_TIMEOUT_MS)
 
@@ -2784,6 +2819,11 @@ export async function resolveUrlChain(url: string): Promise<ResolvedUrlResult> {
         currentUrl = finalUrl
       }
 
+      if (isRefusedTarget(currentUrl)) {
+        await response.body?.cancel().catch(() => {})
+        return refused()
+      }
+
       // If we landed on a known shortener, try to extract JS/meta redirect from HTML
       const currentHostname = getHostname(currentUrl)
       if (currentHostname && isShortenedUrl(currentHostname)) {
@@ -2803,6 +2843,8 @@ export async function resolveUrlChain(url: string): Promise<ResolvedUrlResult> {
         if (extractedUrl && extractedUrl !== currentUrl) {
           chain.push(extractedUrl)
           currentUrl = extractedUrl
+          if (isRefusedTarget(currentUrl))
+            return refused()
           continue // follow the extracted URL
         }
       }

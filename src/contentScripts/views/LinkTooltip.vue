@@ -438,20 +438,24 @@ onBeforeUnmount(() => {
 
           <!-- Short link: followed to its end -->
           <div v-if="data.shortUrl?.status === 'resolved'" class="tooltip-section">
-            <div class="tooltip-label">
-              <span class="vz-eyebrow inline-flex items-center gap-1"><VzIcon name="link" />{{ t('linkTooltipShortenedUrl') }}</span>
-              <VzBadge
-                :tone="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).tone"
-                :icon="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).icon"
-                :data-verdict="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).verdict"
-              >
-                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).text }}
-              </VzBadge>
-              <RedFlagCount :hostname="data.shortUrl.resolvedDomain" />
+            <!-- The heading and the address it names, held together as in the
+                 block above rather than a whole section gap apart -->
+            <div class="grid gap-1">
+              <div class="tooltip-label">
+                <span class="vz-eyebrow inline-flex items-center gap-1"><VzIcon name="link" />{{ t('linkTooltipShortenedUrl') }}</span>
+                <VzBadge
+                  :tone="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).tone"
+                  :icon="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).icon"
+                  :data-verdict="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).verdict"
+                >
+                  {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).text }}
+                </VzBadge>
+                <RedFlagCount :hostname="data.shortUrl.resolvedDomain" />
+              </div>
+              <SecureText :text="data.shortUrl.resolvedDomain" size="l" class="tooltip-domain" :diff="resolvedDiff(data.shortUrl.resolvedDomain)">
+                <CopyButton :text="data.shortUrl.resolvedDomain" />
+              </SecureText>
             </div>
-            <SecureText :text="data.shortUrl.resolvedDomain" size="l" class="tooltip-domain" :diff="resolvedDiff(data.shortUrl.resolvedDomain)">
-              <CopyButton :text="data.shortUrl.resolvedDomain" />
-            </SecureText>
 
             <!-- Full URL if enabled -->
             <!-- Three lines at most, the rest in the title and in the copy. A
@@ -501,9 +505,9 @@ onBeforeUnmount(() => {
                as an empty or a passed result -->
           <template v-if="data.shortUrl?.status === 'error'">
             <VzNotice tone="neutral" bare>
-              {{ data.shortUrl.error === 'same_domain' ? t(data.shortUrl.isKnownShortener ? 'linkTooltipResolveSameDomainShortener' : 'linkTooltipResolveSameDomain') : t('linkTooltipResolveError') }}
+              {{ data.shortUrl.error === 'same_domain' ? t(data.shortUrl.isKnownShortener ? 'linkTooltipResolveSameDomainShortener' : 'linkTooltipResolveSameDomain') : t(data.shortUrl.error === 'refused' ? 'linkTooltipResolveRefused' : 'linkTooltipResolveError') }}
             </VzNotice>
-            <button v-if="data.shortUrl.error !== 'same_domain'" class="vz-btn vz-btn--sm vz-btn--block" data-action="retry" @click.stop="handleResolveClick()">
+            <button v-if="data.shortUrl.error !== 'same_domain' && data.shortUrl.error !== 'refused'" class="vz-btn vz-btn--sm vz-btn--block" data-action="retry" @click.stop="handleResolveClick()">
               {{ t('linkTooltipRetryResolve') }}
             </button>
           </template>

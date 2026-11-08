@@ -82,10 +82,10 @@ function startFlashing() {
     return
 
   let on = true
-  document.title = `✅ ${t.value('welcomeTabDone')}`
+  document.title = t.value('welcomeTabDone')
   flashTimer = setInterval(() => {
     on = !on
-    document.title = on ? `✅ ${t.value('welcomeTabDone')}` : pageTitle
+    document.title = on ? t.value('welcomeTabDone') : pageTitle
   }, 1200)
 }
 

@@ -359,6 +359,18 @@ async function applyImportedHistory() {
 }
 
 /**
+ * Set when the settings page asks the import to stop, and cleared when the
+ * next one starts.
+ *
+ * The settings page used to call `runHistoryImport` in its own context, which
+ * meant a second queue of writes to the same records - and a second generation
+ * counter, so a reset in the background could not stop it. Now it asks, this
+ * runs, and the page watches the published state like everybody else. Read by
+ * the automatic import too: its Cancel used to be shown and do nothing.
+ */
+let importCancelRequested = false
+
+/**
  * Import the browser history once, without being asked.
  *
  * Two passes rather than one, and never a button to press between them. The
@@ -377,7 +389,7 @@ async function applyImportedHistory() {
  * then reporting a number of domains it never wrote.
  */
 function stopOnReset(startedAt: number) {
-  return () => visitGeneration() !== startedAt
+  return () => importCancelRequested || visitGeneration() !== startedAt
 }
 
 export async function runAutoHistoryImport(attempts = 0, existingRunId?: string): Promise<void> {
@@ -419,16 +431,6 @@ async function runAutoHistoryImportUnlocked(attempts = 0, existingRunId?: string
   if (full.status === 'done')
     await applyImportedHistory()
 }
-
-/**
- * Set while a manual import is running here, and cleared when it stops.
- *
- * The settings page used to call `runHistoryImport` in its own context, which
- * meant a second queue of writes to the same records - and a second generation
- * counter, so a reset in the background could not stop it. Now it asks, this
- * runs, and the page watches the published state like everybody else.
- */
-let manualImportCancelled = false
 
 /**
  * The one place the settings are written.
@@ -490,6 +492,9 @@ async function withImportLock(run: () => Promise<void>): Promise<boolean> {
     return false
 
   importRunning = true
+  // Cleared before the wait, not after it: a Cancel pressed while the run was
+  // still waiting was otherwise wiped out when it started
+  importCancelRequested = false
   try {
     // A resumed pass reads its cursor from the state the www fold may reset
     await visitKeysFolded
@@ -513,13 +518,14 @@ async function runManualHistoryImport() {
     return { success: false, state: await readHistoryImportState() }
 
   importRunning = true
+  // Before the wait, see withImportLock
+  importCancelRequested = false
   // The www fold rewrites the import state from its own snapshot, and a run
   // publishing in between would have its first state written over
   await visitKeysFolded
-  manualImportCancelled = false
   const runId = newImportRunId()
   const startedAt = visitGeneration()
-  const shouldStop = () => manualImportCancelled || visitGeneration() !== startedAt
+  const shouldStop = () => importCancelRequested || visitGeneration() !== startedAt
 
   try {
     const quick = await runHistoryImport({
@@ -555,7 +561,7 @@ async function runManualHistoryImport() {
   }
   finally {
     importRunning = false
-    manualImportCancelled = false
+    importCancelRequested = false
   }
 }
 
@@ -1258,8 +1264,9 @@ async function handleOpenCheckTab(value: string) {
 }
 
 // Open popup page in a new tab with domain context
-async function handleOpenPopupTab(domain: string) {
-  const popupUrl = browser.runtime.getURL(`dist/popup/index.html?domain=${encodeURIComponent(domain)}`)
+async function handleOpenPopupTab(domain: string, context?: string) {
+  const query = `domain=${encodeURIComponent(domain)}${context === 'email' ? '&context=email' : ''}`
+  const popupUrl = browser.runtime.getURL(`dist/popup/index.html?${query}`)
   await browser.tabs.create({ url: popupUrl })
   return 'Popup tab opened'
 }
@@ -1495,7 +1502,7 @@ const messageHandlers = {
   // records have one writer and this is it.
   'import-history': () => runManualHistoryImport(),
   'cancel-history-import': async () => {
-    manualImportCancelled = true
+    importCancelRequested = true
     return { success: true }
   },
   // What a page changed, for the one context allowed to store it
@@ -1525,8 +1532,16 @@ const messageHandlers = {
     await browser.tabs.sendMessage(ctx.tabId, { type: 'frame-link-decision', data }, { frameId: data.frameId }).catch(() => {})
     return { delivered: true }
   },
+  // Answered at once with whether the dialog is up. The decision itself comes
+  // later from the top document, routed below to the frame that asked
   'frame-paste-intercept': async (data: any, ctx?: MessageContext) =>
-    (await sendToTopFrame<{ allowed: boolean }>(ctx?.tabId, 'frame-paste-intercept', data)) ?? { allowed: false },
+    (await sendToTopFrame<{ dialog: boolean }>(ctx?.tabId, 'frame-paste-intercept', { ...data, frameId: ctx?.frameId })) ?? { dialog: false },
+  'frame-paste-decision': async (data: any, ctx?: MessageContext) => {
+    if (ctx?.frameId !== 0 || ctx.tabId == null || typeof data?.frameId !== 'number' || data.frameId === 0)
+      return { delivered: false }
+    await browser.tabs.sendMessage(ctx.tabId, { type: 'frame-paste-decision', data }, { frameId: data.frameId }).catch(() => {})
+    return { delivered: true }
+  },
   // The settings page asks for this rather than emptying storage itself – see
   // `handleResetVisits` for what else has to go with the records
   'reset-visits': () => handleResetVisits(),
@@ -1537,7 +1552,7 @@ const messageHandlers = {
   'show-notification': (data: any, ctx?: MessageContext) => handleShowNotification(data.warningType, ctx?.tabUrl),
   'record-visit': (data: any, ctx?: MessageContext) => handleRecordVisit(data, ctx),
   'tampering-detected': (_data: any, ctx?: MessageContext) => handleTampering(ctx?.tabId, ctx?.tabUrl),
-  'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain),
+  'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain, data.context),
   'open-link-tab': (data: any, ctx?: MessageContext) => handleOpenLinkTab(data, ctx),
   'resolve-short-url': async (data: any) => {
     // A retry is the user saying the answer they were given is not good enough.
@@ -1777,7 +1792,7 @@ if (hasContextMenus()) {
         else {
           const analysis = recipients[0] ? analyzeEmailAddress(recipients[0].address) : null
           if (analysis?.domain)
-            await handleOpenPopupTab(analysis.domain)
+            await handleOpenPopupTab(analysis.domain, 'email')
         }
       }
       else {
@@ -1787,21 +1802,29 @@ if (hasContextMenus()) {
       }
     }
 
-    if (info.menuItemId === CONTEXT_MENU_LINK_ID && info.linkUrl && tab?.id) {
+    // A check somebody asked for has to answer. Where the tab has no content
+    // script – opened before the extension was installed or updated, a store
+    // page, a PDF – the message goes nowhere, and these two used to do nothing
+    // at all. The check page gives the same answer from the extension's side.
+    if (info.menuItemId === CONTEXT_MENU_LINK_ID && info.linkUrl) {
       // Send message to content script to show intercept dialog for this link.
       // The frame goes along because the dialog is drawn in the top document,
       // which only knows what the link's text said when the click was its own.
-      await sendToTabSafe(tab.id, {
+      const delivered = tab?.id != null && await sendToTabSafe(tab.id, {
         type: 'show-link-intercept',
         data: { url: info.linkUrl, frameId: info.frameId },
       })
+      if (!delivered)
+        await handleOpenCheckTab(info.linkUrl)
     }
 
-    if (info.menuItemId === CONTEXT_MENU_SELECTION_ID && tab?.id) {
-      await sendToTabSafe(tab.id, {
+    if (info.menuItemId === CONTEXT_MENU_SELECTION_ID) {
+      const delivered = tab?.id != null && await sendToTabSafe(tab.id, {
         type: 'check-selection',
         data: { selectionText: info.selectionText ?? '' },
       })
+      if (!delivered && info.selectionText)
+        await handleOpenCheckTab(info.selectionText)
     }
 
     if (info.menuItemId === CONTEXT_MENU_QR_IMAGE_ID && info.srcUrl)

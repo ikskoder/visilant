@@ -222,8 +222,15 @@ export function getRegistrableDomain(hostname: string): string {
  */
 export function findEmbeddedPublicSuffix(hostname: string): EmbeddedDomain | null {
   const labels = hostname.toLowerCase().replace(/\.$/, '').split('.')
-  // The subdomain labels are the head of this same list, so the index carries over
-  const subdomain = getSubdomainLabels(hostname)
+  // The subdomain labels are the head of this same list, so the index carries
+  // over. The suffix is guessed by shape, and the guess takes `abc.me` for a
+  // two-label suffix like `co.uk`, which hid `paypal.com` in
+  // `paypal.com.abc.me`. A second level of 3 letters or more is read as
+  // somebody's name here: `com.br` then leaves nothing in front to report,
+  // while `gov.bc.ca` keeps its two-letter `bc.ca`.
+  const beforeLast = labels[labels.length - 2] ?? ''
+  const suffix = beforeLast.length >= 3 ? 1 : suffixLabelCount(labels)
+  const subdomain = labels.slice(0, Math.max(0, labels.length - suffix - 1))
   const at = subdomain.findIndex((label, index) => index > 0 && DOMAIN_ENDING_LABELS.has(label))
   if (at < 0)
     return null

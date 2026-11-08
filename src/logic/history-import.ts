@@ -259,12 +259,22 @@ export function isImportAlive(state: HistoryImportState | null, now: number): bo
  */
 export type ImportHealth = 'never' | 'running' | 'complete' | 'partial' | 'interrupted' | 'cancelled' | 'failed' | 'unsupported'
 
+/**
+ * The automatic import between its two passes: the quick one has finished and
+ * the full one has not started yet, while the visit records are folded in. The
+ * state says `done` then, and read as finished it offered a button that the
+ * import already running would refuse.
+ */
+function isBetweenPasses(state: HistoryImportState | null, now: number): boolean {
+  return !!state && state.auto && state.stage === 'full-pending' && now - (state.updatedAt || 0) < IMPORT_HEARTBEAT_TIMEOUT_MS
+}
+
 export function describeImportHealth(
   state: HistoryImportState | null,
   now: number,
   runningHere = false,
 ): ImportHealth {
-  if (runningHere || isImportAlive(state, now))
+  if (runningHere || isImportAlive(state, now) || isBetweenPasses(state, now))
     return 'running'
   if (!state)
     return 'never'
