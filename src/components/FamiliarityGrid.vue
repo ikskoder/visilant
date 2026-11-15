@@ -28,6 +28,12 @@ const props = defineProps<{
    * the reader to divide one by the other, and the answer means nothing.
    */
   aggregated?: boolean
+  /**
+   * The verdict drawn over this grid reads "Never visited" for a record with
+   * no visits. Not every badge is a verdict on the site: a short-link service
+   * gets a badge of its own kind, and there the grid has to say it.
+   */
+  verdictBeside?: boolean
 }>()
 
 const { t, factsFor, summaryFor, withThresholds } = useFamiliarityFacts()
@@ -43,6 +49,15 @@ function foldLabel(metric: DomainMetric) {
 
 const facts = computed(() => factsFor(props.stats))
 const summary = computed(() => summaryFor(props.stats))
+
+/**
+ * No cells for a record with no visits in it.
+ *
+ * Each would be a zero that fails, under a verdict reading "Never visited" that
+ * had already said so. The grid is the working behind a verdict, and here there
+ * is none to show: one line says so, or none where the verdict did.
+ */
+const never = computed(() => !(Number(props.stats?.count) > 0))
 
 /**
  * The date the age is counted from, which the count itself does not say.
@@ -67,11 +82,18 @@ const ageTitle = computed(() => {
 </script>
 
 <template>
+  <!-- One line for a record with no visits, or none under a verdict that said it -->
+  <ul v-if="never && !verdictBeside" class="vz-facts">
+    <li class="vz-fact" data-never-visited>
+      <VzIcon name="fail" :label="t('familiarityFactFailed')" class="tone-danger" />
+      <span class="vz-fact__label">{{ t('linkTooltipNeverVisited') }}</span>
+    </li>
+  </ul>
   <!-- Cells rather than columns: the row holds three facts, or four once the
        tally joins them, and a fixed column count would leave the fourth alone on
        a line of its own in a popup this narrow. The figure is never coloured,
        the mark beside it carries the result. -->
-  <div class="familiarity-grid vz-grid">
+  <div v-else-if="!never" class="familiarity-grid vz-grid">
     <div v-for="fact in facts" :key="fact.id" class="vz-grid__cell">
       <div class="vz-eyebrow">
         {{ fact.label }}<span v-if="aggregated" :data-fold="fact.id">{{ foldLabel(fact.id) }}</span>

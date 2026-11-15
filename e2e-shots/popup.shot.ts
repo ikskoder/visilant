@@ -97,10 +97,11 @@ const CHECKS: { name: string, title: string, input: string, card?: string, then?
   { name: 'check-unknown', title: 'Check page: a domain never visited', input: 'totally-new-site.test', card: 'totally-new-site.test' },
   { name: 'check-lookalike', title: 'Check page: one letter off a familiar site', input: 'https://paypa1.test/login', card: 'paypa1.test' },
   { name: 'check-punycode', title: 'Check page: a Cyrillic lookalike', input: 'https://аpple.test/', card: 'pple.test' },
-  { name: 'check-shortener', title: 'Check page: a shortened link', input: 'https://bit.ly/3xYz9Q', card: 'bit.ly' },
+  { name: 'check-shortener', title: 'Check page: a short link', input: 'https://bit.ly/3xYz9Q', card: 'bit.ly' },
   { name: 'check-email', title: 'Check page: an address one letter off gmail.com', input: 'security-team@gmial.com', card: 'gmial.com' },
   { name: 'check-email-gmail', title: 'Check page: a gmail address', input: 'john.smith@gmail.com', card: 'gmail.com' },
   { name: 'check-email-disposable', title: 'Check page: a throwaway address', input: 'refunds@mailinator.com', card: 'mailinator.com' },
+  { name: 'check-email-forwarding', title: 'Check page: an address at a mail forwarding service', input: 'dev@mozmail.com', card: 'mozmail.com' },
   {
     name: 'check-compare',
     card: 'paypa1.test',
@@ -122,7 +123,7 @@ const CHECKS: { name: string, title: string, input: string, card?: string, then?
       await page.waitForTimeout(300)
     },
   },
-  { name: 'check-mailto', title: 'Check page: a mailto with several recipients', input: 'mailto:boss@paypal.test,payroll@paypa1.test?cc=hr@paypal.test', card: 'paypal.test' },
+  { name: 'check-mailto', title: 'Check page: a mailto with several recipients', input: 'mailto:boss@paypal.test,payroll@paypa1.test?cc=hr@paypal.test' },
   { name: 'check-nothing', title: 'Check page: text with nothing to check in it', input: 'hello there, how are you' },
 ]
 

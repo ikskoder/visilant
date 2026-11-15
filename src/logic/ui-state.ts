@@ -74,20 +74,44 @@ export interface EmailRecipientInfo {
   unchecked?: boolean
 }
 
+/**
+ * What the text of a mail link shows when it is not where the mail goes: an
+ * address, or a domain alone (`username` null), with what is known of its
+ * domain, so the two can be set side by side (`EmailMismatchTable`).
+ */
+export interface EmailMismatch {
+  textAddress: string
+  username: string | null
+  domain: string
+  providerKind: EmailProviderKind
+  stats: FamiliarityStats
+  isSafe: boolean
+  /** See `VisitFacts.unchecked`. */
+  unchecked?: boolean
+}
+
 export interface EmailTooltipInfo {
   analysis: EmailAnalysis
   params: { key: string, value: string }[]
-  mismatch: { textAddress: string } | null
+  mismatch: EmailMismatch | null
   providerKind: EmailProviderKind
+  /** Out of a mail link. Its details are then the link whole, with everybody it writes to. */
+  writing?: boolean
   /** Every recipient, the one above included. Empty for a bare address. */
   recipients?: EmailRecipientInfo[]
-  /** How many were left unchecked because the list was longer than the cap. */
+  /** How many entries were left unchecked, since they do not read as an address. */
   recipientsNotChecked?: number
 }
 
 export interface RawPayloadInfo {
   payload: string
   payloadKind: 'tel' | 'wifi' | 'sms' | 'geo' | 'text'
+  /**
+   * A mail link somebody asked to have checked, with no address in it that
+   * reads as one. Said in words above the payload: shown bare, the answer to
+   * "check this email link" was "Content type: Text".
+   */
+  mailWithoutAddress?: boolean
 }
 
 // Link safety tooltip state
@@ -99,6 +123,14 @@ export interface LinkTooltipData {
    * waiting on it.
    */
   heldClick?: boolean
+  /**
+   * Opened because somebody asked, from the menu (a QR code, a selection, a
+   * link), not by pointing at a link. Such a tooltip follows no pointer and
+   * closes with none, so it carries a close button of its own, and an address
+   * it shows can be opened from it: asking where a code leads and then having
+   * no way to go there was a dead end.
+   */
+  asked?: boolean
   domain: string // email mode: the address's domain; text mode: ''
   stats: FamiliarityStats
   isSafe: boolean
@@ -211,10 +243,17 @@ export interface PasteInterceptData {
   /**
    * Set when the paste happened inside an iframe rather than in this document.
    *
-   * The domain above is then the frame's, not the page's, and the difference is
-   * the point: the address bar says one site and the box says another.
+   * The domain above is still the page's: a frame is never judged by its own
+   * address, see the frame guard. So the dialog heads the address as the page's,
+   * and has no clipboard text to describe, which never leaves the frame.
    */
   inFrame?: boolean
+  /**
+   * With status `safe`: the paste is let through because the user turned
+   * warnings off for this site, not because the site is familiar. The dialog
+   * must not call it familiar.
+   */
+  silenced?: boolean
 }
 
 export const pasteInterceptVisible = ref(false)

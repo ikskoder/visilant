@@ -113,18 +113,38 @@ function handleTooltipGo(href: string) {
   window.location.href = href
 }
 
+/** The address of a tooltip that was asked for, opened beside the page it was asked on. */
+function handleTooltipOpen(href: string) {
+  handleTooltipDismiss()
+  window.open(href, '_blank', 'noopener,noreferrer')
+}
+
+/** Closed by its own button, at once: the hover timers are for a pointer that left. */
+function handleTooltipDismiss() {
+  linkTooltipVisible.value = false
+  linkTooltipData.value = null
+}
+
 function handleTooltipDetails(domain: string) {
-  // An address domain from an email tooltip is a mail provider, not a site
-  // somebody opens, and the page has to know that to say so instead of
-  // reading its zero as "never visited"
-  const tooltip = linkTooltipData.value
-  const context = tooltip?.kind === 'email' && tooltip.domain === domain ? 'email' : undefined
   linkTooltipVisible.value = false
   linkTooltipData.value = null
   // Send message to background to open popup page with domain context
   browser.runtime.sendMessage({
     type: 'open-popup-tab',
-    data: { domain, context },
+    data: { domain },
+  })
+}
+
+/**
+ * The details of an email address are the check page with the address in it:
+ * the page about its domain alone showed no address at all.
+ */
+function handleEmailDetails(value: string) {
+  linkTooltipVisible.value = false
+  linkTooltipData.value = null
+  browser.runtime.sendMessage({
+    type: 'open-email-check-tab',
+    data: { value },
   })
 }
 
@@ -212,7 +232,10 @@ onMounted(async () => {
       @hover-enter="handleTooltipHoverEnter"
       @close="handleTooltipClose"
       @go="handleTooltipGo"
+      @open="handleTooltipOpen"
+      @dismiss="handleTooltipDismiss"
       @details="handleTooltipDetails"
+      @email-details="handleEmailDetails"
     />
 
     <CheckPanel

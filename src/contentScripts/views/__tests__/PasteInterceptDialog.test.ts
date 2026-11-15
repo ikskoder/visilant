@@ -23,6 +23,49 @@ function open(overrides: Partial<PasteInterceptData> = {}) {
  * reach in here, but it can write instructions beside it, so the control it
  * would aim at is not here to be aimed at. See the note in `InputWarning`.
  */
+// What the reader is looking at when this comes up: a field that stayed empty
+describe('the paste dialog from where the reader stands', () => {
+  // A paste in a box inside the page is judged by the page, so the address is
+  // the page's, and is headed as that
+  it('heads the address as the page\'s when the paste was in a box inside it', () => {
+    const inFrame = open({ inFrame: true })
+    expect(inFrame.text()).toContain('pasteInterceptPageHeading')
+    expect(open().text()).not.toContain('pasteInterceptPageHeading')
+  })
+
+  // The card is centred, so a line of help opening moves "Allow pasting"
+  // under a pointer that has not moved
+  it('makes the press after opening help wait its half second again', async () => {
+    vi.useFakeTimers()
+    try {
+      // The other spelling of the name brings a question mark with it
+      const wrapper = open({ domain: 'пример.test', punycode: 'xn--e1afmkfd.test' })
+      vi.advanceTimersByTime(600)
+      await wrapper.get('[data-action="help"]').trigger('click')
+      await wrapper.get('[data-action="allow"]').trigger('click')
+      expect(wrapper.emitted('allow')).toBeUndefined()
+      vi.advanceTimersByTime(600)
+      await wrapper.get('[data-action="allow"]').trigger('click')
+      expect(wrapper.emitted('allow')).toHaveLength(1)
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Let through because the user turned warnings off is not "familiar"
+  it('does not call a silenced site familiar', () => {
+    const silenced = open({ status: 'safe', silenced: true, stats: { count: 1 } })
+    expect(silenced.text()).toContain('pasteInterceptSilencedMessage')
+    expect(silenced.text()).not.toContain('pasteInterceptSafeMessage')
+    expect(silenced.get('[data-address-status] [data-verdict]').attributes('data-verdict')).toBe('unfamiliar')
+
+    const familiar = open({ status: 'safe', stats: { count: 50 } })
+    expect(familiar.text()).toContain('pasteInterceptSafeMessage')
+    expect(familiar.get('[data-address-status] [data-verdict]').attributes('data-verdict')).toBe('familiar')
+  })
+})
+
 describe('the paste dialog and the per-site silence', () => {
   it('has no control that silences the site', () => {
     const wrapper = open()

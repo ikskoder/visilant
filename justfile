@@ -181,6 +181,23 @@ shots *ARGS:
 shots-watch *ARGS:
   pnpm exec esno e2e-shots/watch.ts "$@"
 
+# Put the catalogue as it is now aside, to compare a later run with
+shots-keep:
+  rm -rf .tmp/shots/before
+  cp -r .tmp/shots/run .tmp/shots/before
+
+# A few dozen pictures in place of the whole catalogue: each block (an address
+# with its verdict, a short link, the comparison table…) in each of its states,
+# one column per surface that draws it, cut from the last `just shots`:
+# .tmp/shots/patterns.html
+patterns:
+  pnpm exec esno e2e-shots/patterns.ts
+
+# What changed since `just shots-keep`, case by case and close up: .tmp/shots/compare/index.html
+[positional-arguments]
+shots-diff *ARGS:
+  pnpm exec esno e2e-shots/compare.ts "$@"
+
 # Run unit tests
 test:
   pnpm test run

@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { allText, blankPage, inWorker, patchSettings, serveSite } from './helpers'
+import { allText, blankPage, clickInDialog, inWorker, patchSettings, serveSite } from './helpers'
 
 // Evaluated inside the extension's service worker
 declare const chrome: any
@@ -51,10 +51,20 @@ async function checkFromMenu(context: any, url: string, frameId = 0) {
   }, { host: SITE_HOST, target: url, frame: frameId })
 }
 
-/** The dialog is up – waited on first, so that "no table" is never read off a page with no dialog on it. */
+/**
+ * The dialog is up – waited on first, so that "no table" is never read off a page with no dialog on it.
+ *
+ * Asked for from the menu, so it is a check and reads as one: nobody clicked
+ * the link, and it used to speak of a site "ahead" and of continuing "anyway".
+ */
 async function dialogText(page: Page): Promise<string> {
-  await expect.poll(() => allText(page), { timeout: 15000, intervals: [300] }).toContain('Unfamiliar site ahead')
-  return allText(page)
+  await expect.poll(() => allText(page), { timeout: 15000, intervals: [300] }).toContain('Link check')
+  const text = await allText(page)
+  expect(text).toContain('Open in new tab')
+  expect(text).not.toContain('Unfamiliar site ahead')
+  expect(text).not.toContain('Open anyway')
+  expect(text).not.toContain('Don\'t open')
+  return text
 }
 
 async function open(page: Page) {
@@ -115,6 +125,27 @@ test('a link in a frame gets no words from the top document', async ({ page, con
   expect(text).not.toContain('Leads to')
 })
 
+// A link to a page and a link that writes a mail have an item each, offered
+// by where the link points. An item whose pattern the browser refused is not
+// created at all, and `update` on an id that is not there reports an error,
+// which is the one way to ask whether an item exists.
+test('the menu has an item for page links and one for mail links', async ({ context }) => {
+  const exists = (id: string) => inWorker<boolean>(context, (item: string) => new Promise<boolean>((resolve) => {
+    chrome.contextMenus.update(item, {}, () => resolve(!chrome.runtime.lastError))
+  }), id)
+
+  // Each waited for: the menu is rebuilt whenever the settings change, and
+  // for a moment in the middle of that an item made earlier is not there
+  const there = (id: string) => expect.poll(() => exists(id), { timeout: 15000, intervals: [300] }).toBe(true)
+  await there('visilant-check-mail-link')
+  await there('visilant-check-link-safety')
+  await there('visilant-check-domain')
+  // The details of a mail link are its own item, named for an address
+  await there('visilant-mail-details')
+  // CONTROL: the question does tell an item from none
+  expect(await exists('visilant-no-such-item')).toBe(false)
+})
+
 // Both used to leave the menu item doing nothing at all: a mailto link has no
 // host for the dialog, and a link on the same site was dropped as not external
 test('the menu check on a mailto link checks the address', async ({ page, context }) => {
@@ -125,6 +156,40 @@ test('the menu check on a mailto link checks the address', async ({ page, contex
   await checkFromMenu(context, href)
 
   await expect.poll(() => allText(page), { timeout: 15000, intervals: [300] }).toContain('Email address')
+})
+
+// The page about a domain alone had no address on it. The details of an email
+// address are the check page with the link in it, handed over out of sight:
+// the tab's address stays in the browser's history, and names nobody
+test('the details of an email address open the check page with the address in it', async ({ page, context }) => {
+  await open(page)
+  const href = await page.locator('#mail').evaluate((a: HTMLAnchorElement) => a.href)
+  await checkFromMenu(context, href)
+  await expect.poll(() => allText(page), { timeout: 15000, intervals: [300] }).toContain('Address details')
+
+  const opened = context.waitForEvent('page')
+  await clickInDialog(page, 'details')
+  const details = await opened
+  await details.waitForLoadState()
+
+  expect(details.url()).toContain('check=1')
+  expect(details.url()).not.toContain('billing')
+  expect(details.url()).not.toContain('yourmial')
+  await expect(details.locator('[data-check-field]')).toContainText('Email address', { timeout: 10000 })
+  await expect(details.locator('[data-domain-panel] .popup-address .vz-addr__acct')).toContainText('billing')
+  await expect(details.locator('[data-domain-panel] .popup-address')).toContainText('yourmial')
+  // A reload keeps what was handed over
+  await details.reload()
+  await expect(details.locator('[data-domain-panel] .popup-address')).toContainText('yourmial', { timeout: 10000 })
+})
+
+// Somebody asked, so something answers: a mail link with no address in it
+// used to end with nothing on the screen at all
+test('the menu check on a mail link with no address shows what the link holds', async ({ page, context }) => {
+  await open(page)
+  await checkFromMenu(context, 'mailto:?subject=Hello')
+
+  await expect.poll(() => allText(page), { timeout: 15000, intervals: [300] }).toContain('mailto:?subject=Hello')
 })
 
 // The click trigger cancelled the click and then dropped the answer, because
@@ -150,4 +215,26 @@ test('the menu check on a link within the site still answers', async ({ page, co
 
   const text = await dialogText(page)
   expect(text).not.toContain('Leads to')
+})
+
+// The dialog measures where a long address broke its lines, and marks them.
+// Done inside the size observer's own callback, the mark's room changed the
+// size being observed, which a browser reports as an error on the window: in
+// a web page that is the page's window, its error tracker and all.
+test('a long address in the dialog raises no error on the page', async ({ page, context }) => {
+  await open(page)
+  await page.evaluate(() => {
+    ;(window as any).__errors = []
+    window.addEventListener('error', event => (window as any).__errors.push(String(event.message)))
+  })
+  const long = `https://this-is-a-very-long-label-that-goes-on.another-long-label-that-goes-on-and-on.and-one-more-label-to-fill-the-line.evil.test/`
+  await checkFromMenu(context, long)
+  const text = await dialogText(page)
+  // Longer than a line of the dialog, so it has to break
+  expect(text).toContain('another-long-label-that-goes-on-and-on')
+  await page.setViewportSize({ width: 700, height: 800 })
+  await page.waitForTimeout(500)
+  await page.setViewportSize({ width: 1100, height: 800 })
+  await page.waitForTimeout(500)
+  expect(await page.evaluate(() => (window as any).__errors)).toEqual([])
 })

@@ -48,7 +48,7 @@ function frameUrl(page: any) {
   return page.frames().find((frame: any) => frame !== page.mainFrame())?.url() ?? ''
 }
 
-test('a flagged link in a mail body opens its tab after "Continue anyway"', async ({ page, context }) => {
+test('a flagged link in a mail body opens its tab after "Open anyway"', async ({ page, context }) => {
   await landEverywhere(page)
   await serveSite(page, SITE_URL, framePage(mailBody(`<a id="l" href="${FLAGGED}" target="_blank" style="${LINK_STYLE}">Log in</a>`)))
   await page.waitForTimeout(2000)
@@ -63,7 +63,7 @@ test('a flagged link in a mail body opens its tab after "Continue anyway"', asyn
   expect(page.url()).toBe(SITE_URL)
 })
 
-test('"Go back" leaves a flagged link in a frame unopened', async ({ page, context }) => {
+test('"Don\'t open" leaves a flagged link in a frame unopened', async ({ page, context }) => {
   await landEverywhere(page)
   await serveSite(page, SITE_URL, framePage(mailBody(`<a id="l" href="${FLAGGED}" target="_blank" style="${LINK_STYLE}">Log in</a>`)))
   await page.waitForTimeout(2000)
@@ -86,10 +86,10 @@ test('a link with no red flag in a frame opens untouched', async ({ page, contex
 })
 
 // The frame can navigate itself without a press of its own. Flagged by a
-// well-known name inside the address: Chrome refuses to load an address with a
+// name in another alphabet: Chrome refuses to load an address with a
 // name before @ in a frame at all.
 test('a flagged link in a frame from another site that opens in the frame is followed there', async ({ page }) => {
-  await openWithWidget(page, `<a id="l" href="https://paypal.com.plain-new-site.test/landed" style="${LINK_STYLE}">Log in</a>`)
+  await openWithWidget(page, `<a id="l" href="https://xn--e1afmkfd.plain-new-site.test/landed" style="${LINK_STYLE}">Log in</a>`)
 
   await page.frameLocator('#f').locator('#l').click()
   await expect.poll(() => allText(page), { timeout: 8000, intervals: [300] }).toContain('Red flags in this link')
@@ -147,7 +147,7 @@ test('reaching for a link to the page\'s own site does not stop the hold on the 
 
 // A mail body that opens every link in a new window says so once, in <base>
 test('a frame from another site that opens links through <base target> asks for a second click', async ({ page }) => {
-  await openWithWidget(page, `<base target="_blank"><a id="l" href="https://paypal.com.plain-new-site.test/landed" style="${LINK_STYLE}">Log in</a>`)
+  await openWithWidget(page, `<base target="_blank"><a id="l" href="https://xn--e1afmkfd.plain-new-site.test/landed" style="${LINK_STYLE}">Log in</a>`)
 
   await page.frameLocator('#f').locator('#l').click()
   await expect.poll(() => allText(page), { timeout: 8000, intervals: [300] }).toContain('click the link again')

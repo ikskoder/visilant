@@ -70,16 +70,16 @@ test('a finished import shows the figures it ended on', async ({ context, extens
 
   // Grouped and localised rather than printed raw
   await expect(stats(page)).toHaveText(['1,234', '56,789'], { timeout: 5000 })
-  await expect(page.locator('text=The ones you use regularly')).toBeVisible()
+  await expect(page.locator('text=The sites you use regularly')).toBeVisible()
   // Nothing is still going, so there is nothing to retry
-  await expect(page.locator('button', { hasText: 'Import again' })).toHaveCount(0)
+  await expect(page.locator('button', { hasText: 'Import history again' })).toHaveCount(0)
 })
 
 test('an import that lands while the page is open updates it in place', async ({ context, extensionId }) => {
   await waitForAutoImport(context)
   await publishState(context, { status: 'running' })
   const page = await openWelcome(context, extensionId)
-  await expect(page.locator('text=Import again')).toHaveCount(0)
+  await expect(page.locator('text=Import history again')).toHaveCount(0)
 
   await publishState(context, { status: 'done', domains: 42, visits: 99, finishedAt: 1 })
 
@@ -92,7 +92,7 @@ test('a failed import says so and offers to run again', async ({ context, extens
   const page = await openWelcome(context, extensionId)
 
   await expect(page.locator('text=The import didn\'t finish')).toBeVisible({ timeout: 5000 })
-  await expect(page.locator('button', { hasText: 'Import again' })).toBeVisible()
+  await expect(page.locator('button', { hasText: 'Import history again' })).toBeVisible()
 })
 
 test('a counted but undetailed import keeps its figures and still offers a retry', async ({ context, extensionId }) => {
@@ -105,7 +105,7 @@ test('a counted but undetailed import keeps its figures and still offers a retry
 
   await publishState(context, { status: 'failed', mode: 'full', domains: 0, visits: 0, finishedAt: 2 })
 
-  await expect(page.locator('button', { hasText: 'Import again' })).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('button', { hasText: 'Import history again' })).toBeVisible({ timeout: 5000 })
   await expect(stats(page)).toHaveText(['7', '8'])
 })
 

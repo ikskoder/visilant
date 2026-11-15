@@ -3,11 +3,10 @@ import type { FamiliarityStats } from '~/logic/familiarity'
 import type { CheckPanelData } from '~/logic/ui-state'
 import punycode from 'punycode'
 import { computed, provide, ref, watch } from 'vue'
-import DomainMarkers from '~/components/DomainMarkers.vue'
+import AddressFindings from '~/components/AddressFindings.vue'
 import EmailCheckCaveat from '~/components/EmailCheckCaveat.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
 import FamiliarityGrid from '~/components/FamiliarityGrid.vue'
-import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import RedFlagCount from '~/components/RedFlagCount.vue'
 import SecureText from '~/components/SecureText.vue'
 import VzBadge from '~/components/VzBadge.vue'
@@ -21,7 +20,6 @@ import { useModalDialog } from '~/composables/useModalDialog'
 import { useTopLayer } from '~/composables/useTopLayer'
 import { useVisualViewport } from '~/composables/useVisualViewport'
 import { ADDRESS_FRAMES_KEY } from '~/logic/address-shape'
-import { isListedPublicOnlyRemotely } from '~/logic/email-providers'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { alternateSpelling } from '~/logic/link-safety'
 import { settings } from '~/logic/storage'
@@ -195,11 +193,54 @@ const showOwnFacts = computed(() => {
   return data.kind !== 'email' || data.email?.providerKind === 'regular'
 })
 
-const { statusLabel } = useFamiliarityFacts()
+/**
+ * Whether the site has a name the panel has not printed yet. For `example.com`
+ * itself it has not: the base domain is the address at the top, and "Site"
+ * under it was the same name a second time.
+ */
+const showSiteName = computed(() => {
+  const data = props.data
+  return Boolean(data) && data!.family.baseDomain !== (data!.family.key || data!.hostname)
+})
 
+/**
+ * Whether "no visits recorded on this site" still has to be said. Only under
+ * a site named apart from the address, since everything above it is about the
+ * address. Where the site is the checked name itself, the badge or the line
+ * where its facts would be has said it.
+ */
+const showNoVisits = computed(() => {
+  const data = props.data
+  return Boolean(data) && data!.family.entries.length === 0 && !mailSites.value.length && showSiteName.value
+})
+
+/**
+ * Whether the list of the site's addresses says anything new. With one row that
+ * is the checked name it does not: it is the name and the visit count from the
+ * top of the panel. Unless that count is not at the top, which is the case
+ * wherever the name's own facts are left out: a mail provider, or an address
+ * domain whose mail is read elsewhere. The row is then the only place the
+ * count is given.
+ */
+const showList = computed(() => hasOtherHosts.value
+  || (!showOwnFacts.value && (props.data?.family.entries.length ?? 0) > 0))
+
+/**
+ * The site is named apart from the address, and the address is all that is
+ * recorded under it. Said in words, as the toolbar popup says it, or the
+ * heading and the name stand over nothing.
+ */
+const showOnlyThisHost = computed(() => showSiteName.value && !showList.value && !mailSites.value.length
+  && (props.data?.family.entries.length ?? 0) > 0)
+
+/** Whether anything is left for the block about the site to say. */
+const showSite = computed(() => !isUntrackedHost.value
+  && (showSiteName.value || showList.value || mailSites.value.length > 0 || showNoVisits.value))
+
+const { statusLabel } = useFamiliarityFacts()
 /** The badge beside the name being checked, worded as on every other surface. */
-function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
-  return statusLabel(passes(stats), stats.count, false, { hostname, email })
+function statusBadge(stats: FamiliarityStats, hostname: string) {
+  return statusLabel(passes(stats), stats.count, false, { hostname })
 }
 </script>
 
@@ -217,11 +258,46 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
         class="panel-container vz-overlay vz-dialog"
         :style="{ '--vz-scale': fontSize / 100 }"
       >
-        <VzSig />
         <div class="vz-dialog__head">
+          <VzSig large />
           <h2 class="vz-title">
             {{ t('checkPanelTitle') }}
           </h2>
+          <!-- Display toggles for this panel only. Each shows its state by being
+               pressed, and a plain Latin address looks the same either way, so the
+               button has to carry the state itself. In the head, as on the
+               popup: under the address they took a row of the panel to themselves. -->
+          <div class="vz-toggles" role="group" :aria-label="t('addressDisplayGroup')">
+            <button
+              class="vz-toggle"
+              :title="caseTitle"
+              :aria-label="caseTitle"
+              :aria-pressed="localCase === 'upper'"
+              @click="localCase = localCase === 'upper' ? 'lower' : 'upper'"
+            >
+              <VzIcon name="case" />
+            </button>
+            <button
+              class="vz-toggle"
+              :title="framesTitle"
+              :aria-label="framesTitle"
+              :aria-pressed="localFrames"
+              data-toggle="frames"
+              @click="localFrames = !localFrames"
+            >
+              <VzIcon name="frames" />
+            </button>
+            <button
+              v-if="hasOtherSpelling"
+              class="vz-toggle"
+              :title="punycodeTitle"
+              :aria-label="punycodeTitle"
+              :aria-pressed="localPunycodeMode === 'ascii'"
+              @click="localPunycodeMode = localPunycodeMode === 'unicode' ? 'ascii' : 'unicode'"
+            >
+              <VzIcon name="script" />
+            </button>
+          </div>
           <button
             ref="closeButton"
             :aria-label="t('closeDialog')"
@@ -235,136 +311,76 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
 
         <!-- Email: full address, account name included -->
         <div v-if="data.kind === 'email' && data.email" class="grid gap-3">
-          <div class="panel-row">
-            <span class="vz-eyebrow">{{ t('emailTooltipTitle') }}</span>
-            <VzBadge v-if="data.email.providerKind === 'disposable'" tone="danger" icon="alert" data-verdict="disposable">
-              {{ t('emailDisposableDomain') }}
-            </VzBadge>
-            <VzBadge v-else-if="data.email.providerKind === 'public'" tone="neutral" icon="email" data-verdict="public">
-              {{ t('emailPublicProvider') }}
-            </VzBadge>
-            <VzBadge v-else :tone="statusBadge(ownStats, data.hostname, true).tone" :icon="statusBadge(ownStats, data.hostname, true).icon" :data-verdict="statusBadge(ownStats, data.hostname, true).verdict">
-              {{ statusBadge(ownStats, data.hostname, true).text }}
+          <div class="grid gap-1">
+            <SecureText kind="email" :text="`${data.email.analysis.localPart}@${data.email.analysis.domain}`" :case-override="localCase" size="l" :diff="linkDiff(`${data.email.analysis.localPart}@${data.email.analysis.domain}`)">
+              <CopyButton :text="`${data.email.analysis.localPart}@${data.email.analysis.domain}`" />
+            </SecureText>
+            <OtherSpelling :shown="data.email.analysis.domain" :other="alternateSpelling(data.email.analysis.domain)" />
+          </div>
+          <!-- Under the address, as on every surface: the verdict and the count of red flags -->
+          <div class="panel-row" data-address-status>
+            <span class="vz-eyebrow">{{ t('linkInterceptStatus') }}</span>
+            <!-- A mail service: a visit count says nothing about one -->
+            <MailServiceBadge v-if="data.email.providerKind !== 'regular'" :kind="data.email.providerKind" />
+            <!-- The same verdict the tooltip gave this address, also for a
+                 domain whose mail is read on another site: the block below
+                 names that site and says why its visits count for more -->
+            <VzBadge v-else :tone="statusBadge(ownStats, data.hostname).tone" :icon="statusBadge(ownStats, data.hostname).icon" :data-verdict="statusBadge(ownStats, data.hostname).verdict">
+              {{ statusBadge(ownStats, data.hostname).text }}
             </VzBadge>
             <RedFlagCount :hostname="data.hostname" context="email" />
           </div>
-          <div class="grid gap-1">
-            <span class="vz-eyebrow">{{ t('emailAccountName') }}</span>
-            <SecureText :text="data.email.analysis.localPart" kind="account" size="l">
-              <CopyButton :text="data.email.analysis.localPart" />
-            </SecureText>
-          </div>
-          <div class="grid gap-1">
-            <span class="vz-eyebrow">{{ t('emailDomainLabel') }}</span>
-            <SecureText :text="data.email.analysis.domain" :case-override="localCase" size="l" :diff="linkDiff(data.email.analysis.domain)">
-              <CopyButton :text="data.email.analysis.domain" />
-            </SecureText>
-          </div>
-          <FamiliarityGrid v-if="showOwnFacts" :stats="ownStats" data-own-facts />
-          <VzNotice v-if="data.email.analysis.suspiciousPattern" tone="danger">
-            {{ t('emailSuspiciousPattern') }} (.{{ data.email.analysis.suspiciousPattern.label }})
-          </VzNotice>
-          <VzNotice v-if="data.email.analysis.local.hasUnicode" tone="danger">
-            {{ t('emailLocalUnicodeWarning') }}
-          </VzNotice>
-          <VzNotice v-if="data.email.providerKind === 'public'" tone="neutral" icon="email">
-            {{ t('emailPublicProviderHint') }}
-          </VzNotice>
-          <!-- See `remotePublicSet` -->
-          <VzNotice v-else-if="data.email.providerKind === 'regular' && isListedPublicOnlyRemotely(data.email.analysis.domain)" tone="neutral" icon="email" data-status="listed-public">
-            {{ t('emailRemotePublicHint') }}
-          </VzNotice>
-          <VzNotice v-else-if="data.email.providerKind === 'disposable'" tone="danger">
-            {{ t('emailDisposableHint') }}
-          </VzNotice>
-
-          <!-- Last, because it qualifies everything above it -->
-          <EmailCheckCaveat />
+          <UsernameNote :local="data.email.analysis.localPart" />
         </div>
 
         <!-- Domain: checked hostname -->
         <div v-else class="grid gap-2">
-          <div class="flex items-center flex-wrap gap-2 justify-self-start">
+          <SecureText :text="displayDomain(data.hostname)" :case-override="localCase" size="l" :diff="linkDiff(displayDomain(data.hostname))">
+            <CopyButton :text="displayDomain(data.hostname)" />
+          </SecureText>
+          <!-- The other one of the two as drawn, not of the hostname as it
+               came: the panel draws the readable or the xn-- spelling as its
+               toggle says -->
+          <OtherSpelling :shown="displayDomain(data.hostname)" :other="otherSpelling" :diff="otherSpelling ? linkDiff(otherSpelling) : undefined" />
+          <!-- Under the address, as on every surface: the verdict and the count of red flags -->
+          <div class="panel-row" data-address-status>
+            <span class="vz-eyebrow">{{ t('linkInterceptStatus') }}</span>
             <VzBadge :tone="statusBadge(ownStats, data.hostname).tone" :icon="statusBadge(ownStats, data.hostname).icon" :data-verdict="statusBadge(ownStats, data.hostname).verdict">
               {{ statusBadge(ownStats, data.hostname).text }}
             </VzBadge>
             <RedFlagCount :hostname="data.hostname" />
           </div>
-          <SecureText :text="displayDomain(data.hostname)" :case-override="localCase" size="l" :diff="linkDiff(displayDomain(data.hostname))">
-            <CopyButton :text="displayDomain(data.hostname)" />
-          </SecureText>
         </div>
 
-        <!-- What the badge above was decided on: this name's own record, as on
-             the toolbar popup. The family's figures used to stand here under
-             the site's name, so a red badge sat over three green marks that
-             were about a different name. -->
-        <FamiliarityGrid v-if="showOwnFacts && data.kind !== 'email'" :stats="ownStats" data-own-facts />
-
-        <!-- The other spelling of the name drawn above. The other one of the two
-             as drawn, not of the hostname as it came: the panel draws the
-             Unicode or the xn-- spelling as its toggle says, and this line
-             repeated the one already on screen. -->
-        <VzNotice v-if="otherSpelling" tone="danger">
-          {{ t('linkTooltipPunycode') }}: <SecureText :text="otherSpelling" size="s" :diff="linkDiff(otherSpelling)">
-            <CopyButton :text="otherSpelling" />
-          </SecureText>
-        </VzNotice>
-
         <!-- Why there are no numbers below, said before they are missed -->
-        <VzNotice v-if="isUntrackedHost" tone="neutral" icon="unknown">
+        <VzNotice v-if="isUntrackedHost" tone="neutral" icon="unknown" boxed>
           <p class="vz-body-strong">
             {{ t(untrackedReason(data.hostname) === 'ip' ? 'untrackedIpTitle' : 'untrackedHostTitle') }}
           </p>
           <p>{{ t(untrackedReason(data.hostname) === 'ip' ? 'untrackedIpText' : 'untrackedHostText') }}</p>
         </VzNotice>
 
-        <DomainMarkers :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" :familiar="passes(ownStats)" />
-        <LookalikeNotice :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" />
+        <AddressFindings :hostname="data.hostname" :context="data.kind === 'email' ? 'email' : undefined" :familiar="passes(ownStats)" :mail-service="data.email?.providerKind" />
 
-        <!-- Display toggles for this panel only. Each shows its state by being
-             pressed, and a plain Latin address looks the same either way, so the
-             button has to carry the state itself. -->
-        <div class="vz-toggles justify-self-start" role="group" :aria-label="t('addressDisplayGroup')">
-          <button
-            class="vz-toggle"
-            :title="caseTitle"
-            :aria-label="caseTitle"
-            :aria-pressed="localCase === 'upper'"
-            @click="localCase = localCase === 'upper' ? 'lower' : 'upper'"
-          >
-            <VzIcon name="case" />
-          </button>
-          <button
-            class="vz-toggle"
-            :title="framesTitle"
-            :aria-label="framesTitle"
-            :aria-pressed="localFrames"
-            data-toggle="frames"
-            @click="localFrames = !localFrames"
-          >
-            <VzIcon name="frames" />
-          </button>
-          <button
-            v-if="hasOtherSpelling"
-            class="vz-toggle"
-            :title="punycodeTitle"
-            :aria-label="punycodeTitle"
-            :aria-pressed="localPunycodeMode === 'ascii'"
-            @click="localPunycodeMode = localPunycodeMode === 'unicode' ? 'ascii' : 'unicode'"
-          >
-            <VzIcon name="script" />
-          </button>
-        </div>
+        <!-- What the verdict above was decided on: this name's own record, as on
+             the toolbar popup. The family's figures used to stand here under
+             the site's name, so a red badge sat over three green marks that
+             were about a different name. After the findings about the name,
+             as on every surface. -->
+        <FamiliarityGrid v-if="showOwnFacts" :stats="ownStats" :verdict-beside="statusBadge(ownStats, data.hostname).verdict === 'never'" data-own-facts />
 
-        <!-- Domain family, same info as the extension popup. Dropped entirely for
-             an untracked host: the family is the address itself, and every number
-             in it would be a zero that can never move. -->
-        <div v-if="!isUntrackedHost" class="panel-section">
+        <!-- Last of what is said about the address, because it qualifies all of it -->
+        <EmailCheckCaveat v-if="data.kind === 'email' && data.email" />
+
+        <!-- Domain family, same info as the extension popup. Dropped for an
+             untracked host, where the family is the address itself and every
+             number in it would be a zero that can never move, and wherever it
+             would only repeat the top of the panel, see `showSite`. -->
+        <div v-if="showSite" class="panel-section">
           <!-- No figure beside this heading. A bare "Total" repeated the visits
                line printed under it, with no word for what it counted, and next
                to a mail domain it was a zero nobody could move. -->
-          <div class="grid gap-1">
+          <div v-if="showSiteName" class="grid gap-1">
             <span class="vz-eyebrow">{{ t('baseDomain') }}</span>
             <SecureText :text="displayDomain(data.family.baseDomain)" :case-override="localCase" size="m" />
           </div>
@@ -386,7 +402,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
                  rests on, so it is judged in full like any other -->
             <ul class="vz-list">
               <li v-for="site in mailSites" :key="site.site" class="vz-list__row panel-mail-row">
-                <SecureText :text="displayDomain(site.site)" :case-override="localCase" size="m" />
+                <SecureText :text="displayDomain(site.site)" :case-override="localCase" size="m" plain />
                 <FamiliarityFacts :stats="site.stats" />
               </li>
             </ul>
@@ -395,7 +411,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
             </p>
           </template>
 
-          <template v-if="data.family.entries.length > 0">
+          <template v-if="showList">
             <span class="vz-eyebrow">{{ t('relatedDomains') }}</span>
             <ul class="vz-list vz-scroll-y panel-list">
               <li
@@ -405,7 +421,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
                 :class="{ 'vz-list__row--current': entry.hostname === (data.family.key || data.hostname) }"
               >
                 <div class="vz-list__main">
-                  <SecureText :text="displayDomain(entry.hostname)" :case-override="localCase" size="m" />
+                  <SecureText :text="displayDomain(entry.hostname)" :case-override="localCase" size="m" plain />
                 </div>
                 <!-- The number, then its mark: numbers line up on the right edge -->
                 <span class="vz-list__num">
@@ -415,8 +431,11 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
               </li>
             </ul>
           </template>
-          <p v-else-if="!mailSites.length" class="vz-small text-center">
+          <p v-else-if="showNoVisits" class="vz-small text-center">
             {{ t('noVisitData') }}
+          </p>
+          <p v-else-if="showOnlyThisHost" class="vz-small" data-family-only-host>
+            {{ t('familyOnlyCheckedDomain') }}
           </p>
         </div>
       </div>
@@ -431,6 +450,13 @@ function statusBadge(stats: FamiliarityStats, hostname: string, email = false) {
   max-height: calc(var(--vz-vh, 100dvh) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* The toggles share the head with the title and the close button. At phone
+   width and a large text size the three no longer fit one line, and the close
+   button went off the edge of the card */
+.panel-container .vz-dialog__head {
+  flex-wrap: wrap;
 }
 
 .panel-row {

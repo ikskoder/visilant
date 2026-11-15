@@ -15,6 +15,14 @@ const SUBDOMAIN_MATCH = {
   severity: 'high',
 }
 
+/**
+ * What the background sends when the lookalike check could not run. The line
+ * about a domain parked in front is drawn only then: with an answer in hand,
+ * a familiar one has its lookalike line and an unknown one imitates nothing
+ * the user trusts.
+ */
+const NO_ANSWER = undefined
+
 function answerLookalikes(answer: unknown) {
   vi.mocked(browser.runtime.sendMessage).mockImplementation(async (message: any) =>
     message?.type === 'find-lookalikes' ? answer : undefined)
@@ -36,6 +44,12 @@ describe('domainMarkers component', () => {
     const global = { provide: { [ADDRESS_SHAPE_KEY as symbol]: addressShape } }
     const tenant = mount(DomainMarkers, { props: { hostname: 'someone.github.io' }, global })
     expect(tenant.find('[data-marker="hosted-on"] [data-marker-platform]').text()).toBe('github.io')
+    // Drawn as the address above draws the same two labels: an ending, on the
+    // tint in grey. It used to be white, as an address with no site in it
+    const platform = tenant.get('[data-marker-platform]')
+    expect(platform.findAll('[data-owner] .vz-lbl--sfx').map(label => label.text())).toEqual(['github', 'io'])
+    // And in the line's own orange, which the address above gives them too
+    expect(platform.findAll('.vz-lbl').map(label => label.attributes('data-tone'))).toEqual(['caution', 'caution'])
 
     expect(mount(DomainMarkers, { props: { hostname: 'someone.github.io', familiar: true }, global })
       .find('[data-marker="hosted-on"]').exists()).toBe(false)
@@ -43,13 +57,31 @@ describe('domainMarkers component', () => {
       .find('[data-marker="hosted-on"]').exists()).toBe(false)
   })
 
-  // The flag is for what is built to be misread, the triangle for the rest
-  it('draws a flag on a red flag and the triangle on any other warning', () => {
+  // The flag in red is for what is built to be misread, the orange shield for the rest
+  it('draws a red flag on a red flag and the orange shield on any other finding', () => {
     const wrapper = mount(DomainMarkers, { props: { hostname: 'a.b.c.d.evil.test', url: 'https://paypal.com@a.b.c.d.evil.test/' } })
-    expect(wrapper.find('[data-marker="url-userinfo"]').attributes()).toHaveProperty('data-red-flag')
-    expect(wrapper.find('[data-marker="url-userinfo"] .vz-icon--flag').exists()).toBe(true)
-    expect(wrapper.find('[data-marker="deep-subdomains"]').attributes()).not.toHaveProperty('data-red-flag')
-    expect(wrapper.find('[data-marker="deep-subdomains"] .vz-icon--alert').exists()).toBe(true)
+    const flag = wrapper.get('[data-marker="url-userinfo"]')
+    expect(flag.attributes()).toHaveProperty('data-red-flag')
+    expect(flag.attributes('data-tone')).toBe('danger')
+    expect(flag.find('.vz-icon--flag').exists()).toBe(true)
+    const caution = wrapper.get('[data-marker="deep-subdomains"]')
+    expect(caution.attributes()).not.toHaveProperty('data-red-flag')
+    expect(caution.attributes('data-tone')).toBe('caution')
+    expect(caution.find('.vz-icon--shield-alert').exists()).toBe(true)
+  })
+
+  // The count beside the verdict is about the red flags, so they come first
+  // whatever order the checks found them in
+  it('puts the red flags before the lines that are only worth a look', () => {
+    const props = { hostname: 'someone.a.b.c.github.io', url: 'https://paypal.com@someone.a.b.c.github.io/' }
+    const global = { provide: { [ADDRESS_SHAPE_KEY as symbol]: addressShape } }
+    const order = (show?: 'flags' | 'cautions') => mount(DomainMarkers, { props: { ...props, show }, global })
+      .findAll('[data-marker]')
+      .map(line => line.attributes('data-marker'))
+    expect(order()).toEqual(['url-userinfo', 'deep-subdomains', 'hosted-on'])
+    // The two halves a caller can put something between
+    expect(order('flags')).toEqual(['url-userinfo'])
+    expect(order('cautions')).toEqual(['deep-subdomains', 'hosted-on'])
   })
 
   it('counts the same red flags the lines draw', async () => {
@@ -88,7 +120,7 @@ describe('domainMarkers component', () => {
   })
 
   it('names the imitated domain and the real site', async () => {
-    answerLookalikes([])
+    answerLookalikes(NO_ANSWER)
     const wrapper = mount(DomainMarkers, { props: { hostname: 'something.com.evil.net' } })
     await flushPromises()
     expect(wrapper.find('[data-marker="embedded-public-suffix"]').exists()).toBe(true)
@@ -96,6 +128,93 @@ describe('domainMarkers component', () => {
     // this is also the path a translation that lost its {site} placeholder takes
     expect(wrapper.find('[data-marker-site]').text()).toBe('evil.net')
     expect(wrapper.find('[data-marker-imitated]').text()).toBe('something.com')
+  })
+
+  // The levels between the decoy and the owner's name are the owner's to
+  // write, and can spell a second reassuring name as easily as the first
+  it('names the owner\'s site alone once the shape of the address is known', async () => {
+    answerLookalikes(NO_ANSWER)
+    const global = { provide: { [ADDRESS_SHAPE_KEY as symbol]: addressShape } }
+    const known = mount(DomainMarkers, { props: { hostname: 'paypal.com.a.b.c.verify.com' }, global })
+    await flushPromises()
+    expect(known.find('[data-marker-site]').text()).toBe('verify.com')
+    // Until it is, everything after the decoy, which always contains the site
+    const unknown = mount(DomainMarkers, { props: { hostname: 'paypal.com.a.b.c.verify.com' }, global: { provide: { [ADDRESS_SHAPE_KEY as symbol]: () => undefined } } })
+    await flushPromises()
+    expect(unknown.find('[data-marker-site]').text()).toBe('a.b.c.verify.com')
+  })
+
+  // An owner longer than what the check took for the site: the line named
+  // `uk.com`, an ending anybody can register under, as the real site
+  it('takes the real site from the address itself, never a bare ending', async () => {
+    answerLookalikes(NO_ANSWER)
+    // The check takes `uk.com` for the site here, one label short of the owner
+    const shape = () => ({ ownerLabels: 3, suffixLabels: 2 })
+    const wrapper = mount(DomainMarkers, { props: { hostname: 'paypal.com.uk.com' }, global: { provide: { [ADDRESS_SHAPE_KEY as symbol]: shape } } })
+    await flushPromises()
+    expect(wrapper.get('[data-marker-site]').text()).toBe('com.uk.com')
+  })
+
+  // The same trick played twice is said twice, in one line
+  it('names every domain parked in front, with "or" between them and no comma', async () => {
+    answerLookalikes(NO_ANSWER)
+    const global = { provide: { [ADDRESS_SHAPE_KEY as symbol]: addressShape } }
+    const wrapper = mount(DomainMarkers, { props: { hostname: 'paypal.com.google.com.apple.com.verify.com' }, global })
+    await flushPromises()
+    const line = wrapper.get('[data-marker="embedded-public-suffix"]')
+    expect(line.findAll('[data-marker-imitated]').map(name => name.text())).toEqual(['paypal.com', 'google.com', 'apple.com'])
+    expect(line.get('[data-marker-site]').text()).toBe('verify.com')
+    expect(line.text().split('listOr')).toHaveLength(3)
+    // A comma after an address reads as one of its dots
+    expect(line.text()).not.toContain(',')
+  })
+
+  // A full stop straight after a piece of an address is one more dot of it
+  it('starts what follows a piece of an address on a line of its own, with no full stop', async () => {
+    answerLookalikes([])
+    const wrapper = mount(DomainMarkers, { props: { hostname: 'пример.com' } })
+    await flushPromises()
+    const line = wrapper.get('[data-marker="non-latin-name"]')
+    expect(line.get('[data-marker-why]').classes()).toContain('block')
+    expect(line.text()).not.toMatch(/com\s*\./)
+    // After a count the sentence simply goes on
+    const deep = mount(DomainMarkers, { props: { hostname: 'a.b.c.d.evil.test' } })
+    await flushPromises()
+    expect(deep.get('[data-marker="deep-subdomains"] [data-marker-why]').classes()).not.toContain('block')
+  })
+
+  // Every piece of an address quoted in a line is drawn in its frame
+  it('frames the name in another alphabet and the ending it stands before', async () => {
+    answerLookalikes([])
+    const wrapper = mount(DomainMarkers, { props: { hostname: 'пример.com' } })
+    await flushPromises()
+    const line = wrapper.get('[data-marker="non-latin-name"]')
+    expect(line.get('[data-marker-name]').text()).toBe('пример')
+    expect(line.find('[data-marker-name] .vz-lbl').exists()).toBe(true)
+    expect(line.get('[data-marker-ending]').text()).toBe('com')
+    expect(line.find('[data-marker-ending] .vz-lbl').exists()).toBe(true)
+    // The ending as an ending, on the tint in grey, and the name in the red
+    // the address above draws it in
+    expect(line.find('[data-marker-ending] [data-owner] .vz-lbl--sfx').exists()).toBe(true)
+    expect(line.get('[data-marker-name] .vz-lbl').attributes('data-tone')).toBe('danger')
+    // The name before the ending, as the address has them
+    expect(line.html().indexOf('data-marker-name')).toBeLessThan(line.html().indexOf('data-marker-ending'))
+    // With examples in its own alphabet, since Cyrillic has endings of its own
+    expect(line.text()).toContain('domainMarkerNonLatinWhyExamples')
+  })
+
+  // The real site said once, however many familiar names stand in front of it
+  it('names every parked familiar domain in one line, with "or" between them', async () => {
+    answerLookalikes([{ ...SUBDOMAIN_MATCH, site: 'verify.test', also: [{ domain: 'google.com', evidence: 'google.com', visits: 9 }] }])
+    const wrapper = mount(LookalikeNotice, { props: { hostname: 'yourbank.com.google.com.verify.test' } })
+    await flushPromises()
+    const lines = wrapper.findAll('[data-lookalike]')
+    expect(lines).toHaveLength(1)
+    expect(lines[0].findAll('[data-lookalike-site]').map(name => name.text())).toEqual(['yourbank.com', 'google.com'])
+    expect(lines[0].text().split('listOr')).toHaveLength(2)
+    // A word of its own, not glued to the names beside it
+    expect(lines[0].text()).toMatch(/\slistOr\s/)
+    expect(lines[0].text()).not.toContain(',')
   })
 
   it('leaves the ending to the lookalike line that already explains it', async () => {
@@ -122,9 +241,17 @@ describe('domainMarkers component', () => {
     }))
     const wrapper = mount(DomainMarkers, { props: { hostname: 'pending.com.evil.net' } })
     expect(wrapper.find('[data-marker]').exists()).toBe(false)
-    answer([])
+    answer(NO_ANSWER)
     await flushPromises()
     expect(wrapper.find('[data-marker="embedded-public-suffix"]').exists()).toBe(true)
+  })
+
+  // `pending.com` was never visited, so it imitates nothing the user trusts
+  it('says nothing about a domain parked in front that the user does not know', async () => {
+    answerLookalikes([])
+    const wrapper = mount(DomainMarkers, { props: { hostname: 'pending.com.evil.net' } })
+    await flushPromises()
+    expect(wrapper.find('[data-marker]').exists()).toBe(false)
   })
 
   it('stops holding the ending back after a while, and still takes a late answer', async () => {
@@ -187,7 +314,7 @@ describe('domainMarkers component', () => {
   })
 
   it('renders one row per marker', async () => {
-    answerLookalikes([])
+    answerLookalikes(NO_ANSWER)
     const wrapper = mount(DomainMarkers, {
       props: {
         hostname: 'paypal.com.a.b.secure.evil.net',

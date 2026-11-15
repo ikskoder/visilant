@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import type { LinkInterceptData } from '~/logic/ui-state'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import DomainMarkers from '~/components/DomainMarkers.vue'
-import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
-import LookalikeNotice from '~/components/LookalikeNotice.vue'
-import RedFlagCount from '~/components/RedFlagCount.vue'
-import SecureText from '~/components/SecureText.vue'
-import VzBadge from '~/components/VzBadge.vue'
+import AddressFindings from '~/components/AddressFindings.vue'
 import VzIcon from '~/components/VzIcon.vue'
 import VzNotice from '~/components/VzNotice.vue'
 import VzSig from '~/components/VzSig.vue'
@@ -17,6 +12,7 @@ import { useModalDialog } from '~/composables/useModalDialog'
 import { useRedFlagCount } from '~/composables/useRedFlags'
 import { useTopLayer } from '~/composables/useTopLayer'
 import { useVisualViewport } from '~/composables/useVisualViewport'
+import { showsVisitFacts } from '~/logic/show-visit-facts'
 import MismatchTable from './MismatchTable.vue'
 
 const props = defineProps<{
@@ -40,7 +36,6 @@ const { t } = useI18n()
 // The letters a lookalike changed, underlined in the address. Asked as the
 // lookalike notice under it asks, so both read one answer
 const linkDiff = useLookalikeDiff(() => props.data?.domain ?? '')
-const resolvedDiff = useLookalikeDiff(() => props.data?.shortUrl?.resolvedDomain ?? '')
 
 /**
  * The dialog, and where focus lands when it opens.
@@ -76,7 +71,7 @@ useModalDialog({
  *
  * The click that opened the dialog is often the first of a double click, and
  * the second one would land on whatever sits under the pointer. The calm
- * "Go to link" has nothing to guard and goes at once.
+ * "Open link" has nothing to guard and goes at once.
  */
 const RISK_DELAY_MS = 500
 const armed = ref(false)
@@ -99,16 +94,6 @@ function handleResolveOnce() {
 
 function handleMarkAsShortener() {
   ;(window as any).__visilant_markInterceptAsShortener?.()
-}
-
-function shouldShowCount(isSafe: boolean) {
-  switch (props.showVisitCount) {
-    case 'always': return true
-    case 'never': return false
-    case 'unfamiliar': return !isSafe
-    case 'familiar': return isSafe
-    default: return true
-  }
 }
 
 const hasTraceData = computed(() => {
@@ -144,21 +129,20 @@ const verdict = computed<'unfamiliar' | 'hidden' | 'familiar' | 'unchecked'>(() 
 })
 
 /**
- * Stopped for what is in the link itself, which is the thing to say first,
- * whatever the verdict on the site. Link text naming another site has its own
- * line, and a short link its own title.
+ * The badge beside the address the link names. A known short-link service
+ * gets its own, never a verdict on the service itself, and none at all while
+ * the dialog is headed "Short link": it was the title again, two lines below
+ * it. Kept once the link has been followed somewhere else: the address it
+ * ends at gets a verdict of its own, and this one stays what is known about
+ * where the link goes first.
  */
-const stoppedForFlags = computed(() => Boolean(props.data?.reasons?.includes('red-flags') && !props.data.mismatch && verdict.value !== 'hidden'))
-
-const title = computed(() => {
-  if (stoppedForFlags.value)
-    return t.value('linkInterceptTitleRedFlags')
-  switch (verdict.value) {
-    case 'familiar': return t.value('linkInterceptTitleFamiliar')
-    case 'hidden': return t.value('linkInterceptTitleHidden')
-    case 'unchecked': return t.value('linkInterceptTitleUnchecked')
-    default: return t.value('linkInterceptTitle')
-  }
+const addressBadge = computed(() => {
+  const data = props.data
+  if (!data)
+    return null
+  if (data.shortUrl?.isKnownShortener)
+    return verdict.value === 'hidden' ? null : { verdict: 'shortener', text: t.value('linkTooltipShortener'), tone: 'caution' as const, icon: 'shield-alert' as const }
+  return statusLabel(data.isSafe, data.stats.count, data.unchecked)
 })
 
 // Asked with the hostnames and URLs the lines in the dialog are drawn with
@@ -166,7 +150,7 @@ const destinationFlags = useRedFlagCount(() => props.data?.domain ?? '', () => p
 const resolvedFlags = useRedFlagCount(() => props.data?.shortUrl?.status === 'resolved' ? props.data.shortUrl.resolvedDomain : '', () => undefined, () => undefined)
 
 /**
- * Whether going ahead is a plain "Go to link".
+ * Whether going ahead is a plain "Open link".
  *
  * A familiar destination is not always the end of it. Link text naming another
  * site is worth stopping for wherever the link goes, and a lookup still running
@@ -181,24 +165,113 @@ const calm = computed(() => {
     return false
   if (data.mismatch)
     return false
+  // The flags of the address the link names count as well as those of where
+  // it ends: a decoy name before an @ is no less of one for the link ending
+  // on a site the user knows
   if (data.shortUrl?.status === 'resolved')
-    return resolvedFlags.value === 0
+    return resolvedFlags.value === 0 && destinationFlags.value === 0
   return !data.shortUrl && destinationFlags.value === 0
 })
 
 /**
+ * Which way the reader came here, because the words depend on it.
+ *
+ * A click that was held: they were on their way somewhere and were stopped, so
+ * the dialog speaks of what lies ahead, and of opening anyway or not. Or the
+ * menu item that checks a link: they went nowhere and asked a question, so it
+ * is a check, with a result, a way to open the link and a way to close. It
+ * used to say "Unfamiliar site ahead" and "Continue anyway" to both, and the
+ * second reader had nothing to continue.
+ */
+const asked = computed(() => props.data?.ownNavigation !== false)
+
+/**
+ * Red flags in the link itself, which is the thing to say first, whatever the
+ * verdict on the site. Link text naming another site has its own line, and a
+ * short link its own title. For a held click it is the reason it was held. A
+ * check that was asked for has no such reason, and has the flags all the same.
+ */
+const stoppedForFlags = computed(() => {
+  const data = props.data
+  if (!data || data.mismatch || verdict.value === 'hidden')
+    return false
+  return Boolean(data.reasons?.includes('red-flags')) || (asked.value && destinationFlags.value > 0)
+})
+
+const title = computed(() => {
+  if (stoppedForFlags.value)
+    return t.value('linkInterceptTitleRedFlags')
+  switch (verdict.value) {
+    case 'familiar': return t.value('linkInterceptTitleFamiliar')
+    case 'hidden': return t.value('linkInterceptTitleHidden')
+    case 'unchecked': return t.value('linkInterceptTitleUnchecked')
+    // "Ahead" is for somebody on their way. A check has its verdict under the address
+    default: return t.value(asked.value ? 'linkInterceptTitleFamiliar' : 'linkInterceptTitle')
+  }
+})
+
+/**
+ * What the button that goes ahead says, which is what it does. In a frame
+ * from another site the dialog cannot open the link at all: the button lets
+ * the next click on it through, and saying "Open" there opened nothing. A
+ * check asked for from the menu always opens a new tab.
+ */
+const proceedLabel = computed(() => {
+  if (props.data?.clickAgain)
+    return t.value('linkInterceptAllowLink')
+  if (asked.value)
+    return t.value('linkInterceptOpenNewTab')
+  return t.value(calm.value ? 'linkInterceptOpen' : 'linkInterceptContinue')
+})
+// Nothing was held for a check that was asked for, so there is nothing not to open
+const backLabel = computed(() => t.value(asked.value ? 'closeDialog' : 'linkInterceptCancel'))
+
+/**
+ * The one icon at the head of the dialog, the signature and the sign in one.
+ *
+ * The exclamation mark is orange only when nothing red is anywhere in the
+ * dialog: a short link nobody has followed yet, or a familiar site whose link
+ * is still being looked up. Asked of what is on screen, not of why the click
+ * was held, since a short link with a red flag in its address is held as a
+ * short link and still shows the flag.
+ */
+const headSign = computed<{ mark: 'info' | 'flag' | 'unknown' | 'alert', caution?: boolean }>(() => {
+  if (calm.value)
+    return { mark: 'info' }
+  if (stoppedForFlags.value)
+    return { mark: 'flag' }
+  if (verdict.value === 'unchecked')
+    return { mark: 'unknown' }
+  const nothingRed = !props.data?.mismatch && destinationFlags.value === 0 && resolvedFlags.value === 0
+  return { mark: 'alert', caution: nothingRed && (verdict.value === 'hidden' || verdict.value === 'familiar') }
+})
+
+/**
  * The lookalike answer can arrive after the dialog opened calm, and turn the
- * plain "Go to link" under the pointer into the red "Continue anyway". It then
+ * plain "Open link" under the pointer into the red "Open anyway". It then
  * gets its own half second, as if the dialog had just opened: the arming that
  * ran while it was calm was for a button that was not there.
  */
+function rearm() {
+  clearTimeout(armTimer)
+  armed.value = false
+  armTimer = setTimeout(() => armed.value = true, RISK_DELAY_MS)
+}
+
 watch(calm, (now, before) => {
-  if (before && !now) {
-    clearTimeout(armTimer)
-    armed.value = false
-    armTimer = setTimeout(() => armed.value = true, RISK_DELAY_MS)
-  }
+  if (before && !now)
+    rearm()
 })
+
+/**
+ * A line of help opening or closing makes the card taller or shorter, and the
+ * card is centred, so the buttons move under a pointer that has not. The press
+ * that follows gets the same half second as the first one.
+ */
+function onCardPress(event: MouseEvent) {
+  if ((event.target as Element | null)?.closest?.('[data-action="help"]'))
+    rearm()
+}
 
 function onContinue() {
   if (!calm.value && !armed.value)
@@ -225,13 +298,10 @@ function onContinue() {
         class="relative dialog-container vz-overlay vz-dialog"
         :class="{ 'dialog-wide': data?.mismatch, 'dialog-full': hasTraceData }"
         :data-verdict="verdict"
+        @click.capture="onCardPress"
       >
-        <VzSig />
         <div class="vz-dialog__head">
-          <VzIcon v-if="calm" name="info" large class="tone-brand" />
-          <VzIcon v-else-if="stoppedForFlags" name="flag" large class="tone-danger" />
-          <VzIcon v-else-if="verdict === 'unchecked'" name="unknown" large class="tone-neutral" />
-          <VzIcon v-else name="alert" large class="tone-danger" />
+          <VzSig :mark="headSign.mark" :caution="headSign.caution" large />
           <h2 class="vz-title">
             {{ title }}
           </h2>
@@ -252,13 +322,17 @@ function onContinue() {
         <p v-if="verdict === 'unfamiliar'" class="vz-body">
           {{ t('linkInterceptPhishingHint') }}
         </p>
+        <!-- What the title "Short link" means, said under it -->
+        <p v-else-if="verdict === 'hidden'" class="vz-body">
+          {{ t('linkTooltipShortUrlWarning') }}
+        </p>
 
         <!-- Mismatch: warning + comparison table -->
         <div v-if="data.mismatch" class="grid gap-3">
           <!-- A red flag. No count beside it, see the tooltip: the table below
                names two sites, each with its own verdict -->
           <VzNotice tone="danger" icon="flag" data-red-flag>
-            <span class="vz-body-strong">{{ t('linkInterceptMismatchWarning') }}</span>
+            <span class="vz-body-strong">{{ t('linkTooltipMismatchWarning') }}</span>
           </VzNotice>
 
           <MismatchTable
@@ -275,141 +349,46 @@ function onContinue() {
             @details="emit('details', $event)"
           />
 
-          <!-- Punycode. Skipped when it would repeat the domain verbatim -->
-          <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger">
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)">
-              <CopyButton :text="data.punycode" />
-            </SecureText>
-          </VzNotice>
-
-          <DomainMarkers :hostname="data.domain" :url="data.url" :familiar="data.isSafe" />
-          <LookalikeNotice :hostname="data.domain" />
+          <!-- The destination's other spelling, straight under the table that
+               names it, then its red flags and what is only worth a look -->
+          <OtherSpelling :shown="data.domain" :other="data.punycode" :diff="data.punycode ? linkDiff(data.punycode) : undefined" />
+          <AddressFindings :hostname="data.domain" :url="data.url" :familiar="data.isSafe" />
         </div>
 
         <!-- No mismatch: the address and the evidence about it -->
         <div v-else class="vz-well grid gap-3">
-          <div class="dialog-address">
-            <SecureText :text="data.domain" size="l" :diff="linkDiff(data.domain)">
-              <CopyButton :text="data.domain" />
-            </SecureText>
-            <VzBadge v-if="data.shortUrl?.isKnownShortener" tone="danger" icon="alert" data-verdict="shortener">
-              {{ t('linkTooltipShortener') }}
-            </VzBadge>
-            <VzBadge
-              v-else
-              :tone="statusLabel(data.isSafe, data.stats.count, data.unchecked).tone"
-              :icon="statusLabel(data.isSafe, data.stats.count, data.unchecked).icon"
-              :data-verdict="statusLabel(data.isSafe, data.stats.count, data.unchecked).verdict"
-            >
-              {{ statusLabel(data.isSafe, data.stats.count, data.unchecked).text }}
-            </VzBadge>
-            <RedFlagCount :hostname="data.domain" :url="data.url" />
-          </div>
-          <VzNotice v-if="data.unchecked" tone="neutral" icon="unknown" bare data-status="unchecked">
-            {{ t('linkUncheckedNotice') }}
-          </VzNotice>
-          <FamiliarityFacts v-else-if="!data.shortUrl?.isKnownShortener && shouldShowCount(data.isSafe)" :stats="data.stats" />
+          <AddressBlock
+            :hostname="data.domain"
+            :url="data.url"
+            :punycode="data.punycode"
+            :badge="addressBadge"
+            :familiar="data.isSafe"
+            :service="Boolean(data.shortUrl?.isKnownShortener)"
+            :facts="!data.shortUrl?.isKnownShortener && showsVisitFacts(showVisitCount, data.isSafe) ? data.stats : null"
+            :unchecked="data.unchecked"
+          />
 
-          <!-- Short link: idle, with the button that follows it -->
-          <div v-if="data.shortUrl?.status === 'idle'" class="dialog-section">
-            <VzNotice v-if="data.shortUrl.isKnownShortener" tone="danger" bare>
-              {{ t('linkTooltipShortUrlWarning') }}
-            </VzNotice>
-            <button class="vz-btn vz-btn--block" data-action="resolve" @click="emit('resolveShortUrl')">
-              <VzIcon name="link" />{{ t(data.shortUrl.isKnownShortener ? 'linkResolveKnown' : 'linkResolveTry') }}
-            </button>
-          </div>
-
-          <!-- Short link: being followed -->
-          <div v-if="data.shortUrl?.status === 'loading'" class="dialog-section">
-            <button class="vz-btn vz-btn--block" disabled>
-              <VzIcon name="pending" />{{ t('linkTooltipResolvingUrl') }}
-            </button>
-          </div>
-
-          <!-- Short link: followed to its end -->
-          <div v-if="data.shortUrl?.status === 'resolved'" class="dialog-section">
-            <span class="vz-eyebrow inline-flex items-center gap-1"><VzIcon name="link" />{{ t('linkInterceptRealDestination') }}</span>
-            <div class="dialog-address">
-              <SecureText :text="data.shortUrl.resolvedDomain" size="l" :diff="resolvedDiff(data.shortUrl.resolvedDomain)">
-                <CopyButton :text="data.shortUrl.resolvedDomain" />
-              </SecureText>
-              <VzBadge
-                :tone="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).tone"
-                :icon="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).icon"
-                :data-verdict="statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).verdict"
-              >
-                {{ statusLabel(data.shortUrl.resolvedIsSafe, data.shortUrl.resolvedStats.count, data.shortUrl.resolvedUnchecked).text }}
-              </VzBadge>
-              <RedFlagCount :hostname="data.shortUrl.resolvedDomain" />
-            </div>
-
-            <p v-if="showFullUrl && data.shortUrl.resolvedUrl" class="vz-small dialog-url">
-              {{ data.shortUrl.resolvedUrl }}<CopyButton :text="data.shortUrl.resolvedUrl" inline />
-            </p>
-
-            <!-- The destination gets the same reading as an address written out
-                 in full. Following a short link is the one case where the user
-                 could not have looked at it themselves. -->
-            <VzNotice v-if="data.shortUrl.resolvedPunycode" tone="danger" bare>
-              {{ t('linkTooltipPunycode') }}: <SecureText :text="data.shortUrl.resolvedPunycode" size="s" :diff="resolvedDiff(data.shortUrl.resolvedPunycode)">
-                <CopyButton :text="data.shortUrl.resolvedPunycode" />
-              </SecureText>
-            </VzNotice>
-            <DomainMarkers :hostname="data.shortUrl.resolvedDomain" :familiar="data.shortUrl.resolvedIsSafe" bare />
-            <LookalikeNotice :hostname="data.shortUrl.resolvedDomain" bare />
-
-            <FamiliarityFacts v-if="!data.shortUrl.resolvedUnchecked && shouldShowCount(data.shortUrl.resolvedIsSafe)" :stats="data.shortUrl.resolvedStats" />
-
-            <!-- Redirect chain trace -->
-            <div v-if="traceChain && data.shortUrl.chain.length > 2" class="grid gap-1">
-              <span class="vz-eyebrow">{{ t('linkTooltipRedirectChain') }} ({{ data.shortUrl.chain.length }})</span>
-              <ol class="dialog-chain">
-                <li v-for="(hop, i) in data.shortUrl.chain" :key="i">
-                  <span class="dialog-chain__n">{{ i + 1 }}.</span>
-                  <span class="dialog-url">{{ hop }}</span>
-                </li>
-              </ol>
-            </div>
-
-            <p class="vz-small">
-              {{ t('linkTooltipResolveDisclaimer') }}
-            </p>
-
-            <!-- Mark as shortener after a successful follow (only if not already known) -->
-            <button v-if="!data.shortUrl.isKnownShortener" class="vz-btn vz-btn--sm vz-btn--quiet vz-btn--flush justify-self-start" data-action="mark-shortener" @click.stop="handleMarkAsShortener()">
-              {{ t('linkTooltipMarkAsShortener') }}
-            </button>
-          </div>
-
-          <!-- Short link: could not be followed -->
-          <div v-if="data.shortUrl?.status === 'error'" class="dialog-section">
-            <VzNotice tone="neutral" bare>
-              {{ data.shortUrl.error === 'same_domain' ? t(data.shortUrl.isKnownShortener ? 'linkTooltipResolveSameDomainShortener' : 'linkTooltipResolveSameDomain') : t(data.shortUrl.error === 'refused' ? 'linkTooltipResolveRefused' : 'linkTooltipResolveError') }}
-            </VzNotice>
-            <button v-if="data.shortUrl.error !== 'same_domain' && data.shortUrl.error !== 'refused'" class="vz-btn vz-btn--block" data-action="retry" @click="emit('resolveShortUrl')">
-              {{ t('linkTooltipRetryResolve') }}
-            </button>
-          </div>
-
-          <!-- Punycode. Skipped when it would repeat the domain verbatim -->
-          <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)">
-              <CopyButton :text="data.punycode" />
-            </SecureText>
-          </VzNotice>
-
-          <DomainMarkers :hostname="data.domain" :url="data.url" :familiar="data.isSafe" bare />
-          <LookalikeNotice :hostname="data.domain" bare />
+          <ShortLinkBlock
+            v-if="data.shortUrl"
+            :link="data.shortUrl"
+            :show-visit-count="showVisitCount"
+            :show-full-url="showFullUrl"
+            :trace-chain="traceChain"
+            @resolve="emit('resolveShortUrl')"
+            @mark-shortener="handleMarkAsShortener()"
+          />
 
           <!-- Follow once: when the domain is not a known shortener and short
                link detection is on. "Mark as shortener" is not offered here:
                nothing yet says this site is one, and a stray press would hide
                every link from it. It appears once following has shown the link
                really leads somewhere else, in the block above. -->
-          <button v-if="!data.shortUrl && shortUrlMode !== 'off'" class="vz-btn vz-btn--sm vz-btn--quiet vz-btn--flush justify-self-start" data-action="resolve-once" @click.stop="handleResolveOnce()">
-            <VzIcon name="link" />{{ t('linkResolveTry') }}
-          </button>
+          <div v-if="!data.shortUrl && shortUrlMode !== 'off'" class="vz-ask">
+            <button class="vz-btn vz-btn--sm vz-btn--quiet vz-btn--flush" data-action="resolve-once" @click.stop="handleResolveOnce()">
+              <VzIcon name="link" />{{ t('linkResolveTry') }}
+            </button>
+            <VzHelp :text="t('linkResolveHelp')" :about="data.url" />
+          </div>
         </div>
 
         <!-- A link in a frame that cannot be followed from here: the press on
@@ -421,7 +400,7 @@ function onContinue() {
 
         <!-- The way out of danger is the loud button. Continuing is the risk
              button, outlined in red, and it ignores a press for the first half
-             second. A calm, familiar destination just has "Go to link". -->
+             second. A calm, familiar destination just has "Open link". -->
         <!-- The way out is at the right edge, where a hand goes without
              looking, and going ahead is at the far left: risk, details, back.
              In this order in the markup, not by CSS order, so Tab goes the way
@@ -434,7 +413,7 @@ function onContinue() {
             data-action="continue"
             @click="onContinue"
           >
-            {{ t('linkInterceptContinue') }}
+            {{ proceedLabel }}
           </button>
           <!-- Not on a mismatch, where each column of the table has its own. Not
                for a short link not yet seen through either: all it could open is
@@ -453,7 +432,7 @@ function onContinue() {
             data-action="continue"
             @click="onContinue"
           >
-            {{ t('linkTooltipGoToLink') }}
+            {{ proceedLabel }}
           </button>
           <button
             v-else
@@ -462,7 +441,7 @@ function onContinue() {
             data-action="back"
             @click="emit('cancel')"
           >
-            {{ t('dialogGoBack') }}
+            {{ backLabel }}
           </button>
         </div>
       </div>
@@ -492,45 +471,5 @@ function onContinue() {
 
 .dialog-container.dialog-full {
   width: min(680px, var(--vz-vw, 100vw) - 32px);
-}
-
-.dialog-address {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.dialog-section {
-  display: grid;
-  gap: 10px;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--line);
-}
-
-.dialog-url {
-  overflow-wrap: anywhere;
-}
-
-.dialog-chain {
-  list-style: none;
-  display: grid;
-  gap: 2px;
-  max-height: 200px;
-  overflow-y: auto;
-  font-size: calc(13px * var(--vz-scale, 1));
-  line-height: 1.4;
-  color: var(--ink-2);
-}
-
-.dialog-chain li {
-  display: flex;
-  gap: 6px;
-}
-
-.dialog-chain__n {
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-  flex: none;
 }
 </style>

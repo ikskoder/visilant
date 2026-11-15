@@ -12,10 +12,18 @@ Nothing is compared or asserted. It is not a test suite, the tests in `e2e/` are
 | Only some of them | `just shots -g popup`, `just shots --project=dark tooltip` (arguments go to Playwright, a bare word picks scenario files). `-g` matches the name a case has in its file, `test('copy warning', …)`, and the file name, not the title or picture name on its card. Only the matching cards are redrawn, the rest of the catalogue stays as it was |
 | Everything at another text size (the popup's A- / A+, 80 to 150) | `SHOTS_SCALE=150 just shots popup check` |
 | Draw them again after every change to `src/` | `just shots-watch` (`just sw`) |
+| See each block in each state, across the surfaces that draw it | `just patterns`, then open `.tmp/shots/patterns.html` |
+| See what a change did to every screen | `just shots-keep` before the change, `just shots` after it, `just shots-diff`, then open `.tmp/shots/compare/index.html` |
 
 Then open `.tmp/shots/index.html` in a browser. A full run draws about 340 cases three times each and takes a while, with three browsers at once. A filtered run is much quicker, and the top of the catalogue lists the cases it drew again. A full run starts the catalogue from scratch, which is also how a picture drawn under `SHOTS_SCALE` leaves it.
 
 The terminal only counts. Anything that went wrong with a case is on its card.
+
+Next to each picture the run keeps the words of the screen, `run/<column>/<name>.txt`. The catalogue reads them and marks a card whose screen says the same line twice, which is how a verdict and three facts repeating it used to pile up unnoticed. A line that has to be there twice is listed in `REPEATS_ALLOWED` in [gallery.ts](gallery.ts) with the reason.
+
+`just shots-diff` ([compare.ts](compare.ts)) holds the present run against the one `just shots-keep` put aside. It lists every case whose picture changed, cut to the part that changed and drawn at its own size, with what went marked on the left and what came on the right. Rows of pixels are matched like the lines of a text diff, so a block that only moved up because something above it went is not marked. Each case takes a note, and one button copies all the notes as text.
+
+`just patterns` ([patterns.ts](patterns.ts)) lays a few dozen of the catalogue's pictures out as a table: one row per state of a block (an address with its verdict, a link that leads elsewhere, the comparison table, an email address), one column per surface that draws it. Each cell is the box alone, cut out of the case's picture at the place `shot` noted in the case's json (`box`). Read along a row: the cells should say the same things in the same order. This is the page to look at after a change to anything drawn over a web page, before the catalogue. A new block or state is a row in `BLOCKS`.
 
 ## What the catalogue shows
 

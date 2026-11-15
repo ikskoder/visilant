@@ -11,6 +11,13 @@ import punycode from 'punycode'
  * None of them is a verdict on its own – they are shown as facts about the
  * address, next to the visit history.
  */
+/**
+ * What stands between two labels of an address: the dot, and the three other
+ * characters IDNA reads as one. The painter splits on these, and so does
+ * everything that counts labels by their place.
+ */
+export const ADDRESS_DOTS = /[.。．｡]/
+
 export type DomainMarkerId
   = | 'url-userinfo'
     | 'ip-host'
@@ -18,13 +25,21 @@ export type DomainMarkerId
     | 'deep-subdomains'
     | 'mixed-scripts'
     | 'non-latin-name'
+    /**
+     * A well-known ending in the middle of the domain of an email address,
+     * of the endings the red flag above does not count. Found only for an
+     * address domain, see `useDomainMarkers`.
+     */
+    | 'mid-ending'
 
 export type DomainMarker
   = | {
-    id: Exclude<DomainMarkerId, 'embedded-public-suffix' | 'non-latin-name'>
+    id: Exclude<DomainMarkerId, 'embedded-public-suffix' | 'non-latin-name' | 'mid-ending'>
     /** The concrete evidence, shown to the user next to the marker text */
     detail: string
   }
+  /** `at` is the place of the ending among the labels, so nothing looks for it a second time */
+  | { id: 'mid-ending', detail: string, at: number }
   | ({ id: 'embedded-public-suffix' } & EmbeddedDomain)
   | ({
     id: 'non-latin-name'
@@ -48,6 +63,11 @@ const LATIN_LOOKALIKES: { script: LookalikeScript, all: RegExp, alike: RegExp }[
   { script: 'armenian', all: /\p{Script=Armenian}/u, alike: /^[ագզէլհյոսւօՙ]$/u },
 ]
 
+/** Whether a letter is one Chromium lists as drawn like a Latin one */
+export function looksLatin(char: string): boolean {
+  return LATIN_LOOKALIKES.some(({ alike }) => alike.test(char))
+}
+
 /**
  * A whole domain in the middle of an address, and where the address really goes.
  *
@@ -59,8 +79,20 @@ const LATIN_LOOKALIKES: { script: LookalikeScript, all: RegExp, alike: RegExp }[
 export interface EmbeddedDomain {
   /** The domain the address reads as, `yourbank.com` */
   imitated: string
-  /** Everything after it, `pay-verify.top` – the site the address belongs to */
+  /**
+   * Further domains parked after the first, in the order they stand:
+   * `google.com` in `yourbank.com.google.com.pay-verify.top`. Naming the
+   * first alone left the second standing in the address with nothing said
+   * about it, and it is the same trick played twice.
+   */
+  more: string[]
+  /** Everything after the last of them, `pay-verify.top` – the site the address belongs to */
   site: string
+}
+
+/** Every domain an address is dressed as, the first first. */
+export function imitatedDomains(embedded: EmbeddedDomain): string[] {
+  return [embedded.imitated, ...embedded.more]
 }
 
 /** Subdomain levels above this are called out. `a.b.c.example.com` sits exactly on it. */
@@ -231,51 +263,67 @@ export function findEmbeddedPublicSuffix(hostname: string): EmbeddedDomain | nul
   const beforeLast = labels[labels.length - 2] ?? ''
   const suffix = beforeLast.length >= 3 ? 1 : suffixLabelCount(labels)
   const subdomain = labels.slice(0, Math.max(0, labels.length - suffix - 1))
-  const at = subdomain.findIndex((label, index) => index > 0 && DOMAIN_ENDING_LABELS.has(label))
-  if (at < 0)
+  const found: string[] = []
+  // The first label no domain found so far has taken. An ending needs a label
+  // of its own in front: in `paypal.com.com.evil.net` the second `com` has none
+  let free = 0
+  for (let at = 1; at < subdomain.length; at++) {
+    if (at - 1 < free || !DOMAIN_ENDING_LABELS.has(subdomain[at]))
+      continue
+    // A two-letter label after the ending is a country code, `com.au`, unless
+    // the label after that is an ending itself: then it is the name of the
+    // next domain parked here, `hp` in `paypal.com.hp.com.evil.net`
+    const countryCode = /^[a-z]{2}$/.test(subdomain[at + 1] ?? '') && !DOMAIN_ENDING_LABELS.has(subdomain[at + 2] ?? '')
+    const end = countryCode ? at + 2 : at + 1
+    found.push(labels.slice(at - 1, end).join('.'))
+    free = end
+    at = end - 1
+  }
+  if (!found.length)
     return null
 
-  const end = /^[a-z]{2}$/.test(subdomain[at + 1] ?? '') ? at + 2 : at + 1
-  return { imitated: labels.slice(at - 1, end).join('.'), site: labels.slice(end).join('.') }
+  return { imitated: found[0], more: found.slice(1), site: labels.slice(free).join('.') }
 }
 
 /**
  * Markers that something else on the same screen already explains.
  *
- * A domain in the middle of the address is the mechanism of the
- * `familiar-as-subdomain` lookalike when the familiar domain is the one parked
- * there – `yourbank.com.pay-verify.top` with `yourbank.com` known. The
- * lookalike line says the same thing and says the domain is familiar, and the
- * two in a row read as two different warnings. A match on the bare name,
- * `yourbank` for a known `yourbank.org`, names a different domain from the one
- * in the address and leaves the marker in.
+ * A domain in the middle of the address is said only as a lookalike, once the
+ * answer is in. Made to look like a domain the user has never visited, it
+ * imitates nothing they trust, and the verdict already says the site is not
+ * known: `mail.ru.com.evil.com` with `mail.ru` known got a second red flag for
+ * imitating `ru.com`. A familiar domain parked there has a
+ * `familiar-as-subdomain` line of its own, which names the real site as the
+ * marker did, so with an answer the marker never has anything left to say.
+ * The same goes for an ending in the middle of an email address domain
+ * (`mid-ending`), the same trick with a few more endings.
  *
  * `null` means the lookalike check gave no answer, which is not the same as it
- * finding nothing – the markers stay as they are either way.
+ * finding nothing. Nothing could be ruled out then, and the markers stay as
+ * they are.
  */
 /** The markers `dropExplainedMarkers` can take out, which a view waits for the lookalike answer on. */
 export function isExplainableMarker(marker: DomainMarker): boolean {
-  return marker.id === 'embedded-public-suffix' || marker.id === 'non-latin-name'
+  return marker.id === 'embedded-public-suffix' || marker.id === 'mid-ending' || marker.id === 'non-latin-name'
 }
 
 export function dropExplainedMarkers(
   markers: DomainMarker[],
   lookalikes: readonly LookalikeMatch[] | null,
 ): DomainMarker[] {
-  if (!lookalikes?.length)
+  if (!lookalikes)
     return markers
 
   const explained = (label: string) => lookalikes.some(match =>
-    (match.reason === 'confusable' || match.reason === 'familiar-as-subdomain' || match.severity === 'high')
-    && decodeHostname(match.evidence).toLowerCase() === label)
+    // Only a match that is a red flag itself: a short name in front of a site
+    // is `familiar-as-subdomain` worth a look, and taking a red flag away for
+    // it would leave nothing red on screen
+    (match.reason === 'confusable' || match.severity === 'high')
+    && [match.evidence, ...(match.also ?? []).map(item => item.evidence)].some(evidence => decodeHostname(evidence).toLowerCase() === label))
 
   return markers.flatMap((marker): DomainMarker[] => {
-    if (marker.id === 'embedded-public-suffix') {
-      return lookalikes.some(match => match.reason === 'familiar-as-subdomain'
-        && match.evidence.toLowerCase() === marker.imitated)
-        ? []
-        : [marker]
-    }
+    if (marker.id === 'embedded-public-suffix' || marker.id === 'mid-ending')
+      return []
     // A name in another alphabet is the mechanism of a match on the same name, which
     // says which familiar site it copies: `confusable` for the site's own name,
     // `familiar-as-subdomain` for one put in front of another site. One trick,
@@ -337,6 +385,41 @@ export interface NonLatinName {
 }
 
 /**
+ * National endings in each alphabet `SCRIPT_GROUPS` names, shown to the reader
+ * as examples of where a name in that alphabet belongs. The line used to give
+ * `.рф` and `.укр` to a Greek name and a Chinese one alike. Examples only: no
+ * check reads this table, and a test holds each to the suffix list.
+ */
+export const NATIONAL_ENDINGS: Record<string, string[]> = {
+  // Every Cyrillic ending on the suffix list but one: the national ones,
+  // the European Union's, then the generic ones
+  cyrillic: ['укр', 'бел', 'срб', 'мкд', 'бг', 'қаз', 'мон', 'ею', 'ком', 'орг', 'сайт', 'онлайн', 'рус', 'москва', 'дети', 'католик'],
+  greek: ['ελ'],
+  armenian: ['հայ'],
+  georgian: ['გე'],
+  hebrew: ['ישראל'],
+  arabic: ['مصر', 'السعودية'],
+  devanagari: ['भारत'],
+  bengali: ['বাংলা'],
+  thai: ['ไทย'],
+  cjk: ['中国', '한국'],
+}
+
+/** The locale key that names each alphabet `SCRIPT_GROUPS` names, `scriptOther` for the rest */
+export const SCRIPT_KEYS: Record<string, string> = {
+  cyrillic: 'scriptCyrillic',
+  greek: 'scriptGreek',
+  armenian: 'scriptArmenian',
+  georgian: 'scriptGeorgian',
+  hebrew: 'scriptHebrew',
+  arabic: 'scriptArabic',
+  devanagari: 'scriptDevanagari',
+  bengali: 'scriptBengali',
+  thai: 'scriptThai',
+  cjk: 'scriptCjk',
+}
+
+/**
  * Alphabets with an ending of their own that `SCRIPT_GROUPS` does not name.
  * Told apart only so that a name in one under an ending in another is not
  * taken for the same alphabet. Shown to the user as just another alphabet.
@@ -344,7 +427,8 @@ export interface NonLatinName {
 const OTHER_SCRIPTS = ['Tamil', 'Sinhala', 'Telugu', 'Kannada', 'Malayalam', 'Gujarati', 'Gurmukhi', 'Oriya', 'Lao', 'Khmer', 'Myanmar', 'Ethiopic', 'Tibetan', 'Mongolian', 'Thaana']
   .map(name => ({ name: `other-${name.toLowerCase()}`, pattern: new RegExp(`\\p{Script=${name}}`, 'u') }))
 
-function scriptOf(letters: string[]): string {
+/** The `SCRIPT_GROUPS` name of the first of these letters that has one, else `other` */
+export function scriptOf(letters: string[]): string {
   return [...SCRIPT_GROUPS, ...OTHER_SCRIPTS].find(group => letters.some(char => group.pattern.test(char)))?.name ?? 'other'
 }
 

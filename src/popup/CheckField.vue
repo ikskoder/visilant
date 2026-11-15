@@ -8,12 +8,11 @@ import type { EmailRecipientInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AddressCompare from '~/components/AddressCompare.vue'
-import DomainMarkers from '~/components/DomainMarkers.vue'
+import AddressFindings from '~/components/AddressFindings.vue'
 import EmailBreakdown from '~/components/EmailBreakdown.vue'
 import EmailCheckCaveat from '~/components/EmailCheckCaveat.vue'
 import ExternalLookups from '~/components/ExternalLookups.vue'
 import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
-import LookalikeNotice from '~/components/LookalikeNotice.vue'
 import MailRecipients from '~/components/MailRecipients.vue'
 import RedFlagCount from '~/components/RedFlagCount.vue'
 import SecureText from '~/components/SecureText.vue'
@@ -22,10 +21,11 @@ import { useI18n } from '~/composables/useI18n'
 import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { visitKey } from '~/logic/domain-boundary'
 import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
-import { analyzeEmailAddress, collectMailtoRecipients, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
+import { analyzeEmailAddress, collectMailtoRecipients, parseMailtoUrl } from '~/logic/email-safety'
 import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { getHostnameFromHref } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
+import { listedAddresses, recipientsAreListed } from '~/logic/mail-recipient-list'
 import { collectMailSiteFamilies, loadMailSitesFromRecords } from '~/logic/mail-sites'
 import { classifyQrPayload } from '~/logic/payload-classify'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
@@ -46,7 +46,15 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'checkedDomain', hostname: string, context?: 'email', url?: string): void
+  /**
+   * `username`: the part before the @, when the name is the domain of an email
+   * address. `heading`: the card's heading for an address chosen from a list
+   * of recipients, and `findingsAbove` that the list's open row is drawing
+   * that address's lines, so the card leaves them out.
+   */
+  (e: 'checkedDomain', hostname: string, context?: 'email', url?: string, username?: string, heading?: string, findingsAbove?: boolean): void
+  /** The list of recipients went away, so the card is no longer one of them, whatever it still shows */
+  (e: 'listGone'): void
 }>()
 
 /**
@@ -80,6 +88,28 @@ type CheckResult
 
 const inputText = ref('')
 const result = ref<CheckResult | null>(null)
+/** A mail link that writes to several: the list tells about each, and no address is set apart. */
+const severalRecipients = computed(() => result.value?.type === 'email' && recipientsAreListed(result.value.recipients, result.value.recipientsNotChecked))
+/**
+ * The recipient chosen from the list: shown in the card under the field and
+ * compared with an address the reader trusts. None until one is chosen.
+ */
+const chosenRecipient = ref<EmailRecipientInfo | null>(null)
+/** Which check the comparison belongs to, so choosing another recipient keeps what was pasted */
+const compareFor = ref(0)
+
+// The card may stay on screen after the list goes (a check with nothing in
+// it leaves the last card standing), and it must not go on calling itself
+// "#3 of 5" or leave its lines to a row that is no longer there
+watch(severalRecipients, (listed, was) => {
+  if (was && !listed)
+    emit('listGone')
+})
+
+function chooseRecipient(recipient: EmailRecipientInfo, heading: string, open: boolean) {
+  chosenRecipient.value = recipient
+  emit('checkedDomain', recipient.analysis.domain, 'email', undefined, recipient.analysis.localPart, heading, open)
+}
 // The letters a lookalike changed, underlined in the checked address. Asked as
 // the lookalike notice under it asks, so both read one answer. An email address
 // is marked by EmailBreakdown, which draws it.
@@ -196,19 +226,20 @@ function nextCheck(): number {
  * asked. The family's own figures are still on the screen, under the site's
  * name in the dashboard below, where they are named as the family's.
  */
-async function getVisitData(hostname: string): Promise<{ stats: FamiliarityStats, isSafe: boolean, mailSites: MailSiteFamily[] }> {
+interface VisitData { stats: FamiliarityStats, isSafe: boolean, mailSites: MailSiteFamily[] }
+
+async function getVisitData(hostname: string): Promise<VisitData> {
   const allData = await browser.storage.local.get(null)
-  const own = allData[visitKey(hostname)] as SiteVisitData | undefined
-  const stats = aggregateFamiliarityStats([own])
-  const rules = normalizeFamiliarity(settings.value.familiarity)
   // A mail domain is never opened as a site, so a zero here says nothing. The
   // same read already holds the mapping and the visits it points at.
   loadMailSitesFromRecords(allData)
-  return {
-    stats,
-    isSafe: isFamiliar(stats, rules),
-    mailSites: collectMailSiteFamilies(allData, hostname, rules, Date.now(), visitKey),
-  }
+  return { ...visitsIn(allData, hostname), mailSites: collectMailSiteFamilies(allData, hostname, normalizeFamiliarity(settings.value.familiarity), Date.now(), visitKey) }
+}
+
+/** What one read of the whole store says about the visits to one host */
+function visitsIn(allData: Record<string, unknown>, hostname: string): Omit<VisitData, 'mailSites'> {
+  const stats = aggregateFamiliarityStats([allData[visitKey(hostname)] as SiteVisitData | undefined])
+  return { stats, isSafe: isFamiliar(stats, normalizeFamiliarity(settings.value.familiarity)) }
 }
 
 async function checkUrl(url: string, generation = nextCheck()) {
@@ -244,19 +275,30 @@ async function checkEmail(addrOrMailto: string, generation = nextCheck()) {
   // comes from the same list rather than from the part before the question
   // mark, which `mailto:?bcc=attacker@evil.example` leaves empty.
   const allRecipients = isMailto ? collectMailtoRecipients(parsed) : [{ field: 'to' as const, address: addrOrMailto }]
-  const checked = allRecipients.slice(0, MAX_MAILTO_RECIPIENTS)
-  const analysis = checked.map(recipient => analyzeEmailAddress(recipient.address)).find(Boolean) ?? null
+  // Every one of them, however many the link names: a cap left the rest
+  // unchecked on the one page that is there to look at all of them
+  const analysis = allRecipients.map(recipient => analyzeEmailAddress(recipient.address)).find(Boolean) ?? null
   if (!analysis) {
     result.value = { type: 'invalid' }
     return
   }
-  const visitData = await getVisitData(analysis.domain)
+  // One read of the whole store for every recipient: a read per domain was a
+  // read per recipient at a hundred companies, one after another
+  const allData = await browser.storage.local.get(null)
+  loadMailSitesFromRecords(allData)
+  const read = new Map<string, Omit<VisitData, 'mailSites'>>()
+  const factsOf = (domain: string) => {
+    if (!read.has(domain))
+      read.set(domain, visitsIn(allData, domain))
+    return read.get(domain)!
+  }
+  const mailSites = collectMailSiteFamilies(allData, analysis.domain, normalizeFamiliarity(settings.value.familiarity), Date.now(), visitKey)
   const recipients: EmailRecipientInfo[] = []
-  for (const recipient of checked) {
+  for (const recipient of allRecipients) {
     const recipientAnalysis = analyzeEmailAddress(recipient.address)
     if (!recipientAnalysis)
       continue
-    const facts = await getVisitData(recipientAnalysis.domain)
+    const facts = factsOf(recipientAnalysis.domain)
     recipients.push({
       field: recipient.field,
       analysis: recipientAnalysis,
@@ -269,16 +311,24 @@ async function checkEmail(addrOrMailto: string, generation = nextCheck()) {
   if (generation !== checkGeneration)
     return
 
+  chosenRecipient.value = null
+  compareFor.value = generation
   result.value = {
     type: 'email',
     analysis,
     params: parsed?.params ?? [],
     providerKind: classifyEmailDomain(analysis.domain),
-    mailSites: visitData.mailSites,
+    mailSites,
     recipients,
-    recipientsNotChecked: allRecipients.length - checked.length,
+    // Entries that do not read as an address
+    recipientsNotChecked: allRecipients.length - recipients.length,
   }
-  emit('checkedDomain', analysis.domain, 'email')
+  // One address: the card is about it. Several: about none of them until one
+  // is asked about from the list, and whatever it showed before goes
+  if (recipientsAreListed(recipients, allRecipients.length - recipients.length))
+    emit('checkedDomain', '')
+  else
+    emit('checkedDomain', analysis.domain, 'email', undefined, analysis.localPart)
 }
 
 async function runCheck(rawText: string) {
@@ -495,7 +545,7 @@ function payloadTypeLabel(payloadKind: string) {
                 <CopyButton :text="result.hostname" />
               </SecureText>
             </span>
-            <VzBadge v-if="result.isShortener" tone="danger" icon="alert" data-verdict="shortener">
+            <VzBadge v-if="result.isShortener" tone="caution" icon="shield-alert" data-verdict="shortener">
               {{ t('linkTooltipShortener') }}
             </VzBadge>
             <VzBadge
@@ -509,8 +559,7 @@ function payloadTypeLabel(payloadKind: string) {
             </VzBadge>
             <RedFlagCount :hostname="result.hostname" :url="result.url" />
           </div>
-          <DomainMarkers :hostname="result.hostname" :url="result.url" :familiar="result.isSafe" />
-          <LookalikeNotice :hostname="result.hostname" />
+          <AddressFindings :hostname="result.hostname" :url="result.url" :familiar="result.isSafe" :service="result.isShortener" />
         </template>
 
         <!-- Nobody opens an address domain, so a zero of its own says nothing.
@@ -531,15 +580,17 @@ function payloadTypeLabel(payloadKind: string) {
         </div>
 
         <!-- Expand shortened URL -->
-        <button
-          v-if="result.resolve.status === 'idle' || (result.resolve.status === 'error' && !result.resolve.refused)"
-          class="vz-btn vz-btn--sm justify-self-start"
-          data-action="expand"
-          @click="expandUrl"
-        >
-          <VzIcon name="link" />{{ t(result.isShortener ? 'linkResolveKnown' : 'linkResolveTry') }}
-        </button>
-        <VzNotice v-if="result.resolve.status === 'error'" tone="neutral" bare>
+        <div v-if="result.resolve.status === 'idle' || (result.resolve.status === 'error' && !result.resolve.refused)" class="vz-ask">
+          <button
+            class="vz-btn vz-btn--sm"
+            data-action="expand"
+            @click="expandUrl"
+          >
+            <VzIcon name="link" />{{ t('linkResolveTry') }}
+          </button>
+          <VzHelp :text="t('linkResolveHelp')" :about="result.url" />
+        </div>
+        <VzNotice v-if="result.resolve.status === 'error'" tone="neutral">
           {{ t(result.resolve.refused ? 'linkTooltipResolveRefused' : 'linkTooltipResolveError') }}
         </VzNotice>
 
@@ -551,14 +602,15 @@ function payloadTypeLabel(payloadKind: string) {
           <!-- The address only. The site it lands on is the card's now, with its
                name, its facts and its warnings, and printed here as well it
                was one more copy of each. -->
-          <p class="vz-small check-url">
+          <!-- Not above a chain: its last step is this address -->
+          <p v-if="!(result.resolve.chain && result.resolve.chain.length > 2)" class="vz-small check-url">
             {{ result.resolve.finalUrl }}<CopyButton :text="result.resolve.finalUrl" inline />
           </p>
           <div v-if="result.resolve.chain && result.resolve.chain.length > 2" class="grid gap-1">
-            <span class="vz-eyebrow">{{ t('linkTooltipRedirectChain') }} ({{ result.resolve.chain.length }})</span>
+            <span class="vz-eyebrow">{{ t('linkTooltipRedirectChain') }}</span>
             <ol class="check-chain vz-well">
               <li v-for="(hop, i) in result.resolve.chain" :key="i" class="check-url">
-                {{ i + 1 }}. {{ hop }}
+                {{ i + 1 }}. {{ hop }}<CopyButton :text="hop" inline />
               </li>
             </ol>
           </div>
@@ -568,41 +620,49 @@ function payloadTypeLabel(payloadKind: string) {
       <!-- Email -->
       <template v-else-if="result.type === 'email'">
         <!-- What the text was read as, and nothing more. The verdict on the
-             domain is the card's, and whether it is a public or a throwaway
-             provider is said in words by the breakdown below. -->
+             domain is the card's, and so is the line saying what kind of mail
+             service it is: that line is about the domain, and stood here
+             under the account name. -->
         <div class="flex items-center flex-wrap gap-2">
-          <span class="vz-eyebrow">{{ t('emailTooltipTitle') }}</span>
+          <!-- Several recipients are a link, not an address -->
+          <span class="vz-eyebrow">{{ t(severalRecipients ? 'mailLinkHeading' : 'emailTooltipTitle') }}</span>
           <!-- Only where the lines it counts are drawn here, see below -->
-          <RedFlagCount v-if="!panelCovers(result.analysis.domain, 'email')" :hostname="result.analysis.domain" context="email" />
+          <RedFlagCount v-if="!severalRecipients && !panelCovers(result.analysis.domain, 'email')" :hostname="result.analysis.domain" context="email" />
         </div>
         <EmailBreakdown
           :analysis="result.analysis"
           :params="result.params"
-          :provider-kind="result.providerKind"
-          :domain-elsewhere="panelCovers(result.analysis.domain, 'email')"
-          case-control
+          :domain-elsewhere="severalRecipients || panelCovers(result.analysis.domain, 'email')"
+          :listed-recipients="listedAddresses(result.recipients, result.recipientsNotChecked)"
         />
 
-        <!-- A mailto carries a list, cc and bcc included -->
-        <MailRecipients :recipients="result.recipients" :not-checked="result.recipientsNotChecked" />
+        <!-- A mailto carries a list, cc and bcc included. Each domain is told
+             about the same way, and the card under the field is for the one
+             that is asked about: it used to be about the first, whichever
+             that was -->
+        <MailRecipients
+          :recipients="result.recipients"
+          :not-checked="result.recipientsNotChecked"
+          detailable
+          @choose="chooseRecipient"
+        />
 
         <!-- The part after the @ is a domain like any other, and an address one
              letter off a provider the user knows is the whole point of checking.
              The checked-domain card below asks that question for this name, in
              the email context, and carries its lookup links, so this block is
              only drawn when the card is about another name. -->
-        <template v-if="!panelCovers(result.analysis.domain, 'email')">
+        <template v-if="!severalRecipients && !panelCovers(result.analysis.domain, 'email')">
           <!-- No `familiar` here: nobody visits an address domain, so there is no
                verdict that could vouch for it, and the platform line stays -->
-          <DomainMarkers :hostname="result.analysis.domain" context="email" />
-          <LookalikeNotice :hostname="result.analysis.domain" context="email" />
+          <AddressFindings :hostname="result.analysis.domain" context="email" :mail-service="result.providerKind" name-mail-service />
         </template>
 
         <!-- Nobody opens an address domain, so a zero of its own says nothing.
              The visits that mean anything are on the site its mail is read on –
              and they are the ones worth judging, so that site gets the same
              evidence every other check surface shows rather than one number. -->
-        <div v-if="result.mailSites.length" class="mail-sites grid gap-2">
+        <div v-if="result.mailSites.length && !severalRecipients" class="mail-sites grid gap-2">
           <span class="vz-eyebrow">{{ t('mailSiteLabel') }}</span>
           <div v-for="site in result.mailSites" :key="site.site" class="grid gap-2">
             <SecureText :text="site.site" size="l">
@@ -618,7 +678,14 @@ function payloadTypeLabel(payloadKind: string) {
         <!-- After the domain material, because that is the order the reader
              works in: settle the half history can speak for, then look hard at
              the half it cannot -->
-        <AddressCompare :address="result.analysis.raw" />
+        <!-- With several recipients, the one chosen from the list, and not
+             until one is: comparing whichever came first was comparing an
+             address the reader never asked about -->
+        <AddressCompare
+          v-if="!severalRecipients || chosenRecipient"
+          :address="severalRecipients ? chosenRecipient!.analysis.raw : result.analysis.raw"
+          :reset-key="compareFor"
+        />
 
         <!-- Last, because it qualifies everything above it -->
         <EmailCheckCaveat />
@@ -635,12 +702,12 @@ function payloadTypeLabel(payloadKind: string) {
       </template>
 
       <!-- Nothing recognized -->
-      <VzNotice v-else-if="result.type === 'invalid'" tone="neutral">
+      <VzNotice v-else-if="result.type === 'invalid'" tone="neutral" boxed>
         {{ t('checkFieldInvalid') }}
       </VzNotice>
 
       <!-- QR decode failed. Said as what it is, and not as a warning about any site -->
-      <VzNotice v-else-if="result.type === 'qr-error'" tone="neutral">
+      <VzNotice v-else-if="result.type === 'qr-error'" tone="neutral" boxed>
         {{ t('qrNotFound') }}
       </VzNotice>
     </div>

@@ -8,8 +8,9 @@ import { classifyHost } from './visit-stats'
  *
  * A red flag is a finding that is a reason to stop on its own, whatever the
  * visit count says: the address is built to be misread. It is drawn as a flag,
- * and counted beside the verdict. Everything else the checks say about an
- * address is still a warning, drawn with the triangle, but not one of these:
+ * and counted beside the verdict, in red. Everything else the checks say
+ * about an address is worth a look and no more, drawn in orange with the
+ * shield and its exclamation mark, and is not one of these:
  *
  * - many subdomain levels: long names are common on real sites,
  * - a tenant of a shared platform: says who runs it, not that it lies,
@@ -42,7 +43,7 @@ export function isRedFlagLookalike(match: LookalikeMatch): boolean {
 
 /**
  * The red flags of one address, counted the way the lines under it draw them:
- * the same markers, the embedded ending dropped when a lookalike explains it,
+ * the same markers, the embedded ending dropped once the lookalikes are known,
  * and every sure lookalike. For a decision taken outside a view, where the
  * count beside the verdict is `useRedFlagCount`. `matches` is null when the
  * lookalike question has no answer, which counts none of them.

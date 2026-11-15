@@ -1,6 +1,7 @@
 import type { LookalikeMatch } from '../domain-similarity'
 import { describe, expect, it } from 'vitest'
-import { dropExplainedMarkers, findDomainMarkers } from '../domain-markers'
+import { hasKnownSuffix } from '../domain-boundary'
+import { dropExplainedMarkers, findDomainMarkers, findNonLatinNames, NATIONAL_ENDINGS } from '../domain-markers'
 import { addressRedFlagCount, isRedFlagLookalike, isRedFlagMarker } from '../red-flags'
 
 function flags(hostname: string, url?: string) {
@@ -137,5 +138,21 @@ describe('a name in another alphabet under a Latin ending', () => {
   // Text from a page can carry a label that does not decode at all
   it('reads the other labels when one does not decode', () => {
     expect(nonLatin('xn--80ak6aa92e.xn--zz.com')).toMatchObject({ detail: 'аррӏе' })
+  })
+})
+
+// Shown to the reader as where a name in each alphabet belongs
+describe('the example endings of each alphabet', () => {
+  it('are real endings, each in the alphabet it stands for', () => {
+    for (const [script, endings] of Object.entries(NATIONAL_ENDINGS)) {
+      expect(endings.length).toBeGreaterThan(0)
+      for (const ending of endings) {
+        expect(hasKnownSuffix(`example.${ending}`), `.${ending} is on the suffix list`).toBe(true)
+        // The ending's own letters as a name: read as this alphabet under a
+        // Latin ending, and let through under the ending itself
+        expect(findNonLatinNames(`${ending}.com`)[0]?.script, `.${ending} is ${script}`).toBe(script)
+        expect(findNonLatinNames(`${ending}.${ending}`), `a name in ${script} under .${ending}`).toEqual([])
+      }
+    }
   })
 })

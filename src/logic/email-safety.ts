@@ -1,3 +1,4 @@
+import { ADDRESS_DOTS, decodeHostname } from './domain-markers'
 import { alternateSpelling } from './link-safety'
 
 export interface EmailPartInfo {
@@ -11,7 +12,7 @@ export interface EmailAnalysis {
   domain: string
   local: EmailPartInfo
   domainInfo: EmailPartInfo & { punycode: string | null }
-  suspiciousPattern: { type: 'embedded-tld', label: string } | null
+  suspiciousPattern: { type: 'embedded-tld', label: string, index: number } | null
 }
 
 const MAX_EMAIL_LENGTH = 320
@@ -33,14 +34,21 @@ function analyzePart(part: string, allowedExtra: string): EmailPartInfo {
   return { hasUnicode, suspiciousChars: Array.from(suspicious) }
 }
 
-function findEmbeddedTld(domain: string): { type: 'embedded-tld', label: string } | null {
-  const labels = domain.split('.')
+export function findEmbeddedTld(domain: string): { type: 'embedded-tld', label: string, index: number } | null {
+  // As the painter counts labels: any case, any of the four dots, and a dot
+  // at the very end is no label. It used to split on the plain dot alone, so
+  // `bbc.co.uk.` had "two labels after its ending", and whatever it found
+  // was looked for a second time by the code that colours it, which could
+  // land on another label
+  const labels = domain.toLowerCase().split(ADDRESS_DOTS)
+  if (labels.length > 1 && labels.at(-1) === '')
+    labels.pop()
   for (let i = 0; i < labels.length; i++) {
     // A known TLD followed by 2+ more labels means the "real-looking" domain
     // ends mid-hostname: paypal.com.evil.ru. Legit ccTLD combos (bbc.co.uk)
     // have only one label after, so they are not flagged.
     if (EMBEDDED_TLDS.includes(labels[i]) && labels.length - 1 - i >= 2)
-      return { type: 'embedded-tld', label: labels[i] }
+      return { type: 'embedded-tld', label: labels[i], index: i }
   }
   return null
 }
@@ -136,16 +144,6 @@ export interface MailtoRecipient {
 }
 
 /**
- * How many addresses are worth analysing.
- *
- * A page writes the `mailto:`, so the list is as long as it likes. Every entry
- * costs an analysis and a visit lookup, and a check nobody can read is not a
- * check – so the rest are counted and named as not looked at, never dropped
- * silently.
- */
-export const MAX_MAILTO_RECIPIENTS = 25
-
-/**
  * Every address the mail client would actually put in the message.
  *
  * The `to` list is only the first box. `cc` and `bcc` are ordinary query
@@ -157,9 +155,17 @@ export function collectMailtoRecipients(parsed: { addresses: string[], params: {
   if (!parsed)
     return []
 
-  const split = (value: string) => value.split(',').map(part => part.trim()).filter(Boolean)
+  // As a mail program reads the list, which is more than the standard asks
+  // of it: a semicolon separates as a comma does, and an entry may be a name
+  // with the address after it in angle brackets. Read by the comma alone,
+  // `pay@known.test;ceo@evil.test` and `Boss <ceo@evil.test>` were one entry
+  // that is no address, so nobody in it was checked and the link went through
+  const split = (value: string) => value.split(/[,;]/).map((part) => {
+    const bracketed = /<([^<>]*)>\s*$/.exec(part)
+    return (bracketed ? bracketed[1] : part).trim()
+  }).filter(Boolean)
 
-  const collected: MailtoRecipient[] = parsed.addresses.map(address => ({ field: 'to' as const, address }))
+  const collected: MailtoRecipient[] = parsed.addresses.flatMap(split).map(address => ({ field: 'to' as const, address }))
   for (const { key, value } of parsed.params) {
     const field = key.trim().toLowerCase()
     // `to` belongs here as much as the other two: RFC 6068 allows the whole
@@ -196,4 +202,23 @@ export function extractEmailFromText(text: string): string | null {
     return null
   const match = trimmed.match(EMAIL_IN_TEXT_PATTERN)
   return match ? match[0] : null
+}
+
+/**
+ * A mail domain as one spelling: in lower case, read from its `xn--` form,
+ * its accents in one form (NFC),
+ * any of the four dots a plain one, a dot at the very end dropped. The same
+ * address written two ways, `münich.example` and `xn--mnich-kva.example`,
+ * read as a link showing one address and sending to another.
+ */
+export function canonicalMailDomain(domain: string): string {
+  const labels = decodeHostname(domain.normalize('NFC').toLowerCase().split(ADDRESS_DOTS).join('.')).normalize('NFC').split('.')
+  if (labels.length > 1 && labels.at(-1) === '')
+    labels.pop()
+  return labels.join('.')
+}
+
+/** Whether two addresses are one: the username in any case, the domain in any spelling */
+export function sameMailAddress(a: { localPart: string, domain: string }, b: { localPart: string, domain: string }): boolean {
+  return a.localPart.toLowerCase() === b.localPart.toLowerCase() && canonicalMailDomain(a.domain) === canonicalMailDomain(b.domain)
 }

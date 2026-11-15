@@ -43,19 +43,44 @@ describe('mismatchTable component', () => {
     expect(labels.some(text => text.includes('familiarityAge'))).toBe(true)
   })
 
-  // A site never visited has no active days yet, and a zero there would read as
-  // a measured fact rather than as a blank
-  it('says none yet where a site was never visited', () => {
+  // Beside the numbers of the other side an empty cell takes the same room as
+  // a zero and says less. A site never visited has no active days yet, and
+  // "none" there is a blank rather than a measured zero
+  it('keeps the zeros of a site never visited beside the numbers of the other', () => {
     const wrapper = mount(MismatchTable, { props: defaultProps })
     expect(wrapper.text()).toContain('statsNoneYet')
+    expect(wrapper.findAll('[data-passed="visits"]').map(node => node.attributes('data-result'))).toEqual(['pass', 'fail'])
+    expect(wrapper.findAll('tbody td').filter(cell => !cell.text() && !cell.element.children.length)).toHaveLength(1)
+  })
+
+  // Two verdicts reading "Never visited" over three rows of zeros against zeros
+  it('draws no rows of facts when neither site was ever visited', () => {
+    const wrapper = mount(MismatchTable, { props: { ...defaultProps, textDomainIsSafe: false, textDomainStats: { count: 0 } } })
+    expect(wrapper.text()).not.toContain('familiarityVisits')
+    expect(wrapper.findAll('[data-verdict]').map(node => node.attributes('data-verdict'))).toEqual(['never', 'never'])
+  })
+
+  // "hidden by settings" against a zero and two "none": nothing to compare
+  it('draws no rows when one side is hidden by the setting and the other was never visited', () => {
+    const wrapper = mount(MismatchTable, { props: { ...defaultProps, showVisitCount: 'unfamiliar' as const } })
+    expect(wrapper.text()).not.toContain('familiarityVisits')
+    expect(wrapper.text()).not.toContain('mismatchVisitsHidden')
+  })
+
+  // The other way round the numbers are on show, and the side without them
+  // says why
+  it('says a side is hidden by the setting beside the numbers of the other', () => {
+    const wrapper = mount(MismatchTable, { props: { ...defaultProps, showVisitCount: 'familiar' as const } })
+    expect(wrapper.findAll('[data-passed="visits"]')).toHaveLength(1)
+    expect(wrapper.text()).toContain('mismatchVisitsHidden')
   })
 
   // The colour alone says nothing to a reader who does not already know what
   // green means here, so each side of the comparison carries a mark too
   it('marks each side of every check as passed or not', () => {
-    const wrapper = mount(MismatchTable, { props: defaultProps })
+    const wrapper = mount(MismatchTable, { props: { ...defaultProps, destStats: { count: 2 } } })
     const marks = wrapper.findAll('[data-passed="visits"]').map(node => node.attributes('data-result'))
-    // The familiar domain clears the visit check, the unvisited one does not
+    // The familiar domain clears the visit check, the one seen twice does not
     expect(marks).toEqual(['pass', 'fail'])
   })
 
@@ -78,11 +103,11 @@ describe('mismatchTable component', () => {
 
   it('shows counts only for unfamiliar domains when showVisitCount is unfamiliar', () => {
     const wrapper = mount(MismatchTable, {
-      props: { ...defaultProps, showVisitCount: 'unfamiliar' as const },
+      props: { ...defaultProps, destStats: { count: 2 }, showVisitCount: 'unfamiliar' as const },
     })
-    // destDomain (unsafe, count=0) should show count
-    // textDomain (safe) should be hidden
-    expect(wrapper.text()).toContain('0')
+    // destDomain (unsafe, seen twice) shows its count, textDomain (safe) says it is hidden
+    expect(wrapper.findAll('[data-passed="visits"]')).toHaveLength(1)
+    expect(wrapper.text()).toContain('mismatchVisitsHidden')
   })
 
   it('copies each address as it is, not as drawn', async () => {

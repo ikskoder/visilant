@@ -144,6 +144,22 @@ export class Firefox {
     })
   }
 
+  /** The same with Shift held down throughout (\uE008). */
+  async pressShifted(context: string, keys: string[]) {
+    await this.send('input.performActions', {
+      context,
+      actions: [{
+        type: 'key',
+        id: 'keyboard',
+        actions: [
+          { type: 'keyDown', value: '\uE008' },
+          ...keys.flatMap(key => [{ type: 'keyDown', value: key }, { type: 'keyUp', value: key }]),
+          { type: 'keyUp', value: '\uE008' },
+        ],
+      }],
+    })
+  }
+
   async type(context: string, text: string) {
     await this.send('input.performActions', {
       context,

@@ -176,6 +176,18 @@ class Harness {
     return this.firefox.evaluate(this.extensionPage, expression)
   }
 
+  /**
+   * Press "Open anyway" with the keyboard alone. Focus starts on the way back,
+   * the last button of the dialog, and going ahead is two steps back from it,
+   * past "Site details". Backwards on purpose: forwards the way runs through
+   * whatever the dialog holds above its buttons, and counting Tabs through
+   * that broke each time the dialog gained a button.
+   */
+  async openAnyway() {
+    await this.firefox.pressShifted(this.page, ['\uE004', '\uE004'])
+    await this.firefox.press(this.page, ['\uE007'])
+  }
+
   async seed(host: string, record: Record<string, unknown>) {
     await this.storage(`browser.storage.local.set({ ${JSON.stringify(host)}: ${JSON.stringify(record)} })`)
   }
@@ -424,6 +436,18 @@ test('a site whose warnings were silenced raises no warning', async (t) => {
   await t.expectNoWarning()
 })
 
+// The pattern a mail link is matched by, `mailto:*`, is no ordinary match
+// pattern. An item the browser refuses is not created, and `update` on an id
+// that is not there rejects, which is the one way to ask whether it exists
+test('the menu has an item for mail links, and one for page links', async (t) => {
+  await t.waitForAutoImport()
+  const exists = (id: string) => t.storage(`browser.contextMenus.update(${JSON.stringify(id)}, {}).then(() => true, () => false)`)
+  await poll(() => exists('visilant-check-mail-link'), true, 10000, 'the mail link item')
+  assert(await exists('visilant-check-link-safety'), 'no item for page links')
+  assert(await exists('visilant-mail-details'), 'no item for the details of a mail link')
+  assert(!(await exists('visilant-no-such-item')), 'the question does not tell an item from none')
+})
+
 test('with the copy warning switched off, a write raises nothing', async (t) => {
   await t.patchSettings({ showCopyWarning: false })
   await t.open(UNFAMILIAR)
@@ -466,14 +490,14 @@ test('a click on a link with no red flag goes through untouched', async (t) => {
 })
 
 // The click is put back after the dialog, and a new tab must still open as one
-test('a held link to a new tab opens one after "Continue anyway"', async (t) => {
+test('a held link to a new tab opens one after "Open anyway"', async (t) => {
   await t.open(UNFAMILIAR)
   await t.links(`<a id="l" href="${FLAGGED(t.port)}" target="_blank">Log in</a>`)
   await t.click('#l')
   await poll(() => t.dialogShowing(), true, 5000, 'the link dialog')
   // Focus starts on the way back, and Continue ignores a press for half a second
   await sleep(1000)
-  await t.firefox.press(t.page, ['\uE004', '\uE004', '\uE007'])
+  await t.openAnyway()
   await poll(() => t.tabsAtDestination(), 1, 5000, 'tabs at the destination')
   assert(!(await t.pageUrl()).includes(DESTINATION), 'the page itself left')
 })
@@ -488,7 +512,7 @@ test('a middle click on a flagged link is held, and one with no flag opens its t
   await sleep(1500)
   assert(await t.tabsAtDestination() === 0, 'a tab opened behind the dialog')
   // Continue, which opens it from the background, behind the page
-  await t.firefox.press(t.page, ['\uE004', '\uE004', '\uE007'])
+  await t.openAnyway()
   await poll(() => t.tabsAtDestination('flagged'), 1, 5000, 'tabs at the flagged link')
   assert(await t.activeTabsAtDestination() === 0, 'the tab opened in front of the page')
   await t.click('#plain', undefined, 1)
@@ -516,7 +540,7 @@ function mailBody(link: string) {
   return `<iframe id="mail" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" style="width:500px;height:120px" srcdoc="${link.replace(/"/g, '&quot;')}"></iframe>`
 }
 
-test('a flagged link in a mail body frame is held, and opens its tab after "Continue anyway"', async (t) => {
+test('a flagged link in a mail body frame is held, and opens its tab after "Open anyway"', async (t) => {
   await t.open(UNFAMILIAR)
   await t.links(mailBody(`<a id="l" href="${FLAGGED(t.port)}" target="_blank" style="display:block;font-size:20px;padding:10px">Log in</a>`))
   await sleep(1500)
@@ -524,7 +548,7 @@ test('a flagged link in a mail body frame is held, and opens its tab after "Cont
   await poll(() => t.dialogShowing(), true, 8000, 'the link dialog')
   await sleep(1500)
   assert(await t.tabsAtDestination() === 0, 'a tab opened behind the dialog')
-  await t.firefox.press(t.page, ['\uE004', '\uE004', '\uE007'])
+  await t.openAnyway()
   await poll(() => t.tabsAtDestination('flagged'), 1, 5000, 'tabs at the flagged link')
 })
 

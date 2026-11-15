@@ -29,7 +29,7 @@ import IconTime from '~icons/carbon/time'
 import IconTranslate from '~icons/carbon/translate'
 import IconView from '~icons/carbon/view'
 import IconWarningAltFilled from '~icons/carbon/warning-alt-filled'
-import { ShieldFail, ShieldPass, ShieldUnknown } from './shield-icons'
+import { ShieldAlert, ShieldFail, ShieldFlag, ShieldInfo, ShieldPass, ShieldPending, ShieldUnknown } from './shield-icons'
 
 const props = defineProps<{
   name: IconName
@@ -79,6 +79,12 @@ const ICONS = {
   'shield-pass': ShieldPass,
   'shield-fail': ShieldFail,
   'shield-unknown': ShieldUnknown,
+  // The sign at the head of a box drawn over a page, which is the signature
+  // too. Drawn through VzSig, never beside it
+  'shield-alert': ShieldAlert,
+  'shield-flag': ShieldFlag,
+  'shield-info': ShieldInfo,
+  'shield-pending': ShieldPending,
   // A red flag, and only that: one of the few findings that are a reason to
   // stop on their own (see logic/red-flags.ts). Every other warning keeps the
   // triangle.

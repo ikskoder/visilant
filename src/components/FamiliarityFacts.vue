@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FamiliarityStats } from '~/logic/familiarity'
-import { computed, useSlots } from 'vue'
+import { computed } from 'vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 
 // The evidence behind a familiarity verdict: the facts the user's own rules are
@@ -8,23 +8,33 @@ import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 // the same order and mean the same thing – see useFamiliarityFacts.
 const props = defineProps<{
   stats: FamiliarityStats
+  /**
+   * The verdict is drawn as a badge right beside these facts.
+   *
+   * It only matters for a site with no visits at all. Every fact of such a
+   * record is a zero that fails, so the three lines said "never visited" three
+   * more times under a badge that had just said it. Beside a badge they are
+   * left out, and anywhere else they fold into the one line that is true.
+   */
+  verdictBeside?: boolean
 }>()
 
-const slots = useSlots()
 const { t, factsFor, summaryFor, withThresholds } = useFamiliarityFacts()
 
+const never = computed(() => !(Number(props.stats?.count) > 0))
 const facts = computed(() => factsFor(props.stats))
 const summary = computed(() => summaryFor(props.stats))
 </script>
 
 <template>
-  <div class="familiarity-facts">
-    <!-- The verdict comes first, right under the address it is about. It is the
-         answer, and the numbers below it are the working – a reader who only
-         wants the answer should not have to get past three rows to reach it. -->
-    <div v-if="slots.status" class="mb-2">
-      <slot name="status" />
-    </div>
+  <div v-if="!never || !verdictBeside" class="familiarity-facts">
+    <!-- Nothing recorded: one line, and nothing at all where a badge says it -->
+    <ul v-if="never" class="vz-facts">
+      <li class="vz-fact" data-never-visited>
+        <VzIcon name="fail" :label="t('familiarityFactFailed')" class="tone-danger" />
+        <span class="vz-fact__label">{{ t('linkTooltipNeverVisited') }}</span>
+      </li>
+    </ul>
 
     <!--
       Two shapes for the same facts, because the bar changes what the numbers
@@ -36,7 +46,7 @@ const summary = computed(() => summaryFor(props.stats))
       The value itself is never coloured. The mark carries the result, in a
       shape as well as a colour: a tick or a cross in a disc.
     -->
-    <table v-if="withThresholds" class="vz-table familiarity-table">
+    <table v-else-if="withThresholds" class="vz-table familiarity-table">
       <thead>
         <tr>
           <th><span class="sr-only">{{ t('familiarityFactResult') }}</span></th>

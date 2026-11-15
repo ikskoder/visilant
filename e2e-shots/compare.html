@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Visilant – what changed, case by case</title>
+<style>
+  :root { --bg:#f4f6fa; --card:#fff; --ink:#121826; --ink2:#3d4659; --ink3:#5b6478; --line:#dde2eb; --brand:#0b6a84; --gone:220,38,38; --came:22,140,70; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 15px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { position: sticky; top:0; z-index:5; background:#fff; border-bottom:1px solid var(--line); padding:8px 20px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0 6px 0 0; }
+  header label { font-size:13px; color:var(--ink2); display:inline-flex; gap:5px; align-items:center; cursor:pointer; }
+  header select { font:inherit; font-size:13px; padding:3px 6px; max-width:260px; }
+  header .tally { color:var(--ink3); font-size:13px; }
+  header button { font:inherit; font-size:13px; padding:5px 11px; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  header .copy { margin-left:auto; border-color:var(--brand); background:var(--brand); color:#fff; }
+  main { max-width:1500px; margin:0 auto; padding:18px 20px 80px; }
+  .intro { color:var(--ink2); max-width:900px; }
+  .intro p { margin:6px 0; }
+  .legend i { display:inline-block; width:22px; height:12px; vertical-align:-1px; margin-right:4px; border-radius:2px; }
+  .legend .g { background:rgba(var(--gone),.16); outline:1.5px solid rgba(var(--gone),.6); }
+  .legend .c { background:rgba(var(--came),.16); outline:1.5px solid rgba(var(--came),.6); }
+  h2 { margin:34px 0 4px; font-size:20px; }
+  h3 { margin:22px 0 8px; font-size:15px; color:var(--ink2); font-weight:600; }
+  .case { scroll-margin-top:70px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin:12px 0; }
+  .case-head { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .case-head b { font-size:15px; }
+  .case-head code { color:var(--ink3); font-size:12.5px; }
+  .variant { margin-top:10px; }
+  .variant-label { font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink3); }
+  .pair { display:grid; grid-template-columns: 1fr 1fr; gap:14px; align-items:start; margin-top:4px; }
+  .side-label { font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px; color:rgb(var(--gone)); }
+  .side-label.after { color:rgb(var(--came)); }
+  .side-label small { font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink3); }
+  .frame { border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#fff; cursor:zoom-in; }
+  .crop { position:relative; overflow:hidden; transform-origin: 0 0; }
+  .crop img { position:absolute; display:block; max-width:none; }
+  .mark { position:absolute; pointer-events:none; border-radius:2px; }
+  .mark.gone { background:rgba(var(--gone),.10); outline:1.5px solid rgba(var(--gone),.55); }
+  .mark.came { background:rgba(var(--came),.10); outline:1.5px solid rgba(var(--came),.55); }
+  body.plain .mark { display:none; }
+  .none { font-size:13px; color:var(--ink3); padding:14px; }
+  textarea { width:100%; min-height:36px; font:inherit; font-size:13px; padding:6px 9px; border:1px solid #c5ccd8; border-radius:8px; resize:vertical; margin-top:10px; }
+  textarea:focus { outline:2px solid var(--brand); outline-offset:1px; }
+  .general { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin:14px 0; }
+  #zoom { position:fixed; inset:0; background:rgba(0,0,0,.86); display:none; z-index:10; overflow:auto; cursor:zoom-out; padding:24px; }
+  #zoom .z-row { display:flex; gap:16px; justify-content:center; align-items:flex-start; }
+  #zoom figure { margin:0; color:#fff; font-size:13px; }
+  #zoom img { max-width:none; background:#fff; display:block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>What changed</h1>
+  <label>Column <select id="col"><option value="light">desktop</option><option value="phone">phone</option><option value="both">both</option></select></label>
+  <label>Topic <select id="jump"><option value="">go to…</option></select></label>
+  <label><input type="checkbox" id="marks" checked> marks</label>
+  <label><input type="checkbox" id="whole"> whole pictures</label>
+  <span class="tally" id="tally"></span>
+  <button class="copy" id="copy" title="Copy every note as one text">Copy notes</button>
+  <button id="clear" title="Erase every note on this page">Clear</button>
+</header>
+<main>
+  <div class="intro">
+    <p>Every case of the catalogue whose picture is not what it was when the run was kept. Before on the left, after on the right, cut to the part that changed at its own size, with small cut-outs made bigger. A click opens both pictures whole.</p>
+    <p class="legend"><i class="g"></i>on the left, what went or was different. <i class="c"></i>on the right, what came or changed. What only moved up or down is not marked.</p>
+    <p>The dark column is left out: it is the light one in other colours.</p>
+  </div>
+  <div class="general">
+    <b>A note on all of it</b>
+    <textarea data-key="general" placeholder="Anything about the whole set"></textarea>
+  </div>
+  <div id="list"></div>
+</main>
+<div id="zoom"><div class="z-row"></div></div>
+
+<script src="diff-data.js"></script>
+<script src="crop.js"></script>
+<script>
+const { cases, tally } = window.DIFF
+const STORE = 'visilant-shots-compare'
+const saved = JSON.parse(localStorage.getItem(STORE) || '{}')
+const save = () => localStorage.setItem(STORE, JSON.stringify(saved))
+const list = document.getElementById('list')
+const colSelect = document.getElementById('col')
+const wholeBox = document.getElementById('whole')
+const COL_NAME = { light: 'desktop', phone: 'phone' }
+
+// One entry per case name, with the columns that changed
+const byName = new Map()
+for (const c of cases) {
+  if (!byName.has(c.name))
+    byName.set(c.name, { name: c.name, title: c.title, surface: c.surface, topic: c.topic, at: c.at, order: c.order, variants: [] })
+  byName.get(c.name).variants.push(c)
+}
+const entries = [...byName.values()].sort((a, b) => a.at - b.at || a.order - b.order || a.name.localeCompare(b.name))
+
+const side = (c, which, available) => window.Crop.side(c, which, available, wholeBox.checked, openZoom)
+
+function bindNote(area, key) {
+  area.dataset.key = key
+  area.value = saved[key] || ''
+  area.addEventListener('input', () => { saved[key] = area.value; save(); count() })
+}
+
+function render() {
+  const pick = colSelect.value
+  const available = Math.max(320, (Math.min(1500, window.innerWidth) - 40 - 32 - 14) / 2 - 2)
+  const keep = [...document.querySelectorAll('textarea')].find(a => a === document.activeElement)?.dataset.key
+  list.innerHTML = ''
+  const jump = document.getElementById('jump')
+  jump.length = 1
+  let surface = ''
+  let topic = ''
+  let shown = 0
+  for (const entry of entries) {
+    const variants = entry.variants.filter(c => pick === 'both' || c.col === pick)
+    if (!variants.length)
+      continue
+    shown++
+    if (entry.surface !== surface) {
+      surface = entry.surface
+      topic = ''
+      const h = document.createElement('h2')
+      h.textContent = surface
+      list.append(h)
+    }
+    if (entry.topic !== topic) {
+      topic = entry.topic
+      const h = document.createElement('h3')
+      h.textContent = topic
+      h.id = `t${jump.length}`
+      list.append(h)
+      jump.add(new Option(`${surface} – ${topic}`, h.id))
+    }
+    const el = document.createElement('section')
+    el.className = 'case'
+    el.id = entry.name
+    el.innerHTML = `<div class="case-head"><b></b><code></code></div>`
+    el.querySelector('b').textContent = entry.title
+    el.querySelector('code').textContent = entry.name
+    for (const c of variants) {
+      const v = document.createElement('div')
+      v.className = 'variant'
+      if (pick === 'both')
+        v.innerHTML = `<div class="variant-label">${COL_NAME[c.col]}</div>`
+      if (c.kind !== 'changed') {
+        const note = document.createElement('div')
+        note.className = 'none'
+        note.textContent = c.kind === 'new' ? 'This picture was not there before.' : 'This picture is not drawn any more.'
+        v.append(note)
+      }
+      else {
+        const pair = document.createElement('div')
+        pair.className = 'pair'
+        for (const which of ['before', 'after']) {
+          const col = document.createElement('div')
+          const bands = which === 'before' ? c.before : c.after
+          col.innerHTML = `<div class="side-label ${which === 'after' ? 'after' : ''}">${which} <small>${bands.length ? '' : which === 'before' ? '– nothing went, something came' : '– nothing new, something went'}</small></div>`
+          col.append(side(c, which, available))
+          pair.append(col)
+        }
+        v.append(pair)
+      }
+      el.append(v)
+    }
+    const area = document.createElement('textarea')
+    area.placeholder = 'A note on this screen'
+    bindNote(area, entry.name)
+    el.append(area)
+    list.append(el)
+  }
+  document.getElementById('shown').textContent = `${shown} of ${tally.total} cases changed`
+  if (keep)
+    document.querySelector(`textarea[data-key="${CSS.escape(keep)}"]`)?.focus()
+}
+
+function count() {
+  const n = Object.values(saved).filter(v => v && v.trim()).length
+  document.getElementById('notes').textContent = n ? ` · notes: ${n}` : ''
+}
+
+document.getElementById('tally').innerHTML = '<span id="shown"></span><span id="notes"></span>'
+bindNote(document.querySelector('textarea[data-key="general"]'), 'general')
+render()
+count()
+if (location.hash)
+  document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView()
+colSelect.addEventListener('change', render)
+wholeBox.addEventListener('change', render)
+document.getElementById('marks').addEventListener('change', e => document.body.classList.toggle('plain', !e.target.checked))
+document.getElementById('jump').addEventListener('change', (e) => { if (e.target.value) document.getElementById(e.target.value).scrollIntoView(); e.target.value = '' })
+let resizing
+window.addEventListener('resize', () => { clearTimeout(resizing); resizing = setTimeout(render, 200) })
+
+document.getElementById('copy').addEventListener('click', async () => {
+  const lines = []
+  if (saved.general?.trim())
+    lines.push(`General: ${saved.general.trim()}`)
+  for (const entry of entries) {
+    const text = saved[entry.name]?.trim()
+    if (text)
+      lines.push(`[${entry.name}] ${entry.title}\n   ${text.replace(/\n/g, '\n   ')}`)
+  }
+  await navigator.clipboard.writeText(lines.length ? lines.join('\n') : 'No notes')
+  const b = document.getElementById('copy')
+  b.textContent = 'Copied'
+  setTimeout(() => { b.textContent = 'Copy notes' }, 1500)
+})
+
+document.getElementById('clear').addEventListener('click', () => {
+  if (!confirm('Erase every note on this page?'))
+    return
+  for (const k of Object.keys(saved)) delete saved[k]
+  save()
+  for (const a of document.querySelectorAll('textarea')) a.value = ''
+  count()
+})
+
+const zoom = document.getElementById('zoom')
+function openZoom(before, after) {
+  const row = zoom.querySelector('.z-row')
+  row.innerHTML = ''
+  for (const [label, src] of [['before', before], ['after', after]]) {
+    const f = document.createElement('figure')
+    f.innerHTML = `<div>${label}</div><img src="${src}" alt="${label}">`
+    row.append(f)
+  }
+  zoom.style.display = 'block'
+}
+zoom.addEventListener('click', () => { zoom.style.display = 'none' })
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') zoom.style.display = 'none' })
+</script>
+</body>
+</html>

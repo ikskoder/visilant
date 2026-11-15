@@ -78,17 +78,6 @@ export interface Settings {
   domainCase: 'lower' | 'upper'
 
   /**
-   * The half of an email address before the @, which gets its own control.
-   *
-   * Upper and lower mean the same thing to a domain, so that one only has two
-   * settings. An account name is a name somebody chose, and the capitals in it
-   * are part of how it was written down, so this one keeps a third position
-   * that leaves it exactly as it arrived. That is the default: the check panel
-   * echoing the address back unchanged is what a reader compares against the
-   * message in front of them.
-   */
-  accountNameCase: 'as-typed' | 'lower' | 'upper'
-  /**
    * Every label of an address in a frame of its own, the owner's labels in
    * heavier ones. Most readers do not know a dot is a boundary, and a frame is
    * hard to miss. Off, the frames go and the owner's labels turn bold, and the
@@ -262,7 +251,6 @@ export const defaultSettings: Settings = {
 
   // Display settings
   domainCase: 'lower',
-  accountNameCase: 'as-typed',
   addressFrames: true,
   punycodeListMode: 'unicode',
 

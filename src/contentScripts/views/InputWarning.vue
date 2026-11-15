@@ -56,14 +56,14 @@ const cover = useVisualViewport(() => props.show && props.safetyLevel === false)
         <!-- A tinted band carries the warning. No pulsing frame and no glow: they
            drew the eye to the box, not to what it says. -->
         <div class="vz-toast__head">
-          <VzIcon name="alert" large class="tone-danger" />
+          <VzSig mark="alert" large />
           <h3 class="vz-title">
             {{ t('securityWarning') }}
           </h3>
           <button
             class="vz-iconbtn"
-            :aria-label="t('dismiss')"
-            :title="t('dismiss')"
+            :aria-label="t('closeDialog')"
+            :title="t('closeDialog')"
             @click="emit('close')"
           >
             <VzIcon name="close" />
@@ -71,9 +71,6 @@ const cover = useVisualViewport(() => props.show && props.safetyLevel === false)
         </div>
 
         <div class="vz-toast__body">
-          <!-- At the top of the body, under the title band, so whose box this is is
-               read before what it says, as on the other surfaces -->
-          <VzSig />
           <p class="vz-body-strong">
             <template v-if="warningType === 'input'">
               {{ t('inputWarningMessage') }}

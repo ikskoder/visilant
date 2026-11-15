@@ -192,7 +192,10 @@ function close() {
         <h1 class="welcome-display">
           {{ t('welcomeTitle') }}
         </h1>
-        <p class="vz-body mt-2">
+        <!-- Only over an import that ran or is running, or a browser with
+             nothing to import: "one thing was set up for you" sat right above
+             the card saying the import had not finished -->
+        <p v-if="nothingToImport || doneStats || isRunning" class="vz-body mt-2">
           {{ nothingToImport ? t('welcomeSubtitleNoImport') : t('welcomeSubtitle') }}
         </p>
       </div>
@@ -210,8 +213,10 @@ function close() {
         </p>
       </section>
 
-      <!-- Import status -->
-      <section class="vz-card welcome-card">
+      <!-- Import status. Not where there was no history to read, which is
+           Firefox for Android: nothing ran and nothing failed, and the card
+           above has already said why Visilant starts out knowing no sites. -->
+      <section v-if="status !== 'unsupported'" class="vz-card welcome-card">
         <template v-if="doneStats">
           <div class="flex gap-8">
             <div>
@@ -219,7 +224,7 @@ function close() {
                 {{ doneStats.domains.toLocaleString() }}
               </div>
               <div class="vz-small">
-                {{ t('welcomeStatSites') }}
+                {{ t('importSitesStored') }}
               </div>
             </div>
             <div>
@@ -227,7 +232,7 @@ function close() {
                 {{ doneStats.visits.toLocaleString() }}
               </div>
               <div class="vz-small">
-                {{ t('welcomeStatVisits') }}
+                {{ t('familiarityVisitsUnit') }}
               </div>
             </div>
           </div>
@@ -257,22 +262,13 @@ function close() {
           </p>
         </div>
 
-        <!-- No history to read in this browser, which is Firefox for Android.
-             Nothing failed, so there is nothing to retry – the profile fills up
-             as the user browses instead -->
-        <template v-else-if="status === 'unsupported'">
-          <p class="vz-notice vz-notice--neutral">
-            {{ t('welcomeStatusUnsupported') }}
-          </p>
-        </template>
-
         <!-- Nothing was imported at all: the extension really is blind until this is fixed -->
         <template v-else-if="!doneStats">
           <p class="vz-body">
             {{ status === 'cancelled' ? t('welcomeStatusCancelled') : t('welcomeStatusFailed') }}
           </p>
           <button class="vz-btn vz-btn--primary mt-3" @click="retry">
-            {{ t('welcomeRetry') }}
+            {{ t('importHistoryRun') }}
           </button>
         </template>
 
@@ -282,7 +278,7 @@ function close() {
             {{ t('welcomeDetailsFailed') }}
           </p>
           <button class="vz-btn vz-btn--sm mt-3" @click="retry">
-            {{ t('welcomeRetry') }}
+            {{ t('importHistoryRun') }}
           </button>
         </div>
       </section>

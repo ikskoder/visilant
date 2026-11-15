@@ -1,7 +1,9 @@
 import {
   loadCustomDisposableList,
+  loadCustomForwardingList,
   loadCustomPublicList,
   STORAGE_KEY_CUSTOM_DISPOSABLE,
+  STORAGE_KEY_CUSTOM_FORWARDING,
   STORAGE_KEY_CUSTOM_PUBLIC,
   STORAGE_KEY_REMOTE_DISPOSABLE,
   STORAGE_KEY_REMOTE_PUBLIC,
@@ -51,6 +53,7 @@ const APPLIERS: Record<string, (value: unknown) => void> = {
   [STORAGE_KEY_REMOTE_SHORTENERS]: value => updateShortenerList(asRemoteDomains(value)),
   [STORAGE_KEY_CUSTOM_PUBLIC]: value => loadCustomPublicList(asDomains(value)),
   [STORAGE_KEY_CUSTOM_DISPOSABLE]: value => loadCustomDisposableList(asDomains(value)),
+  [STORAGE_KEY_CUSTOM_FORWARDING]: value => loadCustomForwardingList(asDomains(value)),
   [STORAGE_KEY_REMOTE_PUBLIC]: value => updatePublicList(asRemoteDomains(value)),
   [STORAGE_KEY_REMOTE_DISPOSABLE]: value => updateDisposableList(asRemoteDomains(value)),
   [STORAGE_KEY_CUSTOM_MAIL_SITES]: value => loadCustomMailSites(asDomains(value)),

@@ -98,10 +98,11 @@ describe('popup as a standalone page', () => {
     stubLocalStorage({ 'mail.example.com': record })
     const wrapper = await mountForDomain('example.com')
 
-    // Nothing is recorded for `example.com` itself, and the row says so rather
-    // than showing what the subdomain has been up to
-    expect(criterion(wrapper, 'activeDays')).toContain('statsNoneYet')
-    expect(criterion(wrapper, 'visits')).toContain('0')
+    // Nothing is recorded for `example.com` itself, and the verdict says so
+    // rather than showing what the subdomain has been up to
+    const own = wrapper.get('[data-domain-panel]')
+    expect(own.get('[data-popup-verdict]').attributes('data-verdict')).toBe('never')
+    expect(own.find('[data-criterion]').exists()).toBe(false)
 
     // The family's own facts, under the family's own name
     const family = wrapper.get('[data-family-stats]')
@@ -139,18 +140,21 @@ describe('popup as a standalone page', () => {
   })
 
   /**
-   * A zero is an answer. The row used to disappear entirely when there was no
-   * record, which leaves a reader working out whether the address was never
-   * visited or whether the panel simply failed to say – and those are the two
-   * things a check page exists to tell apart. A host nothing is ever counted for
-   * is the one case that still says so in words instead, above.
+   * A zero is an answer, and it is given once. With no record the panel has to
+   * say the address was never visited, or a reader is left working out whether
+   * it was or whether the panel simply failed to say – the two things a check
+   * page exists to tell apart. The verdict says it in words. The row of facts
+   * under it used to say it again as a zero and two "none", so it is left
+   * out while there is nothing in it. A host nothing is ever counted for is the
+   * one case that says so in a notice instead, above.
    */
-  it('says nothing was recorded rather than dropping the row', async () => {
+  it('says an address was never visited once, in the verdict', async () => {
     stubLocalStorage({})
     const wrapper = await mountForDomain('never-visited.example')
 
-    expect(criterion(wrapper, 'visits')).toContain('0')
-    expect(criterion(wrapper, 'activeDays')).toContain('statsNoneYet')
+    expect(wrapper.get('[data-popup-verdict]').attributes('data-verdict')).toBe('never')
+    expect(wrapper.find('[data-criterion]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('noVisitData')
     // No family either, so nothing is borrowed from one
     expect(wrapper.find('[data-family-stats]').exists()).toBe(false)
   })
@@ -538,19 +542,20 @@ describe('the check page draws each warning once', () => {
     const field = wrapper.getComponent(CheckField)
     expect(field.text()).not.toContain('emailDomainLabel')
     expect(field.text()).not.toContain('linkTooltipNeverVisited')
-    // The card's test catches this ending, so the card says it and the
-    // breakdown does not
+    // The card's test catches this ending, so the breakdown leaves it to the
+    // card. And the card says nothing of it: `yourbank.com` is not a site the
+    // user knows here, so it imitates nothing they trust
     expect(field.text()).not.toContain('emailSuspiciousPattern')
-    const panel = wrapper.get('[data-domain-panel]')
-    expect(panel.find('[data-marker="embedded-public-suffix"]').exists()).toBe(true)
+    expect(wrapper.find('[data-marker="embedded-public-suffix"]').exists()).toBe(false)
   })
 
-  it('keeps the breakdown\'s ending warning where the card would not draw one', async () => {
+  // `info` is an ending to the email test and not to the card's. Either way
+  // it is said only of a domain the user knows, as a lookalike line
+  it('says nothing of an ending in the middle of an address domain nobody visited', async () => {
     answerBackground('none', SUBDOMAIN_MATCH)
-    // `info` is an ending to the email test and not to the card's
     const wrapper = await checkOnPage('billing@paypal.info.evil.ru')
 
-    expect(wrapper.getComponent(CheckField).text()).toContain('emailSuspiciousPattern')
+    expect(wrapper.find('[data-marker="mid-ending"]').exists()).toBe(false)
     expect(wrapper.find('[data-marker="embedded-public-suffix"]').exists()).toBe(false)
   })
 

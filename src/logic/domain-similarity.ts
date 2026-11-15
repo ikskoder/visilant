@@ -89,6 +89,82 @@ export interface LookalikeMatch {
    * is worse than no mark. A letter left out has nothing to mark.
    */
   marks?: number[]
+  /**
+   * More familiar domains parked in front of the same site, said in the same
+   * line: "paypal.com or google.com but the real site is verify.test". A line
+   * each named the real site once per name. Set on `familiar-as-subdomain`
+   * only, in the order the address has them, `domain` first.
+   */
+  also?: { domain: string, evidence: string, visits: number }[]
+}
+
+/** Several domains parked in front of one site, as one match. See `LookalikeMatch.also`. */
+function joinParked(matches: LookalikeMatch[], address: string): LookalikeMatch[] {
+  // Empty labels left out, as the matchers leave them out: `paypal..com`
+  const labels = address.split('.').filter(Boolean)
+  /** Every place a name was found, as [first label, past the last] */
+  const spans = (evidence: string): [number, number][] => {
+    const wanted = evidence.split('.')
+    return labels.flatMap((_, start): [number, number][] =>
+      wanted.every((label, offset) => labels[start + offset] === label) ? [[start, start + wanted.length]] : [])
+  }
+  const within = (inner: [number, number], outer: [number, number]) => inner[0] >= outer[0] && inner[1] <= outer[1]
+  const same = (a: [number, number], b: [number, number]) => a[0] === b[0] && a[1] === b[1]
+  const groups = new Map<string, LookalikeMatch[]>()
+  const out: (LookalikeMatch | LookalikeMatch[])[] = []
+  for (const match of matches) {
+    if (match.reason !== 'familiar-as-subdomain') {
+      out.push(match)
+      continue
+    }
+    // One line is one sign, one colour and one way of naming who the user
+    // knows, so only what reads the same goes together
+    const key = `${match.severity}|${match.source ?? 'history'}`
+    const group = groups.get(key)
+    if (group) {
+      group.push(match)
+    }
+    else {
+      const fresh = [match]
+      groups.set(key, fresh)
+      out.push(fresh)
+    }
+  }
+  return out.map((entry) => {
+    if (!Array.isArray(entry))
+      return entry
+    if (entry.length === 1)
+      return entry[0]
+    // A name found inside the labels of another one in the line is not a
+    // second name in the address: `paypal` for a known `paypal.de` inside a
+    // parked `paypal.com`. The longer one is what the address spells, and of
+    // two found in the same labels the better known, which comes first. Only
+    // when every place it stands is inside another: the lone `paypal` in
+    // `paypal.com.paypal.evil.test` is a place of its own. A name that cannot
+    // be placed is never dropped
+    const named = entry.filter((match, index) => {
+      const mine = spans(match.evidence)
+      return !mine.length || !mine.every(place => entry.some((other, otherIndex) => otherIndex !== index
+        && spans(other.evidence).some(theirs => same(place, theirs) ? otherIndex < index : within(place, theirs))))
+    })
+    // In the order the address has them, and of two starting on one label the
+    // longer first, since the shorter is the one that also stands elsewhere
+    const firstPlace = (match: LookalikeMatch) => spans(match.evidence)[0] ?? [labels.length, labels.length]
+    const [first, ...rest] = named.sort((a, b) => {
+      const [x, y] = [firstPlace(a), firstPlace(b)]
+      return x[0] - y[0] || y[1] - x[1]
+    })
+    if (!rest.length)
+      return first
+    return {
+      ...first,
+      // Sorted among the other lines by its best known name
+      visits: Math.max(...named.map(match => match.visits)),
+      // Positions in the address, so the marks of every name in the line hold
+      marks: named.some(match => match.marks?.length) ? named.flatMap(match => match.marks ?? []).sort((x, y) => x - y) : undefined,
+      also: rest.map(match => ({ domain: match.domain, evidence: match.evidence, visits: match.visits })),
+    }
+  })
 }
 
 /**
@@ -121,6 +197,19 @@ const MIN_CONTAINMENT_LENGTH = 5
  * even that stops meaning anything.
  */
 const MIN_TOKEN_LENGTH = 3
+/**
+ * Below this length, a familiar name standing alone in front of another site,
+ * or between separators in a label, is worth a look and not a red flag.
+ *
+ * `dev`, `mail`, `docs` and `go` are what levels in front of thousands of sites
+ * are called, so a familiar `dev.to` or `mail.ru` flagged `dev.mycompany.com`
+ * and `mail.example.org` in red. A word list of ordinary level names is not the
+ * answer, since nothing shipped decides a warning here. The match stays, in
+ * orange, and `ebay.evil.net` loses its red flag with it, which is the price.
+ * A short name spelled with a letter swapped in, `dеv` with a Cyrillic `е`, is
+ * nobody's ordinary level name and stays red.
+ */
+const MIN_LONE_NAME_LENGTH = 5
 const MAX_EDIT_DISTANCE = 2
 /** How many matches to report; more than this is noise, not information. */
 const MAX_MATCHES = 3
@@ -294,14 +383,20 @@ export function buildFamiliarIndex(domains: FamiliarDomain[]): FamiliarIndex {
     if (!domain.domain || !domain.label)
       continue
 
+    // Read as the address it is compared with reads. The history keeps a name
+    // as the browser hands it over, `xn--…`, and the address is decoded, so a
+    // known `сор.рф` never met `сор.evil.com` or its Latin twin `cop.evil.com`
+    const name = decodeHostname(domain.domain).toLowerCase()
+    const label = decodeHostname(domain.label).toLowerCase()
+
     // First entry for a domain wins, so a caller that puts the history in front
     // keeps the real visit count for anything that is also on the provider list
-    if (index.byDomain.has(domain.domain.toLowerCase()))
+    if (index.byDomain.has(name))
       continue
 
-    const entry: IndexedDomain = { ...domain, labelSkeleton: skeleton(domain.label) }
+    const entry: IndexedDomain = { ...domain, domain: name, label, labelSkeleton: skeleton(label) }
     index.entries.push(entry)
-    index.byDomain.set(domain.domain.toLowerCase(), entry)
+    index.byDomain.set(name, entry)
     push(index.bySkeleton, entry.labelSkeleton, entry)
     push(index.byLength, entry.labelSkeleton.length, entry)
 
@@ -340,6 +435,12 @@ export function findLookalikes(
    * fallback derives it from the shape of the name instead.
    */
   registrableDomain?: string,
+  /**
+   * The ending, when it is a private one sold name by name (`ru.com`,
+   * `com.de`, `github.io`), as `hostingPlatform` gives it. Unknown without the
+   * suffix list, and then a domain spelled into the ending is not looked for.
+   */
+  privateSuffix?: string,
 ): LookalikeMatch[] {
   const address = decodeHostname(hostname).toLowerCase().replace(/\.$/, '')
   if (!address || !index.entries.length)
@@ -367,15 +468,20 @@ export function findLookalikes(
   // Without this, someone who uses both google.com and google.de would be told
   // about the resemblance on every single visit.
   const registrable = registrableDomain?.toLowerCase() || getRegistrableDomain(address)
-  if (index.byDomain.has(registrable))
+  if (index.byDomain.has(decodeHostname(registrable)))
     return []
 
-  // Decoded like the labels it is compared with below. The background passes the
-  // registrable domain as the browser hands it over, in its `xn--` form, while
-  // the labels are Unicode – so for every name with a swapped-in letter from
-  // another alphabet the two never matched, and the one label that IS the site's
-  // own name was taken for a subdomain and explained as one.
-  const registrableLabel = decodeHostname(registrable).split('.')[0]
+  // Only what the owner of the site chose is compared: the levels in front and
+  // the site's own name. The ending is handed out by a registry or a platform
+  // (`.dev`, `.online`, `github.io`), so it cannot have been made to look like
+  // anything, and comparing it called every `.dev` site a copy of a familiar
+  // `dev.to`. The boundary is counted in labels, of which the `xn--` form the
+  // background passes has as many as the Unicode labels here. Compared as text
+  // the two never matched for a name with a letter from another alphabet, and
+  // the site's own name was taken for a level in front of it.
+  const siteLabels = registrable.split('.').filter(Boolean).length
+  const nameAt = Math.max(0, labels.length - siteLabels)
+  const owned = located.slice(0, nameAt + 1)
   const best = new Map<string, LookalikeMatch>()
 
   const offer = (match: LookalikeMatch) => {
@@ -386,21 +492,22 @@ export function findLookalikes(
       best.set(match.domain, match)
   }
 
-  matchFamiliarAsSubdomain(labels, index, offer)
+  matchFamiliarAsSubdomain(labels, nameAt, Boolean(privateSuffix), index, offer)
 
-  for (const at of located) {
+  owned.forEach((at, position) => {
     const labelSkeleton = skeleton(at.label)
-    matchSameSkeleton(at, labelSkeleton, at.label === registrableLabel, index, offer)
+    matchSameSkeleton(at, labelSkeleton, position === nameAt, index, offer)
     matchEditDistance(at, labelSkeleton, index, offer)
     matchContainment(at, labelSkeleton, index, offer)
-  }
+  })
 
-  return [...best.values()]
+  const sorted = [...best.values()]
     .sort((a, b) => {
       if (a.severity !== b.severity)
         return a.severity === 'high' ? -1 : 1
       return b.visits - a.visits
     })
+  return joinParked(sorted, address)
     .slice(0, MAX_MATCHES)
     .map(match => match.reason === 'familiar-as-subdomain' ? { ...match, site: registrable } : match)
 }
@@ -411,12 +518,22 @@ export function findLookalikes(
  */
 function matchFamiliarAsSubdomain(
   labels: string[],
+  /** Where the site's own name stands in `labels` */
+  nameAt: number,
+  /** The ending is a private one, sold name by name */
+  privateSuffix: boolean,
   index: FamiliarIndex,
   offer: (match: LookalikeMatch) => void,
 ) {
-  // The final label pair is the address's own domain, not an imitation of one
-  for (let start = 0; start < labels.length - 1; start++) {
-    for (let end = start + 1; end < labels.length - 1; end++) {
+  // A parked domain starts in what the owner wrote, and may end on the site's
+  // own name, `paypal.com.github.io` with `com` for the tenant. Under a
+  // public ending it stops there: `paypal.com.au` is how a brand's own country
+  // site is spelled, and `same-name` speaks of it without interrupting. A
+  // private ending is somebody's business selling names under it, and
+  // `mail.ru.com` or `amazon.de.com` bought there is the trick itself
+  const lastEnd = privateSuffix ? labels.length - 1 : nameAt
+  for (let start = 0; start <= nameAt && start < labels.length - 1; start++) {
+    for (let end = start + 1; end <= lastEnd; end++) {
       const entry = index.byDomain.get(labels.slice(start, end + 1).join('.'))
       if (!entry)
         continue
@@ -458,13 +575,15 @@ function matchSameSkeleton(
     const marks = () => isSameSpelling ? undefined : placeMarks(at, spellingMarks(at.spelled, spelledOf(entry), 0))
 
     if (!isRegistrableLabel) {
+      // Counted as written: `learn` reads as the four letters `leam`
+      const ordinaryWord = isSameSpelling && Array.from(entry.label).length < MIN_LONE_NAME_LENGTH
       offer({
         domain: entry.domain,
         visits: entry.visits,
         source: entry.source,
         reason: 'familiar-as-subdomain',
         evidence: label,
-        severity: 'high',
+        severity: ordinaryWord ? 'medium' : 'high',
         marks: marks(),
       })
       continue
@@ -566,26 +685,36 @@ function matchContainment(
   offer: (match: LookalikeMatch) => void,
 ) {
   const label = at.label
-  const tokens = new Set(labelSkeleton.split(/[-_]+/).filter(Boolean))
+  const skeletonTokens = labelSkeleton.split(/[-_]+/)
+  const tokens = new Set(skeletonTokens.filter(Boolean))
+  // The same tokens as written, place for place. A character that folds into
+  // a separator leaves the two out of step, and then none is taken for ordinary
+  const writtenTokens = label.split(/[-_]+/)
+  const inStep = writtenTokens.length === skeletonTokens.length
 
   // A short familiar name is too small to go hunting for inside a longer word,
   // but standing alone between separators there is nothing accidental about it –
   // which is the only way `moz-login` or `work-login` can be caught at all
-  for (const token of tokens) {
-    if (token === labelSkeleton || token.length < MIN_TOKEN_LENGTH)
-      continue
+  skeletonTokens.forEach((token, place) => {
+    if (!token || token === labelSkeleton || token.length < MIN_TOKEN_LENGTH)
+      return
     for (const entry of index.bySkeleton.get(token) ?? []) {
+      // `dev-portal` and `mail-server` are as ordinary as `dev.` and `mail.`
+      // in front of a site, `d3v-portal` is not, even beside a plain `dev`.
+      // Only a `high` match carries marks
+      const ordinary = inStep && writtenTokens[place] === entry.label
+        && Array.from(entry.label).length < MIN_LONE_NAME_LENGTH
       offer({
         domain: entry.domain,
         visits: entry.visits,
         source: entry.source,
         reason: 'contains-familiar',
         evidence: label,
-        severity: 'high',
-        marks: placeMarks(at, containedMarks(at.spelled, spelledOf(entry))),
+        severity: ordinary ? 'medium' : 'high',
+        marks: ordinary ? undefined : placeMarks(at, containedMarks(at.spelled, spelledOf(entry))),
       })
     }
-  }
+  })
 
   if (labelSkeleton.length < MIN_CONTAINMENT_LENGTH)
     return

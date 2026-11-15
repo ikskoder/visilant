@@ -27,6 +27,7 @@ export default defineConfig({
       'on-brand': token('on-brand'),
       'safe': { DEFAULT: token('safe'), text: token('safe-text'), tint: token('safe-tint'), line: token('safe-line') },
       'danger': { DEFAULT: token('danger'), text: token('danger-text'), tint: token('danger-tint'), line: token('danger-line') },
+      'caution': { DEFAULT: token('caution'), text: token('caution-text'), tint: token('caution-tint'), line: token('caution-line') },
       'neutral': { DEFAULT: token('neutral'), text: token('neutral-text'), tint: token('neutral-tint'), line: token('neutral-line') },
       'owner': { line: token('owner-line'), tint: token('owner-tint') },
     },

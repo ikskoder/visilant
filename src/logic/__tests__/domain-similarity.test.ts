@@ -1,6 +1,7 @@
 import type { FamiliarDomain } from '../domain-similarity'
 import punycode from 'punycode'
 import { describe, expect, it } from 'vitest'
+import { hostingPlatform, siteDomain } from '../domain-boundary'
 import { boundedEditDistance, buildFamiliarIndex, findLookalikes, skeleton } from '../domain-similarity'
 import { getProviderReferenceDomains } from '../email-providers'
 
@@ -424,7 +425,8 @@ describe('two short names against each other', () => {
     const [match] = shortCheck('moz-login.gov.ua')
     expect(match.domain).toBe('moz.gov.ua')
     expect(match.reason).toBe('contains-familiar')
-    expect(match.severity).toBe('high')
+    // Worth a look, not a red flag: `dev-portal` is as ordinary as this is not
+    expect(match.severity).toBe('medium')
     expect(shortCheck('nszu-login.gov.ua')[0]?.domain).toBe('nszu.gov.ua')
   })
 
@@ -432,6 +434,117 @@ describe('two short names against each other', () => {
     // `moz` is in `mozilla`, and that means nothing at all
     expect(shortCheck('mozilla.org')).toEqual([])
     expect(shortCheck('workspace.ua')).toEqual([])
+  })
+})
+
+describe('only the labels the owner chose', () => {
+  const known = buildFamiliarIndex([
+    { domain: 'dev.to', label: 'dev', visits: 30 },
+    { domain: 'online.ua', label: 'online', visits: 30 },
+    { domain: 'onliner.by', label: 'onliner', visits: 30 },
+    { domain: 'github.com', label: 'github', visits: 30 },
+    { domain: 'paypal.com', label: 'paypal', visits: 30 },
+    { domain: 'mail.ru', label: 'mail', visits: 30 },
+  ])
+  // The boundary as the background passes it, from the suffix list
+  const at = (hostname: string, site: string) => findLookalikes(hostname, known, site)
+
+  it('never compares the ending', () => {
+    expect(at('material.slint.dev', 'slint.dev')).toEqual([])
+    expect(at('shop.online', 'shop.online')).toEqual([])
+    // A platform's name is the platform's, and the shared-platform line says so
+    expect(at('someone.github.io', 'someone.github.io')).toEqual([])
+  })
+
+  it('still compares the site\'s own name and the levels in front', () => {
+    expect(at('paypal.github.io', 'paypal.github.io')[0]?.domain).toBe('paypal.com')
+    expect(at('paypal.slint.dev', 'slint.dev')[0]?.severity).toBe('high')
+    expect(at('onlinr.dev', 'onlinr.dev')[0]?.domain).toBe('online.ua')
+  })
+
+  it('finds a parked domain only where the owner wrote it', () => {
+    expect(at('x.dev.to.evil.com', 'evil.com')[0]).toMatchObject({ domain: 'dev.to', severity: 'high', evidence: 'dev.to' })
+    // The tenant's name ends the parked domain, which is the owner's to write
+    expect(at('paypal.com.github.io', 'com.github.io')[0]).toMatchObject({ domain: 'paypal.com', reason: 'familiar-as-subdomain' })
+    // A country site of the same name, not a domain parked in front of `.au`
+    expect(at('login.paypal.com.au', 'paypal.com.au')[0]).toMatchObject({ domain: 'paypal.com', reason: 'same-name', severity: 'medium' })
+  })
+
+  // A line each named the real site once per name
+  it('names every familiar domain parked in front of one site in one match', () => {
+    const two = buildFamiliarIndex([
+      { domain: 'paypal.com', label: 'paypal', visits: 10 },
+      { domain: 'google.com', label: 'google', visits: 90 },
+      { domain: 'dev.to', label: 'dev', visits: 30 },
+    ])
+    const found = findLookalikes('paypal.com.google.com.login.verify.test', two, 'verify.test')
+    expect(found).toHaveLength(1)
+    // In the order the address has them, not by visits
+    expect(found[0]).toMatchObject({ domain: 'paypal.com', evidence: 'paypal.com', reason: 'familiar-as-subdomain', severity: 'high', site: 'verify.test' })
+    expect(found[0].also).toEqual([{ domain: 'google.com', evidence: 'google.com', visits: 90 }])
+    // A red flag and a name only worth a look stay two lines
+    const mixed = findLookalikes('dev.paypal.verify.test', two, 'verify.test')
+    expect(mixed.map(match => [match.domain, match.severity, match.also])).toEqual([['paypal.com', 'high', undefined], ['dev.to', 'medium', undefined]])
+  })
+
+  it('names a name once, by the longest spelling the address has of it', () => {
+    const near = buildFamiliarIndex([
+      { domain: 'paypal.com', label: 'paypal', visits: 10 },
+      { domain: 'paypal.de', label: 'paypal', visits: 50 },
+      { domain: 'google.com', label: 'google', visits: 90 },
+    ])
+    // `paypal` alone, for the known paypal.de, is inside the parked paypal.com
+    const [line] = findLookalikes('paypal.com.google.com.verify.test', near, 'verify.test')
+    expect([line.domain, ...(line.also ?? []).map(item => item.domain)]).toEqual(['paypal.com', 'google.com'])
+    // Two known sites found in the same label: the better known speaks for both
+    const [alone] = findLookalikes('paypal.verify.test', near, 'verify.test')
+    expect(alone.domain).toBe('paypal.de')
+    expect(alone.also).toBeUndefined()
+    // A name that also stands on its own somewhere keeps its place in the line
+    const twice = findLookalikes('paypal.com.paypal.evil.test', near, 'evil.test')
+    expect([twice[0].domain, ...(twice[0].also ?? []).map(item => item.domain)]).toEqual(['paypal.com', 'paypal.de'])
+    // Two dots in a row, kept by the browser, lose nobody
+    const gap = findLookalikes('google.paypal..com.evil.test', near, 'evil.test')
+    expect([gap[0].domain, ...(gap[0].also ?? []).map(item => item.domain)]).toEqual(['google.com', 'paypal.com'])
+  })
+
+  it('finds a known domain spelled into an ending sold name by name', () => {
+    // The boundary and the platform as the background passes them
+    const sold = (hostname: string) => findLookalikes(hostname, known, siteDomain(hostname) ?? undefined, hostingPlatform(hostname) ?? undefined)
+    expect(hostingPlatform('mail.ru.com')).toBe('ru.com')
+    expect(sold('mail.ru.com')[0]).toMatchObject({ domain: 'mail.ru', reason: 'familiar-as-subdomain', severity: 'high', evidence: 'mail.ru' })
+    expect(sold('paypal.com.de')[0]).toMatchObject({ domain: 'paypal.com', severity: 'high' })
+    // A tenant of a platform is still only compared where the tenant wrote
+    expect(sold('someone.github.io')).toEqual([])
+  })
+
+  it('calls a short familiar name in front of a site worth a look, not a red flag', () => {
+    expect(at('dev.mycompany.com', 'mycompany.com')[0]).toMatchObject({ domain: 'dev.to', reason: 'familiar-as-subdomain', severity: 'medium' })
+    expect(at('mail.example.org', 'example.org')[0]?.severity).toBe('medium')
+    expect(at('dev-portal.example.com', 'example.com')[0]).toMatchObject({ domain: 'dev.to', severity: 'medium', marks: undefined })
+    // A long name is no ordinary level name, counted as written: `learn`
+    // reads as the four letters `leam`
+    expect(at('paypal.evil.net', 'evil.net')[0]?.severity).toBe('high')
+    const learn = buildFamiliarIndex([{ domain: 'learn.com', label: 'learn', visits: 30 }])
+    expect(findLookalikes('learn.example.com', learn, 'example.com')[0]?.severity).toBe('high')
+  })
+
+  // The history keeps a name as the browser hands it over, in its `xn--` form
+  it('compares a known name in another alphabet as it reads', () => {
+    const coded = punycode.toASCII('пример.рф')
+    const idn = buildFamiliarIndex([{ domain: coded, label: coded.split('.')[0], visits: 30 }])
+    expect(findLookalikes('пример.evil.com', idn, 'evil.com')[0]).toMatchObject({ domain: 'пример.рф', reason: 'familiar-as-subdomain', severity: 'high' })
+    expect(findLookalikes(punycode.toASCII('пример.рф.evil.com'), idn, 'evil.com')[0]).toMatchObject({ evidence: 'пример.рф', severity: 'high' })
+    // The site itself, its boundary passed coded as the background passes it
+    expect(findLookalikes(coded, idn, coded)).toEqual([])
+    expect(findLookalikes(`login.${coded}`, idn, coded)).toEqual([])
+  })
+
+  it('keeps a short name spelled with a swapped-in letter red', () => {
+    expect(at('dеv.evil.net', 'evil.net')[0]?.severity).toBe('high')
+    expect(at('d3v-portal.evil.net', 'evil.net')[0]?.severity).toBe('high')
+    // Beside a plain `dev`, which on its own would be ordinary
+    expect(at('d3v-dev.evil.net', 'evil.net')[0]?.severity).toBe('high')
   })
 })
 

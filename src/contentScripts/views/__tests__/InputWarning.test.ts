@@ -39,7 +39,7 @@ describe('inputWarning component', () => {
 
   it('emits close when close button is clicked', async () => {
     const wrapper = mount(InputWarning, { props: defaultProps })
-    const closeBtn = wrapper.get('button[aria-label="dismiss"]')
+    const closeBtn = wrapper.get('button[aria-label="closeDialog"]')
     await closeBtn.trigger('click')
     expect(wrapper.emitted('close')).toBeTruthy()
   })
@@ -53,7 +53,7 @@ describe('inputWarning component', () => {
   it('offers nothing that turns the warnings off', () => {
     const wrapper = mount(InputWarning, { props: defaultProps })
     expect(wrapper.findAll('button')).toHaveLength(1)
-    expect(wrapper.find('button[aria-label="dismiss"]').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="closeDialog"]').exists()).toBe(true)
   })
 
   it('says where the switch actually is', () => {

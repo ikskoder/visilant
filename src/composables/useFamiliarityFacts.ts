@@ -69,11 +69,6 @@ export interface VerdictOptions {
    * and a red "never visited" would be a verdict on the user's own machine.
    */
   hostname?: string
-  /**
-   * Beside an email address: never "never visited", since nobody visits an
-   * address and next to "Email address" it read as though somebody could.
-   */
-  email?: boolean
 }
 
 export function useFamiliarityFacts() {
@@ -97,7 +92,8 @@ export function useFamiliarityFacts() {
       const known = outcome.value !== undefined
       // A site never visited has no active days or first visit yet, which is
       // not the same as a record that never kept them: "not recorded" beside a
-      // site somebody has never opened read as a failure to record something
+      // site somebody has never opened read as a failure to record something.
+      // Only the comparison table draws these, beside the other side's numbers
       const neverVisited = (stats?.count ?? 0) === 0
       const value = known ? String(outcome.value) : translate(neverVisited ? 'statsNoneYet' : 'statsUnknown')
       const required = String(outcome.required)
@@ -147,10 +143,10 @@ export function useFamiliarityFacts() {
   /**
    * The verdict of a site as a badge: a word, an icon and a tone together.
    *
-   * Red for both kinds of not familiar. There is no yellow middle step: a reader
-   * cannot tell three warm colours apart at a glance, and a site seen three
-   * times is as much a stranger as one never seen when it asks for a password.
-   * The words still tell the two apart.
+   * Red for both kinds of not familiar. A verdict has no middle step: a site
+   * seen three times is as much a stranger as one never seen when it asks for
+   * a password. The words still tell the two apart. Orange is for a finding
+   * about an address that is only worth a look, never for a verdict.
    */
   function statusLabel(isSafe: boolean, count: number, unchecked = false, options: VerdictOptions = {}): VerdictLabel {
     // Not red: nothing says the site is unfamiliar, only that nobody could ask.
@@ -161,7 +157,10 @@ export function useFamiliarityFacts() {
       return { verdict: 'untracked', text: t.value(untrackedReason(options.hostname) === 'ip' ? 'untrackedIpBadge' : 'untrackedHostBadge'), tone: 'neutral', icon: 'shield-unknown' }
     if (isSafe)
       return { verdict: 'familiar', text: t.value('linkTooltipFamiliar'), tone: 'safe', icon: 'shield-pass' }
-    if (count === 0 && !options.email)
+    // The same three words for a site wherever it is named, the site of an
+    // email address included. That one used to read "Unfamiliar site" over a
+    // line saying "Never visited", two verdicts on one record
+    if (count === 0)
       return { verdict: 'never', text: t.value('linkTooltipNeverVisited'), tone: 'danger', icon: 'shield-fail' }
     return { verdict: 'unfamiliar', text: t.value('linkTooltipUnfamiliar'), tone: 'danger', icon: 'shield-fail' }
   }

@@ -44,6 +44,7 @@ describe('visitKeysToRemove', () => {
       customShorteners: ['short.test'],
       customPublicEmailProviders: ['mail.test'],
       customDisposableEmailDomains: ['temp.test'],
+      customForwardingEmailDomains: ['alias.test'],
       customMailSites: ['gmail.com = mail.google.com'],
       remoteShortenerDomains: { domains: ['a.test'], updatedAt: 1, urls: [] },
       remotePublicEmailProviders: { domains: ['b.test'], updatedAt: 1, urls: [] },

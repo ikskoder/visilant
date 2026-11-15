@@ -45,10 +45,19 @@ function cacheKey(hostname: string, context: Context): string {
 }
 
 function store(key: string, answer: LookalikeAnswer) {
-  // A plain FIFO trim: this only guards against unbounded growth on a page
-  // with thousands of distinct links, not against a hot-set eviction problem
-  if (!entries.has(key) && entries.size >= CACHE_LIMIT)
-    entries.delete(entries.keys().next().value!)
+  // Past the limit only answers older than the cache keeps them go. A plain
+  // FIFO trim pushed out the first rows of a list of recipients at more than
+  // the limit of domains while they were still on screen, and a row whose
+  // entry is gone reads as unanswered, its red flag lost with it. So the map
+  // grows to what was asked within the time an answer is kept, and only a
+  // screen left open longer than that can still lose an answer this way
+  if (!entries.has(key) && entries.size >= CACHE_LIMIT) {
+    const now = Date.now()
+    for (const [old, entry] of entries) {
+      if (now - entry.at >= CACHE_TTL_MS && !inFlight.has(old))
+        entries.delete(old)
+    }
+  }
   entries.set(key, { answer, at: Date.now() })
 }
 
@@ -155,9 +164,10 @@ function asCounted(hostname: string): string {
 /**
  * Which characters of `text` to underline, from the answer about `hostname`.
  *
- * Only the top match is used: the first line of the notice names one familiar
- * site, and underlines worked out against another would point at letters that
- * line is not about. `text` may be the host or a whole email address. Marks go
+ * Only the top match is used: the first line of the notice names the familiar
+ * sites it is about (several, when several are parked in front of one site,
+ * with the marks of each), and underlines worked out against another would
+ * point at letters that line is not about. `text` may be the host or a whole email address. Marks go
  * on it only when it is the same characters the detector counted – the
  * `xn--` form of a name is not, so it carries no marks, and the Unicode line
  * beside it does.

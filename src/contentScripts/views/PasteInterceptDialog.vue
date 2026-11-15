@@ -1,18 +1,10 @@
 <script setup lang="ts">
 import type { PasteInterceptData } from '~/logic/ui-state'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import DomainMarkers from '~/components/DomainMarkers.vue'
-import FamiliarityFacts from '~/components/FamiliarityFacts.vue'
-import LookalikeNotice from '~/components/LookalikeNotice.vue'
-import RedFlagCount from '~/components/RedFlagCount.vue'
-import SecureText from '~/components/SecureText.vue'
-import VzBadge from '~/components/VzBadge.vue'
 import VzIcon from '~/components/VzIcon.vue'
-import VzNotice from '~/components/VzNotice.vue'
 import VzSig from '~/components/VzSig.vue'
 import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
-import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { useModalDialog } from '~/composables/useModalDialog'
 import { useTopLayer } from '~/composables/useTopLayer'
 import { useVisualViewport } from '~/composables/useVisualViewport'
@@ -30,9 +22,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-// The letters a lookalike changed, underlined in the address. Asked as the
-// lookalike notice under it asks, so both read one answer
-const linkDiff = useLookalikeDiff(() => props.data?.domain ?? '')
 const { statusLabel } = useFamiliarityFacts()
 
 // Hidden by default. Whatever is pasted here is exactly the kind of thing that
@@ -50,12 +39,27 @@ watch(() => props.visible, () => {
  * means the case this dialog started life as: an unfamiliar site.
  */
 const status = computed(() => props.data?.status ?? 'unfamiliar')
+/** The verdict under the address. None when the check failed: the title says so. */
+const addressBadge = computed(() => {
+  switch (status.value) {
+    // Let through because the user silenced this site is not the same as familiar
+    case 'safe': return statusLabel(!props.data?.silenced, props.data?.stats.count ?? 0)
+    case 'checking': return { verdict: 'checking', text: t.value('statusChecking'), tone: 'neutral' as const, icon: 'pending' as const }
+    case 'unfamiliar': return statusLabel(false, props.data?.stats.count ?? 0)
+    default: return null
+  }
+})
 const isDecision = computed(() => status.value === 'unfamiliar' || status.value === 'error')
 
+// A paste held on a site that turned out familiar is titled as any held
+// paste. Titled "Familiar site" with a green check it read as a result worth a
+// dialog, when it is a hiccup: the device was too slow to have the check in
+// when the paste came, and a paste once stopped cannot be let through. The
+// line under the title says so, and the verdict is under the address as
+// everywhere else.
 const title = computed(() => {
   switch (status.value) {
     case 'checking': return t.value('pasteInterceptCheckingTitle')
-    case 'safe': return t.value('pasteInterceptSafeTitle')
     case 'error': return t.value('pasteInterceptErrorTitle')
     default: return t.value('pasteInterceptTitle')
   }
@@ -64,7 +68,7 @@ const title = computed(() => {
 const message = computed(() => {
   switch (status.value) {
     case 'checking': return t.value('pasteInterceptCheckingMessage')
-    case 'safe': return t.value('pasteInterceptSafeMessage')
+    case 'safe': return t.value(props.data?.silenced ? 'pasteInterceptSilencedMessage' : 'pasteInterceptSafeMessage')
     case 'error': return t.value('pasteInterceptErrorMessage')
     default: return t.value('pasteInterceptMessage')
   }
@@ -111,6 +115,16 @@ watch(() => props.visible && Boolean(props.data) && isDecision.value, (shown) =>
     armTimer = setTimeout(() => armed.value = true, RISK_DELAY_MS)
 }, { immediate: true })
 
+// A line of help opening moves the buttons of a centred card under the
+// pointer, so the press after it waits the same half second
+function onCardPress(event: MouseEvent) {
+  if (!isDecision.value || !(event.target as Element | null)?.closest?.('[data-action="help"]'))
+    return
+  clearTimeout(armTimer)
+  armed.value = false
+  armTimer = setTimeout(() => armed.value = true, RISK_DELAY_MS)
+}
+
 onBeforeUnmount(() => clearTimeout(armTimer))
 
 function onAllow() {
@@ -141,13 +155,10 @@ const payloadKind = computed(() => {
         ref="card"
         class="relative dialog-container vz-overlay vz-dialog"
         :data-status="status"
+        @click.capture="onCardPress"
       >
-        <VzSig />
         <div class="vz-dialog__head">
-          <VzIcon v-if="status === 'safe'" name="pass" large class="tone-safe" />
-          <VzIcon v-else-if="status === 'checking'" name="pending" large class="tone-neutral" />
-          <VzIcon v-else-if="status === 'error'" name="unknown" large class="tone-neutral" />
-          <VzIcon v-else name="alert" large class="tone-danger" />
+          <VzSig :mark="status === 'safe' ? 'info' : status === 'checking' ? 'pending' : status === 'error' ? 'unknown' : 'alert'" large />
           <h2 class="vz-title">
             {{ title }}
           </h2>
@@ -165,47 +176,30 @@ const payloadKind = computed(() => {
           {{ message }}
         </p>
 
-        <!-- The box is not part of the page the address bar names. That is the
-             fact worth reading before anything about visit counts. -->
-        <VzNotice v-if="data.inFrame" tone="danger">
-          <span class="vz-body-strong">{{ t('pasteInterceptInFrame') }}</span>
-        </VzNotice>
-
         <!-- The address is the point of the whole dialog, so it gets the weight.
              The facts under it are only shown once there are any: a dialog put up
              before the check finished has nothing to report but the name. -->
         <div class="vz-well grid gap-3">
-          <div class="dialog-address">
-            <SecureText :text="data.domain" size="l" :diff="linkDiff(data.domain)">
-              <CopyButton :text="data.domain" />
-            </SecureText>
-            <VzBadge v-if="status === 'safe'" tone="safe" icon="shield-pass" data-verdict="familiar">
-              {{ t('linkTooltipFamiliar') }}
-            </VzBadge>
-            <VzBadge v-else-if="status === 'checking'" tone="neutral" icon="pending" data-verdict="checking">
-              {{ t('statusChecking') }}
-            </VzBadge>
-            <VzBadge v-else-if="status === 'unfamiliar'" :tone="statusLabel(false, data.stats.count).tone" :icon="statusLabel(false, data.stats.count).icon" :data-verdict="statusLabel(false, data.stats.count).verdict">
-              {{ statusLabel(false, data.stats.count).text }}
-            </VzBadge>
-            <!-- Asked as the lines below ask, once they are drawn -->
-            <RedFlagCount v-if="status !== 'checking'" :hostname="data.domain" />
-          </div>
-          <FamiliarityFacts v-if="status === 'unfamiliar'" :stats="data.stats" />
-
-          <!-- Punycode. Skipped when it would repeat the domain verbatim -->
-          <VzNotice v-if="data.punycode && data.punycode !== data.domain" tone="danger" bare>
-            {{ t('linkTooltipPunycode') }}: <SecureText :text="data.punycode" size="s" :diff="linkDiff(data.punycode)">
-              <CopyButton :text="data.punycode" />
-            </SecureText>
-          </VzNotice>
-
-          <!-- Structural markers. These read the name itself, so they are worth
-               showing even when the visit history could not be reached. -->
-          <!-- Held back while the verdict is out, like the lookalike line under it, so
-               the platform line does not flash up for a site that is familiar -->
-          <DomainMarkers :hostname="data.domain" :familiar="status === 'safe' || status === 'checking'" bare />
-          <LookalikeNotice v-if="status !== 'checking'" :hostname="data.domain" bare />
+          <!-- While the verdict is out nothing that depends on it is drawn, so a
+               line about a platform or a lookalike does not flash up for a
+               site that turns out familiar -->
+          <!-- A paste in a frame is judged by the page the frame sits on, so
+               the address is the page's, and is headed as that. Nothing is
+               said about the frame itself, not even that another site serves
+               it: the dialog is up because the page is unfamiliar, a familiar
+               page raises none whatever its frames, so the line never changed
+               what a reader should do. Naming that site was worse than
+               useless: nobody visits the address of a payment box, so it can
+               only ever read "Never visited", or stand there unchecked -->
+          <AddressBlock
+            :heading="data.inFrame ? t('pasteInterceptPageHeading') : undefined"
+            :hostname="data.domain"
+            :punycode="data.punycode"
+            :badge="addressBadge"
+            :familiar="(status === 'safe' && !data.silenced) || status === 'checking'"
+            :facts="status === 'unfamiliar' ? data.stats : null"
+            :pending="status === 'checking'"
+          />
         </div>
 
         <!-- What is on the clipboard, described before it is shown. A paste
@@ -295,13 +289,6 @@ const payloadKind = computed(() => {
   max-height: calc(var(--vz-vh, 100dvh) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-
-.dialog-address {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
 }
 
 /* The payload is arbitrary text from an untrusted page, so it is boxed in:

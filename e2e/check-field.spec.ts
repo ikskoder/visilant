@@ -55,7 +55,10 @@ test('the check field is on the standalone page and not in the popup', async ({ 
   const popup = await context.newPage()
   await popup.goto(`chrome-extension://${extensionId}/dist/popup/index.html`)
   await popup.waitForTimeout(1500)
-  await expect(popup.locator('text=Check a link, email address or QR code')).toHaveCount(0)
+  await expect(popup.locator('[data-check-field]')).toHaveCount(0)
+  await expect(popup.locator(CHECK_INPUT)).toHaveCount(0)
+  // The button that opens the page is named as the page's field is
+  await expect(popup.locator('button', { hasText: 'Check a link, email address or QR code' })).toBeVisible()
 })
 
 // The check answers the way the extension then acts. A link to a new subdomain
@@ -178,7 +181,9 @@ test('a bare domain is understood without a scheme', async ({ context, extension
   await check(page, 'example.net')
 
   await expect(panel(page).locator('.secure-domain-display').first()).toHaveText('example.net', { timeout: 5000 })
-  await expect(page.locator('[data-criterion="visits"]').first()).toHaveText('0')
+  // Never visited, said once by the verdict and not again as a row of zeros
+  await expect(panel(page).locator('[data-popup-verdict]')).toHaveAttribute('data-verdict', 'never')
+  await expect(page.locator('[data-criterion]')).toHaveCount(0)
   // Nothing sits in front of the base domain, so there is no base domain to add
   await expect(page.locator('[data-base-domain]')).toHaveCount(0)
 })
@@ -191,7 +196,7 @@ test('a known shortener is flagged and offers to be expanded', async ({ context,
   // Said once, in the card, in words. The field only offers the way through it.
   await expect(panel(page).locator('[data-marker-note="shortener"]')).toBeVisible({ timeout: 5000 })
   await expect(field(page).locator('text=shortener')).toHaveCount(0)
-  await expect(field(page).locator('button', { hasText: 'Show where it leads' })).toBeVisible()
+  await expect(field(page).locator('button', { hasText: 'Try to find where it leads' })).toBeVisible()
 })
 
 test('an email address one letter off a familiar provider is flagged', async ({ context, extensionId }) => {
@@ -210,7 +215,7 @@ test('an email address one letter off a familiar provider is flagged', async ({ 
   // One sentence, naming the site it is about. The reason used to sit on a line
   // of its own and say "that name", which told a first-time reader nothing.
   const notice = panel(page).locator('[data-lookalike-source="history"]')
-  await expect(notice).toHaveText(/May be imitating the familiar\s*gmail\.com, with a letter or two changed/, { timeout: 5000 })
+  await expect(notice).toHaveText(/May be made to look like the familiar\s*gmail\.com\s*with a letter or two changed/, { timeout: 5000 })
   await expect(notice.locator('[data-lookalike-site]')).toHaveText('gmail.com')
 })
 
@@ -230,18 +235,17 @@ test('a familiar domain parked in front of an ending is explained once, by the l
   // for word.
   await expect(page.locator('[data-lookalike-reason="familiar-as-subdomain"]')).toHaveCount(1)
   // The marker it replaces named the real site, so this line has to as well
-  await expect(notice).toHaveText(/May be imitating the familiar\s*yourbank\.com, but the real site is\s*pay-verify\.top/)
+  await expect(notice).toHaveText(/May be made to look like the familiar\s*yourbank\.com\s*but the real site is\s*pay-verify\.top/)
   await expect(notice.locator('[data-lookalike-real]')).toHaveText('pay-verify.top')
 
-  // Nothing familiar is imitated here, so the marker is the only line, and it
-  // names the site the address really belongs to
-  await check(page, 'https://something.com.evil.net/login')
-  const marker = panel(page).locator('[data-marker="embedded-public-suffix"]')
-  await expect(marker).toHaveText(/Looks like\s*something\.com, but the real site is\s*evil\.net/, { timeout: 5000 })
-  await expect(marker.locator('[data-marker-imitated]')).toHaveText('something.com')
-  await expect(marker.locator('[data-marker-site]')).toHaveText('evil.net')
-  await expect(page.locator('[data-marker="embedded-public-suffix"]')).toHaveCount(1)
-  await expect(page.locator('[data-lookalike]')).toHaveCount(0)
+  // Two domains parked in front, one of them never visited. That one imitates
+  // nothing the user trusts, so the familiar one is the only line, and nothing
+  // is said of the other. Waited for the line first, for the same reason
+  await check(page, 'https://something.com.yourbank.com.evil.net/login')
+  const only = panel(page).locator('[data-lookalike-reason="familiar-as-subdomain"]')
+  await expect(only).toHaveText(/yourbank\.com\s*but the real site is\s*evil\.net/, { timeout: 5000 })
+  await expect(page.locator('[data-lookalike]')).toHaveCount(1)
+  await expect(page.locator('[data-marker="embedded-public-suffix"]')).toHaveCount(0)
 })
 
 test('every marker is drawn once, in the card, the one about the link included', async ({ context, extensionId }) => {
@@ -335,7 +339,7 @@ test('a unicode lookalike is reported under its real ascii name', async ({ conte
   // as a familiar one. The field under the input used to print it again.
   await expect(panel(page)).toContainText('xn--pple-43d.com', { timeout: 5000 })
   await expect(field(page).locator('[data-field-hostname]')).toHaveCount(0)
-  await expect(field(page).locator('text=Also written')).toHaveCount(0)
+  await expect(field(page).locator('[data-other-spelling]')).toHaveCount(0)
   await expect(page.locator('text=Readable form')).toBeVisible({ timeout: 5000 })
   await expect(page.locator('text=Coded form (punycode)')).toBeVisible()
 })
@@ -458,14 +462,14 @@ test('two addresses can be held against each other, character by character', asy
 
   const field = page.locator('input[placeholder="Address from an earlier message"]')
   await field.fill('anna@example.org')
-  await expect(page.locator('text=Not the same address')).toBeVisible({ timeout: 3000 })
+  await expect(page.locator('text=The addresses differ')).toBeVisible({ timeout: 3000 })
 
   // "rn" against "m": one letter swapped and one added, and nothing else
-  await expect(page.locator('text=2 characters differ')).toBeVisible()
+  await expect(page.locator('text=2 characters aren\'t the same')).toBeVisible()
 
   // The same address, and the answer flips
   await field.fill('anna@exarnple.org')
-  await expect(page.locator('text=The same address, character for character')).toBeVisible({ timeout: 3000 })
+  await expect(page.locator('text=The addresses are identical')).toBeVisible({ timeout: 3000 })
 })
 
 // The check reads an address and stops there – it never learns which server sent
@@ -479,10 +483,10 @@ test('an email check says what it cannot tell you', async ({ context, extensionI
   const caveat = page.locator('text=Checking this because an email looked suspicious')
   await expect(caveat).toBeVisible({ timeout: 5000 })
 
-  // Folded away until asked for: four paragraphs on every check would be noise
-  await expect(page.locator('text=This check only ever saw the address')).toHaveCount(0)
+  // Folded away until asked for: five lines on every check would be noise
+  await expect(page.locator('text=This check saw only the address')).toHaveCount(0)
   await caveat.click()
-  await expect(page.locator('text=This check only ever saw the address')).toBeVisible()
+  await expect(page.locator('text=This check saw only the address')).toBeVisible()
 
   // A link and a file are two different pages at VirusTotal, and sending
   // somebody to the wrong one in the middle of advice about not opening things
@@ -517,9 +521,10 @@ test('two tenants of one hosting platform are two different sites', async ({ con
 
   await check(page, 'https://evil.github.io/login')
 
-  // The stranger is its own site, with its own count of nothing
-  await expect(page.locator('[data-criterion="visits"]').first()).toContainText('0')
-  await expect(panel(page).locator('text=evil.github.io').first()).toBeVisible()
+  // The stranger is its own site, with nothing of its own and nothing borrowed
+  await expect(panel(page).locator('text=evil.github.io').first()).toBeVisible({ timeout: 5000 })
+  await expect(panel(page).locator('[data-popup-verdict]')).toHaveAttribute('data-verdict', 'never')
+  await expect(page.locator('[data-criterion]')).toHaveCount(0)
 })
 
 test('a tenant keeps its own subdomains', async ({ context, extensionId }) => {
@@ -534,7 +539,8 @@ test('a tenant keeps its own subdomains', async ({ context, extensionId }) => {
   // than borrowing them – which is what put two different `Visits` rows on one
   // screen before.
   await expect(page.locator('[data-family-stats]').locator('[data-criterion="visits"]')).toContainText('30', { timeout: 5000 })
-  await expect(page.locator('[data-criterion="visits"]').first()).toContainText('0')
+  await expect(panel(page).locator('[data-popup-verdict]')).toHaveAttribute('data-verdict', 'never')
+  await expect(panel(page).locator('[data-criterion]')).toHaveCount(0)
 })
 
 test('every recipient of a mailto is checked, not just the first', async ({ context, extensionId }) => {
@@ -544,12 +550,43 @@ test('every recipient of a mailto is checked, not just the first', async ({ cont
 
   const recipients = field(page).locator('.mail-recipients')
   await expect(recipients).toBeVisible({ timeout: 5000 })
-  await expect(recipients).toContainText('Recipients (3)')
+  await expect(recipients).toContainText('3 recipients · 3 domains')
   await expect(recipients).toContainText('attacker')
   await expect(recipients).toContainText('evil.example')
   // A copied recipient reaches a real person and is named as one
   await expect(recipients).toContainText('Cc')
   await expect(recipients).toContainText('third.example')
+})
+
+// The card under the field shows one recipient at a time, the one opened in
+// the list, and the comparison is with that one
+test('a recipient opened in the list is the one the card shows and the comparison takes', async ({ context, extensionId }) => {
+  const page = await openCheckPage(context, extensionId)
+  await check(page, 'mailto:trusted@known.example,attacker@evil.example?cc=copied@third.example')
+
+  const recipients = field(page).locator('.mail-recipients')
+  await expect(recipients.locator('[data-recipient]')).toHaveText([/attacker@evil\.example/, /trusted@known\.example/, /copied@third\.example/], { timeout: 5000 })
+  // Nothing chosen yet: no card, no comparison, and a line that says what to do
+  await expect(recipients.locator('[data-status="choose-recipient"]')).toBeVisible()
+  await expect(panel(page)).toHaveCount(0)
+  await expect(page.locator('text=Compare with an address you already trust')).toHaveCount(0)
+
+  await recipients.locator('[data-recipient="attacker@evil.example"] .recipient-address').click()
+  await expect(recipients.locator('[data-recipient-more]')).toHaveCount(1)
+  await expect(panel(page)).toContainText('To · #1 of 3 recipients', { timeout: 5000 })
+  await expect(panel(page).locator('.popup-address .vz-addr__acct')).toHaveText('attacker')
+  // Its lines are in the open row, so the card leaves them out
+  await expect(panel(page).locator('[data-red-flag], .domain-markers')).toHaveCount(0)
+
+  await page.locator('text=Compare with an address you already trust').click()
+  const pasted = page.locator('input[placeholder="Address from an earlier message"]')
+  await pasted.fill('attacker@evil.example')
+  await expect(field(page)).toContainText('The addresses are identical')
+  // Another recipient, the same trusted address held against it
+  await recipients.locator('[data-recipient="copied@third.example"] .recipient-address').click()
+  await expect(panel(page)).toContainText('Cc · #3 of 3 recipients', { timeout: 5000 })
+  await expect(pasted).toHaveValue('attacker@evil.example')
+  await expect(field(page)).toContainText('The addresses differ')
 })
 
 test('a single-recipient address keeps the shape it always had', async ({ context, extensionId }) => {
@@ -558,4 +595,135 @@ test('a single-recipient address keeps the shape it always had', async ({ contex
   await check(page, 'billing@some-supplier.com')
 
   await expect(field(page).locator('.mail-recipients')).toHaveCount(0)
+})
+
+// A label and the dot after it are held together by room that is given and
+// taken back in the stylesheet. Taken back by more than the dot is wide, which
+// it was with the frames off, every label broke its last letter onto a second
+// line: "paypa / l". Nothing drew an address with the frames off, so nothing saw it.
+for (const frames of [true, false]) {
+  test(`every label of an address is one line high with the frames ${frames ? 'on' : 'off'}`, async ({ context, extensionId }) => {
+    await patchSettings(context, { addressFrames: frames })
+    // Familiar, so the name parked in front is a red flag to mark
+    await seedVisits(context, 'paypal.com', 50, { activeDays: 30 })
+    const page = await openCheckPage(context, extensionId)
+    await page.evaluate(async () => chrome.runtime.sendMessage({ type: 'rebuild-familiar-index', data: {} }))
+    // With a dot at the very end, which is bold and a little wider
+    await check(page, 'https://paypal.com.secure.evil.net./login')
+    // The card under the field draws the address checked, the field leaves it to the card
+    const address = panel(page).locator('.popup-address .vz-addr').first()
+    const labels = address.locator('.vz-lbl')
+    await expect(labels).toHaveCount(5, { timeout: 5000 })
+    const lines: { rects: number, height: number }[] = await labels.evaluateAll((all: HTMLElement[]) => all.map(label => ({ rects: label.getClientRects().length, height: Math.round(label.getBoundingClientRect().height) })))
+    expect(lines.map(line => line.rects)).toEqual([1, 1, 1, 1, 1])
+    // One line each: a label broken in two is twice as high as its neighbours.
+    // Not the same height to the pixel, a red frame is a pixel heavier
+    const heights = lines.map(line => line.height)
+    expect(Math.max(...heights)).toBeLessThan(Math.min(...heights) * 1.5)
+    // And the finding under it is marked in it: the borrowed name in red
+    const red = address.locator('.vz-lbl[data-tone="danger"]')
+    await expect(red).toHaveText(['paypal', 'com'])
+    // As drawn, not as named: with the frames off the mark is the tint alone,
+    // and a rule that cleared the label's ground once took it away
+    const drawn = await red.first().evaluate((label: HTMLElement) => {
+      const style = getComputedStyle(label)
+      return { frame: style.borderTopWidth, under: style.boxShadow, ground: style.backgroundColor }
+    })
+    expect(drawn.ground).not.toBe('rgba(0, 0, 0, 0)')
+    if (frames)
+      expect(drawn.frame).toBe('2px')
+    else
+      expect(drawn.under).toBe('none')
+  })
+}
+
+// What kind of mail service a domain is, is a line about the domain. It stood
+// in the field's block under the name before the @, and the card that shows
+// the domain and calls it "Temporary email service" said nothing about what that is
+for (const service of [
+  { kind: 'disposable', address: 'refunds@mailinator.com', badge: 'Temporary email service', line: 'Anyone can make an address here in seconds' },
+  { kind: 'forwarding', address: 'dev@mozmail.com', badge: 'Email forwarding service', line: 'Mail sent to this address is passed on to another mailbox' },
+]) {
+  test(`a ${service.kind} mail service is explained in the card, under the domain it is about`, async ({ context, extensionId }) => {
+    const page = await openCheckPage(context, extensionId)
+    await check(page, service.address)
+
+    const card = panel(page)
+    await expect(card.locator('[data-popup-verdict]')).toHaveAttribute('data-verdict', service.kind)
+    await expect(card.locator('[data-popup-verdict]')).toContainText(service.badge)
+    // Never a verdict on visits nobody makes to such a domain
+    await expect(card).not.toContainText('Never visited')
+    await expect(card.locator('[data-criterion]')).toHaveCount(0)
+
+    const line = card.locator(`[data-status="${service.kind}"]`)
+    await expect(line).toHaveAttribute('data-tone', 'caution')
+    await expect(line).toContainText(service.line)
+    // Said once on the page, and not under the account name
+    await expect(page.locator(`[data-status="${service.kind}"]`)).toHaveCount(1)
+    await expect(field(page)).not.toContainText(service.line)
+
+    // The site in the address is in the line's orange
+    await expect(card.locator('.popup-address .vz-lbl[data-tone="caution"]')).toHaveCount(2)
+
+    // What writing to such an address means is behind the question mark
+    // The card's verdict names the kind, so the line does not say it again
+    await expect(line.locator('[data-service-name]')).toHaveCount(0)
+    await expect(line).not.toContainText('who will read your message')
+    await line.locator('[data-action="help"]').click()
+    await expect(line.locator('[data-help-text]')).toContainText('who will read your message')
+  })
+
+  // One explanation, wherever the address came from
+  test(`a mail link to a ${service.kind} mail service is explained in the same words`, async ({ context, extensionId }) => {
+    const page = await openCheckPage(context, extensionId)
+    await check(page, `mailto:${service.address}`)
+
+    const line = panel(page).locator(`[data-status="${service.kind}"]`)
+    await expect(line).toContainText(service.line)
+    await expect(line.locator('[data-action="help"]')).toHaveCount(1)
+  })
+}
+
+// The page about a domain alone has no address on it. The details of a mail
+// link are the check page with the link in it
+test('the check page opened with a mail link shows the address and its domain', async ({ context, extensionId }) => {
+  const page = await context.newPage()
+  await page.goto(`chrome-extension://${extensionId}/dist/popup/index.html?check=1&value=${encodeURIComponent('mailto:ann@some-supplier.test')}`)
+
+  await expect(field(page)).toContainText('Email address', { timeout: 10000 })
+  await expect(page.locator(CHECK_INPUT)).toHaveValue('mailto:ann@some-supplier.test')
+  await expect(panel(page).locator('.popup-address .vz-addr__acct')).toContainText('ann')
+  await expect(panel(page).locator('.popup-address')).toContainText('some-supplier')
+})
+
+// An entry that does not read as an address is somebody a mail program may
+// still write to. It used to drop out of the count without a word
+test('a recipient that does not read as an address is counted as not checked', async ({ context, extensionId }) => {
+  const page = await openCheckPage(context, extensionId)
+  await check(page, 'mailto:ann@known.example?cc=not-an-address')
+
+  const recipients = field(page).locator('.mail-recipients')
+  await expect(recipients).toBeVisible({ timeout: 5000 })
+  await expect(recipients).toContainText('+1 more that don\'t read as an email address, so not checked')
+})
+
+// Past 25 the rest used to be counted as not checked, on the one page that is
+// there to look at all of them
+test('every recipient is checked, however many the link names', async ({ context, extensionId }) => {
+  const page = await openCheckPage(context, extensionId)
+  await check(page, `mailto:${Array.from({ length: 40 }, (_, i) => `p${i}@known.example`).join(',')}`)
+
+  const recipients = field(page).locator('.mail-recipients')
+  await expect(recipients).toContainText('40 recipients · 1 domain', { timeout: 5000 })
+  await expect(recipients.locator('[data-recipient]')).toHaveCount(40)
+  await expect(recipients).not.toContainText('not checked')
+})
+
+test('a list separated by semicolons is read as a mail program reads it', async ({ context, extensionId }) => {
+  const page = await openCheckPage(context, extensionId)
+  await check(page, 'mailto:pay@known.example;Boss <ceo@evil.example>')
+
+  const recipients = field(page).locator('.mail-recipients')
+  await expect(recipients).toContainText('2 recipients · 2 domains', { timeout: 5000 })
+  await expect(recipients).toContainText('evil.example')
 })

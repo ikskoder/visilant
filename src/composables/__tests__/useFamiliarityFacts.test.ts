@@ -37,9 +37,11 @@ describe('statusLabel', () => {
     expect(statusLabel(false, 0, false, { hostname: 'example.com' }).verdict).toBe('never')
   })
 
-  // Nobody visits an address, so beside one "never visited" reads wrong
-  it('never says never visited beside an email address', () => {
-    expect(statusLabel(false, 0, false, { email: true }).verdict).toBe('unfamiliar')
-    expect(statusLabel(true, 9, false, { email: true }).verdict).toBe('familiar')
+  // One record, one verdict: "Unfamiliar site" over a line reading "Never
+  // visited" was two
+  it('tells a site never visited from one seen a few times', () => {
+    expect(statusLabel(false, 0).verdict).toBe('never')
+    expect(statusLabel(false, 3).verdict).toBe('unfamiliar')
+    expect(statusLabel(true, 9).verdict).toBe('familiar')
   })
 })

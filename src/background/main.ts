@@ -6,10 +6,11 @@ import { onMessage } from 'webext-bridge/background'
 import { applySilence, canAutoLift, familiarSilencedHosts, liftSilence, recordStats } from '~/logic/auto-unsilence'
 import { ACTION_ICONS, BADGE_COLORS, badgeText, toolbarLook } from '~/logic/badge'
 import { fetchBlobBounded } from '~/logic/bounded-fetch'
-import { addressShape, belongsToSite, hasKnownSuffix, siteDomain, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
+import { putCheckHandoff } from '~/logic/check-handoff'
+import { addressShape, belongsToSite, hasKnownSuffix, hostingPlatform, siteDomain, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
 import { buildFamiliarIndex, findLookalikes } from '~/logic/domain-similarity'
-import { getProviderReferenceDomains } from '~/logic/email-providers'
-import { analyzeEmailAddress, collectMailtoRecipients, parseMailtoUrl } from '~/logic/email-safety'
+import { getProviderReferenceDomains, withoutServiceNameMatches } from '~/logic/email-providers'
+import { analyzeEmailAddress } from '~/logic/email-safety'
 import { applyVisitToFamiliar, collectFamiliarDomains, FAMILIAR_INDEX_KEY } from '~/logic/familiar-index'
 import { aggregateFamiliarityStats, familiaritySignature, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { HISTORY_AUTO_IMPORT_KEY, HISTORY_IMPORT_STATE_KEY, isImportAlive, newImportRunId, readHistoryImportState, runHistoryImport, shouldAutoImport } from '~/logic/history-import'
@@ -1113,7 +1114,12 @@ async function findLookalikesLogic(hostname: string, context?: 'email') {
 
   const history = await getFamiliarIndex()
   const index = context === 'email' ? getEmailIndex(history) : history
-  return findLookalikes(hostname, index, siteDomain(hostname) || undefined)
+  const matches = findLookalikes(hostname, index, siteDomain(hostname) || undefined, hostingPlatform(hostname) || undefined)
+
+  // A mail service known by name is not a copy of another one. Only what was
+  // found in the service's own labels goes: the label in front of them is
+  // often the user's to choose, see `builtinMailServiceOf`
+  return context === 'email' ? withoutServiceNameMatches(hostname, matches) : matches
 }
 
 // Handle ignore site requests
@@ -1252,23 +1258,42 @@ async function handleTampering(tabId?: number, tabUrl?: string) {
 /**
  * Open the check page with something already in it.
  *
- * Used for a `mailto:` with more than one recipient, where there is no single
- * domain a dashboard could be about. The check page reads every address in the
- * link, which is the whole point – the domain view could only ever have shown
- * the first one.
+ * Used for a mail link and for an email address, where the page about one
+ * domain would show no address at all. The check page reads every address in
+ * the link.
  */
 async function handleOpenCheckTab(value: string) {
-  const url = browser.runtime.getURL(`dist/popup/index.html?check=1&value=${encodeURIComponent(value)}`)
+  // Handed over out of sight, so a mail link somebody only asked about is not
+  // left whole in the browser's history, see `check-handoff.ts`
+  const url = browser.runtime.getURL(`dist/popup/index.html?${await putCheckHandoff(value)}`)
   await browser.tabs.create({ url })
   return 'Check tab opened'
 }
 
 // Open popup page in a new tab with domain context
-async function handleOpenPopupTab(domain: string, context?: string) {
-  const query = `domain=${encodeURIComponent(domain)}${context === 'email' ? '&context=email' : ''}`
-  const popupUrl = browser.runtime.getURL(`dist/popup/index.html?${query}`)
+async function handleOpenPopupTab(domain: string) {
+  const popupUrl = browser.runtime.getURL(`dist/popup/index.html?domain=${encodeURIComponent(domain)}`)
   await browser.tabs.create({ url: popupUrl })
   return 'Popup tab opened'
+}
+
+/**
+ * The details of an email address, asked for from a page: the check page with
+ * the address in it.
+ *
+ * It used to be the page above with the address's domain, which showed a
+ * domain and no address, and a throwaway mail service as a badge with not a
+ * word about what that is. The check page draws the name before the @, every
+ * recipient of a mail link and the same card for the domain.
+ *
+ * Only what reads as a mail link or an address is passed on: the sender is a
+ * content script, and the page it opens is the extension's own.
+ */
+async function handleOpenEmailCheckTab(data: any) {
+  const value = String(data?.value ?? '')
+  if (!/^mailto:/i.test(value) && !analyzeEmailAddress(value))
+    throw new Error('not an email address')
+  return handleOpenCheckTab(value)
 }
 
 /**
@@ -1552,7 +1577,8 @@ const messageHandlers = {
   'show-notification': (data: any, ctx?: MessageContext) => handleShowNotification(data.warningType, ctx?.tabUrl),
   'record-visit': (data: any, ctx?: MessageContext) => handleRecordVisit(data, ctx),
   'tampering-detected': (_data: any, ctx?: MessageContext) => handleTampering(ctx?.tabId, ctx?.tabUrl),
-  'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain, data.context),
+  'open-popup-tab': (data: any) => handleOpenPopupTab(data.domain),
+  'open-email-check-tab': (data: any) => handleOpenEmailCheckTab(data),
   'open-link-tab': (data: any, ctx?: MessageContext) => handleOpenLinkTab(data, ctx),
   'resolve-short-url': async (data: any) => {
     // A retry is the user saying the answer they were given is not good enough.
@@ -1646,50 +1672,111 @@ browser.runtime.onMessage.addListener(((message: any, sender, sendResponse) => {
 
 const CONTEXT_MENU_DOMAIN_ID = 'visilant-check-domain'
 const CONTEXT_MENU_LINK_ID = 'visilant-check-link-safety'
+const CONTEXT_MENU_MAIL_ID = 'visilant-check-mail-link'
 const CONTEXT_MENU_SELECTION_ID = 'visilant-check-selection'
 const CONTEXT_MENU_QR_IMAGE_ID = 'visilant-decode-qr-image'
+const CONTEXT_MENU_MAIL_DETAILS_ID = 'visilant-mail-details'
 
-async function setupContextMenu() {
-  if (!hasContextMenus())
-    return
+/**
+ * The links each item is offered on, by where they point.
+ *
+ * A link to a page and a link that writes a mail get an item each, named for
+ * what it checks: "Check this link" on a mail link was true and told nobody
+ * that the address is what gets checked. Every other kind of link, `tel:`,
+ * `javascript:`, `blob:`, has no address to check and gets no item: there
+ * the old one was offered, and answered nothing.
+ */
+const PAGE_LINKS = ['*://*/*', 'ftp://*/*']
+const MAIL_LINKS = ['mailto:*']
 
+/** One item, waited for, with what the browser said about it kept. */
+function createMenuItem(properties: Parameters<typeof browser.contextMenus.create>[0]): Promise<void> {
+  return new Promise((resolve) => {
+    // A browser that refuses a property throws here and never calls back.
+    // Caught, so the items after this one are still made
+    try {
+      browser.contextMenus.create(properties, () => {
+        const error = browser.runtime.lastError
+        if (error)
+          console.error(`Visilant: the menu item ${properties.id} was not created`, error.message)
+        resolve()
+      })
+    }
+    catch (error) {
+      console.error(`Visilant: the menu item ${properties.id} was not created`, error)
+      resolve()
+    }
+  })
+}
+
+async function buildContextMenu() {
   // Remove existing items first
   await browser.contextMenus.removeAll()
 
-  // Always show domain safety check
-  const domainTitle = await loadTranslation('linkContextMenuCheckDomain')
-  browser.contextMenus.create({
+  // What is known about the link's site, in a tab of its own. A mail link
+  // has no site: its item is named for what it opens, the addresses the link
+  // writes to. One item for both read "Site details" over an email address
+  await createMenuItem({
     id: CONTEXT_MENU_DOMAIN_ID,
-    title: domainTitle,
+    title: await loadTranslation('linkContextMenuCheckDomain'),
     contexts: ['link'],
+    targetUrlPatterns: PAGE_LINKS,
+  })
+  await createMenuItem({
+    id: CONTEXT_MENU_MAIL_DETAILS_ID,
+    title: await loadTranslation('linkContextMenuMailDetails'),
+    contexts: ['link'],
+    targetUrlPatterns: MAIL_LINKS,
   })
 
   // Show link safety check only when right-click trigger is selected
   // (a profile still storing `click-left` reads as right-click, see normalizeLinkSafety)
   if (appSettings.value.linkSafety?.enabled && normalizeLinkSafety(appSettings.value.linkSafety).tooltipTrigger === 'click-right') {
-    const linkTitle = await loadTranslation('linkContextMenuCheckLink')
-    browser.contextMenus.create({
+    await createMenuItem({
       id: CONTEXT_MENU_LINK_ID,
-      title: linkTitle,
+      title: await loadTranslation('linkContextMenuCheckLink'),
       contexts: ['link'],
+      targetUrlPatterns: PAGE_LINKS,
+    })
+    await createMenuItem({
+      id: CONTEXT_MENU_MAIL_ID,
+      title: await loadTranslation('linkContextMenuCheckMail'),
+      contexts: ['link'],
+      targetUrlPatterns: MAIL_LINKS,
     })
   }
 
   // Check selected text (email address, URL or domain)
-  const selectionTitle = await loadTranslation('contextMenuCheckSelection')
-  browser.contextMenus.create({
+  await createMenuItem({
     id: CONTEXT_MENU_SELECTION_ID,
-    title: selectionTitle,
+    title: await loadTranslation('contextMenuCheckSelection'),
     contexts: ['selection'],
   })
 
   // Decode QR code from an image
-  const qrTitle = await loadTranslation('contextMenuDecodeQr')
-  browser.contextMenus.create({
+  await createMenuItem({
     id: CONTEXT_MENU_QR_IMAGE_ID,
-    title: qrTitle,
+    title: await loadTranslation('contextMenuDecodeQr'),
     contexts: ['image'],
   })
+}
+
+/**
+ * The menu, rebuilt one run at a time.
+ *
+ * It is rebuilt on install and on every change of the settings, and two runs
+ * side by side used to interleave: the second cleared the menu under the
+ * first, and both then created the same ids, one of each pair failing. Nobody
+ * read those failures, so it passed. Queued, each run starts from the menu the
+ * one before it left whole.
+ */
+let menuBuild: Promise<void> = Promise.resolve()
+function setupContextMenu(): Promise<void> {
+  if (!hasContextMenus())
+    return Promise.resolve()
+  const build = () => buildContextMenu().catch(error => console.error('Visilant: the context menu was not rebuilt', error))
+  menuBuild = menuBuild.then(build, build)
+  return menuBuild
 }
 
 /**
@@ -1781,32 +1868,24 @@ if (hasContextMenus()) {
     await backgroundReady()
 
     if (info.menuItemId === CONTEXT_MENU_DOMAIN_ID && info.linkUrl) {
-      if (/^mailto:/i.test(info.linkUrl)) {
-        const parsed = parseMailtoUrl(info.linkUrl)
-        const recipients = collectMailtoRecipients(parsed)
-        // One recipient still gets the domain dashboard it always did. Several,
-        // and there is no one domain to show – the check page reads them all.
-        if (recipients.length > 1) {
-          await handleOpenCheckTab(info.linkUrl)
-        }
-        else {
-          const analysis = recipients[0] ? analyzeEmailAddress(recipients[0].address) : null
-          if (analysis?.domain)
-            await handleOpenPopupTab(analysis.domain, 'email')
-        }
-      }
-      else {
-        const hostname = getHostname(info.linkUrl)
-        if (hostname)
-          await handleOpenPopupTab(hostname)
-      }
+      const hostname = getHostname(info.linkUrl)
+      if (hostname)
+        await handleOpenPopupTab(hostname)
     }
+
+    // The check page, which reads the link whole: the name before the @,
+    // every recipient, and the card for the domain. One recipient used to get
+    // the card alone, a domain with no address anywhere on the page. A mail
+    // link with no address that reads as one is taken as it is, and the page
+    // says so
+    if (info.menuItemId === CONTEXT_MENU_MAIL_DETAILS_ID && info.linkUrl)
+      await handleOpenCheckTab(info.linkUrl)
 
     // A check somebody asked for has to answer. Where the tab has no content
     // script – opened before the extension was installed or updated, a store
     // page, a PDF – the message goes nowhere, and these two used to do nothing
     // at all. The check page gives the same answer from the extension's side.
-    if (info.menuItemId === CONTEXT_MENU_LINK_ID && info.linkUrl) {
+    if ((info.menuItemId === CONTEXT_MENU_LINK_ID || info.menuItemId === CONTEXT_MENU_MAIL_ID) && info.linkUrl) {
       // Send message to content script to show intercept dialog for this link.
       // The frame goes along because the dialog is drawn in the top document,
       // which only knows what the link's text said when the click was its own.

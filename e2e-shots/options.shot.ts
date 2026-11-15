@@ -227,7 +227,7 @@ const CASES: Case[] = [
   // ==========================================
   // Email lists
   // ==========================================
-  { name: 'opt-email-custom', section: 'email-lists', title: 'Email lists: own entries in every box', note: 'Own public services, disposable domains and mail sites. One mail-site line is malformed.', local: () => ({ customPublicEmailProviders: ['mail.corp.test'], customDisposableEmailDomains: ['trash.test', 'tmp.test'], customMailSites: ['corp.test = webmail.corp.test', 'bad line no equals'] }) },
+  { name: 'opt-email-custom', section: 'email-lists', title: 'Email lists: own entries in every box', note: 'Own public services, disposable domains, forwarding domains and mail sites. One mail-site line is malformed.', local: () => ({ customPublicEmailProviders: ['mail.corp.test'], customDisposableEmailDomains: ['trash.test', 'tmp.test'], customForwardingEmailDomains: ['alias.test'], customMailSites: ['corp.test = webmail.corp.test', 'bad line no equals'] }) },
   { name: 'opt-email-cached', section: 'email-lists', title: 'Email lists: all three downloaded earlier', note: 'Three grey lines with counts and dates.', settings: { mailSiteListUrl: 'https://lists.example.test/mail-sites.txt' }, local: () => ({ remotePublicEmailProviders: { domains: ['a.test', 'b.test'], updatedAt: Date.UTC(2026, 0, 10), urls: [PUBLIC_LIST] }, remoteDisposableEmailDomains: { domains: ['x.test', 'y.test', 'z.test'], updatedAt: Date.UTC(2026, 0, 11), urls: [DISPOSABLE_LIST] }, remoteMailSites: { domains: ['corp.test = webmail.corp.test'], updatedAt: Date.UTC(2026, 0, 12), urls: ['https://lists.example.test/mail-sites.txt'] } }) },
   {
     name: 'opt-email-mixed',

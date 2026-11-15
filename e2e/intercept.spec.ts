@@ -85,7 +85,7 @@ test('with every box cleared no link is stopped, a red flag included', async ({ 
 })
 
 // The click is put back after the dialog, and a new tab must still open as one
-test('a held link that opens a new tab still opens one after "Continue anyway"', async ({ page, context }) => {
+test('a held link that opens a new tab still opens one after "Open anyway"', async ({ page, context }) => {
   await open(page, '<a id="l" href="https://paypal.com@plain-new-site.test/landed" target="_blank">Log in</a>')
 
   await page.locator('#l').click()
@@ -101,7 +101,7 @@ test('a held link that opens a new tab still opens one after "Continue anyway"',
 })
 
 // A middle click is `auxclick`, and cancelling that is what keeps the tab from opening
-test('a middle click on a flagged link is held, and opens its tab after "Continue anyway"', async ({ page, context }) => {
+test('a middle click on a flagged link is held, and opens its tab after "Open anyway"', async ({ page, context }) => {
   await open(page, '<a id="l" href="https://paypal.com@plain-new-site.test/landed">Log in</a>')
   const before = context.pages().length
 
@@ -191,7 +191,7 @@ for (const [kind, markup] of [
   ['a region of an image map', '<map name="m"><area shape="rect" coords="0,0,200,40" href="https://paypal.com@plain-new-site.test/landed" alt="Log in"></map><img id="l" usemap="#m" width="200" height="40" src="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%2740%27%3E%3Crect width=%27200%27 height=%2740%27 fill=%27blue%27/%3E%3C/svg%3E">'],
   ['an SVG link', '<svg width="200" height="40"><a href="https://paypal.com@plain-new-site.test/landed"><rect id="l" width="200" height="40" fill="red"/></a></svg>'],
 ] as const) {
-  test(`a flagged link on ${kind} is stopped, and followed after "Continue anyway"`, async ({ page }) => {
+  test(`a flagged link on ${kind} is stopped, and followed after "Open anyway"`, async ({ page }) => {
     await open(page, markup)
 
     await page.locator('#l').click({ position: { x: 50, y: 20 } })
@@ -255,7 +255,7 @@ test('a made-up Tab from the page does not move the focus in the link dialog', a
   await open(page, '<a id="l" href="https://paypal.com@plain-new-site.test/landed">Log in</a>')
 
   await page.locator('#l').click()
-  await expect.poll(() => allText(page), { timeout: 5000, intervals: [300] }).toContain('Continue anyway')
+  await expect.poll(() => allText(page), { timeout: 5000, intervals: [300] }).toContain('Open anyway')
   await page.waitForTimeout(800)
 
   for (const shiftKey of [false, true]) {
@@ -266,6 +266,6 @@ test('a made-up Tab from the page does not move the focus in the link dialog', a
     await page.keyboard.press('Enter')
     await page.waitForTimeout(800)
     expect(page.url()).toBe(SITE_URL)
-    expect(await allText(page)).toContain('Continue anyway')
+    expect(await allText(page)).toContain('Open anyway')
   }
 })

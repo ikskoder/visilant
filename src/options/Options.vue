@@ -9,7 +9,7 @@ import { useI18n } from '~/composables/useI18n'
 import { useTheme } from '~/composables/useTheme'
 import { familiarSilencedHosts } from '~/logic/auto-unsilence'
 import { resolveBadgeContent } from '~/logic/badge'
-import { fetchRemoteDomainLists, parseListUrls, STORAGE_KEY_CUSTOM_DISPOSABLE, STORAGE_KEY_CUSTOM_PUBLIC, STORAGE_KEY_REMOTE_DISPOSABLE, STORAGE_KEY_REMOTE_PUBLIC, updateDisposableList, updatePublicList } from '~/logic/email-providers'
+import { fetchRemoteDomainLists, parseListUrls, STORAGE_KEY_CUSTOM_DISPOSABLE, STORAGE_KEY_CUSTOM_FORWARDING, STORAGE_KEY_CUSTOM_PUBLIC, STORAGE_KEY_REMOTE_DISPOSABLE, STORAGE_KEY_REMOTE_PUBLIC, updateDisposableList, updatePublicList } from '~/logic/email-providers'
 import { enabledCriteria, FAMILIARITY_CRITERIA, normalizeFamiliarity, requiredMatches } from '~/logic/familiarity'
 import { describeImportHealth, HISTORY_IMPORT_STATE_KEY, readHistoryImportState } from '~/logic/history-import'
 import { fetchRemoteMailSiteLists, STORAGE_KEY_CUSTOM_MAIL_SITES, STORAGE_KEY_REMOTE_MAIL_SITES, updateRemoteMailSites } from '~/logic/mail-sites'
@@ -80,9 +80,6 @@ function updateTranslations() {
     'familiarityModeAny',
     'familiarityModeAtLeast',
     'familiarityModeAtLeastLabel',
-    'familiaritySummaryAll',
-    'familiaritySummaryAny',
-    'familiaritySummaryAtLeast',
     'familiarityKeepOne',
     'familiarityShowThresholds',
     'familiarityShowThresholdsDesc',
@@ -127,8 +124,6 @@ function updateTranslations() {
     'inPageNotificationsDesc',
     'bothNotifications',
     'notificationStylePinNote',
-    'notificationCooldown',
-    'notificationCooldownDesc',
     'silencedSitesTitle',
     'silencedSitesDesc',
     'silencedSitesRejected',
@@ -151,7 +146,7 @@ function updateTranslations() {
     'importHistoryRun',
     'importHistoryFirstRun',
     'importHistoryRunDesc',
-    'lookupServicesLabel',
+    'externalLookupsTitle',
     'lookupServicesDesc',
     'lookupServicesNote',
     'sectionReset',
@@ -164,7 +159,6 @@ function updateTranslations() {
     'visitsInfo',
     'allSettings',
     'resetSelectedData',
-    'selectDataToReset',
     'confirmReset',
     'confirmResetMessage',
     'cannotBeUndone',
@@ -240,6 +234,8 @@ function updateTranslations() {
     'emailCustomPublicDesc',
     'emailCustomDisposableLabel',
     'emailCustomDisposableDesc',
+    'emailCustomForwardingLabel',
+    'emailCustomForwardingDesc',
     'emailDisposableUpdateUrlLabel',
     'emailDisposableUpdateUrlDesc',
     'emailPublicUpdateUrlLabel',
@@ -276,6 +272,7 @@ const customShortenersText = ref('')
 // Custom email domain lists (stored in browser.storage.local as string[])
 const customPublicProvidersText = ref('')
 const customDisposableText = ref('')
+const customForwardingText = ref('')
 
 // Extra `address-domain = site` lines, on top of the built-in table
 const customMailSitesText = ref('')
@@ -313,7 +310,7 @@ const SECTION_SETTINGS: Record<string, (keyof Settings)[]> = {
  */
 const SECTION_TEXTS: Record<string, Ref<string>[]> = {
   'link-safety': [customShortenersText],
-  'email-lists': [customPublicProvidersText, customDisposableText, customMailSitesText],
+  'email-lists': [customPublicProvidersText, customDisposableText, customForwardingText, customMailSitesText],
 }
 
 type UpdateStatus = 'idle' | 'loading' | 'success' | 'error'
@@ -454,6 +451,7 @@ onMounted(async () => {
     'customShorteners',
     STORAGE_KEY_CUSTOM_PUBLIC,
     STORAGE_KEY_CUSTOM_DISPOSABLE,
+    STORAGE_KEY_CUSTOM_FORWARDING,
     STORAGE_KEY_REMOTE_PUBLIC,
     STORAGE_KEY_REMOTE_DISPOSABLE,
     STORAGE_KEY_REMOTE_SHORTENERS,
@@ -464,6 +462,7 @@ onMounted(async () => {
   customShortenersText.value = list.join('\n')
   customPublicProvidersText.value = ((stored[STORAGE_KEY_CUSTOM_PUBLIC] as string[]) || []).join('\n')
   customDisposableText.value = ((stored[STORAGE_KEY_CUSTOM_DISPOSABLE] as string[]) || []).join('\n')
+  customForwardingText.value = ((stored[STORAGE_KEY_CUSTOM_FORWARDING] as string[]) || []).join('\n')
   customMailSitesText.value = ((stored[STORAGE_KEY_CUSTOM_MAIL_SITES] as string[]) || []).join('\n')
 
   // What a previous update fetched, so the page opens showing the current state
@@ -532,6 +531,7 @@ const asDomainLines = (raw: string) => raw.split(/\n/).map(d => d.trim().toLower
 watchList(customShortenersText, 'customShorteners', asDomainLines)
 watchList(customPublicProvidersText, STORAGE_KEY_CUSTOM_PUBLIC, asDomainLines)
 watchList(customDisposableText, STORAGE_KEY_CUSTOM_DISPOSABLE, asDomainLines)
+watchList(customForwardingText, STORAGE_KEY_CUSTOM_FORWARDING, asDomainLines)
 
 // Mapping lines are stored as typed, separator and all – the parser is the one
 // place that decides what a line means
@@ -836,15 +836,6 @@ const familiarityRows = computed(() => FAMILIARITY_CRITERIA.map((id) => {
     needsImport: id !== 'visits',
   }
 }))
-
-/** The rule in one sentence, above the checkboxes that spell it out. */
-const familiaritySummary = computed(() => {
-  if (familiarity.value.mode === 'any')
-    return translations.value.familiaritySummaryAny
-  if (familiarity.value.mode === 'atLeast')
-    return (translations.value.familiaritySummaryAtLeast || '').replace('{n}', String(familiarityRequired.value))
-  return translations.value.familiaritySummaryAll
-})
 
 function updateFamiliarity(patch: Partial<FamiliaritySettings>) {
   settings.value = {
@@ -1241,7 +1232,7 @@ const SECTION_IDS = [
   ['notifications', 'notificationSettings'],
   ['tampering', 'antiTamperingSettings'],
   ['link-safety', 'linkSafetySettings'],
-  ['lookups', 'lookupServicesLabel'],
+  ['lookups', 'externalLookupsTitle'],
   ['email-lists', 'emailListsTitle'],
   ['data', 'databaseManagement'],
 ] as const
@@ -1323,7 +1314,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
     <div v-else>
       <!-- A setting that looks changed but was never stored is the one failure
            this page must not keep to the console -->
-      <VzNotice v-if="settingsWriteError" tone="danger" class="max-w-md mx-auto mb-6" data-save-error>
+      <VzNotice v-if="settingsWriteError" tone="danger" boxed class="max-w-md mx-auto mb-6" data-save-error>
         {{ saveErrorText }}
       </VzNotice>
 
@@ -1429,7 +1420,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
 
           <!-- How many checks have to agree, said before the checks themselves,
                because it is what they are being read against -->
-          <div class="flex flex-col items-start mb-2">
+          <div class="flex flex-col items-start mb-4">
             <label class="vz-heading settings-label">{{ translations.familiarityModeLabel }}</label>
             <span class="vz-selectbox w-full">
               <select
@@ -1468,10 +1459,6 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <span class="text-sm text-ink-3">/ {{ familiarityEnabledCount }}</span>
             </div>
           </div>
-
-          <p class="vz-notice vz-notice--info mb-4">
-            {{ familiaritySummary }}
-          </p>
 
           <div class="space-y-3">
             <div
@@ -2267,7 +2254,7 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
         <div id="section-lookups" class="relative scroll-mt-6 vz-card settings-card">
           <SectionReset :label="translations.sectionReset" :disabled="sectionIsDefault('lookups')" @reset="resetSection('lookups')" />
           <h2 class="vz-title text-center settings-card-title">
-            {{ translations.lookupServicesLabel }}
+            {{ translations.externalLookupsTitle }}
           </h2>
           <p class="hint vz-small settings-intro">
             {{ translations.lookupServicesNote }}
@@ -2408,6 +2395,23 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <p v-else-if="disposableRemoteInfo" class="vz-small mt-1">
                 {{ translations.emailDisposableUpdateSuccess }}: {{ disposableRemoteInfo.count }} ({{ new Date(disposableRemoteInfo.updatedAt).toLocaleDateString() }})
               </p>
+            </div>
+
+            <!-- Forwarding services: the user's own only. This kind takes the
+                 visit verdict off an address, which no downloaded list may do -->
+            <div>
+              <label class="vz-heading settings-label">{{ translations.emailCustomForwardingLabel }}</label>
+              <p class="hint vz-small settings-label-hint">
+                {{ translations.emailCustomForwardingDesc }}
+              </p>
+              <textarea
+                v-model="customForwardingText"
+                wrap="off"
+                spellcheck="false"
+                class="vz-input vz-input--addr settings-textarea w-full"
+                rows="3"
+                placeholder="alias.example&#10;relay.example.org"
+              />
             </div>
 
             <!-- Where a mail domain is read, for the brands the built-in table
@@ -2569,9 +2573,6 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               >
                 {{ translations.resetSelectedData }}
               </button>
-              <p class="hint vz-small mt-1">
-                {{ translations.selectDataToReset }}
-              </p>
             </div>
           </div>
         </div>

@@ -186,8 +186,17 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         picture = again
       }
       fs.writeFileSync(path.join(dir, `${info.name}.png`), picture)
+      // The words on the surface, next to its picture: what the catalogue reads
+      // to find a screen that says one thing twice
+      // Never at the cost of the picture: a page that navigated away under the
+      // reader leaves a case with its picture and no words, not a failed case
+      const surface = await surfaceText(target, options.clip).catch(() => ({ words: '', box: undefined }))
+      fs.writeFileSync(path.join(dir, `${info.name}.txt`), surface.words)
       fs.writeFileSync(path.join(dir, `${info.name}.json`), JSON.stringify({
         ...info,
+        // Where in the picture the box drawn over the page is, for a page
+        // that shows the box alone, see patterns.ts
+        box: surface.box,
         // Relative to this folder, the way Playwright's report names it
         file: path.relative(__dirname, testInfo.file),
         order: testInfo.line * 100 + (shotCounter.get(testInfo.testId) ?? 0),
@@ -422,6 +431,68 @@ async function freezeShadowAnimations(page: Page) {
 }
 
 /**
+ * The words a person can read on the surface in the picture, a line each, then
+ * the tooltips its controls carry.
+ *
+ * The in-page UI when there is one on the page, since that is what the picture
+ * is about and the page under it is filler. Otherwise the part the picture was
+ * cut to, or the whole document. `innerText` rather than the text nodes, so
+ * that what is hidden stays out and an address drawn label by label reads as
+ * one line.
+ */
+async function surfaceText(page: Page, clip?: string): Promise<{ words: string, box?: { x: number, y: number, width: number, height: number, ratio: number } }> {
+  const read = (node: any) => {
+    // Not the stylesheet: an element that is not drawn answers with all of its text
+    const parts: any[] = node.nodeType === 11 ? Array.from(node.children).filter((el: any) => el.tagName !== 'STYLE') : [node]
+    // eslint-disable-next-line unicorn/prefer-dom-node-text-content -- the rendered words are the point: textContent reads hidden text too and runs block lines together
+    const text = parts.map(el => el.innerText ?? '').join('\n')
+    const titles = new Set<string>()
+    for (const part of parts) {
+      for (const el of [part, ...part.querySelectorAll('[title]')]) {
+        const title = el.getAttribute?.('title')
+        if (title && el.getClientRects().length)
+          titles.add(title)
+      }
+    }
+    // The box itself, in the picture's own pixels
+    const overlay = parts.map(el => el.matches?.('.vz-overlay') ? el : el.querySelector?.('.vz-overlay')).find(Boolean)
+    const rect = overlay?.getBoundingClientRect()
+    const box = rect?.width ? { x: rect.left, y: rect.top, width: rect.width, height: rect.height, ratio: window.devicePixelRatio } : undefined
+    return { text, titles: [...titles], box }
+  }
+  const tidy = (found: { text: string, titles: string[], box?: any }) => {
+    const lines = found.text.split('\n').map(line => line.replace(/\s+/g, ' ').trim()).filter(Boolean)
+    const titles = found.titles.map(title => `  [tooltip] ${title.replace(/\s+/g, ' ').trim()}`)
+    return { words: `${[...lines, ...titles].join('\n')}\n`, box: found.box }
+  }
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true })
+    const roots: number[] = []
+    const walk = (node: any) => {
+      // A text box has a shadow root of the browser's own, with its placeholder in it
+      for (const shadow of node.shadowRoots ?? []) {
+        if (shadow.shadowRootType !== 'user-agent')
+          roots.push(shadow.backendNodeId)
+      }
+      for (const child of [...(node.children ?? []), ...(node.shadowRoots ?? [])])
+        walk(child)
+    }
+    walk(root)
+    for (const backendNodeId of roots) {
+      const { object } = await cdp.send('DOM.resolveNode', { backendNodeId })
+      const { result } = await cdp.send('Runtime.callFunctionOn', { objectId: object.objectId, functionDeclaration: `function () { return (${read})(this) }`, returnByValue: true })
+      if (result.value?.text?.trim())
+        return tidy(result.value)
+    }
+  }
+  finally {
+    await cdp.detach()
+  }
+  return tidy(await page.locator(clip ?? 'body').first().evaluate(read))
+}
+
+/**
  * Every piece of text inside a shadow root on the page.
  *
  * The in-page UI lives in a closed shadow root in a production build and no
@@ -517,6 +588,18 @@ export async function clickUi(page: Page, text: string) {
         return
       if (inShadow && node.nodeType === 3 && node.nodeValue?.trim().startsWith(text))
         target = parentId
+      // A button with no words of its own, a question mark, is found by what
+      // it says on hover
+      // A flat list of name, value, name, value: read in pairs, or a value
+      // that happens to be the word "title" is taken for the name
+      const attributes: string[] = node.attributes ?? []
+      let title: string | undefined
+      for (let index = 0; index < attributes.length; index += 2) {
+        if (attributes[index] === 'title')
+          title = attributes[index + 1]
+      }
+      if (!target && inShadow && node.nodeName === 'BUTTON' && title?.startsWith(text))
+        target = node.nodeId
       for (const child of node.children ?? [])
         walk(child, node.nodeId, inShadow)
       for (const child of node.shadowRoots ?? [])

@@ -18,6 +18,12 @@ import { extractEmailFromText } from '~/logic/email-safety'
  */
 const props = defineProps<{
   address: string
+  /**
+   * Which question this is. Given, a new address under the same key keeps what
+   * was pasted: one trusted address held against each recipient of a link in
+   * turn. Without it every new address is a new question.
+   */
+  resetKey?: number | string
 }>()
 
 const { t } = useI18n()
@@ -26,7 +32,7 @@ const expanded = ref(false)
 const pasted = ref('')
 
 // A different address is a different question, so the old answer goes with it
-watch(() => props.address, () => {
+watch(() => props.resetKey ?? props.address, () => {
   pasted.value = ''
   expanded.value = false
 })
@@ -111,7 +117,7 @@ function cellClass(same: boolean) {
           </div>
         </div>
 
-        <VzNotice v-if="verdict" :tone="verdict.good ? 'neutral' : 'danger'" :icon="verdict.good ? 'pass' : 'alert'">
+        <VzNotice v-if="verdict" :tone="verdict.good ? 'neutral' : 'danger'" :icon="verdict.good ? 'pass' : 'fail'">
           {{ verdict.text }}
         </VzNotice>
       </template>

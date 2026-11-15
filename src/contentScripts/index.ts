@@ -4,20 +4,21 @@ import type { LinkElement } from '~/logic/link-element'
 import type { ContextLinkSnapshot, VisitFacts } from '~/logic/link-safety'
 import type { Settings } from '~/logic/storage'
 import type { TamperWatch } from '~/logic/tamper-watch'
-import type { CheckPanelData, DomainFamilyInfo, EmailRecipientInfo, LinkMismatch, LinkTooltipData, RawPayloadInfo, ShortUrlInfo } from '~/logic/ui-state'
+import type { CheckPanelData, DomainFamilyInfo, EmailMismatch, EmailRecipientInfo, LinkMismatch, LinkTooltipData, RawPayloadInfo, ShortUrlInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { createApp, watch, watchEffect } from 'vue'
 import { lookalikeAnswer } from '~/composables/useLookalikes'
 import { raiseTopLayer } from '~/composables/useTopLayer'
 import { listenForScriptedClipboardWrites } from '~/logic/clipboard-signal'
 import { setupApp } from '~/logic/common-setup'
-import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
-import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, MAX_MAILTO_RECIPIENTS, parseMailtoUrl } from '~/logic/email-safety'
+import { builtinMailServiceOf, classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
+import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, parseMailtoUrl, sameMailAddress } from '~/logic/email-safety'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { interceptReasons, interceptsAnything } from '~/logic/intercept'
 import { anchorLabel, anchorLabels, findAnchorFromEvent, linkHref, linkRect, linkRel, linkTarget } from '~/logic/link-element'
 import { alternateSpelling, checkAnchorMismatch, checkDomainMismatch, checkLabelsMismatch, clearVisitCache, contextLinkTextDomain, extractDomainFromText, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isFileLikeName, isMailtoHref, namesASite, setCachedVisitCount, snapshotContextLink } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
+import { mailLinkStanding } from '~/logic/mail-recipient-list'
 import { isMessageError } from '~/logic/message-error'
 import { describePastePayload, editableTargetOf, isEditableEventTarget, isPasteSink, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyQrPayload, extractCheckTarget } from '~/logic/payload-classify'
@@ -161,6 +162,14 @@ async function checkSiteSafety(url: string, settingsArrived?: Promise<void>): Pr
   // its records had changed, and the page read the new answer and went on
   // believing the old one until it was reloaded.
   isIgnored.value = Boolean(visitData.ignored)
+  // The warning on screen says how to turn warnings off for this site. Having
+  // done exactly that, the reader used to find it still there
+  // And if they turn them back on, the next key warns again: "once per page"
+  // would otherwise have been spent on the warning they answered by silencing
+  if (isIgnored.value) {
+    showWarning.value = false
+    notifiedOnThisPage.value = { input: false, copy: false }
+  }
 
   // Visits, active days and age, in whatever combination the user asked for
   const isSafe = isFamiliar(visitData, normalizeFamiliarity(settings.value.familiarity))
@@ -466,10 +475,14 @@ async function interceptPaste(target: HTMLElement, text: string, undecided = fal
         .catch(() => null)
 
       // Whatever the verdict turned out to be, the dialog says so rather than
-      // vanishing: the text was not inserted either way and the user has to know
-      const status = safetyLevel.value === false
+      // vanishing: the text was not inserted either way and the user has to know.
+      // A site whose warnings the user turned off is not asked about: held
+      // before that was known, its paste is let through the same as a
+      // familiar site's, and the dialog says which of the two it is
+      const silenced = safetyLevel.value === false && isIgnored.value
+      const status = safetyLevel.value === false && !silenced
         ? 'unfamiliar'
-        : safetyLevel.value === true ? 'safe' : 'error'
+        : safetyLevel.value === null ? 'error' : 'safe'
 
       pasteInterceptData.value = {
         domain: hostname,
@@ -477,6 +490,7 @@ async function interceptPaste(target: HTMLElement, text: string, undecided = fal
         punycode,
         payload,
         status,
+        silenced,
       }
       pasteInterceptVisible.value = true
     }
@@ -938,7 +952,7 @@ async function showLinkInterceptByUrl(url: string, textDomain: string | null = n
   if (shouldResolve) {
     shortUrlInfo = await resolveForIntercept(url, hostname, isKnownShortener)
     // A failure only has something to say about a known shortener. For any other
-    // host the dialog keeps its "Show where it leads" and "Mark as shortener"
+    // host the dialog keeps its "Try to find where it leads" and "Mark as shortener"
     // buttons, which is how a shortener missing from the list gets added.
     if (!isKnownShortener && shortUrlInfo.status === 'error')
       shortUrlInfo = null
@@ -986,6 +1000,20 @@ function syntheticAnchorRect() {
   }
 }
 
+/**
+ * A tooltip asked for from the menu follows no pointer. What the hover was
+ * tracking is dropped before it goes up, or the pointer leaving the link it
+ * happened to be over, a QR image wrapped in a link say, closed the answer
+ * 300ms after it appeared.
+ */
+function detachTooltipFromPointer() {
+  if (tooltipGraceTimer) {
+    clearTimeout(tooltipGraceTimer)
+    tooltipGraceTimer = null
+  }
+  currentHoveredAnchor = null
+}
+
 // Show tooltip for a URL without an anchor element (used by context menu)
 // `force` skips the external-link gate: the user explicitly asked to check this URL
 async function showLinkTooltipByUrl(url: string, opts?: { force?: boolean }) {
@@ -1025,7 +1053,9 @@ async function showLinkTooltipByUrl(url: string, opts?: { force?: boolean }) {
       : null,
     anchorRect,
     href: url,
+    asked: true,
   }
+  detachTooltipFromPointer()
   linkTooltipVisible.value = true
 
   if (shouldAutoResolve)
@@ -1050,10 +1080,11 @@ async function buildEmailTooltipData(
   const allRecipients = isMailto
     ? collectMailtoRecipients(parsed)
     : [{ field: 'to' as const, address: addrOrMailto }]
-  const checked = allRecipients.slice(0, MAX_MAILTO_RECIPIENTS)
-  const analysed = checked
+  // Every one of them, however many the page wrote: a cap left the rest
+  // unchecked, and the reader could not see who they were
+  const analysed = allRecipients
     .map(recipient => ({ recipient, analysis: analyzeEmailAddress(recipient.address) }))
-    .filter((entry): entry is { recipient: typeof checked[number], analysis: NonNullable<ReturnType<typeof analyzeEmailAddress>> } => entry.analysis !== null)
+    .filter((entry): entry is { recipient: typeof allRecipients[number], analysis: NonNullable<ReturnType<typeof analyzeEmailAddress>> } => entry.analysis !== null)
 
   // The first address that reads as one, whichever box it sits in
   const primary = analysed[0]
@@ -1063,14 +1094,31 @@ async function buildEmailTooltipData(
   const address = primary.recipient.address
   const analysis = primary.analysis
 
-  const visitData = await fetchLinkData(`https://${analysis.domain}`, analysis.domain)
-
-  // All at once, not one after another. Twenty-five round trips in a row, each
+  // All at once, not one after another. A round trip per recipient in a row, each
   // of which may have to wake a sleeping service worker, is seconds of a tooltip
-  // that is supposed to appear while the pointer is still on the link.
-  const facts = await Promise.all(
-    analysed.map(entry => fetchLinkData(`https://${entry.analysis.domain}`, entry.analysis.domain)),
-  )
+  // that is supposed to appear while the pointer is still on the link. One
+  // question per domain: the list draws what is known about a domain once for
+  // everybody at it, and two answers about one domain could differ, one of
+  // them lost on the way.
+  // What the link's text shows, an address or a domain alone. Its domain is
+  // asked about with the others, not after them: a second round trip in a
+  // row is the more likely to run past the time a held click waits
+  const textEmail = anchorText ? extractEmailFromText(anchorText) : null
+  const textParts = textEmail ? analyzeEmailAddress(textEmail) : null
+  // A file name is not a site, see `namesASite`
+  const textDomain = anchorText && !textEmail ? extractDomainFromText(anchorText) : null
+  const shownDomain = textEmail
+    ? (textParts?.domain ?? textEmail.split('@').pop()!.toLowerCase())
+    : textDomain && !isFileLikeName(textDomain) ? textDomain.toLowerCase() : null
+  const asked = new Map<string, ReturnType<typeof fetchLinkData>>()
+  for (const domain of [...analysed.map(entry => entry.analysis.domain), ...(shownDomain ? [shownDomain] : [])]) {
+    if (!asked.has(domain))
+      asked.set(domain, fetchLinkData(`https://${domain}`, domain))
+  }
+  const facts = await Promise.all(analysed.map(entry => asked.get(entry.analysis.domain)!))
+  // The address the tooltip is headed with is the first of them, and its
+  // answer is the one already asked for, not a second question
+  const visitData = facts[0]
 
   const recipients: EmailRecipientInfo[] = analysed.map((entry, index) => ({
     field: entry.recipient.field,
@@ -1081,27 +1129,28 @@ async function buildEmailTooltipData(
     unchecked: facts[index].unchecked,
   }))
 
-  let mismatch: { textAddress: string } | null = null
-  if (anchorText) {
-    const textEmail = extractEmailFromText(anchorText)
-    if (textEmail) {
-      // Held against every recipient, not just the first: a link whose text
-      // names the second address of three is still telling the truth about it,
-      // and one that names nobody on the list is the case worth flagging
-      const named = recipients.some(r => r.analysis.raw.toLowerCase() === textEmail.toLowerCase())
-      if (!named)
-        mismatch = { textAddress: textEmail }
-    }
-    else {
-      // Compared as sites, the way a link's text is: text reading `acme.com` on
-      // an address at `careers.acme.com` names the company the mail goes to.
-      // A file name is not a site, see `namesASite`.
-      const textDomain = extractDomainFromText(anchorText)
-      if (textDomain && !isFileLikeName(textDomain) && recipients.every(r => checkDomainMismatch(textDomain, r.analysis.domain).mismatch))
-        mismatch = { textAddress: textDomain }
-    }
+  // What the text shows instead, with what is known of its domain, so the
+  // two can be set side by side
+  const shown = async (textAddress: string, username: string | null, domain: string): Promise<EmailMismatch> => {
+    const known = await asked.get(domain)!
+    return { textAddress, username, domain, providerKind: classifyEmailDomain(domain), stats: known.stats, isSafe: known.isSafe, unchecked: known.unchecked }
   }
-
+  let mismatch: EmailMismatch | null = null
+  if (textEmail && shownDomain) {
+    // Held against every recipient, not just the first: a link whose text
+    // names the second address of three is still telling the truth about it,
+    // and one that names nobody on the list is the case worth flagging. The
+    // same address in another spelling is the same address
+    const named = recipients.some(r => textParts ? sameMailAddress(r.analysis, textParts) : r.analysis.raw.toLowerCase() === textEmail.toLowerCase())
+    if (!named)
+      mismatch = await shown(textEmail, textParts?.localPart ?? textEmail.split('@')[0], shownDomain)
+  }
+  else if (textDomain && shownDomain) {
+    // Compared as sites, the way a link's text is: text reading `acme.com` on
+    // an address at `careers.acme.com` names the company the mail goes to
+    if (recipients.every(r => checkDomainMismatch(textDomain, r.analysis.domain).mismatch))
+      mismatch = await shown(textDomain, null, shownDomain)
+  }
   return {
     kind: 'email',
     domain: analysis.domain,
@@ -1118,8 +1167,10 @@ async function buildEmailTooltipData(
       params: parsed?.params ?? [],
       mismatch,
       providerKind: classifyEmailDomain(analysis.domain),
+      writing: isMailto,
       recipients,
-      recipientsNotChecked: allRecipients.length - checked.length,
+      // Entries that do not read as an address
+      recipientsNotChecked: allRecipients.length - analysed.length,
     },
   }
 }
@@ -1139,12 +1190,22 @@ async function showEmailTooltip(anchor: LinkElement) {
   linkTooltipVisible.value = true
 }
 
-async function showEmailTooltipByAddress(addrOrMailto: string) {
+async function showEmailTooltipByAddress(addrOrMailto: string, asGiven = addrOrMailto) {
   const request = ++tooltipRequest
   const data = await buildEmailTooltipData(addrOrMailto, null, syntheticAnchorRect())
-  if (!data || request !== tooltipRequest)
+  if (request !== tooltipRequest)
     return
-  linkTooltipData.value = data
+  // A mail link with no address that reads as one, `mailto:?subject=Hi` or
+  // `mailto:support`. Somebody asked, so they are shown what the link holds:
+  // this used to end here with nothing on screen at all
+  // `asGiven` is the link whole: a QR code's mail link reaches here cut down
+  // to its address, which for a link with none is nothing to show
+  if (!data) {
+    showRawPayloadTooltip(asGiven, 'text', true)
+    return
+  }
+  linkTooltipData.value = { ...data, asked: true }
+  detachTooltipFromPointer()
   linkTooltipVisible.value = true
 }
 
@@ -1188,7 +1249,7 @@ async function showCheckPanelForTarget(target: { kind: 'email' | 'url' | 'domain
 }
 
 // Show a non-navigable payload (QR tel:/WIFI:/plain text) with unicode highlighting
-function showRawPayloadTooltip(payload: string, payloadKind: RawPayloadInfo['payloadKind']) {
+function showRawPayloadTooltip(payload: string, payloadKind: RawPayloadInfo['payloadKind'], mailWithoutAddress = false) {
   linkTooltipData.value = {
     kind: 'text',
     domain: '',
@@ -1199,8 +1260,10 @@ function showRawPayloadTooltip(payload: string, payloadKind: RawPayloadInfo['pay
     shortUrl: null,
     anchorRect: syntheticAnchorRect(),
     href: payload,
-    rawText: { payload, payloadKind },
+    rawText: { payload, payloadKind, mailWithoutAddress },
+    asked: true,
   }
+  detachTooltipFromPointer()
   linkTooltipVisible.value = true
 }
 
@@ -1841,14 +1904,17 @@ async function computeMailAssessment(anchor: LinkElement, href: string): Promise
   const domains = [...new Set([data.domain, ...(data.email.recipients ?? []).map(recipient => recipient.analysis.domain)])]
   const answers = await Promise.all(domains.map(domain => lookalikeAnswer(domain, 'email')))
   const flagsPerDomain = domains.map((domain, index) => addressRedFlagCount(domain, null, answers[index].status === 'answered' ? answers[index].matches : null))
-  // Nobody visits a public or a throwaway mail service, so "unfamiliar" is a
-  // question about an ordinary domain only
-  const regular = data.email.providerKind === 'regular'
+  // Over every recipient, and the same answer the tooltip draws its button by
+  const standing = mailLinkStanding(data.email, data)
   const facts: LinkFacts = {
-    familiar: !regular || data.isSafe,
-    unchecked: Boolean(data.unchecked) || answers.some(answer => answer.status === 'failed'),
+    familiar: standing.familiar,
+    // No answer about a name the build ships as a mail service is no loss:
+    // nothing is looked for in `gmail.com` itself
+    unchecked: standing.unchecked || answers.some((answer, index) => answer.status === 'failed' && builtinMailServiceOf(domains[index]) !== domains[index]),
     shortLink: false,
-    redFlags: Math.max(...flagsPerDomain) + (data.email.mismatch ? 1 : 0),
+    // A loop, not a spread: a spread of every domain a long list names can
+    // pass the number of arguments a call takes
+    redFlags: flagsPerDomain.reduce((most, flags) => Math.max(most, flags), 0) + (data.email.mismatch ? 1 : 0),
   }
   return { data, reasons: interceptReasons(facts, interceptSettings()) }
 }
@@ -1927,7 +1993,7 @@ async function handleLinkIntercept(link: HeldLink, newTab: NewTab, assessment: L
     shortUrlInfo = await resolveForIntercept(href, hostname, isKnownShortener)
     // A new tab needs a press the browser still counts, and following a short
     // link can take longer than that lasts. Past it the dialog is shown, with
-    // the calm "Go to link", whose own press opens the tab. Where the link
+    // the calm "Open link", whose own press opens the tab. Where the link
     // turned out to stay on a familiar site that dialog has little to add, and
     // is shown anyway: rare, and a tab the popup blocker ate is worse.
     // A link in a frame that has to be clicked again is never followed here
@@ -2904,7 +2970,7 @@ async function showFrameWarning(kind: 'input' | 'copy'): Promise<WarningOutcome>
  * guard anyway. The answer travels back so the frame knows whether to stop
  * asking.
  */
-async function showFramePasteIntercept(data: { id?: string, frameId?: number, hostname?: string, status: 'unfamiliar' | 'settled' | 'error' }): Promise<{ dialog: boolean }> {
+async function showFramePasteIntercept(data: { id?: string, frameId?: number, hostname?: string, isSafe?: boolean | null, status: 'unfamiliar' | 'settled' | 'error' }): Promise<{ dialog: boolean }> {
   // With no dialog to answer from, saying so now is what tells the frame there
   // is nothing to wait for
   if (!await ensureTooltipUiMounted())
@@ -2931,6 +2997,9 @@ async function showFramePasteIntercept(data: { id?: string, frameId?: number, ho
     // Three answers, not two: a frame nobody could get a verdict about is not
     // a frame that came back safe, and the dialog has a wording for that
     status: data.status === 'unfamiliar' ? 'unfamiliar' : (data.status === 'error' ? 'error' : 'safe'),
+    // "Settled" is the frame's word for nothing to hold for, which is a
+    // familiar page or one the user silenced. Only the first may be called familiar
+    silenced: data.status === 'settled' && data.isSafe === false,
     inFrame: true,
   }
   pasteInterceptVisible.value = true
@@ -2940,6 +3009,9 @@ async function showFramePasteIntercept(data: { id?: string, frameId?: number, ho
   // about 30 idle seconds, and the answer went nowhere
   void answer.then((allowed) => {
     pasteInterceptResolve.value = null
+    // The dialog said the page will not ask again, and a box is part of the page
+    if (allowed)
+      pasteAllowedOnThisPage.value = true
     if (typeof data.id === 'string' && typeof data.frameId === 'number') {
       return sendMessageSafe('frame-paste-decision', { id: data.id, frameId: data.frameId, allowed })
         .catch(error => console.error('Visilant: could not answer a frame about its paste', error))
@@ -3030,7 +3102,7 @@ browser.runtime.onMessage.addListener(((message: any, _sender: any, sendResponse
       if (kind === 'url')
         showLinkTooltipByUrl(value, { force: true })
       else if (kind === 'email')
-        showEmailTooltipByAddress(value)
+        showEmailTooltipByAddress(value, payload)
       else
         showRawPayloadTooltip(payload, kind)
     })

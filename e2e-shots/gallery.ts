@@ -18,6 +18,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { placeOf, SECTIONS } from './gallery-sections'
 
 const ROOT = path.resolve(__dirname, '..')
 const SHOTS = path.join(ROOT, '.tmp/shots')
@@ -130,6 +131,91 @@ const pictureOf = (meta: Meta) => path.join(RUN, meta.project, `${meta.name}.jso
 function dropPicture(meta: Meta) {
   fs.rmSync(pictureOf(meta), { force: true })
   fs.rmSync(pictureOf(meta).replace(/\.json$/, '.png'), { force: true })
+  fs.rmSync(pictureOf(meta).replace(/\.json$/, '.txt'), { force: true })
+}
+
+/**
+ * Lines a screen may say twice, each with the cases it holds for and why.
+ *
+ * Everything else said twice on one screen is flagged on its card: a verdict
+ * and the facts that repeat it, a caveat under two blocks, a list of one row
+ * that is the address printed above it. The reason is part of the entry, so
+ * that adding a line here is a decision somebody can read later.
+ */
+const REPEATS_ALLOWED: [line: string, cases: RegExp, why: string][] = [
+  ['Never visited', /^(tooltip-email-mismatch|em-text-is-domain|em-mm-)/, 'the verdict of the address the mail goes to, under the address and again in the table, beside the address the link shows'],
+  ['Familiar site', /^(tooltip-email-mismatch|em-text-is-domain|em-mm-)/, 'the verdict of the address the mail goes to, under the address and again in the table, beside the address the link shows'],
+  ['Unfamiliar site', /^(tooltip-email-mismatch|em-text-is-domain|em-mm-)/, 'the verdict of the address the mail goes to, under the address and again in the table, beside the address the link shows'],
+  ['Public email service', /^(tooltip-email-mismatch|em-text-is-domain|em-mm-)/, 'the verdict of the address the mail goes to, under the address and again in the table, beside the address the link shows'],
+  ['Temporary email service', /^(tooltip-email-mismatch|em-text-is-domain|em-mm-)/, 'the verdict of the address the mail goes to, under the address and again in the table, beside the address the link shows'],
+  ['Email forwarding service', /^(tooltip-email-mismatch|em-text-is-domain|em-mm-)/, 'the verdict of the address the mail goes to, under the address and again in the table, beside the address the link shows'],
+  ['0', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['120', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['400', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['60', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['Visits', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['Active days', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['Days known', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['Check', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['Shows', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['Status', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['none', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['To', /^em-mm-several$/, 'the address the link shows heads the table of every recipient, so its side and the rows are drawn once per recipient'],
+  ['Check elsewhere', /^(popup|pp|check|ck|details)-/, 'one under the address and one under its site, each about its own name'],
+  ['Turn off', /^(popup|pp|details)-/, 'two switches, warnings and anti-tampering, each on a row of its own'],
+  ['Turn on', /^(popup|pp|details)-/, 'the same two switches, both off'],
+  ['Update now', /^(opt|options)-/, 'one button per downloaded list'],
+  ['at least', /^(opt|options)-/, 'one per familiarity check'],
+  ['Active days', /^(opt|options)-/, 'a familiarity check, and an option of the counter'],
+  ['Days known', /^(opt|options)-/, 'a familiarity check, and an option of the counter'],
+  ['Active days', /^(popup|pp|details|check|ck)-/, 'a fact of the address, and an option of the list of its relatives'],
+  ['Days known', /^(popup|pp|details|check|ck)-/, 'a fact of the address, and an option of the list of its relatives'],
+  ['Passed checks', /^(popup|pp|details|check|ck)-/, 'a fact of the address, and an option of the list of its relatives'],
+  ['Familiar site', /^dlg-familiar-mismatch$/, 'both sides of the comparison are familiar'],
+  ['not recorded', /./, 'two facts of one record, neither of them kept'],
+  ['none', /mismatch|^tt-mm-|^em-mm-/, 'two facts of a site never visited, each beside the other side\'s number'],
+  ['Never visited', /^(ck-mailsite-unvisited)$/, 'two mail sites, neither of them ever opened'],
+  ['Never visited', /-once-resolved$/, 'the address a link goes to first and the one it ends at, each with its own verdict'],
+  ['Never visited', /^cp-email-mailsite$/, 'the address domain and one of the sites its mail is read on, neither ever opened'],
+  ['Email addresses', /^(opt|options)-/, 'the section and its line in the contents'],
+  ['Familiarity rules', /^(opt|options)-/, 'the section and its line in the contents'],
+  ['Toolbar icon', /^(opt|options)-/, 'the section and its line in the contents'],
+  ['Link check', /^(opt|options)-/, 'the section and its line in the contents'],
+  ['Check elsewhere', /^(opt|options)-/, 'the section and its line in the contents'],
+  ['Your data', /^(opt|options)-/, 'the section and its line in the contents'],
+  ['All information about site visits', /^opt-reset-confirm$/, 'the box that was ticked, and the dialog naming what will go'],
+  ['All settings', /^opt-reset-confirm$/, 'the box that was ticked, and the dialog naming what will go'],
+  ['This is a long pasted document line.', /^paste-revealed-long$/, 'the made-up clipboard contents'],
+]
+
+/**
+ * What a case's screen says twice, from the words kept beside its picture.
+ *
+ * Only lines of two words or more, and whole links: an address under "Site"
+ * and again in the list of that site's addresses is one name in two roles,
+ * and so is a number or a one-word label of a table.
+ */
+function repeatsOf(name: string): string[] {
+  // Every column: the phone lays some screens out with blocks the others lack.
+  // Without regard to case, since a small heading is drawn in capitals and
+  // comes back that way.
+  const found = new Map<string, string>()
+  for (const project of PROJECTS) {
+    const file = path.join(RUN, project, `${name}.txt`)
+    if (!fs.existsSync(file))
+      continue
+    const counts = new Map<string, number>()
+    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+      if (line.trim() && !line.startsWith('  [tooltip]'))
+        counts.set(line.toLowerCase(), (counts.get(line.toLowerCase()) ?? 0) + 1)
+    }
+    for (const [line, count] of counts) {
+      if (count > 1 && (/\p{L}{2,}\s+\p{L}{2,}/u.test(line) || /^https?:\/\//.test(line)))
+        found.set(line, line)
+    }
+  }
+  return [...found.keys()]
+    .filter(line => !REPEATS_ALLOWED.some(([allowed, cases]) => allowed.toLowerCase() === line && cases.test(name)))
 }
 
 /**
@@ -200,60 +286,7 @@ function escapeHtml(text: string) {
 
 const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-/**
- * Where a case sits in the contents: what the user is looking at, then which
- * side of it. Matched on the picture name, first match wins, and the order here
- * is the order of the catalogue. A name nothing matches lands under "Other"
- * rather than dropping out of sight.
- */
-const SECTIONS: [surface: string, topic: string, names: RegExp][] = [
-  ['On a web page', 'Typing and copy warnings', /^warning-/],
-  ['On a web page', 'Link tooltip: familiar or not', /^(tooltip-(familiar|unfamiliar|thresholds)|tt-(some-visits|subdomain|count|single|unknown|rule|thresholds))/],
-  ['On a web page', 'Link tooltip: lookalikes', /^(tooltip-punycode|tt-(look|idn)-)/],
-  ['On a web page', 'Link tooltip: a suspicious address', /^tt-mark-/],
-  ['On a web page', 'Link tooltip: text names another site', /^(tooltip-mismatch|tt-mm-)/],
-  ['On a web page', 'Link tooltip: short links', /^(tooltip-shortener|tt-(short|once)-)/],
-  ['On a web page', 'Link tooltip: size and position', /^tt-(above|right|font|long)/],
-  ['On a web page', 'Email links', /^(tooltip-email-|em-)/],
-  ['On a web page', 'QR codes and selected text', /^(tooltip-qr|qr-|sel-)/],
-  ['On a web page', 'Link dialog', /^(dialog-link|dlg-)/],
-  ['On a web page', 'Paste dialog', /^(dialog-paste|paste-)/],
-  ['On a web page', 'Check panel', /^(panel-|cp-)/],
-  ['Toolbar popup', 'Familiar or not', /^(popup-(unfamiliar|family|thresholds)|pp-(rule|legacy|new-|root|solo|www))/],
-  ['Toolbar popup', 'Lookalikes', /^(popup-punycode|pp-(look|idn|mixed|punycode))/],
-  ['Toolbar popup', 'A suspicious address', /^pp-mark-/],
-  ['Toolbar popup', 'The list of relatives', /^pp-(family|metric|sort)/],
-  ['Toolbar popup', 'Warnings and anti-tampering', /^(popup-silenced|pp-(silenced|warnings|tamper))/],
-  ['Toolbar popup', 'Special sites', /^(popup-(shortener|no-site)|pp-(localhost|dotted|private|public|platform|tenant|custom|tab-view))/],
-  ['Toolbar popup', 'Size and text', /^(popup-large|pp-(font|name|highlight|upper))/],
-  ['Toolbar popup', 'Site details page', /^(details-|pp-details)/],
-  ['Check page', 'Empty and leftover', /^(check-(empty|nothing)|ck-stale)/],
-  ['Check page', 'Sites and links', /^(check-(url|lookalike|punycode|unknown|shortener)|ck-(expand|userinfo|text-with))/],
-  ['Check page', 'Email addresses', /^(check-email|ck-(account|custom|email|embedded|local|provider|mailsite|markers))/],
-  ['Check page', 'Mailto with several recipients', /^(check-mailto|ck-(mailto|prefilled))/],
-  ['Check page', 'Comparing two addresses', /^(check-compare|ck-compare)/],
-  ['Check page', 'Phone, text, Wi-Fi, places, QR', /^ck-(geo|sms|tel|wifi|invisible|qr)/],
-  ['Check page', '"Check elsewhere" links', /^ck-lookups/],
-  ['Settings', 'The whole page', /^(options-(full|compact)|opt-(all|nav|write|reset))/],
-  ['Settings', 'General', /^options-general/],
-  ['Settings', 'Familiarity', /^(options-familiarity|opt-fam)/],
-  ['Settings', 'Link check and short links', /^(options-link|opt-ls)/],
-  ['Settings', 'Notifications', /^(options-notif|opt-notif)/],
-  ['Settings', 'Display', /^(options-display|opt-display)/],
-  ['Settings', 'Email lists', /^(options-email|opt-email)/],
-  ['Settings', '"Check elsewhere" links', /^(options-lookups|opt-lookups)/],
-  ['Settings', 'Anti-tampering', /^(options-tamper|opt-tamper)/],
-  ['Settings', 'Your data and import', /^(options-data|opt-data)/],
-  ['Welcome page', 'Import on install', /^welcome-/],
-  ['Toolbar button', 'Icon and badge', /^toolbar/],
-]
-
-function placeOf(name: string): [string, string] {
-  const hit = SECTIONS.find(([, , names]) => names.test(name))
-  return hit ? [hit[0], hit[1]] : ['Other', 'Not placed in the contents yet']
-}
-
-interface Card { surface: string, topic: string, rank: number, name: string, title: string, note?: string, cells: Map<string, string>, failed: boolean, redrawn: boolean }
+interface Card { surface: string, topic: string, rank: number, name: string, title: string, note?: string, cells: Map<string, string>, failed: boolean, redrawn: boolean, repeats: string[] }
 
 function main() {
   const now = new Date()
@@ -292,7 +325,7 @@ function main() {
     const names = [...new Set(own.map(m => m.name))]
     if (names.length === 0) {
       const name = slug(scenario.title)
-      cards.push({ ...place(name), rank: fileRank(scenario.file) + scenario.line * 100, name, title: scenario.title, cells: new Map(PROJECTS.map(p => [p, missing(p)])), failed, redrawn: isRedrawn })
+      cards.push({ ...place(name), rank: fileRank(scenario.file) + scenario.line * 100, name, title: scenario.title, cells: new Map(PROJECTS.map(p => [p, missing(p)])), failed, redrawn: isRedrawn, repeats: [] })
       continue
     }
     for (const name of names) {
@@ -305,7 +338,7 @@ function main() {
       }
       const scale = own.find(m => m.name === name && m.scale)?.scale
       const scaleNote = scale ? `Drawn at text size ${scale} (SHOTS_SCALE).` : undefined
-      cards.push({ ...place(name), rank: fileRank(first.file) + first.order, name, title: first.title, note: [first.note, scaleNote].filter(Boolean).join(' ') || undefined, cells, failed, redrawn: isRedrawn })
+      cards.push({ ...place(name), rank: fileRank(first.file) + first.order, name, title: first.title, note: [first.note, scaleNote].filter(Boolean).join(' ') || undefined, cells, failed, redrawn: isRedrawn, repeats: repeatsOf(name) })
     }
   }
 
@@ -325,14 +358,16 @@ function main() {
   const filtered = process.env.SHOTS_FILTERED === '1'
   const missingViews = state.complete ? uncovered(metas) : []
   const fresher = cards.filter(c => c.redrawn)
+  const repeating = cards.filter(c => c.repeats.length)
   const when = (iso: string) => new Date(iso).toLocaleString('en-GB')
   const notices = [
     ...runErrors.map(e => `<li><b>The run itself went wrong:</b> ${escapeHtml(e)}</li>`),
     ...(failedCount ? [`<li><b>${failedCount} ${failedCount === 1 ? 'picture' : 'pictures'} could not be drawn.</b> The screen the case waits for never appeared, so there was nothing to take a picture of. Usually that is a bug in the extension rather than in the case. Each red card says what was missing.</li>`] : []),
     ...(filtered && fresher.length ? [`<li><b>Only ${fresher.length} ${fresher.length === 1 ? 'case was' : 'cases were'} drawn again just now:</b> ${fresher.map(c => `<a href="#${c.name}">${escapeHtml(c.title)}</a>`).join(', ')}. The rest are as they were${before ? ` on ${when(before.updatedAt)}` : ''}.</li>`] : []),
+    ...(repeating.length ? [`<li><b>${repeating.length} ${repeating.length === 1 ? 'screen says' : 'screens say'} the same line twice:</b> ${repeating.map(c => `<a href="#${c.name}">${escapeHtml(c.title)}</a>`).join(', ')}. Each card names the line. Take one of the two off the screen, or add the line to <code>REPEATS_ALLOWED</code> in e2e-shots/gallery.ts with the reason it is said twice.</li>`] : []),
     ...(unfinished ? [`<li><b>The run stopped before ${unfinished} ${unfinished === 1 ? 'picture' : 'pictures'}.</b> Their cards keep what they had before, or say they were not drawn yet.</li>`] : []),
     ...(state.complete ? [] : ['<li>The whole set has not been drawn yet, only parts of it, so whether every view has a case was not checked. <code>just shots</code> draws everything.</li>']),
-    ...cards.filter(c => c.surface === 'Other' && !c.failed).map(c => `<li><b>No topic for</b> <code>${c.name}</code>, so it is under Other at the bottom. Add a line to <code>SECTIONS</code> in e2e-shots/gallery.ts.</li>`),
+    ...cards.filter(c => c.surface === 'Other' && !c.failed).map(c => `<li><b>No topic for</b> <code>${c.name}</code>, so it is under Other at the bottom. Add a line to <code>SECTIONS</code> in e2e-shots/gallery-sections.ts.</li>`),
     ...missingViews.map(v => `<li><b>No case shows</b> <code>${v}</code>. Add one to e2e-shots/ that lists it in <code>covers</code>.</li>`),
   ]
 
@@ -342,7 +377,7 @@ function main() {
   }).join('')}</div>`).join('')
 
   const body = surfaces.map(s => `<section data-surface="${slug(s)}"><h2>${escapeHtml(s)}</h2>${topicsOf(s).map(t => `<section data-topic="${topicId(s, t)}"><h3 id="${topicId(s, t)}">${escapeHtml(t)}</h3>${cardsOf(s, t).map(c => `<section class="card${c.failed ? ' bad' : ''}" id="${c.name}" data-title="${escapeHtml(c.title)}" data-surface-name="${escapeHtml(s)}" data-topic-name="${escapeHtml(t)}" data-surface-id="${slug(s)}" data-topic-id="${topicId(s, t)}" data-search="${escapeHtml(`${c.name} ${c.title} ${c.note ?? ''}`.toLowerCase())}">
-  <div class="head"><h4>${escapeHtml(c.title)}</h4><code class="name">${c.name}</code><button class="copy" type="button" title="Copy the case name and title, to paste into a message">Copy name</button></div>${c.note ? `<p class="note">${escapeHtml(c.note)}</p>` : ''}
+  <div class="head"><h4>${escapeHtml(c.title)}</h4><code class="name">${c.name}</code><button class="copy" type="button" title="Copy the case name and title, to paste into a message">Copy name</button></div>${c.note ? `<p class="note">${escapeHtml(c.note)}</p>` : ''}${c.repeats.length ? `<p class="repeats"><b>Said twice on this screen:</b> ${c.repeats.map(line => `“${escapeHtml(line.length > 90 ? `${line.slice(0, 90)}…` : line)}”`).join(', ')}</p>` : ''}
   <div class="row">${PROJECTS.map(p => c.cells.get(p)).join('')}</div>
 </section>`).join('')}</section>`).join('')}</section>`).join('')
 
@@ -378,7 +413,7 @@ ${body}
 </body></html>`
   fs.writeFileSync(path.join(SHOTS, 'index.html'), html)
 
-  console.log(`[shots] ${filtered ? `${fresher.length} drawn again, ` : ''}${cards.length} cases in .tmp/shots/index.html${failedCount ? `, ${failedCount} pictures could not be drawn (red dots there)` : ''}${missingViews.length ? `, ${missingViews.length} views no case shows` : ''}`)
+  console.log(`[shots] ${filtered ? `${fresher.length} drawn again, ` : ''}${cards.length} cases in .tmp/shots/index.html${failedCount ? `, ${failedCount} pictures could not be drawn (red dots there)` : ''}${missingViews.length ? `, ${missingViews.length} views no case shows` : ''}${repeating.length ? `, ${repeating.length} say a line twice (${repeating.slice(0, 8).map(c => c.name).join(', ')}${repeating.length > 8 ? ', …' : ''})` : ''}`)
 
   // An empty catalogue is never a clean run. Most often a `-g` that matched
   // nothing, which Playwright reports and then exits on with success.

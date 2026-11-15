@@ -17,8 +17,8 @@ const props = defineProps<{
    * Gmail has only `mail.google.com` on record.
    */
   context?: 'email'
-  /** No box around each line, for the tooltip where space is tight. */
-  bare?: boolean
+  /** One half of the lines, see `DomainMarkers`: the sure lookalikes, which are red flags, or the near misses. */
+  show?: 'flags' | 'cautions'
 }>()
 
 const { t } = useI18n()
@@ -53,24 +53,38 @@ function sentence(match: LookalikeMatch): { before: string, glue: string, after:
   return { before, glue, after, real, end: end ?? '' }
 }
 
+/**
+ * The familiar names the line gives: one, or every domain parked in front of
+ * the same site, so the real site is named once. Joined with "or" between
+ * every two, never a comma, which beside an address reads as one of its dots.
+ */
+function names(match: LookalikeMatch): string[] {
+  return [match.domain, ...(match.also ?? []).map(item => item.domain)]
+}
+
 const answer = useLookalikes(() => props.hostname, () => props.context)
 // Background asleep or unreachable – say nothing rather than guess
-const matches = computed<LookalikeMatch[]>(() => answer.value?.status === 'answered' ? answer.value.matches : [])
+const matches = computed<LookalikeMatch[]>(() => {
+  const all = answer.value?.status === 'answered' ? answer.value.matches : []
+  // The red flags first, as among the markers
+  return [
+    ...(props.show === 'cautions' ? [] : all.filter(isRedFlagLookalike)),
+    ...(props.show === 'flags' ? [] : all.filter(match => !isRedFlagLookalike(match))),
+  ]
+})
 </script>
 
 <template>
-  <!-- Red whatever the severity: a near miss and a sure one ask the same thing
-       of the reader, to look again before going on. The words say how close,
-       and the sign says whether it is a red flag: a sure one is, a near miss
-       keeps the triangle (see logic/red-flags.ts). -->
+  <!-- A sure lookalike is a red flag, red with a flag. A near miss is orange
+       with the shield and its exclamation mark: on its own it is as often an
+       honest neighbour as a copy (see logic/red-flags.ts). -->
   <div v-if="matches.length" class="lookalike-notice grid gap-2">
     <VzNotice
       v-for="match in matches"
       :key="match.domain"
-      tone="danger"
+      :tone="isRedFlagLookalike(match) ? 'danger' : 'caution'"
       :icon="isRedFlagLookalike(match) ? 'flag' : undefined"
       :data-red-flag="isRedFlagLookalike(match) ? '' : undefined"
-      :bare="bare"
       data-lookalike
       :data-lookalike-reason="match.reason"
       :data-lookalike-source="match.source ?? 'history'"
@@ -79,15 +93,20 @@ const matches = computed<LookalikeMatch[]>(() => answer.value?.status === 'answe
       <!-- Both names drawn as addresses, with their frames: the heavier ones
            show whose site each really is, which is the whole point of the line.
            Each keeps the punctuation after it on its own line. -->
-      {{ sentence(match).before }}<span class="vz-nobr"><SecureText
-        :text="match.domain"
-        size="s"
-
-        data-lookalike-site
-      />{{ sentence(match).glue }}</span>{{ sentence(match).after }}<span
+      {{ sentence(match).before }}<template v-for="(name, index) in names(match)" :key="name">
+        <!-- Spaced here: the template compiler trims a line of its own -->
+        <template v-if="index">
+          {{ ` ${t('listOr')} ` }}
+        </template><span class="vz-nobr"><SecureText
+          :text="name"
+          size="s"
+          plain
+          data-lookalike-site
+        /><template v-if="index === names(match).length - 1">{{ sentence(match).glue }}</template></span>
+      </template>{{ sentence(match).after }}<span
         v-if="sentence(match).real"
         class="vz-nobr"
-      ><SecureText :text="sentence(match).real" size="s" data-lookalike-real /></span>{{ sentence(match).end }}
+      ><SecureText :text="sentence(match).real" size="s" plain data-lookalike-real /></span>{{ sentence(match).end }}
       <!-- No visit count after it. "The familiar site" already gives the
            verdict, and a number at the end of a sentence about another address
            read as that address's visits rather than the familiar site's. -->

@@ -39,6 +39,8 @@
   --brand-tint: #e3f4f8;
   --on-brand: #ffffff;
   --focus-ring: #0b6a84;
+  /* Violet: says only "the same", in a hue no verdict, finding, link or focus uses */
+  --match: #7c3aed;
   --safe: #1a7f43;
   --safe-text: #14673a;
   --safe-tint: #e4f3ea;
@@ -47,6 +49,14 @@
   --danger-text: #a61b23;
   --danger-tint: #fcebec;
   --danger-line: #e99ca1;
+  /* Be on your guard: a finding that is not a reason to stop on its own.
+     Another hue than the red and a step lighter, which is not enough to tell
+     the two apart on its own: red and orange never share a sign, and where
+     they do (the exclamation mark at the head of a box) the title says which. */
+  --caution: #c96a00;
+  --caution-text: #8f4a00;
+  --caution-tint: #fff1dc;
+  --caution-line: #ecb56e;
   --neutral: #6b7386;
   --neutral-text: #4a5263;
   --neutral-tint: #eceef3;
@@ -102,6 +112,7 @@ html.dark,
   --brand-tint: #0f2e38;
   --on-brand: #0d121d;
   --focus-ring: #4cc9e0;
+  --match: #b794f6;
   --safe: #45c27a;
   --safe-text: #6fd99a;
   --safe-tint: #10291b;
@@ -110,6 +121,10 @@ html.dark,
   --danger-text: #ff9095;
   --danger-tint: #341418;
   --danger-line: #7a2f35;
+  --caution: #f5a742;
+  --caution-text: #ffc27d;
+  --caution-tint: #30200c;
+  --caution-line: #7d5622;
   --neutral: #8a92a5;
   --neutral-text: #b2b9c8;
   --neutral-tint: #222838;

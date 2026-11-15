@@ -110,12 +110,27 @@ describe('familiarityFacts component', () => {
   })
 
   // Never visited is not a gap in a record, there is no record at all yet
-  it('says none yet for a site never visited, with no import hint', () => {
+  // Three checks that all fail on a zero say "never visited" three times
+  it('says a site was never visited in one line, not as a row per check', () => {
     configure()
     const wrapper = mount(FamiliarityFacts, { props: { stats: { count: 0 } } })
-    expect(wrapper.text()).toContain('statsNoneYet')
+    expect(wrapper.find('[data-never-visited]').text()).toBe('linkTooltipNeverVisited')
+    expect(wrapper.find('[data-criterion]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('statsUnknown')
     expect(wrapper.html()).not.toContain('statsImportHint')
+  })
+
+  it('says nothing at all about such a site beside a badge that already did', () => {
+    configure()
+    const wrapper = mount(FamiliarityFacts, { props: { stats: { count: 0 }, verdictBeside: true } })
+    expect(wrapper.text()).toBe('')
+  })
+
+  it('keeps every check beside a badge once there is a visit to show', () => {
+    configure()
+    const wrapper = mount(FamiliarityFacts, { props: { stats: { count: 1 }, verdictBeside: true } })
+    expect(wrapper.findAll('[data-criterion]')).toHaveLength(3)
+    expect(wrapper.find('[data-never-visited]').exists()).toBe(false)
   })
 
   it('marks a passed check apart from a failed one', () => {
@@ -153,16 +168,6 @@ describe('familiarityFacts component', () => {
 
   // The verdict is the answer and the facts are the working, so it goes first,
   // right under the address it is about
-  it('puts the status handed to it above the facts', () => {
-    configure()
-    const wrapper = mount(FamiliarityFacts, {
-      props: { stats: { count: 0 } },
-      slots: { status: '<span class="verdict">never visited</span>' },
-    })
-    expect(wrapper.find('.verdict').exists()).toBe(true)
-    expect(wrapper.text().indexOf('never visited')).toBeLessThan(wrapper.text().indexOf('familiarityVisits'))
-  })
-
   // A fact that was never recorded fails its check like any other, so its mark
   // is the failed one while its words say why there is no number
   it('marks a missing fact as a failure and sets its words apart', () => {

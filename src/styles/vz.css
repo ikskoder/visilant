@@ -110,6 +110,7 @@
 
 .tone-safe { color: var(--safe); }
 .tone-danger { color: var(--danger); }
+.tone-caution { color: var(--caution); }
 .tone-neutral { color: var(--neutral); }
 .tone-brand { color: var(--brand); }
 
@@ -125,13 +126,119 @@
   overflow-wrap: anywhere;
 }
 
-.vz-seg { white-space: nowrap; }
+/* A label and what follows it, a dot or the copy button, never part, and a
+   label too long for the line is the one that gives way and wraps inside its
+   frame, with the dot after its last line.
+
+   Inline blocks, not a flex row: the items of a flex row are blocks, so an
+   address selected and copied, or read as text, came out one label and one
+   dot to a line. The room for what follows the label is padding on the unit,
+   and what follows is pulled back by the same amount, so the two cancel and
+   the unit is as wide as its content. Only a label held to the width of the
+   line feels the padding, as the room its dot needs. The label used to be
+   told to stop "1em short of the line" instead, which an address exactly one
+   label wide read as "1em short of itself", and broke in two. */
+.vz-seg { display: inline-block; max-width: 100%; box-sizing: border-box; white-space: nowrap; vertical-align: baseline; }
+/* Pulled back by a pixel less than the room: a pull-back that reaches past
+   the real width of the dot, by a hundredth of a pixel where the dot is bold
+   or the frames are off and the dot is narrower, leaves the unit narrower
+   than its label, and the label breaks its last letter onto a second line */
+.vz-addr { --vz-dot: calc(1ch + 0.22em); --vz-after: 1.6em; }
+.vz-addr--noframes { --vz-dot: calc(1ch + 0.1em); }
+.vz-seg:has(> .vz-dot) { padding-right: var(--vz-dot); }
+.vz-seg > .vz-dot { margin-right: calc(1px - var(--vz-dot)); }
+.vz-seg:has(> .vz-copy) { padding-right: var(--vz-after); }
+.vz-seg > .vz-copy { margin-right: calc(1px - var(--vz-after)); }
+.vz-seg:has(> .vz-dot):has(> .vz-copy) { padding-right: calc(var(--vz-dot) + var(--vz-after)); }
+.vz-seg:has(> .vz-dot) > .vz-copy { margin-right: calc(1px - var(--vz-dot) - var(--vz-after)); }
+.vz-seg:has(> .vz-copy) > .vz-dot { margin-right: 0; }
+
+/* An address is one piece. In a sentence it goes to the next line whole when
+   it does not fit in what is left of this one: cut at a dot, the half left at
+   the end of the line reads as the address. Only one longer than a whole line
+   breaks inside, and then each line that goes on is marked (see SecureText). */
+.vz-addr--box {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  white-space: normal;
+  vertical-align: baseline;
+}
+
+/* With the comma or full stop that is kept on its line, see .vz-nobr */
+.vz-nobr > .vz-addr--box { max-width: calc(100% - 0.6em); }
+
+/* Room at the end of every line for the mark, so it never hangs past the card */
+.vz-addr--wrapped { padding-right: 1em; }
+
+.vz-goes-on { position: relative; }
+
+/* The marks inside a frame broken over lines (see SecureText), laid over the
+   address just past the frame's right edge, in the room .vz-addr--wrapped
+   keeps there. Positioned from the address's own box */
+.vz-addr--box { position: relative; }
+.vz-goes-on-inside { position: absolute; width: 0; height: 0; pointer-events: none; user-select: none; }
+.vz-goes-on-inside::after {
+  content: '↩';
+  content: '↩' / '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(0.15em, -50%);
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+
+/* The words that explain the violet frame, in the frame they explain */
+.vz-match-sample {
+  white-space: nowrap;
+  border: 2px solid var(--match);
+  border-radius: var(--radius-xs);
+  padding: 0 0.2em;
+  margin: 0 0.15em;
+  color: var(--ink);
+}
+
+/* The same domain in other addresses of a list, while one of them is pointed
+   at or open (MailRecipients). Drawn outside the frames, so the colour of a
+   finding on a label keeps showing through it */
+.vz-addr--match .vz-addr__domain {
+  outline: 2px solid var(--match);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* Laid over the line, not in it: in the flow it would take room, move the
+   break and with it the very line end it marks. Not read out and not copied. */
+.vz-goes-on::after {
+  content: '↩';
+  content: '↩' / '';
+  position: absolute;
+  left: 100%;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 0.15em;
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  color: var(--ink-2);
+  pointer-events: none;
+  user-select: none;
+}
 
 .vz-lbl {
   display: inline-block;
-  /* A label that fills the line still leaves room for the dot after it, which
-     would otherwise hang past the edge of the card */
-  max-width: calc(100% - 1em);
+  max-width: 100%;
+  box-sizing: border-box;
+  vertical-align: baseline;
   white-space: normal;
   border: 1px solid var(--label-line);
   border-radius: var(--radius-xs);
@@ -139,9 +246,6 @@
   line-height: 1.3;
   background: var(--surface);
 }
-
-/* The last label has the copy button after it as well, which is wider than a dot */
-.vz-seg:has(.vz-copy) .vz-lbl { max-width: calc(100% - 2.6em); }
 
 .vz-lbl--sfx { color: var(--ink-2); }
 
@@ -156,10 +260,52 @@
   background: var(--owner-tint);
 }
 
+/* Two things are read off a frame, each by its own means.
+
+   The line says whose the label is. Solid, heavier and on a tint: the site,
+   the one part that says whose address this is. Dashed: a label in front of
+   the site, where its owner writes whatever they like and where a borrowed
+   name is put. Only once the site is known: before that, and in a name with
+   no site in it, every frame is the plain thin one.
+
+   The colour says a finding is about this label, the finding the line under
+   the address spells out: red for a red flag, orange for what is only worth
+   a look. Which label gets which is logic/piece-tones.ts, one function for
+   every surface. */
+.vz-addr--owned .vz-lbl,
+.vz-addr--free .vz-lbl { border-style: dashed; }
+.vz-addr--owned .vz-own .vz-lbl { border-style: solid; }
+
+/* Red is heavier as well as red: the two colours are close for an eye that
+   does not tell red from orange, and the two findings are not the same kind */
+.vz-lbl--danger,
+.vz-own .vz-lbl--danger { border-color: var(--danger); border-width: 2px; background: var(--danger-tint); }
+.vz-lbl--caution,
+.vz-own .vz-lbl--caution { border-color: var(--caution); background: var(--caution-tint); }
+
 /* Keeps the comma or full stop after an address on the address's line */
 .vz-nobr { white-space: nowrap; }
 
-.vz-addr__acct { color: var(--ink); }
+/* The username of an email address: a frame of its own kind, dotted and round
+   at the ends. Whoever has the mailbox chose it, so it says nothing about
+   whose the address is, and it must not read as a label of the domain: not
+   the solid frame of the site and not the dashes of a level in front of it.
+   Not a `vz-lbl` either: the labels are what the findings colour and count */
+.vz-addr__acct {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  vertical-align: baseline;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  border: 1.5px dotted var(--label-line);
+  border-radius: 0.7em;
+  padding: 0 0.4em;
+  line-height: 1.3;
+  background: var(--surface);
+}
+.vz-addr--noframes .vz-addr__acct { border: 0; background: transparent; padding: 0; }
 .vz-addr__at { color: var(--ink-3); padding: 0 0.12em; }
 
 .vz-ch--digit { color: var(--char-digit); font-weight: 800; }
@@ -244,6 +390,13 @@
 }
 
 .vz-addr--noframes .vz-own .vz-lbl { font-weight: 700; }
+/* With the frames off a finding still marks its label with its tint alone,
+   with no line under it. Named with the owner's labels too, or the rule
+   above that clears their ground wins */
+.vz-addr--noframes .vz-lbl--danger,
+.vz-addr--noframes .vz-own .vz-lbl--danger { background: var(--danger-tint); border-radius: 2px; }
+.vz-addr--noframes .vz-lbl--caution,
+.vz-addr--noframes .vz-own .vz-lbl--caution { background: var(--caution-tint); border-radius: 2px; }
 .vz-addr--noframes .vz-dot { padding: 0 0.04em; }
 
 /* Inside a sentence the frames must not push the lines apart */
@@ -285,12 +438,15 @@
    too small to tell apart, which is the one thing that must not depend on colour */
 .vz-badge .vz-icon--shield-pass,
 .vz-badge .vz-icon--shield-fail,
-.vz-badge .vz-icon--shield-unknown { width: calc(17px * var(--vz-scale, 1)); height: calc(17px * var(--vz-scale, 1)); margin-block: calc(-2px * var(--vz-scale, 1)); }
+.vz-badge .vz-icon--shield-alert,
+.vz-badge .vz-icon--shield-unknown { width: calc(16px * var(--vz-scale, 1)); height: calc(16px * var(--vz-scale, 1)); margin-block: calc(-1px * var(--vz-scale, 1)); }
 
 .vz-badge--safe { background: var(--safe-tint); border-color: var(--safe-line); color: var(--safe-text); }
 .vz-badge--safe .vz-icon { color: var(--safe); }
 .vz-badge--danger { background: var(--danger-tint); border-color: var(--danger-line); color: var(--danger-text); }
 .vz-badge--danger .vz-icon { color: var(--danger); }
+.vz-badge--caution { background: var(--caution-tint); border-color: var(--caution-line); color: var(--caution-text); }
+.vz-badge--caution .vz-icon { color: var(--caution); }
 .vz-badge--neutral { background: var(--neutral-tint); border-color: var(--neutral-line); color: var(--neutral-text); }
 .vz-badge--neutral .vz-icon { color: var(--neutral); }
 .vz-badge--brand { background: var(--brand-tint); border-color: var(--brand); color: var(--brand); }
@@ -412,17 +568,24 @@
 }
 
 .vz-notice .vz-icon { margin-top: 2px; }
+/* The shield's mark is cut out of it, so it is drawn a step larger than a
+   plain sign to keep the exclamation mark readable */
+.vz-notice .vz-icon--shield-alert,
+.vz-notice .vz-icon--shield-fail { width: calc(18px * var(--vz-scale, 1)); height: calc(18px * var(--vz-scale, 1)); margin-top: 1px; }
 .vz-notice__text { min-width: 0; }
 .vz-notice__text b { font-weight: 700; }
 
 .vz-notice--danger { background: var(--danger-tint); border-color: var(--danger-line); }
 .vz-notice--danger > .vz-icon { color: var(--danger); }
+.vz-notice--caution { background: var(--caution-tint); border-color: var(--caution-line); }
+.vz-notice--caution > .vz-icon { color: var(--caution); }
 .vz-notice--info { background: var(--brand-tint); border-color: var(--line); }
 .vz-notice--neutral { background: var(--neutral-tint); border-color: var(--neutral-line); }
 .vz-notice--neutral > .vz-icon { color: var(--neutral); }
 .vz-notice--info > .vz-icon { color: var(--brand); }
 
-/* A notice inside a tight space: no box, the icon carries the tone, the words stay ink */
+/* A line about an address, which is what most notices are: no box, the icon
+   carries the tone, the words stay ink. The box is the exception, see VzNotice */
 .vz-notice--bare { background: none; border: 0; padding: 0; }
 
 /* ---------- Buttons ---------- */
@@ -507,6 +670,15 @@
    button after an address in a sentence does */
 .vz-iconbtn--xs { width: calc(20px * var(--vz-scale, 1)); height: calc(20px * var(--vz-scale, 1)); vertical-align: middle; margin-left: calc(2px * var(--vz-scale, 1)); }
 .vz-iconbtn--xs .vz-icon { width: calc(14px * var(--vz-scale, 1)); height: calc(14px * var(--vz-scale, 1)); }
+
+.vz-help { flex: none; }
+/* A line to itself under the row it was opened from. Its own length never
+   widens the box around it: a tooltip is as wide as what it holds, and three
+   sentences of help would stretch it to its limit */
+.vz-help__text { flex-basis: 100%; min-width: 100%; margin: 0; contain: inline-size; }
+/* A button and the question mark that explains it, side by side */
+.vz-ask { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
+.vz-ask > .vz-btn--block { flex: 1 1 auto; width: auto; }
 
 .vz-copy { flex: none; user-select: none; }
 /* After an address, sized off the address's own text, so it sits on its line
@@ -726,22 +898,23 @@ dialog.vz-layer { width: 100%; height: 100%; }
   color: var(--ink);
 }
 
-/* The signature line: says whose box this is. A page can copy it, so it proves nothing on its own */
+/* The signature: says whose box this is. A page can copy it, so it proves nothing on its own */
 .vz-sig {
-  display: flex;
-  align-items: center;
-  /* The shield is the V, so it sits against the letters like one */
-  gap: 1px;
-  font-size: calc(12px * var(--vz-scale, 1));
-  line-height: calc(16px * var(--vz-scale, 1));
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+  display: inline-flex;
+  flex: none;
 }
 
-.vz-sig svg,
-.vz-sig img { width: 14px; height: 16px; display: block; }
+.vz-sig svg {
+  width: calc(var(--icon-md) * var(--vz-scale, 1));
+  height: calc(var(--icon-md) * var(--vz-scale, 1));
+  display: block;
+}
+
+/* Beside a title, the size of a title's icon */
+.vz-sig--lg svg {
+  width: calc(var(--icon-lg) * var(--vz-scale, 1));
+  height: calc(var(--icon-lg) * var(--vz-scale, 1));
+}
 
 .vz-tooltip {
   width: max-content;
@@ -889,8 +1062,13 @@ dialog.vz-layer { width: 100%; height: 100%; }
 /* ---------- Forced colours ---------- */
 
 @media (forced-colors: active) {
-  .vz-own .vz-lbl { border: 3px double CanvasText; }
+  /* Named from the address down, to win over the rule that draws the site solid */
+  .vz-addr .vz-own .vz-lbl { border: 3px double CanvasText; }
   .vz-lbl { border-color: CanvasText; }
+  /* No colour to tell a finding by here: a line around the label, solid for
+     a red flag and dashed for what is only worth a look */
+  .vz-addr .vz-lbl--danger { outline: 2px solid CanvasText; outline-offset: 1px; }
+  .vz-addr .vz-lbl--caution { outline: 1px dashed CanvasText; outline-offset: 1px; }
   .vz-badge,
   .vz-notice { border-color: CanvasText; }
   /* The tint is gone in forced colours, so a pressed toggle needs an edge again */

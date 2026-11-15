@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DomainMetric, MetricReading } from '~/logic/domain-metric'
+import type { EmailProviderKind } from '~/logic/email-providers'
 import type { SiteVisitData } from '~/logic/storage'
 import punycode from 'punycode'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -8,10 +9,11 @@ import { useFamiliarityFacts } from '~/composables/useFamiliarityFacts'
 import { useI18n } from '~/composables/useI18n'
 import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { useTheme } from '~/composables/useTheme'
+import { readCheckHandoff } from '~/logic/check-handoff'
 import { belongsToSite, siteDomainOrSelf, visitKey } from '~/logic/domain-boundary'
 import { displayDomain } from '~/logic/domain-display'
 import { DOMAIN_METRICS, metricReading, metricSortValue } from '~/logic/domain-metric'
-import { classifyEmailDomain, loadEmailListsFromStorage } from '~/logic/email-providers'
+import { classifyEmailDomain, MAIL_SERVICE_VERDICTS } from '~/logic/email-providers'
 import { aggregateFamiliarityStats, isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { getPunycodeInfo } from '~/logic/link-safety'
 import { applyListChanges } from '~/logic/list-sync'
@@ -20,7 +22,7 @@ import { popupWidthCap } from '~/logic/platform'
 import { STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
 import { editSettingsThroughBackground, settings } from '~/logic/storage'
 import { isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
-import { classifyHost, isTrackableHostname, untrackedReason } from '~/logic/visit-stats'
+import { isTrackableHostname, untrackedReason } from '~/logic/visit-stats'
 import Logo from '../components/Logo.vue'
 import SecureText from '../components/SecureText.vue'
 import CheckField from './CheckField.vue'
@@ -45,13 +47,10 @@ function updateTranslations() {
   const translationKeys = [
     'currentDomain',
     'checkedDomain',
-    'currentAddress',
-    'checkedAddress',
     'baseDomain',
     'relatedDomains',
     'familySummaryTitle',
     'familyOnlyCheckedDomain',
-    'familyOnlyCurrentDomain',
     'shortenerHostNotice',
     'listNumberLabel',
     'listShowLabel',
@@ -63,8 +62,6 @@ function updateTranslations() {
     'sortOrderToDesc',
     'domainOriginal',
     'domainPunycode',
-    'punycodeHelpTitle',
-    'punycodeHelpContent',
     'current',
     'noVisitData',
     'visitWebsite',
@@ -83,7 +80,7 @@ function updateTranslations() {
     'antiTamperingTooltipWhat',
     'antiTamperingTooltipOn',
     'antiTamperingTooltipOff',
-    'checkExternalButton',
+    'checkFieldTitle',
     'firstVisitOn',
     'statsUnknown',
     'statsImportHint',
@@ -99,8 +96,7 @@ function updateTranslations() {
     'familiarityActiveDays',
     'familiarityAge',
     'badgeContentChecks',
-    'emailPublicProvider',
-    'emailDisposableDomain',
+    ...Object.values(MAIL_SERVICE_VERDICTS).map(service => service.label),
   ]
 
   const newTranslations: Record<string, string> = {}
@@ -160,6 +156,35 @@ const currentHostname = ref('')
  * which is the question the field asked before the card took the line over.
  */
 const currentContext = ref<'email' | undefined>()
+/**
+ * What kind of mail provider an address domain is, when the card is about one.
+ *
+ * Nobody opens gmail.com or a throwaway mail service, so their own visits are a
+ * zero that never moves. Judged by it, the card drew a red "never visited" for
+ * an address whose tooltip on the page had just said "public email service".
+ *
+ * Read when the name is handed over, which is each press of Check. The check
+ * field is the only way an address gets here, it has the lists loaded by
+ * then and keeps them current, and the card classifying on its own from a
+ * copy read once went on calling an address by a list edited since.
+ */
+const providerKind = ref<EmailProviderKind | null>(null)
+/**
+ * The part before the @, when the card is about the domain of an email
+ * address. The card then draws the address whole: it used to draw the domain
+ * alone, with the username on a row of its own in the field's block above.
+ */
+const currentUsername = ref('')
+/** The name as the card draws it: the host, or the whole email address at it. */
+/**
+ * Where the address came from, when it was chosen from a mail link's list of
+ * recipients: the card's heading names its place, "To · #3 of 5 recipients",
+ * and while its row in the list is open that row draws its lines, so the card
+ * does not draw them again.
+ */
+const currentHeading = ref('')
+const findingsAbove = ref(false)
+const shown = (host: string) => currentUsername.value ? `${currentUsername.value}@${host}` : host
 // The letters a lookalike changed, underlined in the address. Asked as the
 // lookalike notice under it asks, so both read one answer
 const hostDiff = useLookalikeDiff(() => currentHostname.value, () => currentContext.value)
@@ -188,7 +213,6 @@ const visitsReadFor = ref('')
  * is not limited to one, and the address the window is about is in here too.
  */
 const familyHosts = ref<string[]>([])
-const showPunycodeHelp = ref(false)
 
 const unicodeHostname = computed(() => {
   if (!currentHostname.value)
@@ -236,9 +260,7 @@ const showFamily = computed(() => otherFamilyHosts.value.length > 0)
  * figures had been forgotten. It names that card by its heading rather than by
  * the address, so the wording follows the heading from page to popup.
  */
-const onlyThisHostText = computed(() => isStandalonePage.value
-  ? translations.value.familyOnlyCheckedDomain
-  : translations.value.familyOnlyCurrentDomain)
+const onlyThisHostText = computed(() => translations.value.familyOnlyCheckedDomain)
 
 /**
  * Whether the base domain gets a card of its own.
@@ -263,8 +285,6 @@ const isUntrackedHost = computed(() => {
   return Boolean(currentHostname.value) && !isTrackableHostname(currentHostname.value)
 })
 const untrackedIsIp = computed(() => untrackedReason(currentHostname.value) === 'ip')
-/** An IP address is not a domain, so the card is not headed as one. */
-const isIpHost = computed(() => ['ipv4', 'ipv6', 'private-ip'].includes(classifyHost(currentHostname.value)))
 
 /**
  * This exact host's own record, and nothing borrowed.
@@ -278,7 +298,8 @@ const isIpHost = computed(() => ['ipv4', 'ipv6', 'private-ip'].includes(classify
  *
  * The family's figures did not go away – they are drawn under the base domain
  * now, which is the name they are actually about. So this one can say the plain
- * truth about the host it names, zero included.
+ * truth about the host it names, which for a host with no record is that it was
+ * never visited.
  */
 const currentStats = computed<SiteVisitData | undefined>(() => {
   const own = visits.value[currentKey.value]
@@ -330,11 +351,14 @@ async function setWarnings(ignored: boolean) {
   const host = currentHostname.value
   const context = currentContext.value
   const url = currentUrl.value
+  const username = currentUsername.value
+  const heading = currentHeading.value
+  const above = findingsAbove.value
   if (!host)
     return
 
   await browser.runtime.sendMessage({ type: 'ignore-site', data: { hostname: host, ignored } })
-  await loadDomainData(host, context, url)
+  await loadDomainData(host, context, url, username, heading, above)
 }
 
 const familiarityRules = computed(() => normalizeFamiliarity(settings.value.familiarity))
@@ -600,11 +624,15 @@ function toggleAntiTampering() {
  * Uncoloured when that check is switched off, since a number with no say in the
  * verdict has no business being tinted as though it had one.
  */
-async function loadDomainData(hostname: string, context?: 'email', url?: string) {
+async function loadDomainData(hostname: string, context?: 'email', url?: string, username = '', heading = '', linesAbove = false) {
+  currentHeading.value = heading
+  findingsAbove.value = linesAbove
   currentHostname.value = hostname
   // Before anything is awaited, so the card never asks about the new name in
   // the old name's context
   currentContext.value = context
+  providerKind.value = context === 'email' ? classifyEmailDomain(hostname) : null
+  currentUsername.value = context === 'email' ? username : ''
   currentUrl.value = url
   // An IP address and an intranet name have no site to belong to, so each is a
   // family of one. Leaving this empty used to hide a record that plainly exists:
@@ -673,27 +701,7 @@ const isShortenerHost = computed(() => {
 
 const { statusLabel } = useFamiliarityFacts()
 
-/**
- * Bumped once the mail provider lists are read. They are plain module sets, as
- * the shortener lists are, so a computed reading them needs something that is
- * reactive to know they arrived.
- */
-const emailListsVersion = ref(0)
-
-/**
- * What kind of mail provider an address domain is, when the card is about one.
- *
- * Nobody opens gmail.com or a throwaway mail service, so their own visits are a
- * zero that never moves. Judged by it, the card drew a red "never visited" for
- * an address whose tooltip on the page had just said "public email service".
- */
-const providerKind = computed(() => {
-  void emailListsVersion.value
-  return currentContext.value === 'email' && currentHostname.value
-    ? classifyEmailDomain(currentHostname.value)
-    : null
-})
-const isMailProvider = computed(() => providerKind.value === 'public' || providerKind.value === 'disposable')
+const isMailProvider = computed(() => providerKind.value != null && providerKind.value !== 'regular')
 
 /**
  * The verdict on the address at the top of the card, the one thing the popup
@@ -712,14 +720,14 @@ const addressVerdict = computed(() => {
   const host = currentHostname.value
   if (!host || visitsReadFor.value !== host || isUntrackedHost.value || isShortenerHost.value)
     return null
-  // The provider, said as the tooltip and the panel say it, never a visit
-  // verdict on a name nobody opens
-  if (providerKind.value === 'public')
-    return { verdict: 'public', text: translations.value.emailPublicProvider, tone: 'neutral', icon: 'email' } as const
-  if (providerKind.value === 'disposable')
-    return { verdict: 'disposable', text: translations.value.emailDisposableDomain, tone: 'danger', icon: 'alert' } as const
+  // The mail service, said as the tooltip and the panel say it, never a
+  // visit verdict on a name nobody opens
+  if (providerKind.value && providerKind.value !== 'regular') {
+    const service = MAIL_SERVICE_VERDICTS[providerKind.value]
+    return { verdict: service.verdict, text: translations.value[service.label], tone: service.tone, icon: service.icon }
+  }
   const own = visits.value[currentKey.value] ?? { count: 0 }
-  return statusLabel(isFamiliar(own, familiarityRules.value), Number(own.count) || 0, false, { hostname: host, email: currentContext.value === 'email' })
+  return statusLabel(isFamiliar(own, familiarityRules.value), Number(own.count) || 0, false, { hostname: host })
 })
 
 /**
@@ -741,11 +749,6 @@ function onShortenerListChange(changes: Record<string, { newValue?: unknown }>, 
   applyListChanges(changes)
   shortenerListsVersion.value += 1
 }
-
-onMounted(async () => {
-  await loadEmailListsFromStorage().catch(() => {})
-  emailListsVersion.value += 1
-})
 
 onMounted(async () => {
   window.addEventListener('resize', refreshWidthCap)
@@ -780,17 +783,18 @@ onMounted(async () => {
 
   if (domainParam) {
     isStandalonePage.value = true
-    await loadDomainData(domainParam, urlParams.get('context') === 'email' ? 'email' : undefined)
+    await loadDomainData(domainParam)
     return
   }
 
   // Standalone "check anything" page opened from the popup button
   if (urlParams.get('check')) {
+    // Opened from the menu on a mail link or from the details of an email
+    // address: the link travels whole, not as a single domain. Read before
+    // the field is drawn, which takes it once
+    checkPageInitial.value = await readCheckHandoff(urlParams)
     isStandalonePage.value = true
     isCheckPage.value = true
-    // Opened from the long-press menu on a mailto with several recipients:
-    // the address list travels with the link, not as a single domain
-    checkPageInitial.value = urlParams.get('value') ?? ''
     return
   }
 
@@ -881,7 +885,7 @@ onMounted(async () => {
         @click="openCheckPage"
       >
         <VzIcon name="qr-code" />
-        {{ translations.checkExternalButton }}
+        {{ translations.checkFieldTitle }}
       </button>
       <CheckField
         v-else
@@ -889,14 +893,13 @@ onMounted(async () => {
         :panel-hostname="currentHostname"
         :panel-context="currentContext"
         @checked-domain="loadDomainData"
+        @list-gone="currentHeading = ''; findingsAbove = false"
       />
 
       <template v-if="currentHostname">
         <section data-domain-panel class="vz-card popup-card">
           <span class="vz-eyebrow">
-            {{ isIpHost
-              ? (isStandalonePage ? translations.checkedAddress : translations.currentAddress)
-              : (isStandalonePage ? translations.checkedDomain : translations.currentDomain) }}
+            {{ currentHeading || (isStandalonePage ? translations.checkedDomain : translations.currentDomain) }}
           </span>
           <!-- The address gets the whole width. The visit count used to sit at
                the right of this line, where it was the same number the facts
@@ -906,26 +909,22 @@ onMounted(async () => {
           <div class="popup-address">
             <template v-if="isPunycode">
               <span class="vz-eyebrow">{{ translations.domainOriginal }}</span>
-              <SecureText :text="unicodeHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(unicodeHostname)">
-                <CopyButton :text="unicodeHostname" />
+              <SecureText :kind="currentUsername ? 'email' : 'host'" :text="shown(unicodeHostname)" size="xl" :style="currentDomainFontSize" :diff="hostDiff(shown(unicodeHostname))">
+                <CopyButton :text="shown(unicodeHostname)" />
               </SecureText>
-              <div class="flex items-center gap-1 mt-2">
+              <!-- What the two forms are, behind the same question mark and in
+                   the same words as under every other address. It was a
+                   window of its own here, with a text of its own -->
+              <div class="flex flex-wrap items-center gap-1 mt-2">
                 <span class="vz-eyebrow">{{ translations.domainPunycode }}</span>
-                <button
-                  class="vz-iconbtn vz-iconbtn--sm"
-                  :title="translations.punycodeHelpTitle"
-                  :aria-label="translations.punycodeHelpTitle"
-                  @click="showPunycodeHelp = !showPunycodeHelp"
-                >
-                  <VzIcon name="help" />
-                </button>
+                <VzHelp :text="t('addressSpellingHelp')" :about="asciiHostname" />
               </div>
-              <SecureText :text="asciiHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(asciiHostname)">
-                <CopyButton :text="asciiHostname" />
+              <SecureText :kind="currentUsername ? 'email' : 'host'" :text="shown(asciiHostname)" size="xl" :style="currentDomainFontSize" :diff="hostDiff(shown(asciiHostname))">
+                <CopyButton :text="shown(asciiHostname)" />
               </SecureText>
             </template>
-            <SecureText v-else :text="currentHostname" size="xl" :style="currentDomainFontSize" :diff="hostDiff(currentHostname)">
-              <CopyButton :text="currentHostname" />
+            <SecureText v-else :kind="currentUsername ? 'email' : 'host'" :text="shown(currentHostname)" size="xl" :style="currentDomainFontSize" :diff="hostDiff(shown(currentHostname))">
+              <CopyButton :text="shown(currentHostname)" />
             </SecureText>
           </div>
 
@@ -941,7 +940,7 @@ onMounted(async () => {
           <RedFlagCount v-else-if="visitsReadFor === currentHostname" class="justify-self-start" :hostname="currentHostname" :url="currentUrl" :context="currentContext" />
 
           <!-- Said before the numbers, because it explains why there are none -->
-          <VzNotice v-if="isUntrackedHost" tone="neutral" icon="unknown">
+          <VzNotice v-if="isUntrackedHost" tone="neutral" icon="unknown" boxed>
             <p class="vz-body-strong">
               {{ untrackedIsIp ? translations.untrackedIpTitle : translations.untrackedHostTitle }}
             </p>
@@ -954,8 +953,7 @@ onMounted(async () => {
                Both take the same context, because they read one shared answer. -->
           <!-- The platform line waits for the visits, so it does not flash up
                for a site that turns out to be familiar -->
-          <DomainMarkers :hostname="currentHostname" :url="currentUrl" :context="currentContext" :notes="hostNotes" :familiar="!warningsCanFire || visitsReadFor !== currentHostname" />
-          <LookalikeNotice :hostname="currentHostname" :context="currentContext" />
+          <AddressFindings v-if="!findingsAbove" :hostname="currentHostname" :url="currentUrl" :context="currentContext" :notes="hostNotes" :familiar="!warningsCanFire || visitsReadFor !== currentHostname" :service="isShortenerHost" :mail-service="providerKind ?? undefined" />
           <!-- Not for an address that only means something inside one network:
                no site elsewhere has anything to say about the reader's router -->
           <ExternalLookups v-if="!isUntrackedHost" :hostname="currentHostname" />
@@ -964,9 +962,13 @@ onMounted(async () => {
                family's own figures are under the base domain further down, which
                is the name they are about. firstSeen/activeDays stay empty until
                a full history import supplies them – nothing guesses a date. -->
+          <!-- Not before the visits for this name are read, and not at all if
+               that failed: a record not looked at yet is not a record of no
+               visits, and the grid would say "Never visited" about it -->
           <FamiliarityGrid
-            v-if="currentStats && !isMailProvider"
+            v-if="currentStats && !isMailProvider && visitsReadFor === currentHostname"
             :stats="currentStats"
+            :verdict-beside="addressVerdict?.verdict === 'never'"
             class="popup-rule"
           />
 
@@ -1152,7 +1154,7 @@ onMounted(async () => {
                    the row draws whichever the header's toggle asked for, and the
                    other one is not on screen to be read. -->
               <div class="vz-list__main" :title="displayDomain(domain) === domain ? undefined : domain">
-                <SecureText :text="displayDomain(domain)" size="m" />
+                <SecureText :text="displayDomain(domain)" size="m" plain />
                 <VzBadge v-if="domain === currentKey" tone="brand">
                   {{ translations.current }}
                 </VzBadge>
@@ -1176,9 +1178,11 @@ onMounted(async () => {
             </li>
           </ul>
         </section>
-        <!-- Skipped for untracked hosts: "no visit data" reads as a gap waiting
-             to be filled, and the notice above has already said why it never will be -->
-        <p v-else-if="!familyHosts.length && !isUntrackedHost" class="vz-well vz-small text-center">
+        <!-- About the site, and only under a site named apart from the address.
+             Where the site is the address at the top, the card about that
+             address has said it already, in its verdict or in the line where
+             its facts would be. An untracked host has its notice. -->
+        <p v-else-if="!familyHosts.length && !isUntrackedHost && baseDomain !== currentKey" class="vz-well vz-small text-center">
           {{ translations.noVisitData }}
         </p>
       </template>
@@ -1186,24 +1190,6 @@ onMounted(async () => {
       <p v-else-if="!isStandalonePage" class="vz-body text-center py-8" data-no-site>
         {{ translations.visitWebsite }}
       </p>
-
-      <!-- What punycode is, over the card -->
-      <div v-if="showPunycodeHelp" class="absolute inset-0 vz-scrim flex items-center justify-center z-50 p-4">
-        <div class="vz-overlay vz-dialog relative" role="dialog" aria-modal="true" :aria-label="translations.punycodeHelpTitle">
-          <div class="vz-dialog__head">
-            <VzIcon name="script" large class="tone-brand" />
-            <h3 class="vz-title">
-              {{ translations.punycodeHelpTitle }}
-            </h3>
-            <button class="vz-iconbtn" :title="t('closeDialog')" :aria-label="t('closeDialog')" @click="showPunycodeHelp = false">
-              <VzIcon name="close" />
-            </button>
-          </div>
-          <p class="vz-body whitespace-pre-wrap">
-            {{ translations.punycodeHelpContent }}
-          </p>
-        </div>
-      </div>
     </main>
   </div>
 </template>
@@ -1298,6 +1284,10 @@ html:not(.standalone-page) .popup-list--capped {
 
 .popup-card {
   display: grid;
+  /* A column no wider than the card. Left to size itself it grew to the
+     longest thing that would not wrap, and on a phone pushed the facts and
+     the rules past the right edge. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4) var(--space-4);
   min-width: 0;
@@ -1324,6 +1314,9 @@ html:not(.standalone-page) .popup-list--capped {
 
 /* The action keeps to the right, on a line of its own if it has to wrap */
 .popup-row > .vz-btn { flex: none; margin-left: auto; }
+
+/* A long state wraps inside its badge instead of pushing the row wider */
+.popup-state .vz-badge { white-space: normal; }
 
 .popup-state {
   flex: 1 1 auto;

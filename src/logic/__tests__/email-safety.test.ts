@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeEmailAddress, collectMailtoRecipients, extractEmailFromText, parseMailtoUrl } from '../email-safety'
+import { analyzeEmailAddress, canonicalMailDomain, collectMailtoRecipients, extractEmailFromText, parseMailtoUrl, sameMailAddress } from '../email-safety'
 
 describe('analyzeEmailAddress', () => {
   it('analyzes a plain ASCII address', () => {
@@ -42,7 +42,7 @@ describe('analyzeEmailAddress', () => {
 
   it('flags an embedded TLD (paypal.com.evil.ru)', () => {
     const result = analyzeEmailAddress('security@paypal.com.evil.ru')
-    expect(result!.suspiciousPattern).toEqual({ type: 'embedded-tld', label: 'com' })
+    expect(result!.suspiciousPattern).toEqual({ type: 'embedded-tld', label: 'com', index: 1 })
   })
 
   it('does not flag legitimate ccTLD combos', () => {
@@ -115,6 +115,17 @@ describe('extractEmailFromText', () => {
 })
 
 describe('collectMailtoRecipients', () => {
+  // A mail program takes both, and read by the comma alone each was one
+  // entry that is no address: nobody in it was checked
+  it('reads a list separated by semicolons, and a name with its address in angle brackets', () => {
+    const addresses = (href: string) => collectMailtoRecipients(parseMailtoUrl(href)).map(r => r.address)
+    expect(addresses('mailto:pay@known.example;ceo@evil.example')).toEqual(['pay@known.example', 'ceo@evil.example'])
+    expect(addresses('mailto:Boss%20%3Cceo@evil.example%3E')).toEqual(['ceo@evil.example'])
+    expect(addresses('mailto:a@one.example?cc=Boss%20%3Cceo@evil.example%3E;%22Ann%22%20%3Cann@two.example%3E')).toEqual(['a@one.example', 'ceo@evil.example', 'ann@two.example'])
+    // Nothing made up out of an empty entry
+    expect(addresses('mailto:a@one.example;?cc=;')).toEqual(['a@one.example'])
+  })
+
   it('finds every address, not only the first', () => {
     const parsed = parseMailtoUrl('mailto:trusted@known.example,attacker@evil.example')
     expect(collectMailtoRecipients(parsed).map(r => r.address)).toEqual([
@@ -189,5 +200,19 @@ describe('recipients that hide in the query', () => {
     const parsed = parseMailtoUrl('mailto:?subject=one%20two&cc=b%40two.example')
     expect(parsed!.params.find(p => p.key === 'subject')!.value).toBe('one two')
     expect(collectMailtoRecipients(parsed).map(r => r.address)).toEqual(['b@two.example'])
+  })
+})
+
+// The same address written two ways was a link showing one address and
+// sending to another
+describe('one mail address in any spelling', () => {
+  it('reads a domain in one spelling', () => {
+    expect(canonicalMailDomain('XN--MNICH-KVA.Example.')).toBe('münich.example')
+    expect(canonicalMailDomain('corp。test')).toBe('corp.test')
+  })
+
+  it('takes the username in any case and the domain in any spelling', () => {
+    expect(sameMailAddress({ localPart: 'Boss', domain: 'münich.example' }, { localPart: 'boss', domain: 'xn--mnich-kva.example' })).toBe(true)
+    expect(sameMailAddress({ localPart: 'boss', domain: 'corp.test' }, { localPart: 'b0ss', domain: 'corp.test' })).toBe(false)
   })
 })

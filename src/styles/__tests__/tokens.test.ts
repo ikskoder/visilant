@@ -44,17 +44,24 @@ function ratio(a: string, b: string): number {
 // Text holds 4.5:1, anything that is a shape a reader relies on (a frame, a
 // control edge, an icon, the focus ring) holds 3:1
 const CHECKS: [string, string[], number][] = [
-  ['ink', ['bg', 'surface', 'surface-sunken', 'surface-hover', 'brand-tint', 'owner-tint', 'danger-tint', 'safe-tint', 'neutral-tint'], 4.5],
-  ['ink-2', ['bg', 'surface', 'surface-sunken', 'surface-hover'], 4.5],
-  ['ink-3', ['bg', 'surface', 'surface-sunken', 'surface-hover'], 4.5],
-  ['brand', ['bg', 'surface', 'surface-sunken', 'brand-tint', 'owner-tint'], 4.5],
+  ['ink', ['bg', 'surface', 'surface-sunken', 'surface-hover', 'brand-tint', 'owner-tint', 'danger-tint', 'caution-tint', 'safe-tint', 'neutral-tint'], 4.5],
+  // On the tints of a label too: the ending of an address is drawn in it, and
+  // a finding about that ending puts it on red or orange
+  ['ink-2', ['bg', 'surface', 'surface-sunken', 'surface-hover', 'owner-tint', 'danger-tint', 'caution-tint'], 4.5],
+  // On the notice tints too: a line of help opened inside a notice is small text
+  ['ink-3', ['bg', 'surface', 'surface-sunken', 'surface-hover', 'caution-tint', 'neutral-tint'], 4.5],
+  // The digits of an address are drawn in it, on whatever the label stands on
+  ['brand', ['bg', 'surface', 'surface-sunken', 'brand-tint', 'owner-tint', 'danger-tint', 'caution-tint'], 4.5],
   ['on-brand', ['brand', 'brand-hover'], 4.5],
   ['on-fill', ['safe', 'danger'], 4.5],
   ['safe-text', ['safe-tint', 'surface'], 4.5],
   ['danger-text', ['danger-tint', 'surface'], 4.5],
+  ['caution-text', ['caution-tint', 'surface'], 4.5],
   ['neutral-text', ['neutral-tint', 'surface'], 4.5],
   ['safe', ['surface', 'surface-sunken', 'safe-tint'], 3],
   ['danger', ['surface', 'surface-sunken', 'danger-tint'], 3],
+  // On its tint too: its sign is a shield, and the mark cut out of it is the tint
+  ['caution', ['bg', 'surface', 'surface-sunken', 'caution-tint'], 3],
   // On its tint too: the shield of an unchecked verdict sits in a neutral badge,
   // and its cut-out mark is the badge's tint showing through
   ['neutral', ['surface', 'surface-sunken', 'neutral-tint'], 3],
@@ -62,11 +69,13 @@ const CHECKS: [string, string[], number][] = [
   ['label-line', ['surface', 'surface-sunken'], 3],
   ['owner-line', ['owner-tint', 'surface', 'surface-sunken'], 3],
   ['focus-ring', ['bg', 'surface', 'surface-sunken'], 3],
+  // The frame round the same domain in a list, on a plain row and on the open one
+  ['match', ['bg', 'surface', 'surface-sunken', 'surface-hover'], 3],
   ['logo', ['bg', 'surface', 'surface-sunken'], 3],
-  ['char-foreign', ['danger-tint'], 4.5],
+  ['char-foreign', ['danger-tint', 'caution-tint'], 4.5],
   // Digits are always marked, so they sit on every ground an address can: a
   // page, a card, a hovered or current list row, an owner's frame, any notice
-  ['char-digit', ['bg', 'surface', 'surface-sunken', 'surface-hover', 'owner-tint', 'brand-tint', 'danger-tint', 'safe-tint', 'neutral-tint'], 4.5],
+  ['char-digit', ['bg', 'surface', 'surface-sunken', 'surface-hover', 'owner-tint', 'brand-tint', 'danger-tint', 'caution-tint', 'safe-tint', 'neutral-tint'], 4.5],
 ]
 
 describe('design tokens', () => {

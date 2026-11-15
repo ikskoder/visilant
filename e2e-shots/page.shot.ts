@@ -14,6 +14,7 @@ const INTERCEPT = 'src/contentScripts/views/LinkInterceptDialog.vue'
 const PASTE = 'src/contentScripts/views/PasteInterceptDialog.vue'
 const PANEL = 'src/contentScripts/views/CheckPanel.vue'
 const MISMATCH = 'src/contentScripts/views/MismatchTable.vue'
+const EMAIL_MISMATCH = 'src/contentScripts/views/EmailMismatchTable.vue'
 
 // ==========================================
 // The warning in the corner
@@ -44,20 +45,20 @@ test('copy warning', async ({ page, shot }) => {
 // ==========================================
 
 test('link tooltip, unfamiliar', async ({ page, shot }) => {
-  await tooltipFor(page, '<a id="l" href="https://never-seen-before.test/offer">Claim your offer</a>', [t('linkTooltipDestination'), t('linkTooltipVisits')])
+  await tooltipFor(page, '<a id="l" href="https://never-seen-before.test/offer">Claim your offer</a>', [t('linkTooltipDestination'), t('linkTooltipNeverVisited'), t('linkInterceptDomainInfo')])
   await shot(page, { name: 'tooltip-unfamiliar', title: 'Link to a site never visited', covers: [TOOLTIP] })
 })
 
 test('link tooltip, familiar', async ({ page, context, shot }) => {
   await seed(context, { 'my-bank.test': FAMILIAR })
-  await tooltipFor(page, '<a id="l" href="https://my-bank.test/login">My bank</a>', [t('linkTooltipDestination'), t('linkTooltipVisits')])
+  await tooltipFor(page, '<a id="l" href="https://my-bank.test/login">My bank</a>', [t('linkTooltipDestination'), t('familiarityVisits')])
   await shot(page, { name: 'tooltip-familiar', title: 'Link to a familiar site', covers: [TOOLTIP] })
 })
 
 test('link tooltip, unfamiliar with the bars shown', async ({ page, context, shot }) => {
   await seed(context, { 'half-known.test': { visits: 4, activeDays: 2, ageDays: 3 } })
   await patchSettings(context, { showFamiliarityThresholds: true })
-  await tooltipFor(page, '<a id="l" href="https://half-known.test/">Half known</a>', [t('linkTooltipDestination'), t('linkTooltipVisits')])
+  await tooltipFor(page, '<a id="l" href="https://half-known.test/">Half known</a>', [t('linkTooltipDestination'), t('familiarityVisits')])
   await shot(page, { name: 'tooltip-thresholds', title: 'Seen a few times, with each check next to its bar', covers: [TOOLTIP] })
 })
 
@@ -70,12 +71,12 @@ test('link tooltip, text names another site', async ({ page, context, shot }) =>
 test('link tooltip, punycode lookalike', async ({ page, context, shot }) => {
   await seed(context, { 'apple.test': FAMILIAR })
   // Cyrillic а in place of the Latin a
-  await tooltipFor(page, '<a id="l" href="https://аpple.test/id">Apple ID</a>', [t('linkTooltipPunycode')])
+  await tooltipFor(page, '<a id="l" href="https://аpple.test/id">Apple ID</a>', [t('addressMeantToReadAs')])
   await shot(page, { name: 'tooltip-punycode', title: 'Lookalike written with a letter from another alphabet', covers: [TOOLTIP] })
 })
 
 test('link tooltip, shortener waiting to be followed', async ({ page, shot }) => {
-  await tooltipFor(page, '<a id="l" href="https://bit.ly/3xYz9Q">bit.ly/3xYz9Q</a>', [t('linkTooltipShortUrlWarning')])
+  await tooltipFor(page, '<a id="l" href="https://bit.ly/3xYz9Q">bit.ly/3xYz9Q</a>', [t('linkTooltipShortener'), t('linkResolveTry')])
   await shot(page, { name: 'tooltip-shortener', title: 'Shortened link, destination not looked up yet', covers: [TOOLTIP] })
 })
 
@@ -99,14 +100,19 @@ test('link tooltip, email to a disposable address', async ({ page, shot }) => {
   await shot(page, { name: 'tooltip-email-disposable', title: 'Email link to a throwaway mail service', covers: [TOOLTIP] })
 })
 
+test('link tooltip, email to a forwarding address', async ({ page, shot }) => {
+  await tooltipFor(page, '<a id="l" href="mailto:dev@mozmail.com">Contact the developer</a>', [t('emailTooltipTitle'), t('emailForwardingDomain')])
+  await shot(page, { name: 'tooltip-email-forwarding', title: 'Email link to a mail forwarding service', note: 'Orange "Email forwarding service" badge where the verdict would be, never "Never visited", and one orange line saying what writing to it means. The site is orange in the address.', covers: [TOOLTIP] })
+})
+
 test('link tooltip, email text names another address', async ({ page, shot }) => {
   await tooltipFor(page, '<a id="l" href="mailto:billing@yourbank-help.test?subject=Invoice&body=Hello">billing@yourbank.test</a>', [t('emailTooltipMismatchWarning')])
-  await shot(page, { name: 'tooltip-email-mismatch', title: 'Email link text shows one address, sends to another', covers: [TOOLTIP] })
+  await shot(page, { name: 'tooltip-email-mismatch', title: 'Email link text shows one address, sends to another', covers: [TOOLTIP, EMAIL_MISMATCH], note: 'billing@yourbank.test shown, billing@yourbank-help.test the target. The red flag, a line on how to read the table, then the table: the username once across both columns, the two domains apart with yourbank-help underlined, a verdict each.' })
 })
 
 test('link tooltip, email with several recipients', async ({ page, context, shot }) => {
   await seed(context, { 'my-company.test': FAMILIAR })
-  await tooltipFor(page, '<a id="l" href="mailto:boss@my-company.test,payroll@my-c0mpany.test?cc=hr@my-company.test">Email the boss</a>', [t('emailTooltipTitle'), t('emailTooltipParams')])
+  await tooltipFor(page, '<a id="l" href="mailto:boss@my-company.test,payroll@my-c0mpany.test?cc=hr@my-company.test">Email the boss</a>', [t('mailLinkHeading'), t('emailRecipientsAddressColumn')])
   await shot(page, { name: 'tooltip-email-recipients', title: 'One mailto, several recipients, one of them a lookalike', covers: [TOOLTIP] })
 })
 
@@ -146,11 +152,11 @@ test('link dialog for a familiar site', async ({ page, context, shot }) => {
   await shot(page, { name: 'dialog-link-familiar', title: '"Check this link" on a familiar site', covers: [INTERCEPT] })
 })
 
-test('link dialog for a shortened link', async ({ page, context, shot }) => {
+test('link dialog for a short link', async ({ page, context, shot }) => {
   await openSite(page, SITE, linkPage('<a id="l" href="https://bit.ly/3xYz9Q">bit.ly/3xYz9Q</a>'))
   await fromMenu(context, SITE, { type: 'show-link-intercept', data: { url: 'https://bit.ly/3xYz9Q', frameId: 0 } })
   await waitForUi(page, t('linkInterceptTitleHidden'))
-  await shot(page, { name: 'dialog-link-shortener', title: '"Check this link" on a shortened link', covers: [INTERCEPT] })
+  await shot(page, { name: 'dialog-link-shortener', title: '"Check this link" on a short link', covers: [INTERCEPT] })
 })
 
 // ==========================================

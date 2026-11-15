@@ -302,10 +302,10 @@ test('options page offers one history import and says it already ran', async ({ 
 
   // One button, which runs both passes in turn. Two of them only asked the user
   // to answer a question about browser APIs
-  await expect(page.locator('button', { hasText: 'Re-import history' })).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('button', { hasText: 'Import history again' })).toBeVisible({ timeout: 5000 })
   await expect(page.locator('#section-data button')).toHaveCount(2)
-  // The automatic import means these buttons are a re-run, not setup that was missed
-  await expect(page.locator('text=imported automatically when Visilant was installed')).toBeVisible()
+  // What the import reads and where it stays, said once above the button
+  await expect(page.locator('text=Your browser history is read on this device')).toBeVisible()
 })
 
 test('options page has reset data section with checkboxes', async ({ page, extensionId }) => {
@@ -1055,6 +1055,7 @@ test('wiping the visits updates what the page says about the import, without a r
     customShorteners: ['sentinel-short.test'],
     customPublicEmailProviders: ['sentinel-public.test'],
     customDisposableEmailDomains: ['sentinel-temp.test'],
+    customForwardingEmailDomains: ['sentinel-alias.test'],
     customMailSites: ['sentinel.test = mail.sentinel.test'],
     remoteShortenerDomains: { domains: ['sentinel-remote.test'], updatedAt: 1, urls: [] },
     remoteMailSites: { domains: ['sentinel.test = mail.sentinel.test'], updatedAt: 1, urls: [] },
@@ -1077,6 +1078,7 @@ test('wiping the visits updates what the page says about the import, without a r
     'customShorteners',
     'customPublicEmailProviders',
     'customDisposableEmailDomains',
+    'customForwardingEmailDomains',
     'customMailSites',
     'remoteShortenerDomains',
     'remoteMailSites',
@@ -1086,6 +1088,7 @@ test('wiping the visits updates what the page says about the import, without a r
     customShorteners: ['sentinel-short.test'],
     customPublicEmailProviders: ['sentinel-public.test'],
     customDisposableEmailDomains: ['sentinel-temp.test'],
+    customForwardingEmailDomains: ['sentinel-alias.test'],
     customMailSites: ['sentinel.test = mail.sentinel.test'],
     remoteShortenerDomains: { domains: ['sentinel-remote.test'], updatedAt: 1, urls: [] },
     remoteMailSites: { domains: ['sentinel.test = mail.sentinel.test'], updatedAt: 1, urls: [] },
@@ -1117,7 +1120,7 @@ test('the import button offers a first run before it offers a re-run', async ({ 
 
   await button.click()
   // Nothing to re-do is only true until something has been done
-  await expect(button).toHaveText('Re-import history', { timeout: 20000 })
+  await expect(button).toHaveText('Import history again', { timeout: 20000 })
 })
 
 test('a reset takes the lookalike index down with the records', async ({ page, context, extensionId }) => {
@@ -1221,7 +1224,7 @@ test('a link the background could not be asked about is stopped, not waved throu
   // Read through the DevTools protocol, the one way into a closed shadow root
   await expect.poll(() => allText(page), { timeout: 5000, intervals: [300] }).toContain('Not checked')
   const text = await allText(page)
-  expect(text).toContain('could not look this site up')
+  expect(text).toContain('couldn\'t check this site just now')
   // Nothing was found out, so nothing is said about impersonation either
   expect(text).toContain('Link not checked')
   expect(text).not.toContain('Unfamiliar site ahead')
@@ -1438,6 +1441,28 @@ test('a site shortcut is not reported as typing, but typing into a field is', as
   await page.click('#field')
   await page.keyboard.press('j')
   await expect.poll(() => warningShowing(page), { timeout: 10000, intervals: [250] }).toBe(true)
+})
+
+// The warning says how to turn warnings off for this site. Somebody who did
+// exactly that used to find it still on the page until they pressed its cross
+test('the typing warning goes away once warnings are turned off for the site', async ({ page, context, extensionId }) => {
+  await serveSite(page, SITE_URL, blankPage('silenced', '<input id="field" type="text" style="width:300px">'))
+  await page.waitForTimeout(2500)
+
+  await page.click('#field')
+  await page.keyboard.press('j')
+  await expect.poll(() => warningShowing(page), { timeout: 10000, intervals: [250] }).toBe(true)
+
+  // Sent the way the popup sends it, from an extension page
+  const ui = await context.newPage()
+  await ui.goto(`chrome-extension://${extensionId}/dist/options/index.html`)
+  await ui.evaluate(async (host: string) => {
+    await (globalThis as any).chrome.runtime.sendMessage({ type: 'ignore-site', data: { hostname: host, ignored: true } })
+  }, SITE_HOST)
+  await ui.close()
+  await page.bringToFront()
+
+  await expect.poll(() => warningShowing(page), { timeout: 10000, intervals: [250] }).toBe(false)
 })
 
 /**
