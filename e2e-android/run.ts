@@ -95,11 +95,17 @@ test('the background script actually runs on this browser', async (port) => {
 })
 
 test('the content script answers in a tab that is already open', async (port) => {
+  // A tab of its own, loaded before it is asked. The leftovers of earlier runs
+  // are no use: web-ext restarts Firefox, which restores them before the add-on
+  // is installed, so they carry no content script and fail on a cold start.
+  const marker = `visilant-alive=${Date.now()}`
+  await openUrl(`https://example.com/?${marker}`)
+  await sleep(4000)
   await withBackground(port, async (session, background) => {
     const alive = await session.json<{ id: number, alive: boolean, err?: string }[]>(background, `
       browser.tabs.query({}).then(async ts => {
         const out = [];
-        for (const t of ts.filter(t => t.url.startsWith("https://example.com")).slice(-2)) {
+        for (const t of ts.filter(t => t.url.includes("${marker}"))) {
           try {
             await browser.tabs.sendMessage(t.id, {type: "check-selection", data: {selectionText: "paypa1.com"}});
             out.push({id: t.id, alive: true});
@@ -125,7 +131,7 @@ test('there is no history API here, and the settings page says so rather than of
     assertEqual(hasHistory, 'undefined', 'this phone does have a history API – the rest of this test assumes it does not')
 
     const status = await session.evaluate(options, 'document.querySelector("#section-data p").textContent.trim()')
-    assert(String(status).includes('let extensions read its history'), `the status line does not name the reason: ${JSON.stringify(status)}`)
+    assert(String(status).includes('gives extensions no history to read'), `the status line does not name the reason: ${JSON.stringify(status)}`)
 
     // A disabled "Re-import history" under that line, with a paragraph on the
     // two passes it would run, is what this browser used to show
@@ -145,7 +151,7 @@ test('the welcome page claims no import on a browser that cannot do one', async 
     const text = await session.evaluate(page, 'document.body.textContent.replace(/\\s+/g, " ")')
     const said = String(text)
 
-    assert(said.includes('keeps its history to itself'), 'the page does not say why there was nothing to import')
+    assert(said.includes('gives extensions no history to learn them from'), 'the page does not say why there was nothing to import')
 
     for (const claim of ['Why your history was read', 'One thing was set up for you', 'What was saved']) {
       assert(!said.includes(claim), `the page still says ${JSON.stringify(claim)} on a browser that read no history`)
@@ -187,7 +193,7 @@ test('the missing-dates card does not offer an import this browser cannot run', 
       assert(card.length > 0, 'the missing-dates card did not appear')
       assert(!/A full history import fills them in/i.test(card), 'the card promises an import this browser has no API for')
       assert(!/Go to history import/i.test(card), 'the card still links to an import section that cannot import')
-      assert(/keeps its history to itself/i.test(card), `the card does not say why nothing can fill the dates in: ${card}`)
+      assert(/gives extensions no history to take them from/i.test(card), `the card does not say why nothing can fill the dates in: ${card}`)
     })
   }
   finally {
@@ -364,9 +370,15 @@ test('typing with the phone\'s keyboard on an unfamiliar site raises the warning
     await withBackground(port, async (session, background) => {
       await session.evaluate(background, `(() => {
         globalThis.__visilantTyped = [];
-        browser.runtime.onMessage.addListener(m => {
-          if (m && m.type === "show-notification") globalThis.__visilantTyped.push(m.data.warningType);
-        });
+        // Added once per background page: it outlives this run while just ar
+        // keeps the add-on installed, and a second listener from a second run
+        // would push every notification twice
+        if (!globalThis.__visilantTypedListener) {
+          globalThis.__visilantTypedListener = true;
+          browser.runtime.onMessage.addListener(m => {
+            if (m && m.type === "show-notification") globalThis.__visilantTyped.push(m.data.warningType);
+          });
+        }
         return "ok";
       })()`)
 
