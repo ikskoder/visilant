@@ -1,4 +1,5 @@
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { closeOpenAddressParts } from './openAddressParts'
 
 /**
  * The keyboard behaviour every one of these dialogs was missing.
@@ -54,7 +55,9 @@ export function useModalDialog(options: {
     if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
-      options.onEscape()
+      // An open card that reads an address is closed first, the dialog stays
+      if (!closeOpenAddressParts())
+        options.onEscape()
       return
     }
 

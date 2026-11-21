@@ -70,7 +70,7 @@ const hasStatus = computed(() => Boolean(props.badge) || (!props.pending && flag
       <VzHelp v-if="note && noteHelp" :text="noteHelp" :about="hostname" />
     </div>
     <SecureText :text="hostname" :case-override="caseOverride" size="l" :diff="diff(hostname)">
-      <CopyButton :text="hostname" />
+      <CopyButton :text="hostname" /><AddressParts :address="hostname" />
     </SecureText>
     <OtherSpelling :shown="hostname" :other="punycode" :diff="punycode ? diff(punycode) : undefined" />
     <slot name="url" />

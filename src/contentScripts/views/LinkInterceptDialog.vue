@@ -13,6 +13,7 @@ import { useRedFlagCount } from '~/composables/useRedFlags'
 import { useTopLayer } from '~/composables/useTopLayer'
 import { useVisualViewport } from '~/composables/useVisualViewport'
 import { showsVisitFacts } from '~/logic/show-visit-facts'
+import { isTrackableHostname } from '~/logic/visit-stats'
 import MismatchTable from './MismatchTable.vue'
 
 const props = defineProps<{
@@ -110,10 +111,16 @@ const hasTraceData = computed(() => {
  * then a known shortener says nothing about where it leads, whether or not the
  * shortener itself is familiar.
  */
-const verdict = computed<'unfamiliar' | 'hidden' | 'familiar' | 'unchecked'>(() => {
+const verdict = computed<'unfamiliar' | 'hidden' | 'familiar' | 'unchecked' | 'local'>(() => {
   const data = props.data
   if (!data)
     return 'unfamiliar'
+  // A private IP address or a name with no dot is never counted, so it is no
+  // unfamiliar site: it is a device on the reader's own network, and the
+  // dialog says so. The click is held all the same
+  const host = data.shortUrl?.status === 'resolved' ? data.shortUrl.resolvedDomain : data.domain
+  if (host && !isTrackableHostname(host))
+    return 'local'
   if (data.shortUrl?.status === 'resolved') {
     if (data.shortUrl.resolvedUnchecked)
       return 'unchecked'
@@ -142,7 +149,7 @@ const addressBadge = computed(() => {
     return null
   if (data.shortUrl?.isKnownShortener)
     return verdict.value === 'hidden' ? null : { verdict: 'shortener', text: t.value('linkTooltipShortener'), tone: 'caution' as const, icon: 'shield-alert' as const }
-  return statusLabel(data.isSafe, data.stats.count, data.unchecked)
+  return statusLabel(data.domain, data.isSafe, data.stats.count, data.unchecked)
 })
 
 // Asked with the hostnames and URLs the lines in the dialog are drawn with
@@ -205,6 +212,7 @@ const title = computed(() => {
     case 'familiar': return t.value('linkInterceptTitleFamiliar')
     case 'hidden': return t.value('linkInterceptTitleHidden')
     case 'unchecked': return t.value('linkInterceptTitleUnchecked')
+    case 'local': return t.value(asked.value ? 'linkInterceptTitleFamiliar' : 'linkInterceptTitleLocal')
     // "Ahead" is for somebody on their way. A check has its verdict under the address
     default: return t.value(asked.value ? 'linkInterceptTitleFamiliar' : 'linkInterceptTitle')
   }
@@ -243,7 +251,7 @@ const headSign = computed<{ mark: 'info' | 'flag' | 'unknown' | 'alert', caution
   if (verdict.value === 'unchecked')
     return { mark: 'unknown' }
   const nothingRed = !props.data?.mismatch && destinationFlags.value === 0 && resolvedFlags.value === 0
-  return { mark: 'alert', caution: nothingRed && (verdict.value === 'hidden' || verdict.value === 'familiar') }
+  return { mark: 'alert', caution: nothingRed && (verdict.value === 'hidden' || verdict.value === 'familiar' || verdict.value === 'local') }
 })
 
 /**
@@ -321,6 +329,10 @@ function onContinue() {
              reader thinks they know the site, which is what a copy relies on. -->
         <p v-if="verdict === 'unfamiliar'" class="vz-body">
           {{ t('linkInterceptPhishingHint') }}
+        </p>
+        <!-- What a link into the reader's own network is, said under its title -->
+        <p v-else-if="verdict === 'local'" class="vz-body">
+          {{ t('linkInterceptLocalHint') }}
         </p>
         <!-- What the title "Short link" means, said under it -->
         <p v-else-if="verdict === 'hidden'" class="vz-body">

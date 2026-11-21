@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { usernameNote } from '../username-characters'
+import { usernameNote, usernameRedFlag } from '../username-characters'
 
 // Says what is unusual about a username and what it can mean, the line
 // "Unusual characters in the username" said neither
@@ -73,5 +73,18 @@ describe('what is unusual about a username', () => {
     expect(usernameNote('john★')).toEqual({ kind: 'other' })
     expect(usernameNote('yılmaz')).toEqual({ kind: 'other' })
     expect(usernameNote('ø')).toEqual({ kind: 'other' })
+  })
+})
+
+// Only a username made to pass for another stops a click
+describe('which username is a red flag', () => {
+  it('is one with letters of another alphabet drawn as Latin ones', () => {
+    expect(usernameRedFlag('jоhn')).toBe(true)
+    expect(usernameRedFlag('аррӏе')).toBe(true)
+  })
+
+  it('is no other unusual username', () => {
+    for (const name of ['john', 'иван', 'josé', 'ｊohn', 'jo​hn', 'ivan.иванов'])
+      expect(usernameRedFlag(name), name).toBe(false)
   })
 })

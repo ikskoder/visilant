@@ -142,6 +142,16 @@ function reading(char: string): string | undefined {
   return READS[char] ?? unstyled(char) ?? (withoutMarks(char) ? char : undefined)
 }
 
+/**
+ * A red flag: letters of another alphabet drawn as Latin ones, `jоhn` with a
+ * Cyrillic `о`, is a username made to pass for another. Everything else
+ * this file tells about a username is only worth a look. Counted wherever the
+ * red flags of an email address are, the hold on a click on a mail link too.
+ */
+export function usernameRedFlag(username: string): boolean {
+  return usernameNote(username)?.kind === 'lookalike'
+}
+
 export function usernameNote(username: string): UsernameNote | null {
   // One code point per accented letter, which text from macOS may not have
   const chars = [...username.normalize('NFC')]

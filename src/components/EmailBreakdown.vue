@@ -81,7 +81,7 @@ const displayParams = computed(() => props.params
          "Account name" over "Domain", and the reader put the address back
          together. Not drawn where the card under the field draws it -->
     <SecureText v-if="!domainElsewhere" kind="email" :text="`${analysis.localPart}@${analysis.domain}`" size="l" :diff="domainDiff(`${analysis.localPart}@${analysis.domain}`)">
-      <CopyButton :text="`${analysis.localPart}@${analysis.domain}`" />
+      <CopyButton :text="`${analysis.localPart}@${analysis.domain}`" /><AddressParts :address="`${analysis.localPart}@${analysis.domain}`" />
     </SecureText>
     <!-- The other spelling of an international domain, straight under the address -->
     <OtherSpelling v-if="!domainElsewhere" :shown="analysis.domain" :other="analysis.domainInfo.punycode" :diff="analysis.domainInfo.punycode ? domainDiff(analysis.domainInfo.punycode) : undefined" />

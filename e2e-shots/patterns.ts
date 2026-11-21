@@ -173,6 +173,16 @@ const BLOCKS: Block[] = [
     ],
   },
   {
+    title: 'What each part of an address is',
+    rule: 'A question mark after every address (AddressParts.vue) opens a card that reads it part by part, with its own pieces in their frames: username, levels in front of the site, the own name of the site, the ending or the platform.',
+    surfaces: ['Link tooltip'],
+    rows: [
+      ['A site with levels in front', 'tt-parts'],
+      ['A site on a platform', 'tt-parts-platform'],
+      ['An email address', 'em-parts'],
+    ],
+  },
+  {
     title: 'The sign at the head of a box',
     rule: 'One icon, first in the first row of every box drawn over a page: Visilant\'s shield with the sign cut into it. An exclamation mark for a warning (red to stop for, orange when nothing in the box is red), a flag for red flags, an i for a note, a dash for a site that could not be checked. A verdict is never the sign of the box: it is the badge under the address. The logo where the row signals nothing. Never two icons side by side, never a row to itself. A red flag in a line of the box stays a flag.',
     surfaces: ['Link tooltip', 'Link dialog', 'Paste dialog', 'Check panel', 'Typing warning'],

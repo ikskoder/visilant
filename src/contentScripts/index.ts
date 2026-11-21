@@ -7,6 +7,7 @@ import type { TamperWatch } from '~/logic/tamper-watch'
 import type { CheckPanelData, DomainFamilyInfo, EmailMismatch, EmailRecipientInfo, LinkMismatch, LinkTooltipData, RawPayloadInfo, ShortUrlInfo } from '~/logic/ui-state'
 import type { ResolvedUrlResult } from '~/logic/url-shorteners'
 import { createApp, watch, watchEffect } from 'vue'
+import { closeOpenAddressParts } from '~/composables/openAddressParts'
 import { lookalikeAnswer } from '~/composables/useLookalikes'
 import { raiseTopLayer } from '~/composables/useTopLayer'
 import { listenForScriptedClipboardWrites } from '~/logic/clipboard-signal'
@@ -18,7 +19,7 @@ import { interceptReasons, interceptsAnything } from '~/logic/intercept'
 import { anchorLabel, anchorLabels, findAnchorFromEvent, linkHref, linkRect, linkRel, linkTarget } from '~/logic/link-element'
 import { alternateSpelling, checkAnchorMismatch, checkDomainMismatch, checkLabelsMismatch, clearVisitCache, contextLinkTextDomain, extractDomainFromText, getCachedVisitCount, getHostnameFromHref, isDomainInScope, isExternalLink, isFileLikeName, isMailtoHref, namesASite, setCachedVisitCount, snapshotContextLink } from '~/logic/link-safety'
 import { watchListStorage } from '~/logic/list-sync'
-import { mailLinkStanding } from '~/logic/mail-recipient-list'
+import { mailLinkStanding, mailUsernameRedFlag } from '~/logic/mail-recipient-list'
 import { isMessageError } from '~/logic/message-error'
 import { describePastePayload, editableTargetOf, isEditableEventTarget, isPasteSink, shouldHoldPasteUndecided, shouldInterceptPaste } from '~/logic/paste-guard'
 import { classifyQrPayload, extractCheckTarget } from '~/logic/payload-classify'
@@ -480,17 +481,26 @@ async function interceptPaste(target: HTMLElement, text: string, undecided = fal
       // before that was known, its paste is let through the same as a
       // familiar site's, and the dialog says which of the two it is
       const silenced = safetyLevel.value === false && isIgnored.value
+      // The verdict as of these numbers, not as of the page load: the visit
+      // that made the site familiar may have been counted since, and the
+      // dialog said "unfamiliar" over facts that all passed
+      const stats: FamiliarityStats = { count: visits?.count || 0, activeDays: visits?.activeDays, firstSeen: visits?.firstSeen }
+      const familiarNow = Boolean(visits) && isFamiliar(stats, normalizeFamiliarity(settings.value.familiarity))
+      const nowFamiliar = safetyLevel.value === false && !silenced && familiarNow
       const status = safetyLevel.value === false && !silenced
-        ? 'unfamiliar'
+        ? (familiarNow ? 'safe' : 'unfamiliar')
         : safetyLevel.value === null ? 'error' : 'safe'
+      if (nowFamiliar)
+        becameFamiliar()
 
       pasteInterceptData.value = {
         domain: hostname,
-        stats: { count: visits?.count || 0, activeDays: visits?.activeDays, firstSeen: visits?.firstSeen },
+        stats,
         punycode,
         payload,
         status,
         silenced,
+        nowFamiliar,
       }
       pasteInterceptVisible.value = true
     }
@@ -1914,7 +1924,8 @@ async function computeMailAssessment(anchor: LinkElement, href: string): Promise
     shortLink: false,
     // A loop, not a spread: a spread of every domain a long list names can
     // pass the number of arguments a call takes
-    redFlags: flagsPerDomain.reduce((most, flags) => Math.max(most, flags), 0) + (data.email.mismatch ? 1 : 0),
+    // and a username made to pass for another is a red flag of its own
+    redFlags: flagsPerDomain.reduce((most, flags) => Math.max(most, flags), 0) + (data.email.mismatch ? 1 : 0) + (mailUsernameRedFlag(data.email) ? 1 : 0),
   }
   return { data, reasons: interceptReasons(facts, interceptSettings()) }
 }
@@ -2501,6 +2512,14 @@ function setupLinkSafety() {
   }
 
   function handleEscape(event: KeyboardEvent) {
+    // An open card that reads an address is closed first, the tooltip stays
+    // Nothing after this on the window hears that Esc: the dialog
+    // underneath listens there too, and would close as well
+    if (event.key === 'Escape' && closeOpenAddressParts()) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
     if (event.key === 'Escape') {
       if (linkTooltipVisible.value) {
         linkTooltipVisible.value = false
@@ -2970,6 +2989,16 @@ async function showFrameWarning(kind: 'input' | 'copy'): Promise<WarningOutcome>
  * guard anyway. The answer travels back so the frame knows whether to stop
  * asking.
  */
+/**
+ * The page has become familiar since it was judged, as the visits a paste
+ * dialog shows say: the typing and copy warnings and the next paste stop
+ * treating it as unfamiliar, and a warning on screen that called it so goes.
+ */
+function becameFamiliar() {
+  safetyLevel.value = true
+  showWarning.value = false
+}
+
 async function showFramePasteIntercept(data: { id?: string, frameId?: number, hostname?: string, isSafe?: boolean | null, status: 'unfamiliar' | 'settled' | 'error' }): Promise<{ dialog: boolean }> {
   // With no dialog to answer from, saying so now is what tells the frame there
   // is nothing to wait for
@@ -2982,6 +3011,11 @@ async function showFramePasteIntercept(data: { id?: string, frameId?: number, ho
   // A second dialog over the first would leave the first paste unanswered
   if (pasteInterceptVisible.value)
     return { dialog: false }
+  // Familiar as of these numbers, though the frame was held as unfamiliar:
+  // the page is judged again, as for a paste in the page itself
+  const frameNowFamiliar = data.status === 'unfamiliar' && Boolean(facts?.isSafe && !facts.unchecked)
+  if (frameNowFamiliar)
+    becameFamiliar()
 
   const answer = new Promise<boolean>((resolve) => {
     pasteInterceptResolve.value = resolve
@@ -2996,7 +3030,10 @@ async function showFramePasteIntercept(data: { id?: string, frameId?: number, ho
     payload: describePastePayload(''),
     // Three answers, not two: a frame nobody could get a verdict about is not
     // a frame that came back safe, and the dialog has a wording for that
-    status: data.status === 'unfamiliar' ? 'unfamiliar' : (data.status === 'error' ? 'error' : 'safe'),
+    // An unfamiliar frame verdict taken before the numbers above: as of them
+    // the page may be familiar now, and the dialog says what they say
+    status: data.status === 'unfamiliar' ? (frameNowFamiliar ? 'safe' : 'unfamiliar') : (data.status === 'error' ? 'error' : 'safe'),
+    nowFamiliar: frameNowFamiliar,
     // "Settled" is the frame's word for nothing to hold for, which is a
     // familiar page or one the user silenced. Only the first may be called familiar
     silenced: data.status === 'settled' && data.isSafe === false,

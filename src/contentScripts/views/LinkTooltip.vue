@@ -18,8 +18,9 @@ import { useLookalikeDiff } from '~/composables/useLookalikes'
 import { useRedFlagCount } from '~/composables/useRedFlags'
 import { useTopLayer } from '~/composables/useTopLayer'
 import { canonicalMailDomain } from '~/logic/email-safety'
-import { listedAddresses, mailLinkStanding, recipientsAreListed } from '~/logic/mail-recipient-list'
+import { listedAddresses, mailLinkStanding, mailUsernameRedFlag, recipientsAreListed } from '~/logic/mail-recipient-list'
 import { showsVisitFacts } from '~/logic/show-visit-facts'
+import { usernameRedFlag } from '~/logic/username-characters'
 import EmailMismatchTable from './EmailMismatchTable.vue'
 import MismatchTable from './MismatchTable.vue'
 
@@ -219,7 +220,8 @@ const mailIsRisky = computed(() => {
     return false
   // Over every recipient, by the answer the click is held on
   const standing = mailLinkStanding(email, { isSafe: Boolean(props.data?.isSafe), unchecked: props.data?.unchecked })
-  return Boolean(email.mismatch) || !standing.familiar || standing.unchecked
+  // A username made to pass for another is a red flag, as the hold counts it
+  return Boolean(email.mismatch) || !standing.familiar || standing.unchecked || mailUsernameRedFlag(email)
 })
 
 const RISK_DELAY_MS = 500
@@ -367,11 +369,11 @@ onBeforeUnmount(() => {
                   <VzBadge v-else-if="data.unchecked" tone="neutral" icon="shield-unknown" data-verdict="unchecked">
                     {{ t('verdictUnchecked') }}
                   </VzBadge>
-                  <VzBadge v-else :tone="statusLabel(data.isSafe, data.stats.count).tone" :icon="statusLabel(data.isSafe, data.stats.count).icon" :data-verdict="statusLabel(data.isSafe, data.stats.count).verdict">
-                    {{ statusLabel(data.isSafe, data.stats.count).text }}
+                  <VzBadge v-else :tone="statusLabel(data.domain, data.isSafe, data.stats.count).tone" :icon="statusLabel(data.domain, data.isSafe, data.stats.count).icon" :data-verdict="statusLabel(data.domain, data.isSafe, data.stats.count).verdict">
+                    {{ statusLabel(data.domain, data.isSafe, data.stats.count).text }}
                   </VzBadge>
                   <!-- The address's lines below, and the link that shows another one -->
-                  <RedFlagCount :hostname="data.domain" context="email" :extra="data.email.mismatch ? 1 : 0" />
+                  <RedFlagCount :hostname="data.domain" context="email" :extra="(data.email.mismatch ? 1 : 0) + (usernameRedFlag(data.email.analysis.localPart) ? 1 : 0)" />
                 </div>
 
                 <!-- Visible text shows a different address than the actual mailto
@@ -494,7 +496,7 @@ onBeforeUnmount(() => {
             :hostname="data.domain"
             :url="data.href"
             :punycode="data.punycode"
-            :badge="data.shortUrl?.isKnownShortener ? shortLinkBadge : statusLabel(data.isSafe, data.stats.count, data.unchecked)"
+            :badge="data.shortUrl?.isKnownShortener ? shortLinkBadge : statusLabel(data.domain, data.isSafe, data.stats.count, data.unchecked)"
             :familiar="data.isSafe"
             :service="Boolean(data.shortUrl?.isKnownShortener)"
             :facts="!data.shortUrl?.isKnownShortener && showsVisitFacts(showVisitCount, data.isSafe) ? data.stats : null"

@@ -23,6 +23,7 @@ import { ADDRESS_FRAMES_KEY } from '~/logic/address-shape'
 import { isFamiliar, normalizeFamiliarity } from '~/logic/familiarity'
 import { alternateSpelling } from '~/logic/link-safety'
 import { settings } from '~/logic/storage'
+import { usernameRedFlag } from '~/logic/username-characters'
 import { isTrackableHostname, untrackedReason } from '~/logic/visit-stats'
 
 const props = defineProps<{
@@ -240,7 +241,7 @@ const showSite = computed(() => !isUntrackedHost.value
 const { statusLabel } = useFamiliarityFacts()
 /** The badge beside the name being checked, worded as on every other surface. */
 function statusBadge(stats: FamiliarityStats, hostname: string) {
-  return statusLabel(passes(stats), stats.count, false, { hostname })
+  return statusLabel(hostname, passes(stats), stats.count)
 }
 </script>
 
@@ -313,7 +314,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
         <div v-if="data.kind === 'email' && data.email" class="grid gap-3">
           <div class="grid gap-1">
             <SecureText kind="email" :text="`${data.email.analysis.localPart}@${data.email.analysis.domain}`" :case-override="localCase" size="l" :diff="linkDiff(`${data.email.analysis.localPart}@${data.email.analysis.domain}`)">
-              <CopyButton :text="`${data.email.analysis.localPart}@${data.email.analysis.domain}`" />
+              <CopyButton :text="`${data.email.analysis.localPart}@${data.email.analysis.domain}`" /><AddressParts :address="`${data.email.analysis.localPart}@${data.email.analysis.domain}`" />
             </SecureText>
             <OtherSpelling :shown="data.email.analysis.domain" :other="alternateSpelling(data.email.analysis.domain)" />
           </div>
@@ -328,7 +329,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
             <VzBadge v-else :tone="statusBadge(ownStats, data.hostname).tone" :icon="statusBadge(ownStats, data.hostname).icon" :data-verdict="statusBadge(ownStats, data.hostname).verdict">
               {{ statusBadge(ownStats, data.hostname).text }}
             </VzBadge>
-            <RedFlagCount :hostname="data.hostname" context="email" />
+            <RedFlagCount :hostname="data.hostname" context="email" :extra="usernameRedFlag(data.email.analysis.localPart) ? 1 : 0" />
           </div>
           <UsernameNote :local="data.email.analysis.localPart" />
         </div>
@@ -336,7 +337,7 @@ function statusBadge(stats: FamiliarityStats, hostname: string) {
         <!-- Domain: checked hostname -->
         <div v-else class="grid gap-2">
           <SecureText :text="displayDomain(data.hostname)" :case-override="localCase" size="l" :diff="linkDiff(displayDomain(data.hostname))">
-            <CopyButton :text="displayDomain(data.hostname)" />
+            <CopyButton :text="displayDomain(data.hostname)" /><AddressParts :address="displayDomain(data.hostname)" />
           </SecureText>
           <!-- The other one of the two as drawn, not of the hostname as it
                came: the panel draws the readable or the xn-- spelling as its

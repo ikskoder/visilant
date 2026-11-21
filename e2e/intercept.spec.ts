@@ -269,3 +269,62 @@ test('a made-up Tab from the page does not move the focus in the link dialog', a
     expect(await allText(page)).toContain('Open anyway')
   }
 })
+
+/** Where an element is drawn, through the closed shadow root, or null when it is not drawn. */
+async function boxOf(page: any, attribute: string, value?: string) {
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true })
+    let found: number | null = null
+    const walk = (node: any) => {
+      const attributes: string[] = node.attributes ?? []
+      const at = attributes.findIndex((name, i) => i % 2 === 0 && name === attribute)
+      if (at >= 0 && (value === undefined || attributes[at + 1] === value))
+        found = node.backendNodeId
+      for (const child of [...(node.children ?? []), ...(node.shadowRoots ?? [])])
+        walk(child)
+    }
+    walk(root)
+    if (found === null)
+      return null
+    try {
+      const { model } = await cdp.send('DOM.getBoxModel', { backendNodeId: found })
+      const [x1, y1, , , x3, y3] = model.content
+      return { x: (x1 + x3) / 2, y: (y1 + y3) / 2, left: x1, top: y1 }
+    }
+    catch {
+      return null
+    }
+  }
+  finally {
+    await cdp.detach()
+  }
+}
+
+// In a production build the card is in a closed shadow root, which the window
+// cannot see into: a press in the card read as a press outside it, and Esc
+// closed the dialog under the card together with the card
+test('the card that reads an address keeps to itself in the link dialog', async ({ page }) => {
+  await open(page, '<a id="l" href="https://paypal.com@plain-new-site.test/landed">Log in</a>')
+  await page.locator('#l').click()
+  await expect.poll(() => allText(page), { timeout: 5000, intervals: [300] }).toContain('Red flags in this link')
+
+  await clickInDialog(page, 'address-parts')
+  await expect.poll(() => boxOf(page, 'data-address-parts'), { timeout: 3000 }).not.toBeNull()
+
+  const card = await boxOf(page, 'data-address-parts')
+  await page.mouse.click(card!.x, card!.y)
+  await page.waitForTimeout(300)
+  expect(await boxOf(page, 'data-address-parts')).not.toBeNull()
+
+  await page.keyboard.press('Escape')
+  await expect.poll(() => boxOf(page, 'data-address-parts'), { timeout: 3000 }).toBeNull()
+  await page.waitForTimeout(300)
+  expect(await boxOf(page, 'data-action', 'back')).not.toBeNull()
+  expect(page.url()).toBe(SITE_URL)
+
+  await clickInDialog(page, 'address-parts')
+  await expect.poll(() => boxOf(page, 'data-address-parts'), { timeout: 3000 }).not.toBeNull()
+  await page.mouse.click(card!.left - 40 > 0 ? card!.left - 40 : 5, 5)
+  await expect.poll(() => boxOf(page, 'data-address-parts'), { timeout: 3000 }).toBeNull()
+})

@@ -1,4 +1,5 @@
 import { onBeforeUnmount, watch } from 'vue'
+import { closeOpenAddressParts } from './openAddressParts'
 
 /** Every surface up in the top layer right now, by what puts it back on top. */
 const raisers = new Set<() => boolean>()
@@ -12,6 +13,8 @@ const raisers = new Set<() => boolean>()
  * raise.
  */
 export function raiseTopLayer(): boolean {
+  // A card that reads an address would end up under the surface it is about
+  closeOpenAddressParts()
   let raised = false
   for (const raise of raisers)
     raised = raise() || raised

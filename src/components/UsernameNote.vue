@@ -9,7 +9,9 @@ import { usernameNote } from '~/logic/username-characters'
  * when something in it is not plain Latin: what exactly, and what it can mean
  * (`usernameNote`). One component for every surface that draws an address, so
  * the line reads the same in the tooltip, the check panel and a list of
- * recipients. Draws nothing for a plain username.
+ * recipients. Draws nothing for a plain username. Letters of another
+ * alphabet drawn as Latin ones are a red flag (`usernameRedFlag`), the rest
+ * is orange.
  */
 const props = defineProps<{ local: string }>()
 
@@ -53,7 +55,12 @@ const sentence = computed(() => {
 </script>
 
 <template>
-  <VzNotice v-if="note && sentence" tone="caution" data-status="username" :data-username="note.kind">
+  <VzNotice v-if="note && sentence && note.kind === 'lookalike'" tone="danger" icon="flag" data-status="username" :data-username="note.kind" data-red-flag>
+    {{ sentence.text }}<template v-if="sentence.framed">
+      <SecureText :text="sentence.framed" kind="account" size="s" plain data-username-reads />{{ sentence.after }}
+    </template>
+  </VzNotice>
+  <VzNotice v-else-if="note && sentence" tone="caution" data-status="username" :data-username="note.kind">
     {{ sentence.text }}<template v-if="sentence.framed">
       <SecureText :text="sentence.framed" kind="account" size="s" plain data-username-reads />{{ sentence.after }}
     </template>

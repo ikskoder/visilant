@@ -43,9 +43,9 @@ const status = computed(() => props.data?.status ?? 'unfamiliar')
 const addressBadge = computed(() => {
   switch (status.value) {
     // Let through because the user silenced this site is not the same as familiar
-    case 'safe': return statusLabel(!props.data?.silenced, props.data?.stats.count ?? 0)
+    case 'safe': return statusLabel(props.data?.domain ?? '', !props.data?.silenced, props.data?.stats.count ?? 0)
     case 'checking': return { verdict: 'checking', text: t.value('statusChecking'), tone: 'neutral' as const, icon: 'pending' as const }
-    case 'unfamiliar': return statusLabel(false, props.data?.stats.count ?? 0)
+    case 'unfamiliar': return statusLabel(props.data?.domain ?? '', false, props.data?.stats.count ?? 0)
     default: return null
   }
 })
@@ -68,7 +68,7 @@ const title = computed(() => {
 const message = computed(() => {
   switch (status.value) {
     case 'checking': return t.value('pasteInterceptCheckingMessage')
-    case 'safe': return t.value(props.data?.silenced ? 'pasteInterceptSilencedMessage' : 'pasteInterceptSafeMessage')
+    case 'safe': return t.value(props.data?.silenced ? 'pasteInterceptSilencedMessage' : props.data?.nowFamiliar ? 'pasteInterceptNowFamiliarMessage' : 'pasteInterceptSafeMessage')
     case 'error': return t.value('pasteInterceptErrorMessage')
     default: return t.value('pasteInterceptMessage')
   }

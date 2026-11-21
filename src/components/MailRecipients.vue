@@ -219,8 +219,8 @@ const layout = computed(() => {
             <VzBadge v-else-if="recipient.unchecked" tone="neutral" icon="shield-unknown" data-verdict="unchecked">
               {{ t('verdictUnchecked') }}
             </VzBadge>
-            <VzBadge v-else :tone="statusLabel(recipient.isSafe, recipient.stats.count).tone" :icon="statusLabel(recipient.isSafe, recipient.stats.count).icon" :data-verdict="statusLabel(recipient.isSafe, recipient.stats.count).verdict">
-              {{ statusLabel(recipient.isSafe, recipient.stats.count).text }}
+            <VzBadge v-else :tone="statusLabel(recipient.analysis.domain, recipient.isSafe, recipient.stats.count).tone" :icon="statusLabel(recipient.analysis.domain, recipient.isSafe, recipient.stats.count).icon" :data-verdict="statusLabel(recipient.analysis.domain, recipient.isSafe, recipient.stats.count).verdict">
+              {{ statusLabel(recipient.analysis.domain, recipient.isSafe, recipient.stats.count).text }}
             </VzBadge>
           </div>
           <AddressFindings :hostname="recipient.analysis.domain" context="email" :familiar="recipient.isSafe" :mail-service="isCautionMailService(recipient.providerKind) ? recipient.providerKind : undefined" name-mail-service />

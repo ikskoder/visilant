@@ -31,6 +31,7 @@ import { classifyQrPayload } from '~/logic/payload-classify'
 import { decodeQrFromImageBitmapSource } from '~/logic/qr'
 import { settings } from '~/logic/storage'
 import { isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
+import { usernameRedFlag } from '~/logic/username-characters'
 
 const props = defineProps<{
   /** Something to check straight away, when the page was opened about it. */
@@ -463,7 +464,7 @@ const { statusLabel } = useFamiliarityFacts()
 // The same badge as on every other surface, see `statusLabel` for the
 // hostnames that are never counted
 function statusText(isSafe: boolean, count: number, hostname: string) {
-  return statusLabel(isSafe, count, false, { hostname })
+  return statusLabel(hostname, isSafe, count)
 }
 
 function payloadTypeLabel(payloadKind: string) {
@@ -542,7 +543,7 @@ function payloadTypeLabel(payloadKind: string) {
           <div class="flex items-center flex-wrap gap-2">
             <span data-field-hostname class="min-w-0">
               <SecureText :text="result.hostname" size="l" :diff="fieldDiff(result.hostname)">
-                <CopyButton :text="result.hostname" />
+                <CopyButton :text="result.hostname" /><AddressParts :address="result.hostname" />
               </SecureText>
             </span>
             <VzBadge v-if="result.isShortener" tone="caution" icon="shield-alert" data-verdict="shortener">
@@ -627,7 +628,7 @@ function payloadTypeLabel(payloadKind: string) {
           <!-- Several recipients are a link, not an address -->
           <span class="vz-eyebrow">{{ t(severalRecipients ? 'mailLinkHeading' : 'emailTooltipTitle') }}</span>
           <!-- Only where the lines it counts are drawn here, see below -->
-          <RedFlagCount v-if="!severalRecipients && !panelCovers(result.analysis.domain, 'email')" :hostname="result.analysis.domain" context="email" />
+          <RedFlagCount v-if="!severalRecipients && !panelCovers(result.analysis.domain, 'email')" :hostname="result.analysis.domain" context="email" :extra="usernameRedFlag(result.analysis.localPart) ? 1 : 0" />
         </div>
         <EmailBreakdown
           :analysis="result.analysis"

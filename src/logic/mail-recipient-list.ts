@@ -1,5 +1,6 @@
 import type { EmailRecipientInfo, EmailTooltipInfo } from '~/logic/ui-state'
 import { isJudgedByVisits, isKnownMailDomain } from '~/logic/email-providers'
+import { usernameRedFlag } from '~/logic/username-characters'
 
 /**
  * Where a mail link stands, over everybody it writes to: whether all of them
@@ -65,4 +66,13 @@ export function listedAddresses(recipients: EmailRecipientInfo[] | undefined, no
 export function sortedRecipients(recipients: EmailRecipientInfo[]): EmailRecipientInfo[] {
   return [...recipients].sort((a, b) =>
     a.analysis.domain.localeCompare(b.analysis.domain) || a.analysis.localPart.localeCompare(b.analysis.localPart, undefined, { numeric: true }))
+}
+
+/**
+ * Whether any address a mail link writes to has a username made to pass for
+ * another, a red flag of its own. One answer for the hold on the click and the
+ * button in the tooltip, as `mailLinkStanding` is.
+ */
+export function mailUsernameRedFlag(email: Pick<EmailTooltipInfo, 'analysis' | 'recipients'>): boolean {
+  return [email.analysis, ...(email.recipients ?? []).map(recipient => recipient.analysis)].some(analysis => usernameRedFlag(analysis.localPart))
 }

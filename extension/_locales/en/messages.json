@@ -959,6 +959,14 @@
     "message": "hidden by settings",
     "description": "Shown in mismatch table when visit count is hidden per user settings"
   },
+  "linkInterceptTitleLocal": {
+    "message": "Link to your local network",
+    "description": "Title of the link dialog when a held click leads to a private IP address or a name with no dot, like a home router"
+  },
+  "linkInterceptLocalHint": {
+    "message": "This link goes to your own computer or a device on your network, such as your router, not to a site on the internet. A web page can use such a link to change its settings.",
+    "description": "Under that title"
+  },
   "linkInterceptTitle": {
     "message": "Unfamiliar site ahead",
     "description": "Title for navigation intercept dialog"
@@ -1727,6 +1735,10 @@
     "message": "Your paste is being held for a moment while this site is checked. Nothing has been pasted yet.",
     "description": "Body of the paste dialog while the site check is still running"
   },
+  "pasteInterceptNowFamiliarMessage": {
+    "message": "Your paste was held because this site was unfamiliar to Visilant, and nothing was pasted. Your visits have made it familiar since. Paste again.",
+    "description": "Body of the paste dialog when the site became familiar after the page was judged"
+  },
   "pasteInterceptSafeMessage": {
     "message": "This device was too slow to check this site in time, so your paste was held and nothing was pasted. This site is familiar. Paste again.",
     "description": "Body of the paste dialog when the check came back familiar"
@@ -1886,6 +1898,66 @@
   "addressFramesLabel": {
     "message": "Frames around address parts",
     "description": "Settings switch: draw a frame around each label of an address"
+  },
+  "addressPartsAsk": {
+    "message": "What each part of this address is",
+    "description": "Name of the question mark after an address, and of the card it opens"
+  },
+  "addressPartUserText": {
+    "message": "The owner of the domain gives these out. At a public email service anyone can pick one.",
+    "description": "What the username of an email address is"
+  },
+  "addressPartLevelsTitle": {
+    "message": "Levels in front of the site",
+    "description": "In that card, the labels before the site's own name"
+  },
+  "addressPartLevelsText": {
+    "message": "The site's owner writes anything here and can change it at any moment. A familiar name here proves nothing.",
+    "description": "What the levels in front of a site are"
+  },
+  "addressPartNameTitle": {
+    "message": "The site's own name",
+    "description": "In that card, the label the owner registered"
+  },
+  "addressPartNameText": {
+    "message": "Somebody registered it for themselves, and nobody else can have it under {ending} while they keep it.",
+    "description": "What the site's own name is. {ending} is the ending, drawn in a frame"
+  },
+  "addressPartEndingTitle": {
+    "message": "The ending",
+    "description": "In that card, the ending of a name, like com or co.uk"
+  },
+  "addressPartEndingText": {
+    "message": "Whoever registers a name picks it from a list. It says nothing about who owns the site.",
+    "description": "What the ending is"
+  },
+  "addressPartPlatformTitle": {
+    "message": "A platform anyone can make a site on",
+    "description": "In that card, an ending that is a platform, like github.io"
+  },
+  "addressPartPlatformText": {
+    "message": "{name} is one of its users, not the platform itself.",
+    "description": "What a platform ending means. {name} is the site's own name, drawn in a frame"
+  },
+  "addressFramesLegend": {
+    "message": "Every address is drawn in parts, and the frame says whose each part is:",
+    "description": "Above the sample address in the settings that shows what each frame means"
+  },
+  "addressFramesLegendLevels": {
+    "message": "Dashed: levels in front of the site.",
+    "description": "In the settings legend, the dashed frame"
+  },
+  "addressFramesLegendName": {
+    "message": "Solid on a tint: the site's own name.",
+    "description": "In the settings legend, the heavy frame on a tint"
+  },
+  "addressFramesLegendEnding": {
+    "message": "A grey pill: the ending.",
+    "description": "In the settings legend, the grey pill"
+  },
+  "addressFramesLegendTones": {
+    "message": "A red frame marks the part a red flag is about, an orange one a part worth a look.",
+    "description": "Under the settings legend"
   },
   "addressFramesDesc": {
     "message": "Each part of an address gets a frame, heavier on the part that says who owns the site. Off, that part is bold instead.",

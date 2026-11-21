@@ -66,8 +66,8 @@ const summaryRow = computed(() => {
  * mistake of the table and takes the same room as a zero.
  */
 const sides = computed(() => [
-  { key: 'shown', safe: props.textDomainIsSafe, stats: props.textDomainStats, unchecked: props.textDomainUnchecked },
-  { key: 'dest', safe: props.destIsSafe, stats: props.destStats, unchecked: props.destUnchecked },
+  { key: 'shown', host: props.textDomain, safe: props.textDomainIsSafe, stats: props.textDomainStats, unchecked: props.textDomainUnchecked },
+  { key: 'dest', host: props.destDomain, safe: props.destIsSafe, stats: props.destStats, unchecked: props.destUnchecked },
 ].map(side => ({
   ...side,
   cells: side.unchecked
@@ -118,8 +118,8 @@ const anyFacts = computed(() => sides.value.some(side => side.cells === 'facts' 
           {{ t('linkInterceptStatus') }}
         </th>
         <td v-for="side in sides" :key="side.key">
-          <VzBadge :tone="statusLabel(side.safe, side.stats.count, side.unchecked).tone" :icon="statusLabel(side.safe, side.stats.count, side.unchecked).icon" :data-verdict="statusLabel(side.safe, side.stats.count, side.unchecked).verdict">
-            {{ statusLabel(side.safe, side.stats.count, side.unchecked).text }}
+          <VzBadge :tone="statusLabel(side.host, side.safe, side.stats.count, side.unchecked).tone" :icon="statusLabel(side.host, side.safe, side.stats.count, side.unchecked).icon" :data-verdict="statusLabel(side.host, side.safe, side.stats.count, side.unchecked).verdict">
+            {{ statusLabel(side.host, side.safe, side.stats.count, side.unchecked).text }}
           </VzBadge>
         </td>
       </tr>

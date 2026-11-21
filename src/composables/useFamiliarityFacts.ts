@@ -62,15 +62,6 @@ export interface VerdictLabel {
   icon: 'shield-pass' | 'shield-fail' | 'shield-unknown'
 }
 
-export interface VerdictOptions {
-  /**
-   * The name the verdict is about. A hostname without a dot is never counted,
-   * so its zero says "there is no question here", not "you have never been",
-   * and a red "never visited" would be a verdict on the user's own machine.
-   */
-  hostname?: string
-}
-
 export function useFamiliarityFacts() {
   const { t } = useI18n()
 
@@ -148,13 +139,22 @@ export function useFamiliarityFacts() {
    * a password. The words still tell the two apart. Orange is for a finding
    * about an address that is only worth a look, never for a verdict.
    */
-  function statusLabel(isSafe: boolean, count: number, unchecked = false, options: VerdictOptions = {}): VerdictLabel {
+  /**
+   * `hostname` is the name the verdict is about, and every caller has to
+   * give it. A private IP address or a name without a dot is never counted,
+   * so its zero says "there is no question here", not "you have never been",
+   * and a red "never visited" would be a verdict on the user's own network.
+   * It was an option once, and the tooltip and the dialogs never passed it:
+   * the same `192.168.1.1` was grey on the check panel and red over a link.
+   * A public IP address is counted like any site and gets its verdict.
+   */
+  function statusLabel(hostname: string, isSafe: boolean, count: number, unchecked = false): VerdictLabel {
     // Not red: nothing says the site is unfamiliar, only that nobody could ask.
     // Not green either, and the dialog it heads still stops the link.
     if (unchecked)
       return { verdict: 'unchecked', text: t.value('verdictUnchecked'), tone: 'neutral', icon: 'shield-unknown' }
-    if (options.hostname && !isTrackableHostname(options.hostname))
-      return { verdict: 'untracked', text: t.value(untrackedReason(options.hostname) === 'ip' ? 'untrackedIpBadge' : 'untrackedHostBadge'), tone: 'neutral', icon: 'shield-unknown' }
+    if (hostname && !isTrackableHostname(hostname))
+      return { verdict: 'untracked', text: t.value(untrackedReason(hostname) === 'ip' ? 'untrackedIpBadge' : 'untrackedHostBadge'), tone: 'neutral', icon: 'shield-unknown' }
     if (isSafe)
       return { verdict: 'familiar', text: t.value('linkTooltipFamiliar'), tone: 'safe', icon: 'shield-pass' }
     // The same three words for a site wherever it is named, the site of an

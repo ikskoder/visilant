@@ -254,6 +254,12 @@ export interface PasteInterceptData {
    * must not call it familiar.
    */
   silenced?: boolean
+  /**
+   * Held as unfamiliar, and familiar as of the visits the dialog shows: the
+   * visit that made it so was counted after the page was judged. Not the
+   * device being slow, which is what the safe wording says.
+   */
+  nowFamiliar?: boolean
 }
 
 export const pasteInterceptVisible = ref(false)

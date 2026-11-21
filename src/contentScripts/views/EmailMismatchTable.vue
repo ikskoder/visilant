@@ -115,7 +115,7 @@ const anyFacts = computed(() => !sameDomain.value && sides.value.some(({ side, c
 const factRowCount = computed(() => factRows.value.length + (summaryRow.value ? 1 : 0))
 
 function verdict(side: Side) {
-  return statusLabel(side.isSafe, side.stats.count, side.unchecked)
+  return statusLabel(side.domain, side.isSafe, side.stats.count, side.unchecked)
 }
 function cell(fact: { value: string, combined: string }) {
   return withThresholds.value ? fact.combined : fact.value

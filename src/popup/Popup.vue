@@ -22,6 +22,7 @@ import { popupWidthCap } from '~/logic/platform'
 import { STORAGE_KEY_REMOTE_SHORTENERS } from '~/logic/shortener-lists'
 import { editSettingsThroughBackground, settings } from '~/logic/storage'
 import { isShortenedUrl, loadShortenersFromStorage } from '~/logic/url-shorteners'
+import { usernameRedFlag } from '~/logic/username-characters'
 import { isTrackableHostname, untrackedReason } from '~/logic/visit-stats'
 import Logo from '../components/Logo.vue'
 import SecureText from '../components/SecureText.vue'
@@ -175,6 +176,9 @@ const providerKind = ref<EmailProviderKind | null>(null)
  * alone, with the username on a row of its own in the field's block above.
  */
 const currentUsername = ref('')
+// The username of the address on the card is a red flag of its own when it is
+// made to pass for another, counted beside the domain's
+const usernameFlags = computed(() => usernameRedFlag(currentUsername.value) ? 1 : 0)
 /** The name as the card draws it: the host, or the whole email address at it. */
 /**
  * Where the address came from, when it was chosen from a mail link's list of
@@ -727,7 +731,7 @@ const addressVerdict = computed(() => {
     return { verdict: service.verdict, text: translations.value[service.label], tone: service.tone, icon: service.icon }
   }
   const own = visits.value[currentKey.value] ?? { count: 0 }
-  return statusLabel(isFamiliar(own, familiarityRules.value), Number(own.count) || 0, false, { hostname: host })
+  return statusLabel(host, isFamiliar(own, familiarityRules.value), Number(own.count) || 0)
 })
 
 /**
@@ -910,7 +914,7 @@ onMounted(async () => {
             <template v-if="isPunycode">
               <span class="vz-eyebrow">{{ translations.domainOriginal }}</span>
               <SecureText :kind="currentUsername ? 'email' : 'host'" :text="shown(unicodeHostname)" size="xl" :style="currentDomainFontSize" :diff="hostDiff(shown(unicodeHostname))">
-                <CopyButton :text="shown(unicodeHostname)" />
+                <CopyButton :text="shown(unicodeHostname)" /><AddressParts :address="shown(unicodeHostname)" />
               </SecureText>
               <!-- What the two forms are, behind the same question mark and in
                    the same words as under every other address. It was a
@@ -924,7 +928,7 @@ onMounted(async () => {
               </SecureText>
             </template>
             <SecureText v-else :kind="currentUsername ? 'email' : 'host'" :text="shown(currentHostname)" size="xl" :style="currentDomainFontSize" :diff="hostDiff(shown(currentHostname))">
-              <CopyButton :text="shown(currentHostname)" />
+              <CopyButton :text="shown(currentHostname)" /><AddressParts :address="shown(currentHostname)" />
             </SecureText>
           </div>
 
@@ -933,11 +937,11 @@ onMounted(async () => {
           <div v-if="addressVerdict" class="popup-verdict" data-popup-verdict :data-verdict="addressVerdict.verdict">
             <VzIcon :name="addressVerdict.icon" large :class="`tone-${addressVerdict.tone}`" />
             <span class="vz-body-strong">{{ addressVerdict.text }}</span>
-            <RedFlagCount :hostname="currentHostname" :url="currentUrl" :context="currentContext" />
+            <RedFlagCount :hostname="currentHostname" :url="currentUrl" :context="currentContext" :extra="usernameFlags" />
           </div>
           <!-- No verdict for an address that is never counted or for a short link,
                but a red flag under one is still counted -->
-          <RedFlagCount v-else-if="visitsReadFor === currentHostname" class="justify-self-start" :hostname="currentHostname" :url="currentUrl" :context="currentContext" />
+          <RedFlagCount v-else-if="visitsReadFor === currentHostname" class="justify-self-start" :hostname="currentHostname" :url="currentUrl" :context="currentContext" :extra="usernameFlags" />
 
           <!-- Said before the numbers, because it explains why there are none -->
           <VzNotice v-if="isUntrackedHost" tone="neutral" icon="unknown" boxed>
@@ -953,7 +957,12 @@ onMounted(async () => {
                Both take the same context, because they read one shared answer. -->
           <!-- The platform line waits for the visits, so it does not flash up
                for a site that turns out to be familiar -->
+          <!-- A recipient chosen from the list, its row closed: the line about its
+               username, which the field above draws only for an address alone -->
+          <UsernameNote v-if="currentHeading && currentUsername && !findingsAbove && usernameFlags" :local="currentUsername" />
           <AddressFindings v-if="!findingsAbove" :hostname="currentHostname" :url="currentUrl" :context="currentContext" :notes="hostNotes" :familiar="!warningsCanFire || visitsReadFor !== currentHostname" :service="isShortenerHost" :mail-service="providerKind ?? undefined" />
+          <!-- Red first, as everywhere: an orange username line after the domain's -->
+          <UsernameNote v-if="currentHeading && currentUsername && !findingsAbove && !usernameFlags" :local="currentUsername" />
           <!-- Not for an address that only means something inside one network:
                no site elsewhere has anything to say about the reader's router -->
           <ExternalLookups v-if="!isUntrackedHost" :hostname="currentHostname" />

@@ -6,7 +6,7 @@ import { useI18n } from '~/composables/useI18n'
 import { useCautionCount, useRedFlagCount } from '~/composables/useRedFlags'
 import { ADDRESS_SHAPE_KEY, askBackgroundShape } from '~/logic/address-shape'
 import { isCautionMailService, MAIL_SERVICE_VERDICTS } from '~/logic/email-providers'
-import { usernameNote } from '~/logic/username-characters'
+import { usernameNote, usernameRedFlag } from '~/logic/username-characters'
 
 /**
  * What is known about one recipient, folded to its signs for a row of the
@@ -26,10 +26,10 @@ const lookupShape = inject(ADDRESS_SHAPE_KEY, askBackgroundShape)
 
 const domain = () => props.recipient.analysis.domain
 const service = computed(() => isCautionMailService(props.recipient.providerKind))
-const flags = useRedFlagCount(domain, () => null, () => 'email')
+const flags = useRedFlagCount(domain, () => null, () => 'email', () => usernameRedFlag(props.recipient.analysis.localPart) ? 1 : 0)
 const cautions = useCautionCount(domain, () => ({ context: 'email', familiar: props.recipient.isSafe, cautionService: service.value }), lookupShape)
 // The line about the username is drawn by the list, not under the domain
-const orange = computed(() => cautions.value + (usernameNote(props.recipient.analysis.localPart) ? 1 : 0))
+const orange = computed(() => cautions.value + (usernameNote(props.recipient.analysis.localPart) && !usernameRedFlag(props.recipient.analysis.localPart) ? 1 : 0))
 
 const verdict = computed(() => {
   const { providerKind, unchecked, isSafe, stats } = props.recipient
@@ -43,7 +43,7 @@ const verdict = computed(() => {
   }
   if (unchecked)
     return { tone: 'neutral', icon: 'shield-unknown', verdict: 'unchecked', text: t.value('verdictUnchecked') }
-  return statusLabel(isSafe, stats.count)
+  return statusLabel(props.recipient.analysis.domain, isSafe, stats.count)
 })
 
 const flagText = computed(() => flags.value === 1 ? t.value('redFlagsOne') : t.value('redFlagsMany').replace('{n}', String(flags.value)))

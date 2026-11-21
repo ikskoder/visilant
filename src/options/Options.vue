@@ -1383,7 +1383,26 @@ watch(settings, (_newVal, _oldVal) => { }, { deep: true })
               <p class="hint vz-small">
                 {{ t('addressFramesDesc') }}
               </p>
-              <SecureText text="login.paypal.com.secure-check.test" size="m" class="mt-2 inline-block" />
+              <!-- What each frame means, on one sample address, in the words the
+                   question mark after every address uses about it -->
+              <!-- Only with the frames on: it speaks of dashes, tints and pills -->
+              <div v-if="settings.addressFrames" class="hint mt-2 grid gap-2" data-frames-legend>
+                <p class="vz-small m-0">
+                  {{ t('addressFramesLegend') }}
+                </p>
+                <SecureText text="login.paypal.com.secure-check.test" size="m" class="inline-block" />
+                <dl class="vz-parts__list vz-small">
+                  <dt><SecureText kind="label" part="free" text="login.paypal.com" size="s" plain /></dt>
+                  <dd><b>{{ t('addressFramesLegendLevels') }}</b> {{ t('addressPartLevelsText') }}</dd>
+                  <dt><SecureText kind="label" part="name" text="secure-check" size="s" plain /></dt>
+                  <dd><b>{{ t('addressFramesLegendName') }}</b> {{ t('addressPartNameText').split('{ending}')[0] }}<SecureText kind="label" part="ending" text="test" size="s" plain />{{ t('addressPartNameText').split('{ending}')[1] }}</dd>
+                  <dt><SecureText kind="label" part="ending" text="test" size="s" plain /></dt>
+                  <dd><b>{{ t('addressFramesLegendEnding') }}</b> {{ t('addressPartEndingText') }}</dd>
+                </dl>
+                <p class="vz-small m-0">
+                  {{ t('addressFramesLegendTones') }}
+                </p>
+              </div>
             </div>
             <label class="vz-switch flex-shrink-0">
               <input v-model="settings.addressFrames" type="checkbox" data-setting="addressFrames" :aria-label="t('addressFramesLabel')">

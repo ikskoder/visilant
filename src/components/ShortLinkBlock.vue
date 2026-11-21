@@ -69,7 +69,7 @@ const canRetry = computed(() => props.link.error !== 'same_domain' && props.link
       :note-help="t('linkResolveWhyNotCertain')"
       :hostname="link.resolvedDomain"
       :punycode="link.resolvedPunycode"
-      :badge="statusLabel(link.resolvedIsSafe, link.resolvedStats.count, link.resolvedUnchecked)"
+      :badge="statusLabel(link.resolvedDomain, link.resolvedIsSafe, link.resolvedStats.count, link.resolvedUnchecked)"
       :familiar="link.resolvedIsSafe"
       :facts="!link.resolvedUnchecked && showsVisitFacts(showVisitCount, link.resolvedIsSafe) ? link.resolvedStats : null"
     >

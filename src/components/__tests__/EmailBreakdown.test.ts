@@ -134,13 +134,16 @@ describe('the table of recipients', () => {
     expect(row(wrapper, 'bob@other.test').find('.vz-copy').exists()).toBe(true)
   })
 
-  it('counts an unusual character in a username among what is worth a look, and says it once open', async () => {
+  // A letter of another alphabet passing for a Latin one is a red flag
+  it('counts a username made to pass for another among the red flags, and says it once open', async () => {
     const wrapper = mount(MailRecipients, { props: { recipients: [recipient('ann@corp.test'), recipient('jоhn@other.test', 'cc')] } })
-    expect(row(wrapper, 'jоhn@other.test').get('[data-cautions]').attributes('data-cautions')).toBe('1')
-    expect(row(wrapper, 'ann@corp.test').find('[data-cautions]').exists()).toBe(false)
+    expect(row(wrapper, 'jоhn@other.test').get('[data-red-flags]').attributes('data-red-flags')).toBe('1')
+    expect(row(wrapper, 'jоhn@other.test').find('[data-cautions]').exists()).toBe(false)
+    expect(row(wrapper, 'ann@corp.test').find('[data-red-flags]').exists()).toBe(false)
     await press(wrapper, 'jоhn@other.test')
     const line = more(wrapper).get('[data-status="username"]')
     expect(line.attributes('data-username')).toBe('lookalike')
+    expect(line.attributes('data-tone')).toBe('danger')
     expect(line.get('[data-username-reads]').text()).toBe('john')
   })
 
