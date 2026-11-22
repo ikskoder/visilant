@@ -127,10 +127,15 @@ if command -v pnpm >/dev/null 2>&1; then
           if (fixable && rank[a.severity] >= rank.high) blocking++;
         }
         if (!adv.length) console.log("  no advisories");
+        // The totals in metadata count findings, one per installed version an
+        // advisory hits, not advisories: glob at 10.5.0 and at 13.0.6 is one
+        // advisory and two findings. Comparing them with adv.length reported a
+        // changed format for every advisory that reached two versions.
         const counts = j.metadata && j.metadata.vulnerabilities;
         const claimed = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : null;
+        const findings = adv.reduce((n, a) => n + (Array.isArray(a.findings) ? a.findings.length : 0), 0);
         console.log(`__BLOCKING__=${blocking}`);
-        console.log(`__SEEN__=${adv.length}`);
+        console.log(`__SEEN__=${findings}`);
         console.log(`__CLAIMED__=${claimed === null ? "" : claimed}`);
       });
     ') || listing=""
@@ -145,7 +150,7 @@ if command -v pnpm >/dev/null 2>&1; then
     elif [[ -n "$claimed" && "$claimed" != "$seen" ]]; then
       # The registry says one number and the parser found another, which means
       # the report is in a shape this script does not understand any more.
-      skip "pnpm reports $claimed advisory(ies) but only $seen could be read."
+      skip "pnpm reports $claimed finding(s) but only $seen could be read."
       skip "  The audit output format has changed - this script needs updating,"
       skip "  and until then it is not checking what it says it checks."
     elif [[ "$blocking" != "0" ]]; then

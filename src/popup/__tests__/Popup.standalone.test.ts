@@ -260,7 +260,7 @@ describe('turning the warnings off for a site', () => {
     const wrapper = mount(Popup)
     await flushPromises()
 
-    wrapper.findComponent(CheckField).vm.$emit('checked-domain', 'example.com')
+    wrapper.getComponent(CheckField).vm.$emit('checked-domain', 'example.com')
     await flushPromises()
 
     // The panel is up – the facts are there – and the switch still is not
