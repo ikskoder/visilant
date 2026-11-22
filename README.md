@@ -11,7 +11,7 @@
   Those are the best-known ones rather than a full list. Whether any particular browser takes the package is up to its own extension policy.</sub>
 </p>
 
-This README describes the source in this branch. For the published v3.2.0 build, see the [README at the release tag](https://github.com/ikskoder/visilant/tree/v3.2.0#readme).
+This README describes the source in this branch. For a published build, see the README at its release tag on the [releases page](https://github.com/ikskoder/visilant/releases).
 
 ## Contents
 
@@ -197,10 +197,10 @@ Visilant is open-source and operates locally within your browser:
 
 ## Reproducible Builds
 
-You do not have to take our word for what the store installed. Every release can be rebuilt from its tag, byte for byte. For example, to check the Firefox archive for v3.2.0:
+You do not have to take our word for what the store installed. Every release can be rebuilt from its tag, byte for byte. For example, to check the Firefox archive for v4.0.0:
 
 ```bash
-nix build github:ikskoder/visilant/v3.2.0#firefox
+nix build github:ikskoder/visilant/v4.0.0#firefox
 sha256sum result/*.xpi          # compare with SHA256SUMS on the release
 ```
 
