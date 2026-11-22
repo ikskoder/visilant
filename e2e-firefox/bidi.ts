@@ -41,9 +41,11 @@ export class Firefox {
     // Port 0 has Firefox pick a free one and say which, so two runs never collide.
     // System access is what lets BiDi evaluate in the extension's own pages,
     // where the tests seed storage. Firefox before 141 or so needs no flag for
-    // that and ignores one it does not know.
+    // that and ignores one it does not know. Firefox 159 no longer reads the
+    // flag and wants the environment variable instead, so both are given.
     const child = spawn(binary, ['--headless', '--no-remote', '--profile', profile, '--remote-debugging-port=0', '--remote-allow-system-access'], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: '1' },
     })
     let output = ''
     const url = await new Promise<string>((resolve, reject) => {
