@@ -23,6 +23,7 @@ alias cu := container-up
 alias cs := container-shell
 alias ck := container-check
 alias au := audit
+alias rl := release
 
 # Clear both builds: extension/ (Chrome) and extension-firefox/ (Firefox)
 clear:
@@ -236,6 +237,40 @@ audit:
 # Audit only what is staged, the way the pre-commit hook does
 audit-staged:
   ./scripts/audit.sh --staged
+
+# === RELEASE ===
+
+# One atomic push, so by the time the branch run starts the tag is there and
+# the branch run leaves the build to the tag run (the `gate` job in build.yml).
+# Pushed apart, the same commit was built twice.
+
+# Tag the version package.json names and push main with it: `just release 4.0.1`
+release VERSION:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  version="{{ VERSION }}"
+  version="${version#v}"
+  tag="v$version"
+  in_package=$(node -p 'require("./package.json").version')
+  if [[ "$in_package" != "$version" ]]; then
+    echo "package.json says $in_package, not $version. Bump it and commit first." >&2
+    exit 1
+  fi
+  if [[ "$(git branch --show-current)" != main ]]; then
+    echo "Releases are tagged on main." >&2
+    exit 1
+  fi
+  if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+    echo "Tracked files have changes that the tag would not include. Commit them first." >&2
+    exit 1
+  fi
+  if git rev-parse -q --verify "refs/tags/$tag" >/dev/null || [[ -n "$(git ls-remote --tags origin "refs/tags/$tag")" ]]; then
+    echo "$tag already exists." >&2
+    exit 1
+  fi
+  git tag -a "$tag" -m "$version"
+  git push --atomic origin main "$tag"
+  echo "Pushed main and $tag. The release is published by the tag run of the build workflow."
 
 # === DEV CONTAINER ===
 # Where install, build, lint, tests and the e2e suite belong: they run a

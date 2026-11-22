@@ -21,6 +21,42 @@ permissions:
   contents: read
 
 jobs:
+  # A release is a branch push and a tag push of one commit, which GitHub runs
+  # as two workflows, and both used to build, test and attest the same tree.
+  # The tag run is the one that publishes, so a branch run whose commit already
+  # carries a release tag stops here. `just release` pushes the branch and the
+  # tag in one atomic push, so the tag is there by the time this asks. A tag
+  # pushed later than its branch still gets a run of its own: when the branch
+  # went up, there was no release to leave the work to.
+  gate:
+    name: not already a release
+    runs-on: ubuntu-24.04
+    outputs:
+      run: ${{ steps.tagged.outputs.run }}
+    steps:
+      - name: Look for a release tag on this commit
+        id: tagged
+        env:
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.server_url }}/${{ github.repository }}
+          BRANCH_PUSH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') }}
+        run: |
+          set -euo pipefail
+          run=true
+          if [ "$BRANCH_PUSH" = true ]; then
+            # A remote that does not answer leaves the run on: the worst that
+            # can do is build twice, while a wrong "tagged" would build nothing.
+            if ! tags=$(git ls-remote --tags "$REPO"); then
+              echo "::warning::could not list the tags, building anyway"
+            # An annotated tag is listed twice, the second time peeled to its
+            # commit with ^{} after the name. Both shapes of release tag count.
+            elif printf '%s\n' "$tags" | grep -qE "^$SHA[[:space:]]+refs/tags/v?[0-9][^^]*(\^\{\})?$"; then
+              echo "This commit carries a release tag, and the tag run builds it."
+              run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   # Before the build, not after it. An artifact built from a tree with a known,
   # fixable advisory in it is an artifact nobody wanted, and finding out
   # afterwards means finding out once it already exists.
@@ -38,6 +74,8 @@ jobs:
   # bites, the fix is to bump the dependency or re-run, never to drop the job.
   audit:
     name: secrets, host paths and advisories
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Check out
@@ -65,6 +103,8 @@ jobs:
   # published past a failing check.
   quality:
     name: lint, types and tests
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Check out
